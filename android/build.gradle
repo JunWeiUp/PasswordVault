@@ -26,7 +26,14 @@ subprojects {
         if (plugin.class.name.contains("com.android.build.gradle.LibraryPlugin")) {
             project.android {
                 if (namespace == null) {
-                    namespace = "fix." + project.name.replace("-", ".")
+                    // 根据插件名设置正确的 namespace，防止与 AndroidManifest.xml 冲突
+                    if (project.name.contains("cryptography_flutter")) {
+                        namespace = "dev.dint.cryptography_flutter"
+                    } else if (project.name.contains("share_plus")) {
+                        namespace = "dev.fluttercommunity.plus.share"
+                    } else {
+                        namespace = "fix." + project.name.replace("-", ".")
+                    }
                 }
                 // 统一编译版本
                 compileSdk 34
