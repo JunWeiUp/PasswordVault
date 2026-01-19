@@ -1,10 +1,13 @@
 import 'dart:convert';
 import 'dart:math';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:cryptography/cryptography.dart';
 import '../../../../core/security/encryption_service.dart';
-import 'dart:html' as html; // 用于 sessionStorage
+
+// In-memory cache for the derived key to avoid re-calculating it unnecessarily
+List<int>? _cachedDerivedKey;
 
 final masterPasswordProvider = StateNotifierProvider<MasterPasswordNotifier, String?>((ref) {
   return MasterPasswordNotifier();
@@ -27,14 +30,14 @@ class MasterPasswordNotifier extends StateNotifier<String?> {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_key, password);
     // 设置新密码时清空密钥缓存
-    html.window.sessionStorage.remove('derived_master_key');
+    _cachedDerivedKey = null;
     state = password;
   }
 
   Future<void> clear() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_key);
-    html.window.sessionStorage.remove('derived_master_key');
+    _cachedDerivedKey = null;
     state = null;
   }
 }
@@ -43,10 +46,9 @@ final masterKeyProvider = FutureProvider<SecretKey?>((ref) async {
   final password = ref.watch(masterPasswordProvider);
   if (password == null) return null;
 
-  // 1. 尝试从 sessionStorage 获取已计算好的密钥（F5 刷新后极速恢复）
-  final cachedKeyBase64 = html.window.sessionStorage['derived_master_key'];
-  if (cachedKeyBase64 != null) {
-    return SecretKey(base64.decode(cachedKeyBase64));
+  // 1. 尝试从内存缓存获取已计算好的密钥
+  if (_cachedDerivedKey != null) {
+    return SecretKey(_cachedDerivedKey!);
   }
 
   final encryptionService = EncryptionService();
@@ -67,8 +69,7 @@ final masterKeyProvider = FutureProvider<SecretKey?>((ref) async {
   final key = await encryptionService.deriveKey(password, salt);
   
   // 3. 存入缓存
-  final keyBytes = await key.extractBytes();
-  html.window.sessionStorage['derived_master_key'] = base64.encode(keyBytes);
+  _cachedDerivedKey = await key.extractBytes();
 
   return key;
 });

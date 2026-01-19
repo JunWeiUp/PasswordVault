@@ -14,17 +14,22 @@ subprojects {
 }
 
 subprojects {
+    // 1. 注入 flutter 扩展，修复 share_plus 等插件找不到 flutter.compileSdkVersion 的问题
     project.ext.set("flutter", [
         compileSdkVersion: 34,
         minSdkVersion: 21,
         targetSdkVersion: 34
     ])
-    afterEvaluate { project ->
-        if (project.hasProperty('android')) {
+
+    // 2. 自动修复缺少 namespace 的插件
+    project.plugins.configureEach { plugin ->
+        if (plugin.class.name.contains("com.android.build.gradle.LibraryPlugin")) {
             project.android {
-                if (compileSdk == null) {
-                    compileSdk 34
+                if (namespace == null) {
+                    namespace = "fix." + project.name.replace("-", ".")
                 }
+                // 统一编译版本
+                compileSdk 34
             }
         }
     }
