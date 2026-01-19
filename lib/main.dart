@@ -12,6 +12,9 @@ import 'core/utils/import_export_helper.dart';
 import 'features/vault/presentation/pages/add_account_page.dart';
 import 'features/vault/presentation/pages/password_generator_page.dart';
 
+import 'features/vault/presentation/pages/lock_page.dart';
+import 'features/vault/presentation/providers/master_key_provider.dart';
+
 // --- Providers ---
 // 移除了硬编码的 vaultItemsProvider，改用 vault_provider.dart 中的实现
 
@@ -20,10 +23,20 @@ final selectedTabProvider = StateProvider<int>((ref) => 0);
 // --- Router ---
 final _router = GoRouter(
   initialLocation: '/',
+  redirect: (context, state) {
+    // 这里不能直接用 ref，我们需要在 MaterialApp.router 中使用 ProviderScope 的 context
+    // 或者使用 refreshListenable。但简单起见，我们可以在 build 中判断。
+    // 不过 GoRouter 的 redirect 更好。
+    return null;
+  },
   routes: [
     GoRoute(
+      path: '/lock',
+      builder: (context, state) => const LockPage(),
+    ),
+    GoRoute(
       path: '/',
-      builder: (context, state) => const MainNavigationScreen(),
+      builder: (context, state) => const AuthGuard(child: MainNavigationScreen()),
       routes: [
         GoRoute(
           path: 'add-account',
@@ -40,6 +53,22 @@ final _router = GoRouter(
     ),
   ],
 );
+
+class AuthGuard extends ConsumerWidget {
+  final Widget child;
+  const AuthGuard({required this.child, super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final masterState = ref.watch(masterPasswordProvider);
+    
+    if (!masterState.isAuthenticated) {
+      return const LockPage();
+    }
+    
+    return child;
+  }
+}
 
 void main() {
   runApp(const ProviderScope(child: SecurePassApp()));
@@ -455,20 +484,98 @@ class VaultListContent extends ConsumerWidget {
 class SettingsContent extends ConsumerWidget {
   const SettingsContent({super.key});
 
+  void _showChangeMasterPasswordDialog(BuildContext context, WidgetRef ref) {
+    final oldPasswordController = TextEditingController();
+    final newPasswordController = TextEditingController();
+    final confirmPasswordController = TextEditingController();
+    final masterState = ref.read(masterPasswordProvider);
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('修改主密码'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: oldPasswordController,
+              obscureText: true,
+              decoration: const InputDecoration(labelText: '当前密码'),
+            ),
+            TextField(
+              controller: newPasswordController,
+              obscureText: true,
+              decoration: const InputDecoration(labelText: '新密码'),
+            ),
+            TextField(
+              controller: confirmPasswordController,
+              obscureText: true,
+              decoration: const InputDecoration(labelText: '确认新密码'),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('取消')),
+          ElevatedButton(
+            onPressed: () {
+              if (oldPasswordController.text != masterState.password) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('当前密码错误'), backgroundColor: Colors.red),
+                );
+                return;
+              }
+              if (newPasswordController.text.isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('新密码不能为空'), backgroundColor: Colors.red),
+                );
+                return;
+              }
+              if (newPasswordController.text != confirmPasswordController.text) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('两次输入的新密码不一致'), backgroundColor: Colors.red),
+                );
+                return;
+              }
+
+              ref.read(masterPasswordProvider.notifier).setPassword(newPasswordController.text);
+              Navigator.pop(context);
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('主密码已修改')),
+              );
+            },
+            child: const Text('保存'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final masterState = ref.watch(masterPasswordProvider);
+
     return ListView(
       children: [
         _buildSection(context, '安全', [
           ListTile(
             leading: const Icon(Icons.lock_outline),
             title: const Text('修改主密码'),
-            onTap: () {},
+            onTap: () => _showChangeMasterPasswordDialog(context, ref),
           ),
           ListTile(
             leading: const Icon(Icons.fingerprint),
             title: const Text('生物识别解锁'),
-            trailing: Switch(value: true, onChanged: (v) {}),
+            trailing: Switch(
+              value: masterState.isBiometricEnabled,
+              onChanged: (v) => ref.read(masterPasswordProvider.notifier).setBiometricEnabled(v),
+            ),
+          ),
+          ListTile(
+            leading: const Icon(Icons.logout),
+            title: const Text('锁定密码库'),
+            onTap: () {
+              ref.read(masterPasswordProvider.notifier).setAuthenticated(false);
+            },
           ),
         ]),
         _buildSection(context, '工具', [

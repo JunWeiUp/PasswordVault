@@ -9,41 +9,91 @@ import '../../../../core/security/encryption_service.dart';
 // In-memory cache for the derived key to avoid re-calculating it unnecessarily
 List<int>? _cachedDerivedKey;
 
-final masterPasswordProvider = StateNotifierProvider<MasterPasswordNotifier, String?>((ref) {
+class MasterPasswordState {
+  final String? password;
+  final bool isBiometricEnabled;
+  final bool hasMasterPassword;
+  final bool isAuthenticated;
+
+  MasterPasswordState({
+    this.password,
+    this.isBiometricEnabled = false,
+    this.hasMasterPassword = false,
+    this.isAuthenticated = false,
+  });
+
+  MasterPasswordState copyWith({
+    String? password,
+    bool? isBiometricEnabled,
+    bool? hasMasterPassword,
+    bool? isAuthenticated,
+  }) {
+    return MasterPasswordState(
+      password: password ?? this.password,
+      isBiometricEnabled: isBiometricEnabled ?? this.isBiometricEnabled,
+      hasMasterPassword: hasMasterPassword ?? this.hasMasterPassword,
+      isAuthenticated: isAuthenticated ?? this.isAuthenticated,
+    );
+  }
+}
+
+final masterPasswordProvider = StateNotifierProvider<MasterPasswordNotifier, MasterPasswordState>((ref) {
   return MasterPasswordNotifier();
 });
 
-class MasterPasswordNotifier extends StateNotifier<String?> {
-  MasterPasswordNotifier() : super(null) {
+class MasterPasswordNotifier extends StateNotifier<MasterPasswordState> {
+  MasterPasswordNotifier() : super(MasterPasswordState()) {
     _loadFromPrefs();
   }
 
-  static const _key = 'saved_master_password';
+  static const _passwordKey = 'saved_master_password';
+  static const _biometricKey = 'biometric_enabled';
 
   Future<void> _loadFromPrefs() async {
     final prefs = await SharedPreferences.getInstance();
-    // 注意：实际应用中不应明文存储主密码，这里为了演示和 Web 刷新体验暂时保留
-    state = prefs.getString(_key) ?? "default_password";
+    final password = prefs.getString(_passwordKey);
+    final isBiometricEnabled = prefs.getBool(_biometricKey) ?? false;
+    
+    state = state.copyWith(
+      password: password,
+      hasMasterPassword: password != null,
+      isBiometricEnabled: isBiometricEnabled,
+    );
   }
 
   Future<void> setPassword(String password) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_key, password);
-    // 设置新密码时清空密钥缓存
+    await prefs.setString(_passwordKey, password);
     _cachedDerivedKey = null;
-    state = password;
+    state = state.copyWith(
+      password: password,
+      hasMasterPassword: true,
+      isAuthenticated: true,
+    );
+  }
+
+  Future<void> setBiometricEnabled(bool enabled) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_biometricKey, enabled);
+    state = state.copyWith(isBiometricEnabled: enabled);
+  }
+
+  void setAuthenticated(bool authenticated) {
+    state = state.copyWith(isAuthenticated: authenticated);
   }
 
   Future<void> clear() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_key);
+    await prefs.remove(_passwordKey);
+    await prefs.remove(_biometricKey);
     _cachedDerivedKey = null;
-    state = null;
+    state = MasterPasswordState();
   }
 }
 
 final masterKeyProvider = FutureProvider<SecretKey?>((ref) async {
-  final password = ref.watch(masterPasswordProvider);
+  final masterState = ref.watch(masterPasswordProvider);
+  final password = masterState.password;
   if (password == null) return null;
 
   // 1. 尝试从内存缓存获取已计算好的密钥
