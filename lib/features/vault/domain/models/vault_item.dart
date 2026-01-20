@@ -17,6 +17,9 @@ class VaultItem {
   final String? note;     // 备注
   final String? category; // 分类
   final String? email;    // 邮箱
+  final List<PasswordHistoryEntry>? passwordHistory;
+  final DateTime? passwordLastChanged;
+  final int? passwordDuration; // Days
 
   VaultItem({
     required this.id,
@@ -35,6 +38,9 @@ class VaultItem {
     this.note,
     this.category,
     this.email,
+    this.passwordHistory,
+    this.passwordLastChanged,
+    this.passwordDuration,
   });
 
   Map<String, dynamic> toJson() {
@@ -55,6 +61,9 @@ class VaultItem {
       'note': note,
       'category': category,
       'email': email,
+      'passwordHistory': passwordHistory?.map((e) => e.toJson()).toList(),
+      'passwordLastChanged': passwordLastChanged?.toIso8601String(),
+      'passwordDuration': passwordDuration,
     };
   }
 
@@ -76,6 +85,37 @@ class VaultItem {
       note: json['note'] as String?,
       category: json['category'] as String?,
       email: json['email'] as String?,
+      passwordHistory: (json['passwordHistory'] as List?)
+          ?.map((e) => PasswordHistoryEntry.fromJson(e as Map<String, dynamic>))
+          .toList(),
+      passwordLastChanged: json['passwordLastChanged'] != null
+          ? DateTime.parse(json['passwordLastChanged'] as String)
+          : null,
+      passwordDuration: json['passwordDuration'] as int?,
+    );
+  }
+}
+
+class PasswordHistoryEntry {
+  final String password;
+  final DateTime changedAt;
+
+  PasswordHistoryEntry({
+    required this.password,
+    required this.changedAt,
+  });
+
+  Map<String, dynamic> toJson() {
+    return {
+      'password': password,
+      'changedAt': changedAt.toIso8601String(),
+    };
+  }
+
+  factory PasswordHistoryEntry.fromJson(Map<String, dynamic> json) {
+    return PasswordHistoryEntry(
+      password: json['password'] as String,
+      changedAt: DateTime.parse(json['changedAt'] as String),
     );
   }
 }

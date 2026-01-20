@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 import '../../../../core/utils/password_generator.dart';
@@ -21,12 +22,14 @@ class _AddAccountPageState extends ConsumerState<AddAccountPage> {
   late final TextEditingController _usernameController;
   late final TextEditingController _passwordController;
   late final List<TextEditingController> _mnemonicControllers;
+  late final List<FocusNode> _mnemonicFocusNodes;
   late final TextEditingController _privateKeyController;
   late final TextEditingController _addressController;
   late final TextEditingController _categoryController;
   late final TextEditingController _emailController;
   late final TextEditingController _urlController;
   late final TextEditingController _noteController;
+  late final TextEditingController _durationController;
   String? _totpSecret;
   String? _selectedNetwork;
   bool _obscurePassword = true;
@@ -46,6 +49,7 @@ class _AddAccountPageState extends ConsumerState<AddAccountPage> {
     _mnemonicControllers = List.generate(12, (index) {
       return TextEditingController(text: index < words.length ? words[index] : '');
     });
+    _mnemonicFocusNodes = List.generate(12, (index) => FocusNode());
 
     _privateKeyController = TextEditingController(text: widget.item?.privateKey);
     _addressController = TextEditingController(text: widget.item?.address);
@@ -53,6 +57,7 @@ class _AddAccountPageState extends ConsumerState<AddAccountPage> {
     _emailController = TextEditingController(text: widget.item?.email);
     _urlController = TextEditingController(text: widget.item?.url);
     _noteController = TextEditingController(text: widget.item?.note);
+    _durationController = TextEditingController(text: widget.item?.passwordDuration?.toString() ?? '');
     _totpSecret = widget.item?.secret;
     _selectedNetwork = widget.item?.network ?? (widget.item?.type == VaultItemType.crypto ? 'ETH' : null);
 
@@ -76,12 +81,16 @@ class _AddAccountPageState extends ConsumerState<AddAccountPage> {
     for (var controller in _mnemonicControllers) {
       controller.dispose();
     }
+    for (var node in _mnemonicFocusNodes) {
+      node.dispose();
+    }
     _privateKeyController.dispose();
     _addressController.dispose();
     _categoryController.dispose();
     _emailController.dispose();
     _urlController.dispose();
     _noteController.dispose();
+    _durationController.dispose();
     super.dispose();
   }
 
@@ -174,6 +183,9 @@ class _AddAccountPageState extends ConsumerState<AddAccountPage> {
       secret: _totpSecret,
       period: widget.item?.period ?? 30,
       isFavorite: widget.item?.isFavorite ?? false,
+      passwordDuration: int.tryParse(_durationController.text),
+      passwordLastChanged: widget.item?.passwordLastChanged ?? DateTime.now(),
+      passwordHistory: widget.item?.passwordHistory,
     );
 
     final action = (widget.item == null || widget.item!.id.isEmpty)
@@ -362,7 +374,7 @@ class _AddAccountPageState extends ConsumerState<AddAccountPage> {
                                 Center(
                                   child: RawAutocomplete<String>(
                                     textEditingController: _mnemonicControllers[index],
-                                    focusNode: FocusNode(),
+                                    focusNode: _mnemonicFocusNodes[index],
                                     optionsBuilder: (TextEditingValue textEditingValue) {
                                       if (textEditingValue.text.isEmpty || _obscureMnemonic) {
                                         return const Iterable<String>.empty();
@@ -377,6 +389,9 @@ class _AddAccountPageState extends ConsumerState<AddAccountPage> {
                                         focusNode: focusNode,
                                         obscureText: _obscureMnemonic,
                                         textAlign: TextAlign.center, // 确保文字居中
+                                        autocorrect: false,
+                                        enableSuggestions: false,
+                                        textInputAction: index < 11 ? TextInputAction.next : TextInputAction.done,
                                         style: const TextStyle(
                                           fontSize: 16,
                                           fontWeight: FontWeight.w600,
@@ -535,10 +550,103 @@ class _AddAccountPageState extends ConsumerState<AddAccountPage> {
                 maxLines: 3,
               ),
             ]),
+            const SizedBox(height: 16),
+            if (!isCrypto)
+              _buildSection(context, '安全设置', [
+                _buildTextField(
+                  label: '密码有效期 (天)',
+                  controller: _durationController,
+                  keyboardType: TextInputType.number,
+                  hintText: '留空表示永不过期',
+                  suffixIcon: const Icon(Icons.timer_outlined),
+                ),
+                if (widget.item?.passwordLastChanged != null)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    child: Text(
+                      '最后修改时间: ${widget.item!.passwordLastChanged!.toString().split('.')[0]}',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Theme.of(context).hintColor,
+                      ),
+                    ),
+                  ),
+                if (widget.item?.passwordHistory != null && widget.item!.passwordHistory!.isNotEmpty)
+                  ListTile(
+                    title: const Text('查看历史密码'),
+                    subtitle: Text('共有 ${widget.item!.passwordHistory!.length} 条记录'),
+                    trailing: const Icon(Icons.history),
+                    onTap: _showPasswordHistory,
+                  ),
+              ]),
             const SizedBox(height: 32),
           ],
         ),
       ),
+    );
+  }
+
+  void _showPasswordHistory() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return DraggableScrollableSheet(
+          initialChildSize: 0.6,
+          maxChildSize: 0.9,
+          minChildSize: 0.4,
+          expand: false,
+          builder: (context, scrollController) {
+            final history = widget.item?.passwordHistory?.reversed.toList() ?? [];
+            return Column(
+              children: [
+                Container(
+                  width: 40,
+                  height: 4,
+                  margin: const EdgeInsets.symmetric(vertical: 12),
+                  decoration: BoxDecoration(
+                    color: Colors.grey[300],
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                const Text(
+                  '历史密码',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 16),
+                Expanded(
+                  child: ListView.builder(
+                    controller: scrollController,
+                    itemCount: history.length,
+                    itemBuilder: (context, index) {
+                      final entry = history[index];
+                      return ListTile(
+                        title: Text(
+                          entry.password,
+                          style: const TextStyle(fontFamily: 'monospace'),
+                        ),
+                        subtitle: Text(entry.changedAt.toString().split('.')[0]),
+                        trailing: IconButton(
+                          icon: const Icon(Icons.copy_rounded, size: 20),
+                          onPressed: () {
+                            Clipboard.setData(ClipboardData(text: entry.password));
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('已复制到剪贴板')),
+                            );
+                          },
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            );
+          },
+        );
+      },
     );
   }
 
@@ -588,6 +696,7 @@ class _AddAccountPageState extends ConsumerState<AddAccountPage> {
     String? hintText,
     int maxLines = 1,
     Widget? suffixIcon,
+    TextInputType? keyboardType,
   }) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -595,6 +704,7 @@ class _AddAccountPageState extends ConsumerState<AddAccountPage> {
         controller: controller,
         obscureText: isPassword,
         maxLines: maxLines,
+        keyboardType: keyboardType,
         decoration: InputDecoration(
           labelText: isRequired ? '$label *' : label,
           hintText: hintText,

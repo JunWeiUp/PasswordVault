@@ -14,11 +14,16 @@ import 'features/vault/presentation/pages/password_generator_page.dart';
 
 import 'features/vault/presentation/pages/lock_page.dart';
 import 'features/vault/presentation/providers/master_key_provider.dart';
+import 'features/backup/presentation/pages/webdav_config_page.dart';
+import 'features/backup/presentation/pages/backup_page.dart';
+import 'features/backup/presentation/providers/backup_provider.dart';
 
 // --- Providers ---
 // 移除了硬编码的 vaultItemsProvider，改用 vault_provider.dart 中的实现
 
 final selectedTabProvider = StateProvider<int>((ref) => 0);
+final searchQueryProvider = StateProvider<String>((ref) => '');
+final isSearchingProvider = StateProvider<bool>((ref) => false);
 
 // --- Router ---
 final _router = GoRouter(
@@ -33,6 +38,14 @@ final _router = GoRouter(
     GoRoute(
       path: '/lock',
       builder: (context, state) => const LockPage(),
+    ),
+    GoRoute(
+      path: '/backup',
+      builder: (context, state) => const AuthGuard(child: BackupPage()),
+    ),
+    GoRoute(
+      path: '/webdav-config',
+      builder: (context, state) => const AuthGuard(child: WebDavConfigPage()),
     ),
     GoRoute(
       path: '/',
@@ -87,31 +100,6 @@ class SecurePassApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
     );
   }
-}
-
-void _showWebDavConfig(BuildContext context) {
-  final urlController = TextEditingController();
-  final userController = TextEditingController();
-  final passController = TextEditingController();
-
-  showDialog(
-    context: context,
-    builder: (context) => AlertDialog(
-      title: const Text('WebDAV 配置'),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          TextField(controller: urlController, decoration: const InputDecoration(labelText: '服务器 URL')),
-          TextField(controller: userController, decoration: const InputDecoration(labelText: '用户名')),
-          TextField(controller: passController, decoration: const InputDecoration(labelText: '密码'), obscureText: true),
-        ],
-      ),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('取消')),
-        ElevatedButton(onPressed: () => Navigator.pop(context), child: const Text('保存')),
-      ],
-    ),
-  );
 }
 
 void _showImportExport(BuildContext context, WidgetRef ref) {
@@ -338,34 +326,76 @@ void _showAddItemDialog(BuildContext context, WidgetRef ref, VaultItemType type)
   );
 }
 
-class MainNavigationScreen extends ConsumerWidget {
+class MainNavigationScreen extends ConsumerStatefulWidget {
   const MainNavigationScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<MainNavigationScreen> createState() => _MainNavigationScreenState();
+}
+
+class _MainNavigationScreenState extends ConsumerState<MainNavigationScreen> {
+  final TextEditingController _searchController = TextEditingController();
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final selectedIndex = ref.watch(selectedTabProvider);
+    final isSearching = ref.watch(isSearchingProvider);
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(
-          selectedIndex == 0 ? '验证码' : (selectedIndex == 1 ? '帐号管理' : (selectedIndex == 2 ? '加密资产' : '设置')),
-          style: const TextStyle(fontWeight: FontWeight.bold),
-        ),
-        centerTitle: true,
+        title: isSearching
+            ? TextField(
+                controller: _searchController,
+                autofocus: true,
+                decoration: const InputDecoration(
+                  hintText: '搜索标题、用户名或备注...',
+                  border: InputBorder.none,
+                ),
+                onChanged: (value) {
+                  ref.read(searchQueryProvider.notifier).state = value;
+                },
+              )
+            : Text(
+                selectedIndex == 0 ? '验证码' : (selectedIndex == 1 ? '帐号管理' : (selectedIndex == 2 ? '加密资产' : '设置')),
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+        centerTitle: !isSearching,
         actions: [
-          if (selectedIndex == 0)
+          if (isSearching)
             IconButton(
-              icon: const Icon(Icons.library_add_outlined),
-              tooltip: '批量导入',
-              onPressed: () => _showBulkImportDialog(context, ref),
-            ),
-          if (selectedIndex < 3)
-            IconButton(icon: const Icon(Icons.search), onPressed: () {}),
+              icon: const Icon(Icons.close),
+              onPressed: () {
+                ref.read(isSearchingProvider.notifier).state = false;
+                ref.read(searchQueryProvider.notifier).state = '';
+                _searchController.clear();
+              },
+            )
+          else ...[
+            if (selectedIndex == 0)
+              IconButton(
+                icon: const Icon(Icons.library_add_outlined),
+                tooltip: '批量导入',
+                onPressed: () => _showBulkImportDialog(context, ref),
+              ),
+            if (selectedIndex < 3)
+              IconButton(
+                icon: const Icon(Icons.search),
+                onPressed: () {
+                  ref.read(isSearchingProvider.notifier).state = true;
+                },
+              ),
+          ],
         ],
       ),
       body: Column(
         children: [
-          if (selectedIndex < 3) const CategoryFilterBar(),
+          if (selectedIndex < 3 && !isSearching) const CategoryFilterBar(),
           Expanded(
             child: IndexedStack(
               index: selectedIndex,
@@ -379,7 +409,7 @@ class MainNavigationScreen extends ConsumerWidget {
           ),
         ],
       ),
-      floatingActionButton: selectedIndex < 3
+      floatingActionButton: selectedIndex < 3 && !isSearching
           ? FloatingActionButton.extended(
               onPressed: () {
                 if (selectedIndex == 0) {
@@ -590,8 +620,8 @@ class SettingsContent extends ConsumerWidget {
           ListTile(
             leading: const Icon(Icons.cloud_sync_outlined),
             title: const Text('WebDAV 同步'),
-            subtitle: const Text('未配置'),
-            onTap: () => _showWebDavConfig(context),
+            subtitle: Text(ref.watch(webDavConfigProvider).isValid ? '已配置' : '未配置'),
+            onTap: () => context.push('/backup'),
           ),
           ListTile(
             leading: const Icon(Icons.import_export),

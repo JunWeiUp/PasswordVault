@@ -12,11 +12,18 @@ class PasswordItemCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final bool isExpired = _checkIsExpired();
+    final int? remainingDays = _getRemainingDays();
+
     return Card(
       elevation: 0,
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       shape: RoundedRectangleBorder(
-        side: BorderSide(color: Theme.of(context).dividerColor.withOpacity(0.1)),
+        side: BorderSide(
+          color: isExpired 
+            ? Colors.red.withOpacity(0.5) 
+            : Theme.of(context).dividerColor.withOpacity(0.1)
+        ),
         borderRadius: BorderRadius.circular(16),
       ),
       child: InkWell(
@@ -36,12 +43,16 @@ class PasswordItemCard extends ConsumerWidget {
                 width: 48,
                 height: 48,
                 decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.primaryContainer,
+                  color: isExpired 
+                    ? Colors.red.withOpacity(0.1)
+                    : Theme.of(context).colorScheme.primaryContainer,
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Icon(
-                  Icons.vpn_key_outlined,
-                  color: Theme.of(context).colorScheme.onPrimaryContainer,
+                  isExpired ? Icons.warning_amber_rounded : Icons.vpn_key_outlined,
+                  color: isExpired 
+                    ? Colors.red 
+                    : Theme.of(context).colorScheme.onPrimaryContainer,
                 ),
               ),
               const SizedBox(width: 16),
@@ -49,11 +60,41 @@ class PasswordItemCard extends ConsumerWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      item.title,
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            item.title,
+                            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                        if (isExpired)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Colors.red,
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: const Text(
+                              '已过期',
+                              style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                            ),
+                          )
+                        else if (remainingDays != null && remainingDays <= 7)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Colors.orange,
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              '$remainingDays天后过期',
+                              style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                      ],
                     ),
                     Text(
                       item.username,
@@ -74,18 +115,31 @@ class PasswordItemCard extends ConsumerWidget {
               IconButton(
                 icon: const Icon(Icons.copy),
                 onPressed: () {
-                  Clipboard.setData(ClipboardData(text: item.username));
+                  Clipboard.setData(ClipboardData(text: item.password ?? ''));
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('账号已复制'), duration: Duration(seconds: 2)),
+                    const SnackBar(content: Text('密码已复制'), duration: Duration(seconds: 2)),
                   );
                 },
-                tooltip: '复制账号',
+                tooltip: '复制密码',
               ),
             ],
           ),
         ),
       ),
     );
+  }
+
+  bool _checkIsExpired() {
+    if (item.passwordDuration == null || item.passwordLastChanged == null) return false;
+    final expiryDate = item.passwordLastChanged!.add(Duration(days: item.passwordDuration!));
+    return DateTime.now().isAfter(expiryDate);
+  }
+
+  int? _getRemainingDays() {
+    if (item.passwordDuration == null || item.passwordLastChanged == null) return null;
+    final expiryDate = item.passwordLastChanged!.add(Duration(days: item.passwordDuration!));
+    final difference = expiryDate.difference(DateTime.now()).inDays;
+    return difference;
   }
 
   void _showDeleteConfirm(BuildContext context, WidgetRef ref) {

@@ -22,6 +22,9 @@ class VaultItems extends Table {
   TextColumn get category => text().nullable()();
   TextColumn get email => text().nullable()();
   DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();
+  TextColumn get passwordHistory => text().nullable()(); // Encrypted JSON
+  DateTimeColumn get passwordLastChanged => dateTime().nullable()();
+  IntColumn get passwordDuration => integer().nullable()(); // Days
 
   @override
   Set<Column> get primaryKey => {id};
@@ -32,7 +35,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(impl.connect());
 
   @override
-  int get schemaVersion => 5;
+  int get schemaVersion => 6;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -45,17 +48,37 @@ class AppDatabase extends _$AppDatabase {
         await m.addColumn(vaultItems, vaultItems.network);
       }
       if (from < 4) {
-        // 尝试添加 privateKey，如果版本是从 3 升级来的
         await m.addColumn(vaultItems, vaultItems.privateKey);
       }
       if (from < 5) {
-        // 如果是从版本 4 升级来的，但之前的 privateKey 添加失败了（虽然这种情况少见，但为了修复用户的错误）
-        // Drift 的 addColumn 如果列已存在会抛出异常，所以我们包裹在 try-catch 中，或者直接信任 version 5 的强制升级
         try {
           await m.addColumn(vaultItems, vaultItems.privateKey);
         } catch (e) {
-          // 列可能已经存在，忽略错误
+          // Ignore if column exists
         }
+      }
+      if (from < 6) {
+        await m.addColumn(vaultItems, vaultItems.passwordHistory);
+        await m.addColumn(vaultItems, vaultItems.passwordLastChanged);
+        await m.addColumn(vaultItems, vaultItems.passwordDuration);
+      }
+    },
+    beforeOpen: (details) async {
+      // 开启外键约束
+      await customStatement('PRAGMA foreign_keys = ON');
+      
+      // 防御性检查：确保新列确实存在 (针对开发环境迁移失败的情况)
+      if (details.versionBefore != null && details.versionNow >= 6) {
+        final m = createMigrator();
+        try {
+          await m.addColumn(vaultItems, vaultItems.passwordHistory);
+        } catch (e) { /* Ignore if exists */ }
+        try {
+          await m.addColumn(vaultItems, vaultItems.passwordLastChanged);
+        } catch (e) { /* Ignore if exists */ }
+        try {
+          await m.addColumn(vaultItems, vaultItems.passwordDuration);
+        } catch (e) { /* Ignore if exists */ }
       }
     },
   );

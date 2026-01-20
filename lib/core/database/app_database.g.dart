@@ -111,6 +111,24 @@ class $VaultItemsTable extends VaultItems
       type: DriftSqlType.dateTime,
       requiredDuringInsert: false,
       defaultValue: currentDateAndTime);
+  static const VerificationMeta _passwordHistoryMeta =
+      const VerificationMeta('passwordHistory');
+  @override
+  late final GeneratedColumn<String> passwordHistory = GeneratedColumn<String>(
+      'password_history', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _passwordLastChangedMeta =
+      const VerificationMeta('passwordLastChanged');
+  @override
+  late final GeneratedColumn<DateTime> passwordLastChanged =
+      GeneratedColumn<DateTime>('password_last_changed', aliasedName, true,
+          type: DriftSqlType.dateTime, requiredDuringInsert: false);
+  static const VerificationMeta _passwordDurationMeta =
+      const VerificationMeta('passwordDuration');
+  @override
+  late final GeneratedColumn<int> passwordDuration = GeneratedColumn<int>(
+      'password_duration', aliasedName, true,
+      type: DriftSqlType.int, requiredDuringInsert: false);
   @override
   List<GeneratedColumn> get $columns => [
         id,
@@ -129,7 +147,10 @@ class $VaultItemsTable extends VaultItems
         note,
         category,
         email,
-        updatedAt
+        updatedAt,
+        passwordHistory,
+        passwordLastChanged,
+        passwordDuration
       ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -220,6 +241,24 @@ class $VaultItemsTable extends VaultItems
       context.handle(_updatedAtMeta,
           updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta));
     }
+    if (data.containsKey('password_history')) {
+      context.handle(
+          _passwordHistoryMeta,
+          passwordHistory.isAcceptableOrUnknown(
+              data['password_history']!, _passwordHistoryMeta));
+    }
+    if (data.containsKey('password_last_changed')) {
+      context.handle(
+          _passwordLastChangedMeta,
+          passwordLastChanged.isAcceptableOrUnknown(
+              data['password_last_changed']!, _passwordLastChangedMeta));
+    }
+    if (data.containsKey('password_duration')) {
+      context.handle(
+          _passwordDurationMeta,
+          passwordDuration.isAcceptableOrUnknown(
+              data['password_duration']!, _passwordDurationMeta));
+    }
     return context;
   }
 
@@ -263,6 +302,13 @@ class $VaultItemsTable extends VaultItems
           .read(DriftSqlType.string, data['${effectivePrefix}email']),
       updatedAt: attachedDatabase.typeMapping
           .read(DriftSqlType.dateTime, data['${effectivePrefix}updated_at'])!,
+      passwordHistory: attachedDatabase.typeMapping.read(
+          DriftSqlType.string, data['${effectivePrefix}password_history']),
+      passwordLastChanged: attachedDatabase.typeMapping.read(
+          DriftSqlType.dateTime,
+          data['${effectivePrefix}password_last_changed']),
+      passwordDuration: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}password_duration']),
     );
   }
 
@@ -290,6 +336,9 @@ class VaultItemEntity extends DataClass implements Insertable<VaultItemEntity> {
   final String? category;
   final String? email;
   final DateTime updatedAt;
+  final String? passwordHistory;
+  final DateTime? passwordLastChanged;
+  final int? passwordDuration;
   const VaultItemEntity(
       {required this.id,
       required this.type,
@@ -307,7 +356,10 @@ class VaultItemEntity extends DataClass implements Insertable<VaultItemEntity> {
       this.note,
       this.category,
       this.email,
-      required this.updatedAt});
+      required this.updatedAt,
+      this.passwordHistory,
+      this.passwordLastChanged,
+      this.passwordDuration});
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
@@ -348,6 +400,15 @@ class VaultItemEntity extends DataClass implements Insertable<VaultItemEntity> {
       map['email'] = Variable<String>(email);
     }
     map['updated_at'] = Variable<DateTime>(updatedAt);
+    if (!nullToAbsent || passwordHistory != null) {
+      map['password_history'] = Variable<String>(passwordHistory);
+    }
+    if (!nullToAbsent || passwordLastChanged != null) {
+      map['password_last_changed'] = Variable<DateTime>(passwordLastChanged);
+    }
+    if (!nullToAbsent || passwordDuration != null) {
+      map['password_duration'] = Variable<int>(passwordDuration);
+    }
     return map;
   }
 
@@ -384,6 +445,15 @@ class VaultItemEntity extends DataClass implements Insertable<VaultItemEntity> {
       email:
           email == null && nullToAbsent ? const Value.absent() : Value(email),
       updatedAt: Value(updatedAt),
+      passwordHistory: passwordHistory == null && nullToAbsent
+          ? const Value.absent()
+          : Value(passwordHistory),
+      passwordLastChanged: passwordLastChanged == null && nullToAbsent
+          ? const Value.absent()
+          : Value(passwordLastChanged),
+      passwordDuration: passwordDuration == null && nullToAbsent
+          ? const Value.absent()
+          : Value(passwordDuration),
     );
   }
 
@@ -408,6 +478,10 @@ class VaultItemEntity extends DataClass implements Insertable<VaultItemEntity> {
       category: serializer.fromJson<String?>(json['category']),
       email: serializer.fromJson<String?>(json['email']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+      passwordHistory: serializer.fromJson<String?>(json['passwordHistory']),
+      passwordLastChanged:
+          serializer.fromJson<DateTime?>(json['passwordLastChanged']),
+      passwordDuration: serializer.fromJson<int?>(json['passwordDuration']),
     );
   }
   @override
@@ -431,6 +505,9 @@ class VaultItemEntity extends DataClass implements Insertable<VaultItemEntity> {
       'category': serializer.toJson<String?>(category),
       'email': serializer.toJson<String?>(email),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
+      'passwordHistory': serializer.toJson<String?>(passwordHistory),
+      'passwordLastChanged': serializer.toJson<DateTime?>(passwordLastChanged),
+      'passwordDuration': serializer.toJson<int?>(passwordDuration),
     };
   }
 
@@ -451,7 +528,10 @@ class VaultItemEntity extends DataClass implements Insertable<VaultItemEntity> {
           Value<String?> note = const Value.absent(),
           Value<String?> category = const Value.absent(),
           Value<String?> email = const Value.absent(),
-          DateTime? updatedAt}) =>
+          DateTime? updatedAt,
+          Value<String?> passwordHistory = const Value.absent(),
+          Value<DateTime?> passwordLastChanged = const Value.absent(),
+          Value<int?> passwordDuration = const Value.absent()}) =>
       VaultItemEntity(
         id: id ?? this.id,
         type: type ?? this.type,
@@ -470,6 +550,15 @@ class VaultItemEntity extends DataClass implements Insertable<VaultItemEntity> {
         category: category.present ? category.value : this.category,
         email: email.present ? email.value : this.email,
         updatedAt: updatedAt ?? this.updatedAt,
+        passwordHistory: passwordHistory.present
+            ? passwordHistory.value
+            : this.passwordHistory,
+        passwordLastChanged: passwordLastChanged.present
+            ? passwordLastChanged.value
+            : this.passwordLastChanged,
+        passwordDuration: passwordDuration.present
+            ? passwordDuration.value
+            : this.passwordDuration,
       );
   VaultItemEntity copyWithCompanion(VaultItemsCompanion data) {
     return VaultItemEntity(
@@ -492,6 +581,15 @@ class VaultItemEntity extends DataClass implements Insertable<VaultItemEntity> {
       category: data.category.present ? data.category.value : this.category,
       email: data.email.present ? data.email.value : this.email,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+      passwordHistory: data.passwordHistory.present
+          ? data.passwordHistory.value
+          : this.passwordHistory,
+      passwordLastChanged: data.passwordLastChanged.present
+          ? data.passwordLastChanged.value
+          : this.passwordLastChanged,
+      passwordDuration: data.passwordDuration.present
+          ? data.passwordDuration.value
+          : this.passwordDuration,
     );
   }
 
@@ -514,7 +612,10 @@ class VaultItemEntity extends DataClass implements Insertable<VaultItemEntity> {
           ..write('note: $note, ')
           ..write('category: $category, ')
           ..write('email: $email, ')
-          ..write('updatedAt: $updatedAt')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('passwordHistory: $passwordHistory, ')
+          ..write('passwordLastChanged: $passwordLastChanged, ')
+          ..write('passwordDuration: $passwordDuration')
           ..write(')'))
         .toString();
   }
@@ -537,7 +638,10 @@ class VaultItemEntity extends DataClass implements Insertable<VaultItemEntity> {
       note,
       category,
       email,
-      updatedAt);
+      updatedAt,
+      passwordHistory,
+      passwordLastChanged,
+      passwordDuration);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -558,7 +662,10 @@ class VaultItemEntity extends DataClass implements Insertable<VaultItemEntity> {
           other.note == this.note &&
           other.category == this.category &&
           other.email == this.email &&
-          other.updatedAt == this.updatedAt);
+          other.updatedAt == this.updatedAt &&
+          other.passwordHistory == this.passwordHistory &&
+          other.passwordLastChanged == this.passwordLastChanged &&
+          other.passwordDuration == this.passwordDuration);
 }
 
 class VaultItemsCompanion extends UpdateCompanion<VaultItemEntity> {
@@ -579,6 +686,9 @@ class VaultItemsCompanion extends UpdateCompanion<VaultItemEntity> {
   final Value<String?> category;
   final Value<String?> email;
   final Value<DateTime> updatedAt;
+  final Value<String?> passwordHistory;
+  final Value<DateTime?> passwordLastChanged;
+  final Value<int?> passwordDuration;
   final Value<int> rowid;
   const VaultItemsCompanion({
     this.id = const Value.absent(),
@@ -598,6 +708,9 @@ class VaultItemsCompanion extends UpdateCompanion<VaultItemEntity> {
     this.category = const Value.absent(),
     this.email = const Value.absent(),
     this.updatedAt = const Value.absent(),
+    this.passwordHistory = const Value.absent(),
+    this.passwordLastChanged = const Value.absent(),
+    this.passwordDuration = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   VaultItemsCompanion.insert({
@@ -618,6 +731,9 @@ class VaultItemsCompanion extends UpdateCompanion<VaultItemEntity> {
     this.category = const Value.absent(),
     this.email = const Value.absent(),
     this.updatedAt = const Value.absent(),
+    this.passwordHistory = const Value.absent(),
+    this.passwordLastChanged = const Value.absent(),
+    this.passwordDuration = const Value.absent(),
     this.rowid = const Value.absent(),
   })  : id = Value(id),
         type = Value(type),
@@ -641,6 +757,9 @@ class VaultItemsCompanion extends UpdateCompanion<VaultItemEntity> {
     Expression<String>? category,
     Expression<String>? email,
     Expression<DateTime>? updatedAt,
+    Expression<String>? passwordHistory,
+    Expression<DateTime>? passwordLastChanged,
+    Expression<int>? passwordDuration,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -661,6 +780,10 @@ class VaultItemsCompanion extends UpdateCompanion<VaultItemEntity> {
       if (category != null) 'category': category,
       if (email != null) 'email': email,
       if (updatedAt != null) 'updated_at': updatedAt,
+      if (passwordHistory != null) 'password_history': passwordHistory,
+      if (passwordLastChanged != null)
+        'password_last_changed': passwordLastChanged,
+      if (passwordDuration != null) 'password_duration': passwordDuration,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -683,6 +806,9 @@ class VaultItemsCompanion extends UpdateCompanion<VaultItemEntity> {
       Value<String?>? category,
       Value<String?>? email,
       Value<DateTime>? updatedAt,
+      Value<String?>? passwordHistory,
+      Value<DateTime?>? passwordLastChanged,
+      Value<int?>? passwordDuration,
       Value<int>? rowid}) {
     return VaultItemsCompanion(
       id: id ?? this.id,
@@ -702,6 +828,9 @@ class VaultItemsCompanion extends UpdateCompanion<VaultItemEntity> {
       category: category ?? this.category,
       email: email ?? this.email,
       updatedAt: updatedAt ?? this.updatedAt,
+      passwordHistory: passwordHistory ?? this.passwordHistory,
+      passwordLastChanged: passwordLastChanged ?? this.passwordLastChanged,
+      passwordDuration: passwordDuration ?? this.passwordDuration,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -760,6 +889,16 @@ class VaultItemsCompanion extends UpdateCompanion<VaultItemEntity> {
     if (updatedAt.present) {
       map['updated_at'] = Variable<DateTime>(updatedAt.value);
     }
+    if (passwordHistory.present) {
+      map['password_history'] = Variable<String>(passwordHistory.value);
+    }
+    if (passwordLastChanged.present) {
+      map['password_last_changed'] =
+          Variable<DateTime>(passwordLastChanged.value);
+    }
+    if (passwordDuration.present) {
+      map['password_duration'] = Variable<int>(passwordDuration.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -786,6 +925,9 @@ class VaultItemsCompanion extends UpdateCompanion<VaultItemEntity> {
           ..write('category: $category, ')
           ..write('email: $email, ')
           ..write('updatedAt: $updatedAt, ')
+          ..write('passwordHistory: $passwordHistory, ')
+          ..write('passwordLastChanged: $passwordLastChanged, ')
+          ..write('passwordDuration: $passwordDuration, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -821,6 +963,9 @@ typedef $$VaultItemsTableCreateCompanionBuilder = VaultItemsCompanion Function({
   Value<String?> category,
   Value<String?> email,
   Value<DateTime> updatedAt,
+  Value<String?> passwordHistory,
+  Value<DateTime?> passwordLastChanged,
+  Value<int?> passwordDuration,
   Value<int> rowid,
 });
 typedef $$VaultItemsTableUpdateCompanionBuilder = VaultItemsCompanion Function({
@@ -841,6 +986,9 @@ typedef $$VaultItemsTableUpdateCompanionBuilder = VaultItemsCompanion Function({
   Value<String?> category,
   Value<String?> email,
   Value<DateTime> updatedAt,
+  Value<String?> passwordHistory,
+  Value<DateTime?> passwordLastChanged,
+  Value<int?> passwordDuration,
   Value<int> rowid,
 });
 
@@ -903,6 +1051,18 @@ class $$VaultItemsTableFilterComposer
 
   ColumnFilters<DateTime> get updatedAt => $composableBuilder(
       column: $table.updatedAt, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get passwordHistory => $composableBuilder(
+      column: $table.passwordHistory,
+      builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get passwordLastChanged => $composableBuilder(
+      column: $table.passwordLastChanged,
+      builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get passwordDuration => $composableBuilder(
+      column: $table.passwordDuration,
+      builder: (column) => ColumnFilters(column));
 }
 
 class $$VaultItemsTableOrderingComposer
@@ -964,6 +1124,18 @@ class $$VaultItemsTableOrderingComposer
 
   ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
       column: $table.updatedAt, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get passwordHistory => $composableBuilder(
+      column: $table.passwordHistory,
+      builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<DateTime> get passwordLastChanged => $composableBuilder(
+      column: $table.passwordLastChanged,
+      builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get passwordDuration => $composableBuilder(
+      column: $table.passwordDuration,
+      builder: (column) => ColumnOrderings(column));
 }
 
 class $$VaultItemsTableAnnotationComposer
@@ -1025,6 +1197,15 @@ class $$VaultItemsTableAnnotationComposer
 
   GeneratedColumn<DateTime> get updatedAt =>
       $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+
+  GeneratedColumn<String> get passwordHistory => $composableBuilder(
+      column: $table.passwordHistory, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get passwordLastChanged => $composableBuilder(
+      column: $table.passwordLastChanged, builder: (column) => column);
+
+  GeneratedColumn<int> get passwordDuration => $composableBuilder(
+      column: $table.passwordDuration, builder: (column) => column);
 }
 
 class $$VaultItemsTableTableManager extends RootTableManager<
@@ -1070,6 +1251,9 @@ class $$VaultItemsTableTableManager extends RootTableManager<
             Value<String?> category = const Value.absent(),
             Value<String?> email = const Value.absent(),
             Value<DateTime> updatedAt = const Value.absent(),
+            Value<String?> passwordHistory = const Value.absent(),
+            Value<DateTime?> passwordLastChanged = const Value.absent(),
+            Value<int?> passwordDuration = const Value.absent(),
             Value<int> rowid = const Value.absent(),
           }) =>
               VaultItemsCompanion(
@@ -1090,6 +1274,9 @@ class $$VaultItemsTableTableManager extends RootTableManager<
             category: category,
             email: email,
             updatedAt: updatedAt,
+            passwordHistory: passwordHistory,
+            passwordLastChanged: passwordLastChanged,
+            passwordDuration: passwordDuration,
             rowid: rowid,
           ),
           createCompanionCallback: ({
@@ -1110,6 +1297,9 @@ class $$VaultItemsTableTableManager extends RootTableManager<
             Value<String?> category = const Value.absent(),
             Value<String?> email = const Value.absent(),
             Value<DateTime> updatedAt = const Value.absent(),
+            Value<String?> passwordHistory = const Value.absent(),
+            Value<DateTime?> passwordLastChanged = const Value.absent(),
+            Value<int?> passwordDuration = const Value.absent(),
             Value<int> rowid = const Value.absent(),
           }) =>
               VaultItemsCompanion.insert(
@@ -1130,6 +1320,9 @@ class $$VaultItemsTableTableManager extends RootTableManager<
             category: category,
             email: email,
             updatedAt: updatedAt,
+            passwordHistory: passwordHistory,
+            passwordLastChanged: passwordLastChanged,
+            passwordDuration: passwordDuration,
             rowid: rowid,
           ),
           withReferenceMapper: (p0) => p0

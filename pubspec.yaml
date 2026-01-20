@@ -52,6 +52,7 @@ dependencies:
   ed25519_hd_key: ^2.3.0
   bip32: ^2.0.0
   local_auth: ^2.3.0
+  webdav_client: ^1.2.2
 
 dev_dependencies:
   flutter_test:

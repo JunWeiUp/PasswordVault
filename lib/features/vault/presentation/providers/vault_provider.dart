@@ -4,6 +4,7 @@ import '../../../../core/security/encryption_service.dart';
 import '../../domain/models/vault_item.dart';
 import '../../data/repositories/vault_repository.dart';
 import 'master_key_provider.dart';
+import '../../../../main.dart' show searchQueryProvider;
 
 final databaseProvider = Provider((ref) => AppDatabase());
 final encryptionServiceProvider = Provider((ref) => EncryptionService());
@@ -135,13 +136,21 @@ final selectedCategoryProvider = StateProvider<String?>((ref) => null);
 final filteredVaultItemsProvider = Provider.family<List<VaultItem>, VaultItemType>((ref, type) {
   final vaultAsync = ref.watch(vaultItemsProvider);
   final selectedCategory = ref.watch(selectedCategoryProvider);
+  final searchQuery = ref.watch(searchQueryProvider).toLowerCase();
   
   return vaultAsync.maybeWhen(
     data: (items) {
       return items.where((item) {
         final matchesType = item.type == type;
         final matchesCategory = selectedCategory == null || item.category == selectedCategory;
-        return matchesType && matchesCategory;
+        
+        final matchesSearch = searchQuery.isEmpty || 
+            (item.title.toLowerCase().contains(searchQuery)) ||
+            (item.username?.toLowerCase().contains(searchQuery) ?? false) ||
+            (item.url?.toLowerCase().contains(searchQuery) ?? false) ||
+            (item.note?.toLowerCase().contains(searchQuery) ?? false);
+
+        return matchesType && matchesCategory && matchesSearch;
       }).toList();
     },
     orElse: () => [],
