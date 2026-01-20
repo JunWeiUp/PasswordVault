@@ -884,17 +884,33 @@ class _AddAccountPageState extends ConsumerState<AddAccountPage> {
         title: const Text('配置 2FA'),
         content: TextField(
           controller: controller,
+          autofocus: true,
+          textCapitalization: TextCapitalization.characters,
+          inputFormatters: [
+            FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z2-7\s]')),
+          ],
           decoration: const InputDecoration(
             labelText: '密钥 (Secret Key)',
             hintText: 'JBSWY3DPEHPK3PXP',
+            helperText: '通常是 16 或 32 位字符',
           ),
         ),
         actions: [
+          TextButton(
+            onPressed: () {
+              setState(() {
+                _totpSecret = null;
+              });
+              Navigator.pop(context);
+            }, 
+            child: const Text('清除', style: TextStyle(color: Colors.red)),
+          ),
           TextButton(onPressed: () => Navigator.pop(context), child: const Text('取消')),
           ElevatedButton(
             onPressed: () {
+              final secret = controller.text.replaceAll(' ', '').toUpperCase();
               setState(() {
-                _totpSecret = controller.text.isEmpty ? null : controller.text;
+                _totpSecret = secret.isEmpty ? null : secret;
               });
               Navigator.pop(context);
             },

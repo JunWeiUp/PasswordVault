@@ -122,6 +122,7 @@ void _showImportExport(BuildContext context, WidgetRef ref) {
           ListTile(
             leading: const Icon(Icons.file_download),
             title: const Text('导出所有数据 (JSON)'),
+            subtitle: const Text('未加密，请妥善保管'),
             onTap: () async {
               Navigator.pop(context);
               final itemsAsync = ref.read(vaultItemsProvider);
@@ -141,38 +142,89 @@ void _showImportExport(BuildContext context, WidgetRef ref) {
             },
           ),
           ListTile(
-            leading: const Icon(Icons.file_upload),
-            title: const Text('导入数据 (JSON)'),
+            leading: const Icon(Icons.enhanced_encryption),
+            title: const Text('导出加密数据 (JSON)'),
+            subtitle: const Text('使用主密码加密，更安全'),
             onTap: () async {
               Navigator.pop(context);
-              final importedItems = await ImportExportHelper.importFromJson();
-              if (importedItems != null && importedItems.isNotEmpty) {
-                int count = 0;
-                for (final item in importedItems) {
-                  try {
-                    // 为导入的项目生成新的 ID，避免冲突
-                    final newItem = VaultItem(
-                      id: const Uuid().v4(),
-                      type: item.type,
-                      title: item.title,
-                      username: item.username,
-                      secret: item.secret,
-                      password: item.password,
-                      mnemonic: item.mnemonic,
-                      address: item.address,
-                      period: item.period,
-                      isFavorite: item.isFavorite,
-                      url: item.url,
-                      note: item.note,
-                    );
-                    await ref.read(vaultItemsProvider.notifier).addItem(newItem);
-                    count++;
-                  } catch (e) {
-                    debugPrint('Import item failed: $e');
-                  }
-                }
+              final itemsAsync = ref.read(vaultItemsProvider);
+              final items = itemsAsync.valueOrNull ?? [];
+              if (items.isEmpty) {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('成功导入 $count 个项目')),
+                  const SnackBar(content: Text('没有可导出的数据')),
+                );
+                return;
+              }
+
+              final masterKey = await ref.read(masterKeyProvider.future);
+              final encryptionService = ref.read(encryptionServiceProvider);
+
+              if (masterKey == null) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('主密钥尚未就绪'), backgroundColor: Colors.red),
+                );
+                return;
+              }
+
+              final success = await ImportExportHelper.exportToJson(
+                items, 
+                masterKey: masterKey, 
+                encryptionService: encryptionService
+              );
+              if (success) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('加密导出成功')),
+                );
+              }
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.file_upload),
+            title: const Text('导入数据 (JSON)'),
+            subtitle: const Text('支持加密和非加密格式'),
+            onTap: () async {
+              Navigator.pop(context);
+              try {
+                final masterKey = await ref.read(masterKeyProvider.future);
+                final encryptionService = ref.read(encryptionServiceProvider);
+
+                final importedItems = await ImportExportHelper.importFromJson(
+                  masterKey: masterKey,
+                  encryptionService: encryptionService,
+                );
+
+                if (importedItems != null && importedItems.isNotEmpty) {
+                  int count = 0;
+                  for (final item in importedItems) {
+                    try {
+                      // 为导入的项目生成新的 ID，避免冲突
+                      final newItem = VaultItem(
+                        id: const Uuid().v4(),
+                        type: item.type,
+                        title: item.title,
+                        username: item.username,
+                        secret: item.secret,
+                        password: item.password,
+                        mnemonic: item.mnemonic,
+                        address: item.address,
+                        period: item.period,
+                        isFavorite: item.isFavorite,
+                        url: item.url,
+                        note: item.note,
+                      );
+                      await ref.read(vaultItemsProvider.notifier).addItem(newItem);
+                      count++;
+                    } catch (e) {
+                      debugPrint('Import item failed: $e');
+                    }
+                  }
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('成功导入 $count 个项目')),
+                  );
+                }
+              } catch (e) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('导入失败: $e'), backgroundColor: Colors.red),
                 );
               }
             },

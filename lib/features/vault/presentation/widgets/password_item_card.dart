@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import '../../domain/models/vault_item.dart';
+import '../../../totp/domain/totp_engine.dart';
+import '../../../totp/presentation/providers/totp_provider.dart';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/vault_provider.dart';
@@ -14,6 +16,15 @@ class PasswordItemCard extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final bool isExpired = _checkIsExpired();
     final int? remainingDays = _getRemainingDays();
+    final bool hasTotp = item.secret != null && item.secret!.isNotEmpty;
+    
+    String? totpCode;
+    double? totpProgress;
+    
+    if (hasTotp) {
+      totpProgress = ref.watch(totpProgressProvider(item.period));
+      totpCode = TotpEngine.generateCode(item.secret!);
+    }
 
     return Card(
       elevation: 0,
@@ -109,6 +120,51 @@ class PasswordItemCard extends ConsumerWidget {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
+                    if (hasTotp) ...[
+                      const SizedBox(height: 8),
+                      InkWell(
+                        onTap: () {
+                          Clipboard.setData(ClipboardData(text: totpCode!.replaceAll(' ', '')));
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('验证码已复制'), duration: Duration(seconds: 2)),
+                          );
+                        },
+                        borderRadius: BorderRadius.circular(8),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: Theme.of(context).colorScheme.primary.withOpacity(0.05),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(Icons.timer_outlined, size: 14, color: Colors.grey),
+                              const SizedBox(width: 6),
+                              Text(
+                                totpCode!,
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                  letterSpacing: 1,
+                                  fontFamily: 'monospace',
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              SizedBox(
+                                width: 14,
+                                height: 14,
+                                child: CircularProgressIndicator(
+                                  value: totpProgress,
+                                  strokeWidth: 2,
+                                  backgroundColor: Theme.of(context).colorScheme.primary.withOpacity(0.1),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),

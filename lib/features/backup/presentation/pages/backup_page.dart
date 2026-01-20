@@ -5,6 +5,8 @@ import 'package:intl/intl.dart';
 import '../providers/backup_provider.dart';
 import '../../domain/models/backup_history.dart';
 
+final encryptBackupToggleProvider = StateProvider<bool>((ref) => true);
+
 class BackupPage extends ConsumerWidget {
   const BackupPage({super.key});
 
@@ -12,6 +14,7 @@ class BackupPage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final backupHistory = ref.watch(backupHistoryProvider);
     final config = ref.watch(webDavConfigProvider);
+    final shouldEncrypt = ref.watch(encryptBackupToggleProvider);
 
     return Scaffold(
       appBar: AppBar(
@@ -57,10 +60,22 @@ class BackupPage extends ConsumerWidget {
                         ),
                       ],
                     ),
-                    const SizedBox(height: 8),
-                    Text(
-                      '立即将您的密码数据备份到WebDAV服务器。',
-                      style: TextStyle(color: Colors.grey[600], fontSize: 14),
+                    const SizedBox(height: 16),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text('使用主密码加密', style: TextStyle(fontWeight: FontWeight.w500)),
+                            Text('推荐开启，保护备份文件安全', style: TextStyle(color: Colors.grey[600], fontSize: 12)),
+                          ],
+                        ),
+                        Switch(
+                          value: shouldEncrypt,
+                          onChanged: (v) => ref.read(encryptBackupToggleProvider.notifier).state = v,
+                        ),
+                      ],
                     ),
                     const SizedBox(height: 16),
                     SizedBox(
@@ -69,7 +84,7 @@ class BackupPage extends ConsumerWidget {
                         onPressed: config.isValid 
                           ? () async {
                               try {
-                                await ref.read(backupServiceProvider).performBackup();
+                                await ref.read(backupServiceProvider).performBackup(encrypt: shouldEncrypt);
                                 if (context.mounted) {
                                   ScaffoldMessenger.of(context).showSnackBar(
                                     const SnackBar(content: Text('备份成功')),

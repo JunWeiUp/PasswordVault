@@ -4,18 +4,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../vault/domain/models/vault_item.dart';
 import '../../domain/totp_engine.dart';
+import '../providers/totp_provider.dart';
 
 import '../../../vault/presentation/providers/vault_provider.dart';
-
-// 订阅秒针的 Provider
-final tickerProvider = StreamProvider<int>((ref) {
-  return Stream.periodic(const Duration(seconds: 1), (i) => i);
-});
-
-final totpProgressProvider = Provider.family<double, int>((ref, period) {
-  ref.watch(tickerProvider);
-  return TotpEngine.getProgress(period);
-});
 
 class TotpItemCard extends ConsumerWidget {
   final VaultItem item;
