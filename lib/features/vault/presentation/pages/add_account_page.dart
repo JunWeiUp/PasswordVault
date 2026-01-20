@@ -47,9 +47,12 @@ class _AddAccountPageState extends ConsumerState<AddAccountPage> {
     // 初始化额外账号
     _extraAccounts = (widget.item?.accounts ?? []).map((acc) {
       return _AccountControllerGroup(
+        id: acc.id,
         username: acc.username,
         password: acc.password,
         label: acc.label,
+        passwordHistory: acc.passwordHistory,
+        passwordLastChanged: acc.passwordLastChanged,
       );
     }).toList();
     
@@ -201,9 +204,12 @@ class _AddAccountPageState extends ConsumerState<AddAccountPage> {
       passwordHistory: widget.item?.passwordHistory,
       accounts: _extraAccounts.where((g) => g.usernameController.text.isNotEmpty).map((g) {
         return AccountEntry(
+          id: g.id.isEmpty ? const Uuid().v4() : g.id,
           username: g.usernameController.text,
           password: g.passwordController.text,
           label: g.labelController.text.isEmpty ? null : g.labelController.text,
+          passwordHistory: g.passwordHistory,
+          passwordLastChanged: g.passwordLastChanged,
         );
       }).toList(),
     );
@@ -379,27 +385,58 @@ class _AddAccountPageState extends ConsumerState<AddAccountPage> {
                           hintText: '用户名或邮箱',
                         ),
                         _buildTextField(
-                          label: '密码',
-                          controller: group.passwordController,
-                          isPassword: group.obscurePassword,
-                          hintText: '账号密码',
-                          suffixIcon: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              IconButton(
-                                icon: Icon(group.obscurePassword ? Icons.visibility_off_outlined : Icons.visibility_outlined),
-                                onPressed: () => setState(() => group.obscurePassword = !group.obscurePassword),
-                              ),
-                              IconButton(
-                                icon: const Icon(Icons.casino_outlined),
-                                onPressed: () {
-                                  final newPassword = PasswordGenerator.generate(length: 16);
-                                  setState(() => group.passwordController.text = newPassword);
-                                },
-                              ),
-                            ],
-                          ),
+                    label: '密码',
+                    controller: group.passwordController,
+                    isPassword: group.obscurePassword,
+                    hintText: '账号密码',
+                    suffixIcon: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        IconButton(
+                          icon: Icon(group.obscurePassword ? Icons.visibility_off_outlined : Icons.visibility_outlined),
+                          onPressed: () => setState(() => group.obscurePassword = !group.obscurePassword),
                         ),
+                        IconButton(
+                          icon: const Icon(Icons.casino_outlined),
+                          onPressed: () {
+                            final newPassword = PasswordGenerator.generate(length: 16);
+                            setState(() => group.passwordController.text = newPassword);
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (group.passwordHistory != null && group.passwordHistory!.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                      child: Row(
+                        children: [
+                          if (group.passwordLastChanged != null)
+                            Expanded(
+                              child: Text(
+                                '最后修改: ${group.passwordLastChanged!.toString().split('.')[0]}',
+                                style: TextStyle(fontSize: 11, color: Theme.of(context).hintColor),
+                              ),
+                            ),
+                          TextButton.icon(
+                            onPressed: () {
+                              final label = group.labelController.text;
+                              _showPasswordHistory(
+                                history: group.passwordHistory,
+                                title: '${label.isNotEmpty ? label : '账号 ${index + 2}'} 的历史密码',
+                              );
+                            },
+                            icon: const Icon(Icons.history, size: 16),
+                            label: Text('历史 (${group.passwordHistory!.length})', style: const TextStyle(fontSize: 12)),
+                            style: TextButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(horizontal: 8),
+                              minimumSize: Size.zero,
+                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                       ],
                     );
                   }),
@@ -680,7 +717,10 @@ class _AddAccountPageState extends ConsumerState<AddAccountPage> {
     );
   }
 
-  void _showPasswordHistory() {
+  void _showPasswordHistory({List<PasswordHistoryEntry>? history, String? title}) {
+    final displayHistory = (history ?? widget.item?.passwordHistory ?? []).reversed.toList();
+    if (displayHistory.isEmpty) return;
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -694,7 +734,6 @@ class _AddAccountPageState extends ConsumerState<AddAccountPage> {
           minChildSize: 0.4,
           expand: false,
           builder: (context, scrollController) {
-            final history = widget.item?.passwordHistory?.reversed.toList() ?? [];
             return Column(
               children: [
                 Container(
@@ -706,17 +745,17 @@ class _AddAccountPageState extends ConsumerState<AddAccountPage> {
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),
-                const Text(
-                  '历史密码',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                Text(
+                  title ?? '历史密码',
+                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 16),
                 Expanded(
                   child: ListView.builder(
                     controller: scrollController,
-                    itemCount: history.length,
+                    itemCount: displayHistory.length,
                     itemBuilder: (context, index) {
-                      final entry = history[index];
+                      final entry = displayHistory[index];
                       return ListTile(
                         title: Text(
                           entry.password,
@@ -1017,17 +1056,24 @@ class _AddAccountPageState extends ConsumerState<AddAccountPage> {
 }
 
 class _AccountControllerGroup {
+  final String id;
   final TextEditingController usernameController;
   final TextEditingController passwordController;
   final TextEditingController labelController;
+  final List<PasswordHistoryEntry>? passwordHistory;
+  final DateTime? passwordLastChanged;
   bool obscurePassword;
 
   _AccountControllerGroup({
+    String? id,
     String? username,
     String? password,
     String? label,
+    this.passwordHistory,
+    this.passwordLastChanged,
     this.obscurePassword = true,
-  })  : usernameController = TextEditingController(text: username),
+  })  : id = id ?? '',
+        usernameController = TextEditingController(text: username),
         passwordController = TextEditingController(text: password),
         labelController = TextEditingController(text: label);
 

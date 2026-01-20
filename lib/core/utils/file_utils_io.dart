@@ -35,9 +35,17 @@ Future<bool> saveJsonFileImpl(String jsonString, String fileName) async {
 }
 
 Future<String?> pickJsonFileImpl() async {
+  return _pickFileImpl(['json']);
+}
+
+Future<String?> pickCsvFileImpl() async {
+  return _pickFileImpl(['csv']);
+}
+
+Future<String?> _pickFileImpl(List<String> extensions) async {
   FilePickerResult? result = await FilePicker.platform.pickFiles(
     type: FileType.custom,
-    allowedExtensions: ['json'],
+    allowedExtensions: extensions,
     allowMultiple: false,
   );
 

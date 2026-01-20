@@ -238,20 +238,135 @@ class VaultRepository {
 
     DateTime? lastChanged = oldRow.passwordLastChanged;
     
-    // 2. 如果密码更改了，将其添加到历史记录并更新最后更改时间
+    // 2. 处理主密码历史
     if (item.password != null && item.password != oldDecryptedPassword && oldDecryptedPassword != null) {
       currentHistory.add(PasswordHistoryEntry(
         password: oldDecryptedPassword,
         changedAt: lastChanged ?? DateTime.now(),
       ));
-      // 保持历史记录不要太长，比如保留最近 10 个
       if (currentHistory.length > 10) {
         currentHistory.removeAt(0);
       }
       lastChanged = DateTime.now();
     } else if (item.password != null && oldDecryptedPassword == null) {
-      // 第一次设置密码
       lastChanged = DateTime.now();
+    }
+
+    // 3. 处理额外账号密码历史
+    List<AccountEntry> updatedAccounts = [];
+    if (item.accounts != null) {
+      List<AccountEntry> oldAccounts = [];
+      if (oldRow.accounts != null) {
+        try {
+          final decryptedAccounts = await _encryptionService.decrypt(
+            base64.decode(oldRow.accounts!), 
+            masterKey
+          );
+          final List<dynamic> jsonList = jsonDecode(decryptedAccounts);
+          oldAccounts = jsonList.map((e) => AccountEntry.fromJson(e)).toList();
+        } catch (e) {
+          print('Error decrypting old accounts: $e');
+        }
+      }
+
+      for (var i = 0; i < item.accounts!.length; i++) {
+        var newAcc = item.accounts![i];
+        AccountEntry? oldAcc;
+        
+        // 1. 优先通过 ID 匹配
+        if (newAcc.id.isNotEmpty) {
+          try {
+            oldAcc = oldAccounts.firstWhere((a) => a.id == newAcc.id);
+          } catch (_) {
+            oldAcc = null;
+          }
+        }
+        
+        // 2. 如果 ID 匹配失败，尝试通过多种方式模糊匹配（兼容旧数据或 ID 丢失的情况）
+        if (oldAcc == null) {
+          // 2.1 尝试相同索引的账号（最可能的匹配方式）
+          if (i < oldAccounts.length) {
+            final possibleMatch = oldAccounts[i];
+            
+            // 兼容 label 为空或 null 的情况
+            final bool labelMatch = (possibleMatch.label == newAcc.label) || 
+                                   (possibleMatch.label == null && (newAcc.label?.isEmpty ?? true)) ||
+                                   ((possibleMatch.label?.isEmpty ?? true) && newAcc.label == null);
+            
+            // 如果用户名一致，极可能是同一个账号（即使 label 变了）
+            if (possibleMatch.username == newAcc.username) {
+              oldAcc = possibleMatch;
+            } else if (labelMatch && (newAcc.label?.isNotEmpty ?? false)) {
+              // 如果用户名变了，但 label 一致且不为空，也可能是同一个账号
+              oldAcc = possibleMatch;
+            }
+          }
+          
+          // 2.2 如果索引匹配不成功，在整个旧账号列表中搜索
+          if (oldAcc == null) {
+            try {
+              // 优先匹配用户名和备注都一致的
+              oldAcc = oldAccounts.firstWhere((a) {
+                final bool labelMatch = (a.label == newAcc.label) || 
+                                       (a.label == null && (newAcc.label?.isEmpty ?? true)) ||
+                                       ((a.label?.isEmpty ?? true) && newAcc.label == null);
+                return a.username == newAcc.username && labelMatch;
+              });
+            } catch (_) {
+              try {
+                // 退而求其次，只匹配用户名一致的
+                oldAcc = oldAccounts.firstWhere((a) => a.username == newAcc.username);
+              } catch (_) {
+                oldAcc = null;
+              }
+            }
+          }
+        }
+        
+        if (oldAcc != null && newAcc.password != oldAcc.password) {
+          // 密码已更改，更新历史
+          List<PasswordHistoryEntry> accHistory = List.from(oldAcc.passwordHistory ?? []);
+          accHistory.add(PasswordHistoryEntry(
+            password: oldAcc.password,
+            changedAt: oldAcc.passwordLastChanged ?? DateTime.now(),
+          ));
+          if (accHistory.length > 10) accHistory.removeAt(0);
+          
+          updatedAccounts.add(AccountEntry(
+            id: newAcc.id,
+            username: newAcc.username,
+            password: newAcc.password,
+            label: newAcc.label,
+            passwordHistory: accHistory,
+            passwordLastChanged: DateTime.now(),
+          ));
+        } else if (oldAcc != null) {
+          // 密码未更改，保留旧的历史和时间
+          updatedAccounts.add(AccountEntry(
+            id: newAcc.id,
+            username: newAcc.username,
+            password: newAcc.password,
+            label: newAcc.label,
+            passwordHistory: oldAcc.passwordHistory,
+            passwordLastChanged: oldAcc.passwordLastChanged,
+          ));
+        } else {
+          // 找不到对应的旧账号，视为新账号或匹配完全失败
+          // 如果 UI 传过来的账号已经有历史（虽然不常见），则尝试保留
+          updatedAccounts.add(AccountEntry(
+            id: newAcc.id,
+            username: newAcc.username,
+            password: newAcc.password,
+            label: newAcc.label,
+            passwordHistory: newAcc.passwordHistory,
+            passwordLastChanged: newAcc.passwordLastChanged ?? DateTime.now(),
+          ));
+        }
+      }
+    } else if (oldRow.accounts != null) {
+      // 如果新项中没有 accounts，但旧项中有，则保留旧的（防止意外抹除）
+      // 这里可以根据业务逻辑决定是保留还是删除，通常如果是 full model 更新则应该删除
+      // 但为了安全起见，我们只有在明确 item.accounts 是空列表时才删除
     }
 
     String? encryptedSecret;
@@ -299,8 +414,8 @@ class VaultRepository {
       encryptedPasswordHistory = base64.encode(bytes);
     }
 
-    if (item.accounts != null && item.accounts!.isNotEmpty) {
-      final accountsJson = jsonEncode(item.accounts!.map((e) => e.toJson()).toList());
+    if (updatedAccounts.isNotEmpty) {
+      final accountsJson = jsonEncode(updatedAccounts.map((e) => e.toJson()).toList());
       final bytes = await _encryptionService.encrypt(accountsJson, masterKey);
       encryptedAccounts = base64.encode(bytes);
     }

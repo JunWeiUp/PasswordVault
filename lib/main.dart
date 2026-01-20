@@ -203,10 +203,12 @@ void _showImportExport(BuildContext context, WidgetRef ref) {
               Navigator.pop(context);
               try {
                 final masterKey = await ref.read(masterKeyProvider.future);
+                final masterPassword = ref.read(masterPasswordProvider).password;
                 final encryptionService = ref.read(encryptionServiceProvider);
 
                 final importedItems = await ImportExportHelper.importFromJson(
                   masterKey: masterKey,
+                  masterPassword: masterPassword,
                   encryptionService: encryptionService,
                 );
 
@@ -237,6 +239,36 @@ void _showImportExport(BuildContext context, WidgetRef ref) {
                   }
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(content: Text('成功导入 $count 个项目')),
+                  );
+                }
+              } catch (e) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('导入失败: $e'), backgroundColor: Colors.red),
+                );
+              }
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.upload_file_outlined),
+            title: const Text('导入 LastPass 数据 (CSV)'),
+            subtitle: const Text('支持从 LastPass 导出的 CSV 文件'),
+            onTap: () async {
+              Navigator.pop(context);
+              try {
+                final importedItems = await ImportExportHelper.importFromLastPassCsv();
+
+                if (importedItems != null && importedItems.isNotEmpty) {
+                  int count = 0;
+                  for (final item in importedItems) {
+                    try {
+                      await ref.read(vaultItemsProvider.notifier).addItem(item);
+                      count++;
+                    } catch (e) {
+                      debugPrint('Import item failed: $e');
+                    }
+                  }
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('成功从 LastPass 导入 $count 个项目')),
                   );
                 }
               } catch (e) {

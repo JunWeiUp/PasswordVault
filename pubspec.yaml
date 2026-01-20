@@ -53,6 +53,7 @@ dependencies:
   bip32: ^2.0.0
   local_auth: ^2.3.0
   webdav_client: ^1.2.2
+  csv: ^6.0.0
 
 dev_dependencies:
   flutter_test:

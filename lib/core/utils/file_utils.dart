@@ -8,4 +8,6 @@ abstract class FileUtils {
       saveJsonFileImpl(jsonString, fileName);
 
   static Future<String?> pickJsonFile() => pickJsonFileImpl();
+
+  static Future<String?> pickCsvFile() => pickCsvFileImpl();
 }

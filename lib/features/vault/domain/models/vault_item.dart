@@ -103,29 +103,45 @@ class VaultItem {
 }
 
 class AccountEntry {
+  final String id;
   final String username;
   final String password;
   final String? label;
+  final List<PasswordHistoryEntry>? passwordHistory;
+  final DateTime? passwordLastChanged;
 
   AccountEntry({
+    required this.id,
     required this.username,
     required this.password,
     this.label,
+    this.passwordHistory,
+    this.passwordLastChanged,
   });
 
   Map<String, dynamic> toJson() {
     return {
+      'id': id,
       'username': username,
       'password': password,
       'label': label,
+      'passwordHistory': passwordHistory?.map((e) => e.toJson()).toList(),
+      'passwordLastChanged': passwordLastChanged?.toIso8601String(),
     };
   }
 
   factory AccountEntry.fromJson(Map<String, dynamic> json) {
     return AccountEntry(
+      id: json['id'] as String? ?? '', // 兼容旧数据
       username: json['username'] as String,
       password: json['password'] as String,
       label: json['label'] as String?,
+      passwordHistory: (json['passwordHistory'] as List?)
+          ?.map((e) => PasswordHistoryEntry.fromJson(e as Map<String, dynamic>))
+          .toList(),
+      passwordLastChanged: json['passwordLastChanged'] != null
+          ? DateTime.parse(json['passwordLastChanged'] as String)
+          : null,
     );
   }
 }
