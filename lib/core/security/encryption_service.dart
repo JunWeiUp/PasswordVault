@@ -5,17 +5,30 @@ class EncryptionService {
   final _cipher = AesGcm.with256bits();
   
   // 使用 Argon2id 从主密码派生密钥 (Key Derivation)
-  Future<SecretKey> deriveKey(String password, List<int> salt) async {
+  Future<SecretKey> deriveKey(
+    String password, 
+    List<int> salt, {
+    int iterations = 2,
+    int memory = 32 * 1024,
+    int parallelism = 1,
+  }) async {
     final algorithm = Argon2id(
-      parallelism: 1, // Web 端多线程支持有限，减少并行度
-      memory: 32 * 1024, // 32MB，平衡安全与 Web 加载速度
-      iterations: 2, // 减少迭代次数
+      parallelism: parallelism,
+      memory: memory,
+      iterations: iterations,
       hashLength: 32,
     );
     return algorithm.deriveKeyFromPassword(
       password: password,
       nonce: salt,
     );
+  }
+
+  // 极简密钥派生：直接使用 SHA-256 哈希密码，确保跨平台绝对一致
+  Future<SecretKey> deriveKeySimple(String password) async {
+    final bytes = utf8.encode(password);
+    final hash = await Sha256().hash(bytes);
+    return SecretKey(hash.bytes);
   }
 
   // 加密：返回密文 + Nonce

@@ -122,6 +122,15 @@ class MasterPasswordNotifier extends StateNotifier<MasterPasswordState> {
   }
 }
 
+final masterKeySaltProvider = FutureProvider<List<int>?>((ref) async {
+  final prefs = await SharedPreferences.getInstance();
+  final saltBase64 = prefs.getString('master_key_salt');
+  if (saltBase64 != null) {
+    return base64.decode(saltBase64);
+  }
+  return null;
+});
+
 final masterKeyProvider = FutureProvider<SecretKey?>((ref) async {
   final masterState = ref.watch(masterPasswordProvider);
   final password = masterState.password;

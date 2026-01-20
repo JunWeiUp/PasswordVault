@@ -153,7 +153,7 @@ class PasswordItemCard extends ConsumerWidget {
                         onTap: () {
                           Clipboard.setData(ClipboardData(text: totpCode!.replaceAll(' ', '')));
                           ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('验证码已复制'), duration: Duration(seconds: 2)),
+                            const SnackBar(content: Text('验证码已复制到剪贴板'), duration: Duration(seconds: 2)),
                           );
                         },
                         borderRadius: BorderRadius.circular(8),

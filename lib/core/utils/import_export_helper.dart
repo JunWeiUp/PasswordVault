@@ -9,7 +9,14 @@ import '../security/encryption_service.dart';
 import 'file_utils.dart';
 
 class ImportExportHelper {
-  static Future<bool> exportToJson(List<VaultItem> items, {SecretKey? masterKey, EncryptionService? encryptionService}) async {
+  // 备份专用的固定盐值，确保跨平台只要主密码一致，派生的备份密钥就一致
+  static final List<int> _backupSalt = utf8.encode('SecurePass_Backup_Standard_Salt_2024');
+
+  static Future<bool> exportToJson(
+    List<VaultItem> items, {
+    String? masterPassword,
+    EncryptionService? encryptionService,
+  }) async {
     try {
       final Map<String, dynamic> itemsData = {
         'items': items.map((e) => e.toJson()).toList(),
@@ -17,27 +24,27 @@ class ImportExportHelper {
       
       String? payload;
       bool isEncrypted = false;
-      String? saltBase64;
 
-      if (masterKey != null && encryptionService != null) {
+      if (masterPassword != null && encryptionService != null) {
+        // 使用极简方案：直接对主密码进行 SHA-256 哈希作为密钥
+        final backupKey = await encryptionService.deriveKeySimple(masterPassword.trim());
+
         final jsonString = jsonEncode(itemsData);
-        final encryptedBytes = await encryptionService.encrypt(jsonString, masterKey);
-        payload = base64Encode(encryptedBytes);
+        final encryptedBytes = await encryptionService.encrypt(jsonString, backupKey);
+        payload = base64.encode(encryptedBytes);
         isEncrypted = true;
-
-        // 获取当前使用的 salt，并包含在备份中
-        final prefs = await SharedPreferences.getInstance();
-        saltBase64 = prefs.getString('master_key_salt');
       }
 
       final Map<String, dynamic> exportData = {
         'metadata': {
-          'version': isEncrypted ? '1.2.0' : '1.0.0', // 1.2.0 包含了 salt
+          'version': isEncrypted ? '3.0.0' : '1.0.0', // 3.0.0 使用 SHA-256 极简方案
           'exportDate': DateTime.now().toIso8601String(),
           'source': 'SecurePass',
           'itemCount': items.length,
           'encrypted': isEncrypted,
-          if (saltBase64 != null) 'salt': saltBase64,
+          if (isEncrypted) ...{
+            'scheme': 'sha256_simple',
+          },
         },
       };
 
@@ -73,38 +80,82 @@ class ImportExportHelper {
         if (data is Map<String, dynamic>) {
           final metadata = data['metadata'] as Map<String, dynamic>?;
           final bool isEncrypted = metadata?['encrypted'] ?? false;
+          final String version = metadata?['version']?.toString() ?? '1.0.0';
 
           if (isEncrypted) {
             final String? payloadBase64 = data['payload'] as String?;
             if (payloadBase64 == null) throw Exception('加密备份缺少数据负载');
 
-            if (encryptionService == null) {
-              throw Exception('解密失败：缺少加密服务');
+            if (encryptionService == null || masterPassword == null) {
+              throw Exception('解密失败：该备份已加密，需要主密码才能导入');
             }
 
-            SecretKey? decryptionKey = masterKey;
+            final encryptedBytes = base64.decode(payloadBase64.replaceAll(RegExp(r'\s+'), ''));
+            String decryptedJson = '';
+            bool success = false;
 
-            // 检查备份中的 salt 是否与本地不同
-            final String? backupSaltBase64 = metadata?['salt'] as String?;
-            if (backupSaltBase64 != null && masterPassword != null) {
-              final prefs = await SharedPreferences.getInstance();
-              final localSaltBase64 = prefs.getString('master_key_salt');
-              
-              if (backupSaltBase64 != localSaltBase64) {
-                debugPrint('🔄 备份 salt 与本地不同，尝试重新派生临时密钥...');
-                final backupSalt = base64Decode(backupSaltBase64);
-                decryptionKey = await encryptionService.deriveKey(masterPassword, backupSalt);
+            // 1. 优先尝试版本 3.0.0+ 的 SHA-256 极简方案
+            try {
+              final backupKey = await encryptionService.deriveKeySimple(masterPassword.trim());
+              decryptedJson = await encryptionService.decrypt(encryptedBytes, backupKey);
+              success = true;
+              debugPrint('✅ 使用 SHA-256 极简方案解密成功');
+            } catch (e) {
+              debugPrint('⚠️ SHA-256 极简方案解密失败，尝试兼容性回退...');
+            }
+
+            // 2. 尝试版本 2.0.0 的固定盐值方案
+            if (!success) {
+              try {
+                final backupKey = await encryptionService.deriveKey(
+                  masterPassword.trim(), 
+                  _backupSalt,
+                  iterations: 2,
+                  memory: 32 * 1024,
+                  parallelism: 1,
+                );
+                decryptedJson = await encryptionService.decrypt(encryptedBytes, backupKey);
+                success = true;
+                debugPrint('✅ 使用标准固定盐值方案解密成功');
+              } catch (_) {}
+            }
+
+            // 3. 兼容性回退：尝试使用备份中自带的 salt (1.2.x 方案)
+            if (!success) {
+              final String? backupSaltBase64 = metadata?['salt'] as String?;
+              if (backupSaltBase64 != null) {
+                try {
+                  final salt = base64.decode(backupSaltBase64.trim());
+                  final iters = metadata?['argon2_iterations'] ?? 2;
+                  final mem = metadata?['argon2_memory'] ?? 32768;
+                  
+                  final legacyKey = await encryptionService.deriveKey(
+                    masterPassword.trim(), 
+                    salt,
+                    iterations: iters,
+                    memory: mem,
+                  );
+                  decryptedJson = await encryptionService.decrypt(encryptedBytes, legacyKey);
+                  success = true;
+                  debugPrint('✅ 使用备份自带盐值解密成功');
+                } catch (_) {}
               }
             }
 
-            if (decryptionKey == null) {
-              throw Exception('该备份已加密，需要主密码才能导入');
+            // 3. 最终回退：尝试当前设备的本地 masterKey (旧版方案)
+            if (!success && masterKey != null) {
+              try {
+                decryptedJson = await encryptionService.decrypt(encryptedBytes, masterKey);
+                success = true;
+                debugPrint('✅ 使用本地主密钥解密成功');
+              } catch (_) {}
+            }
+
+            if (!success) {
+              throw Exception('解密失败：主密码错误或备份文件已损坏 (MAC 不匹配)');
             }
             
-            final encryptedBytes = base64Decode(payloadBase64);
-            final decryptedJson = await encryptionService.decrypt(encryptedBytes, decryptionKey);
             final dynamic decryptedData = jsonDecode(decryptedJson);
-
             if (decryptedData is Map<String, dynamic> && decryptedData.containsKey('items')) {
               final List<dynamic> itemsList = decryptedData['items'];
               return itemsList.map((e) => VaultItem.fromJson(e as Map<String, dynamic>)).toList();
@@ -114,7 +165,7 @@ class ImportExportHelper {
             return itemsList.map((e) => VaultItem.fromJson(e as Map<String, dynamic>)).toList();
           }
         } else if (data is List) {
-          // 兼容旧格式（直接是列表）
+          // 兼容更旧格式
           return data.map((e) => VaultItem.fromJson(e as Map<String, dynamic>)).toList();
         }
       }

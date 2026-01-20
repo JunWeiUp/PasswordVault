@@ -27,7 +27,14 @@ class TotpItemCard extends ConsumerWidget {
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
         onTap: () {
-          context.push('/add-account', extra: item);
+          final cleanCode = code.replaceAll(' ', '');
+          Clipboard.setData(ClipboardData(text: cleanCode));
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('验证码已复制到剪贴板'),
+              duration: Duration(seconds: 2),
+            ),
+          );
         },
         onLongPress: () {
           _showActionMenu(context, ref);
@@ -74,6 +81,14 @@ class TotpItemCard extends ConsumerWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            ListTile(
+              leading: const Icon(Icons.edit_outlined),
+              title: const Text('编辑项目'),
+              onTap: () {
+                Navigator.pop(context);
+                context.push('/add-account', extra: item);
+              },
+            ),
             ListTile(
               leading: const Icon(Icons.share_outlined),
               title: const Text('导出为 otpauth URI'),

@@ -110,7 +110,7 @@ class BackupService {
 
     final Map<String, dynamic> backupData = {
       'metadata': {
-        'version': encrypt ? '1.1.0' : '1.0.0',
+        'version': encrypt ? '1.1.1' : '1.0.0',
         'createdAt': DateTime.now().toIso8601String(),
         'encrypted': encrypt,
       },
@@ -122,12 +122,20 @@ class BackupService {
 
     if (encrypt) {
       final masterKey = await _ref.read(masterKeyProvider.future);
+      final salt = await _ref.read(masterKeySaltProvider.future);
       final encryptionService = _ref.read(encryptionServiceProvider);
-      if (masterKey == null) throw Exception('主密钥尚未就绪');
+      
+      if (masterKey == null || salt == null) throw Exception('主密钥尚未就绪');
 
       final jsonString = json.encode(itemsData);
       final encryptedBytes = await encryptionService.encrypt(jsonString, masterKey);
+      
       backupData['payload'] = base64.encode(encryptedBytes);
+      final metadata = backupData['metadata'] as Map<String, dynamic>;
+      metadata['salt'] = base64.encode(salt);
+      metadata['iterations'] = 2;
+      metadata['memory'] = 32 * 1024;
+      metadata['parallelism'] = 1;
     } else {
       backupData['items'] = itemsData['items'];
     }
@@ -159,18 +167,51 @@ class BackupService {
     final bool isEncrypted = metadata?['encrypted'] ?? false;
 
     if (isEncrypted) {
-      final masterKey = await _ref.read(masterKeyProvider.future);
-      final encryptionService = _ref.read(encryptionServiceProvider);
-      if (masterKey == null) throw Exception('主密钥尚未就绪');
+      final masterState = _ref.read(masterPasswordProvider);
+      final password = masterState.password;
+      if (password == null) throw Exception('主密码未设置，无法解密');
 
+      final encryptionService = _ref.read(encryptionServiceProvider);
       final String? payloadBase64 = data['payload'] as String?;
       if (payloadBase64 == null) throw Exception('加密备份缺少数据负载');
 
       final encryptedBytes = base64.decode(payloadBase64);
-      final decryptedJson = await encryptionService.decrypt(encryptedBytes, masterKey);
-      final Map<String, dynamic> decryptedData = json.decode(decryptedJson);
-      final List<dynamic> list = decryptedData['items'];
-      items = list.map((e) => VaultItem.fromJson(e)).toList();
+      
+      SecretKey decryptionKey;
+      final String? saltBase64 = metadata?['salt'] as String?;
+      
+      if (saltBase64 != null) {
+        final salt = base64.decode(saltBase64);
+        final iterations = metadata?['iterations'] as int? ?? 2;
+        final memory = metadata?['memory'] as int? ?? 32 * 1024;
+        final parallelism = metadata?['parallelism'] as int? ?? 1;
+        
+        // 使用备份中的 salt 和参数派生密钥，确保跨平台一致
+        decryptionKey = await encryptionService.deriveKey(
+          password, 
+          salt,
+          iterations: iterations,
+          memory: memory,
+          parallelism: parallelism,
+        );
+      } else {
+        // 兼容旧版备份
+        final masterKey = await _ref.read(masterKeyProvider.future);
+        if (masterKey == null) throw Exception('主密钥尚未就绪');
+        decryptionKey = masterKey;
+      }
+
+      try {
+         final decryptedJson = await encryptionService.decrypt(encryptedBytes, decryptionKey);
+         final Map<String, dynamic> decryptedData = json.decode(decryptedJson);
+         final List<dynamic> list = decryptedData['items'];
+         items = list.map((e) => VaultItem.fromJson(e)).toList();
+       } catch (e) {
+         if (e.toString().contains('MAC') || e.toString().contains('authentication code')) {
+           throw Exception('解密失败：主密码错误或备份数据损坏');
+         }
+         rethrow;
+       }
     } else {
       final List<dynamic> list = data['items'] ?? data; // 兼容旧格式
       items = list.map((e) => VaultItem.fromJson(e)).toList();

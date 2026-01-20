@@ -164,8 +164,7 @@ void _showImportExport(BuildContext context, WidgetRef ref) {
             subtitle: const Text('使用主密码加密，更安全'),
             onTap: () async {
               Navigator.pop(context);
-              final itemsAsync = ref.read(vaultItemsProvider);
-              final items = itemsAsync.valueOrNull ?? [];
+              final items = ref.read(vaultItemsProvider).valueOrNull ?? [];
               if (items.isEmpty) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(content: Text('没有可导出的数据')),
@@ -173,19 +172,12 @@ void _showImportExport(BuildContext context, WidgetRef ref) {
                 return;
               }
 
-              final masterKey = await ref.read(masterKeyProvider.future);
+              final masterPassword = ref.read(masterPasswordProvider).password;
               final encryptionService = ref.read(encryptionServiceProvider);
-
-              if (masterKey == null) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('主密钥尚未就绪'), backgroundColor: Colors.red),
-                );
-                return;
-              }
 
               final success = await ImportExportHelper.exportToJson(
                 items, 
-                masterKey: masterKey, 
+                masterPassword: masterPassword, 
                 encryptionService: encryptionService
               );
               if (success) {
