@@ -7,9 +7,9 @@ class EncryptionService {
   // 使用 Argon2id 从主密码派生密钥 (Key Derivation)
   Future<SecretKey> deriveKey(String password, List<int> salt) async {
     final algorithm = Argon2id(
-      parallelism: 2,
-      memory: 64 * 1024, // 64MB
-      iterations: 3,
+      parallelism: 1, // Web 端多线程支持有限，减少并行度
+      memory: 32 * 1024, // 32MB，平衡安全与 Web 加载速度
+      iterations: 2, // 减少迭代次数
       hashLength: 32,
     );
     return algorithm.deriveKeyFromPassword(

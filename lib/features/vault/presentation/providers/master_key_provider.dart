@@ -6,6 +6,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:cryptography/cryptography.dart';
 import '../../../../core/security/encryption_service.dart';
 
+import '../../../../core/extension/extension_helper.dart';
+
 // In-memory cache for the derived key to avoid re-calculating it unnecessarily
 List<int>? _cachedDerivedKey;
 
@@ -48,23 +50,42 @@ class MasterPasswordNotifier extends StateNotifier<MasterPasswordState> {
 
   static const _passwordKey = 'saved_master_password';
   static const _biometricKey = 'biometric_enabled';
+  static const _lastAuthTimeKey = 'last_auth_time';
+  static const _authTimeout = Duration(minutes: 10);
 
   Future<void> _loadFromPrefs() async {
     final prefs = await SharedPreferences.getInstance();
     final password = prefs.getString(_passwordKey);
     final isBiometricEnabled = prefs.getBool(_biometricKey) ?? false;
     
+    bool isAuthenticated = false;
+    if (password != null) {
+      final lastAuthStr = prefs.getString(_lastAuthTimeKey);
+      if (lastAuthStr != null) {
+        final lastAuth = DateTime.tryParse(lastAuthStr);
+        if (lastAuth != null && DateTime.now().difference(lastAuth) < _authTimeout) {
+          isAuthenticated = true;
+          debugPrint('🔓 Auto-authenticated within 10 minutes');
+        }
+      }
+    }
+
     state = state.copyWith(
       password: password,
       hasMasterPassword: password != null,
       isBiometricEnabled: isBiometricEnabled,
+      isAuthenticated: isAuthenticated,
     );
   }
 
   Future<void> setPassword(String password) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_passwordKey, password);
+    await prefs.setString(_lastAuthTimeKey, DateTime.now().toIso8601String());
     _cachedDerivedKey = null;
+    if (ExtensionHelper.isExtension) {
+      await ExtensionHelper.clearCachedMasterKey();
+    }
     state = state.copyWith(
       password: password,
       hasMasterPassword: true,
@@ -78,7 +99,14 @@ class MasterPasswordNotifier extends StateNotifier<MasterPasswordState> {
     state = state.copyWith(isBiometricEnabled: enabled);
   }
 
-  void setAuthenticated(bool authenticated) {
+  Future<void> setAuthenticated(bool authenticated) async {
+    if (authenticated) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_lastAuthTimeKey, DateTime.now().toIso8601String());
+    } else {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_lastAuthTimeKey);
+    }
     state = state.copyWith(isAuthenticated: authenticated);
   }
 
@@ -87,6 +115,9 @@ class MasterPasswordNotifier extends StateNotifier<MasterPasswordState> {
     await prefs.remove(_passwordKey);
     await prefs.remove(_biometricKey);
     _cachedDerivedKey = null;
+    if (ExtensionHelper.isExtension) {
+      await ExtensionHelper.clearCachedMasterKey();
+    }
     state = MasterPasswordState();
   }
 }
@@ -99,6 +130,16 @@ final masterKeyProvider = FutureProvider<SecretKey?>((ref) async {
   // 1. 尝试从内存缓存获取已计算好的密钥
   if (_cachedDerivedKey != null) {
     return SecretKey(_cachedDerivedKey!);
+  }
+
+  // 1.1 尝试从插件后台 Service Worker 获取缓存的密钥
+  if (ExtensionHelper.isExtension) {
+    final cachedBase64 = await ExtensionHelper.getCachedMasterKey();
+    if (cachedBase64 != null) {
+      debugPrint('🔑 Retrieved master key from extension background');
+      _cachedDerivedKey = base64.decode(cachedBase64);
+      return SecretKey(_cachedDerivedKey!);
+    }
   }
 
   final encryptionService = EncryptionService();
@@ -115,11 +156,19 @@ final masterKeyProvider = FutureProvider<SecretKey?>((ref) async {
     await prefs.setString('master_key_salt', base64.encode(salt));
   }
 
-  // 2. 计算密钥（耗时操作）
+  // 2. 计算密钥（耗时操作：Argon2id）
+  debugPrint('⏳ Deriving master key via Argon2id...');
   final key = await encryptionService.deriveKey(password, salt);
   
   // 3. 存入缓存
-  _cachedDerivedKey = await key.extractBytes();
+  final bytes = await key.extractBytes();
+  _cachedDerivedKey = bytes;
+
+  // 3.1 同步到插件后台，以便下次秒开
+  if (ExtensionHelper.isExtension) {
+    await ExtensionHelper.cacheMasterKey(base64.encode(bytes));
+    debugPrint('🔑 Master key synced to extension background');
+  }
 
   return key;
 });

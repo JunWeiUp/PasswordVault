@@ -1,3 +1,4 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -6,6 +7,7 @@ import 'features/totp/presentation/widgets/totp_item_card.dart';
 import 'features/vault/presentation/providers/vault_provider.dart';
 import 'features/vault/domain/models/vault_item.dart';
 import 'package:uuid/uuid.dart';
+import 'core/extension/extension_helper.dart';
 import 'features/vault/presentation/widgets/password_item_card.dart';
 import 'features/vault/presentation/widgets/crypto_item_card.dart';
 import 'core/utils/import_export_helper.dart';
@@ -84,6 +86,21 @@ class AuthGuard extends ConsumerWidget {
 }
 
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
+  
+  // Set up global error handling for Dart
+  FlutterError.onError = (FlutterErrorDetails details) {
+    FlutterError.presentError(details);
+    debugPrint('❌ Flutter Error: ${details.exception}');
+    debugPrint('❌ Stack trace: ${details.stack}');
+  };
+
+  PlatformDispatcher.instance.onError = (Object error, StackTrace stack) {
+    debugPrint('❌ Unhandled Platform Error: $error');
+    debugPrint('❌ Stack trace: $stack');
+    return true;
+  };
+
   runApp(const ProviderScope(child: SecurePassApp()));
 }
 
@@ -387,6 +404,219 @@ class MainNavigationScreen extends ConsumerStatefulWidget {
 
 class _MainNavigationScreenState extends ConsumerState<MainNavigationScreen> {
   final TextEditingController _searchController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    if (ExtensionHelper.isExtension) {
+      _checkPendingSaves();
+      _handleActiveContext();
+      _checkCurrentTabMatch();
+    }
+  }
+
+  Future<void> _checkCurrentTabMatch() async {
+    debugPrint('🔍 Checking current tab for matches...');
+    final url = await ExtensionHelper.getCurrentTabUrl();
+    if (url == null || url.isEmpty) return;
+
+    final uri = Uri.tryParse(url);
+    if (uri == null) return;
+    final host = uri.host.toLowerCase();
+    if (host.isEmpty) return;
+
+    // Wait for items to be loaded
+    final vaultItemsAsync = ref.read(vaultItemsProvider);
+    if (vaultItemsAsync is AsyncLoading) {
+      await Future.delayed(const Duration(milliseconds: 500));
+      return _checkCurrentTabMatch();
+    }
+
+    final items = vaultItemsAsync.valueOrNull ?? [];
+    final matchingItem = items.where((item) {
+      if (item.url == null || item.url!.isEmpty) return false;
+      try {
+        final itemUri = Uri.parse(item.url!);
+        return itemUri.host.toLowerCase() == host;
+      } catch (e) {
+        return item.url!.toLowerCase().contains(host);
+      }
+    }).firstOrNull;
+
+    if (matchingItem != null) {
+      debugPrint('🎯 Found match for current tab: ${matchingItem.title}');
+      if (mounted) {
+        // Switch to Vault tab (index 1)
+        ref.read(selectedTabProvider.notifier).state = 1;
+        
+        if (matchingItem.category != null) {
+          debugPrint('📂 Setting category filter: ${matchingItem.category}');
+          ref.read(selectedCategoryProvider.notifier).state = matchingItem.category;
+        } else {
+          // If no category, just search for the title/host
+          debugPrint('🔍 No category, setting search query: $host');
+          ref.read(isSearchingProvider.notifier).state = true;
+          ref.read(searchQueryProvider.notifier).state = host;
+          _searchController.text = host;
+        }
+      }
+    }
+  }
+
+  Future<void> _handleActiveContext() async {
+    debugPrint('🔍 Checking for active context from extension...');
+    final contextData = await ExtensionHelper.getActiveContext();
+    if (contextData == null) {
+      debugPrint('ℹ️ No active context found.');
+      return;
+    }
+
+    final origin = contextData['origin'] as String?;
+    if (origin == null) return;
+
+    debugPrint('🎯 Handling active context for origin: $origin');
+
+    // Wait for vault items to be loaded
+    final vaultItemsAsync = ref.read(vaultItemsProvider);
+    
+    // If it's loading or has an error, we might need to wait or skip
+    if (vaultItemsAsync is AsyncLoading) {
+      debugPrint('⏳ Vault items still loading, waiting...');
+      // We can't easily wait here without complex logic, but we can try again after a short delay
+      Future.delayed(const Duration(milliseconds: 500), _handleActiveContext);
+      return;
+    }
+
+    final vaultItems = vaultItemsAsync.valueOrNull ?? [];
+    
+    // Find matching items for this origin
+    final matches = vaultItems.where((item) => 
+      item.type == VaultItemType.password && 
+      (item.url?.contains(origin) ?? false)
+    ).toList();
+
+    if (!mounted) return;
+
+    if (matches.isNotEmpty) {
+      debugPrint('✅ Found ${matches.length} matching items, navigating to edit...');
+      // Switch to vault tab first
+      ref.read(selectedTabProvider.notifier).state = 1;
+      
+      final username = contextData['username'] as String?;
+      final exactMatch = matches.where((m) => m.username == username).firstOrNull ?? matches.first;
+      
+      // Navigate to add-account page which also serves as edit page when extra is provided
+      context.push('/add-account', extra: exactMatch);
+    } else {
+      debugPrint('➕ No matching items, navigating to add...');
+      // Navigate to add-account page with pre-filled data
+      context.push('/add-account', extra: VaultItem(
+        id: '',
+        type: VaultItemType.password,
+        title: origin.split('//').last,
+        username: contextData['username'] ?? '',
+        url: contextData['url'],
+      ));
+    }
+    
+    // Clear context so it doesn't trigger again on next open
+    await ExtensionHelper.clearActiveContext();
+  }
+
+  Future<void> _checkPendingSaves() async {
+    final pending = await ExtensionHelper.getPendingSaves();
+    if (pending.isNotEmpty && mounted) {
+      final first = pending.first;
+      
+      // Delay to ensure UI is ready
+      Future.delayed(const Duration(milliseconds: 500), () {
+        if (!mounted) return;
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('检测到待保存账号: ${first['username']}'),
+            duration: const Duration(seconds: 10),
+            action: SnackBarAction(
+              label: '立即保存',
+              onPressed: () {
+                _showPendingSaveDialog(first);
+              },
+            ),
+          ),
+        );
+      });
+    }
+  }
+
+  void _showPendingSaveDialog(Map<String, dynamic> data) {
+    final titleController = TextEditingController(text: data['url']?.split('//').last.split('/').first ?? '');
+    final usernameController = TextEditingController(text: data['username']);
+    final passwordController = TextEditingController(text: data['password']);
+    final urlController = TextEditingController(text: data['url']);
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('保存新账号'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: titleController,
+                decoration: const InputDecoration(labelText: '名称'),
+              ),
+              TextField(
+                controller: usernameController,
+                decoration: const InputDecoration(labelText: '用户名'),
+              ),
+              TextField(
+                controller: passwordController,
+                decoration: const InputDecoration(labelText: '密码'),
+                obscureText: true,
+              ),
+              TextField(
+                controller: urlController,
+                decoration: const InputDecoration(labelText: '网站'),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('忽略'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              final newItem = VaultItem(
+                id: const Uuid().v4(),
+                type: VaultItemType.password,
+                title: titleController.text,
+                username: usernameController.text,
+                password: passwordController.text,
+                url: urlController.text,
+              );
+
+              try {
+                await ref.read(vaultItemsProvider.notifier).addItem(newItem);
+                await ExtensionHelper.clearPendingSaves();
+                if (context.mounted) {
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已保存到保险箱')));
+                }
+              } catch (e) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('保存失败: $e'), backgroundColor: Colors.red));
+                }
+              }
+            },
+            child: const Text('保存'),
+          ),
+        ],
+      ),
+    );
+  }
 
   @override
   void dispose() {

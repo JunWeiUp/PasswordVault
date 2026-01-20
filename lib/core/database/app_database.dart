@@ -25,6 +25,7 @@ class VaultItems extends Table {
   TextColumn get passwordHistory => text().nullable()(); // Encrypted JSON
   DateTimeColumn get passwordLastChanged => dateTime().nullable()();
   IntColumn get passwordDuration => integer().nullable()(); // Days
+  TextColumn get accounts => text().nullable()(); // Encrypted JSON
 
   @override
   Set<Column> get primaryKey => {id};
@@ -35,7 +36,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(impl.connect());
 
   @override
-  int get schemaVersion => 6;
+  int get schemaVersion => 7;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -62,13 +63,16 @@ class AppDatabase extends _$AppDatabase {
         await m.addColumn(vaultItems, vaultItems.passwordLastChanged);
         await m.addColumn(vaultItems, vaultItems.passwordDuration);
       }
+      if (from < 7) {
+        await m.addColumn(vaultItems, vaultItems.accounts);
+      }
     },
     beforeOpen: (details) async {
       // 开启外键约束
       await customStatement('PRAGMA foreign_keys = ON');
       
       // 防御性检查：确保新列确实存在 (针对开发环境迁移失败的情况)
-      if (details.versionBefore != null && details.versionNow >= 6) {
+      if (details.versionBefore != null && details.versionNow >= 7) {
         final m = createMigrator();
         try {
           await m.addColumn(vaultItems, vaultItems.passwordHistory);
@@ -78,6 +82,9 @@ class AppDatabase extends _$AppDatabase {
         } catch (e) { /* Ignore if exists */ }
         try {
           await m.addColumn(vaultItems, vaultItems.passwordDuration);
+        } catch (e) { /* Ignore if exists */ }
+        try {
+          await m.addColumn(vaultItems, vaultItems.accounts);
         } catch (e) { /* Ignore if exists */ }
       }
     },

@@ -26,6 +26,7 @@ class _LockPageState extends ConsumerState<LockPage> {
   }
 
   Future<void> _checkBiometric() async {
+    if (!mounted) return;
     final state = ref.read(masterPasswordProvider);
     if (state.hasMasterPassword && state.isBiometricEnabled) {
       try {
@@ -36,6 +37,8 @@ class _LockPageState extends ConsumerState<LockPage> {
             biometricOnly: true,
           ),
         );
+        
+        if (!mounted) return;
         if (didAuthenticate) {
           ref.read(masterPasswordProvider.notifier).setAuthenticated(true);
         }

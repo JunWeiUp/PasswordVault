@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/database/app_database.dart' hide VaultItem;
 import '../../../../core/security/encryption_service.dart';
+import '../../../../core/extension/extension_helper.dart';
 import '../../domain/models/vault_item.dart';
 import '../../data/repositories/vault_repository.dart';
 import 'master_key_provider.dart';
@@ -46,10 +47,34 @@ class VaultNotifier extends StateNotifier<AsyncValue<List<VaultItem>>> {
     try {
       final items = await _repository.getAllItems(masterKey);
       state = AsyncValue.data(items);
+      
+      // 同步域名列表到扩展
+      _syncDomainsToExtension(items);
     } catch (e, st) {
       print('Refresh failed: $e');
       state = AsyncValue.error(e, st);
     }
+  }
+
+  void _syncDomainsToExtension(List<VaultItem> items) {
+    if (!ExtensionHelper.isExtension) return;
+
+    final domains = items
+        .where((item) => item.type == VaultItemType.password && item.url != null && item.url!.isNotEmpty)
+        .map((item) {
+          try {
+            final uri = Uri.parse(item.url!);
+            return uri.host.toLowerCase();
+          } catch (e) {
+            // 如果不是完整的 URL，尝试直接清理
+            return item.url!.toLowerCase().trim();
+          }
+        })
+        .where((host) => host.isNotEmpty)
+        .toSet()
+        .toList();
+
+    ExtensionHelper.syncKnownDomains(domains);
   }
 
   Future<void> addItem(VaultItem item) async {

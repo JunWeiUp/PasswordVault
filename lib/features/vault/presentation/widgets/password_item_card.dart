@@ -7,6 +7,7 @@ import '../../../totp/presentation/providers/totp_provider.dart';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/vault_provider.dart';
+import '../../../../core/extension/extension_helper.dart';
 
 class PasswordItemCard extends ConsumerWidget {
   final VaultItem item;
@@ -17,6 +18,7 @@ class PasswordItemCard extends ConsumerWidget {
     final bool isExpired = _checkIsExpired();
     final int? remainingDays = _getRemainingDays();
     final bool hasTotp = item.secret != null && item.secret!.isNotEmpty;
+    final bool hasMultipleAccounts = item.accounts != null && item.accounts!.isNotEmpty;
     
     String? totpCode;
     double? totpProgress;
@@ -81,6 +83,31 @@ class PasswordItemCard extends ConsumerWidget {
                             ),
                           ),
                         ),
+                        if (hasMultipleAccounts)
+                          Container(
+                            margin: const EdgeInsets.only(right: 8),
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Theme.of(context).colorScheme.secondary.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(4),
+                              border: Border.all(color: Theme.of(context).colorScheme.secondary.withOpacity(0.3)),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.people_outline, size: 10, color: Theme.of(context).colorScheme.secondary),
+                                const SizedBox(width: 2),
+                                Text(
+                                  '${item.accounts!.length + 1}',
+                                  style: TextStyle(
+                                    color: Theme.of(context).colorScheme.secondary,
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
                         if (isExpired)
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
@@ -168,6 +195,53 @@ class PasswordItemCard extends ConsumerWidget {
                   ],
                 ),
               ),
+              if (ExtensionHelper.isExtension)
+                IconButton(
+                  icon: const Icon(Icons.auto_fix_high),
+                  onPressed: () {
+                    ExtensionHelper.fillCredentials(item.username, item.password ?? '');
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('正在自动填充...'), duration: Duration(seconds: 1)),
+                    );
+                  },
+                  tooltip: '自动填充',
+                color: Theme.of(context).colorScheme.primary,
+              ),
+            if (hasMultipleAccounts)
+              PopupMenuButton<AccountEntry?>(
+                icon: const Icon(Icons.copy),
+                tooltip: '复制密码',
+                onSelected: (account) {
+                  final password = account?.password ?? item.password ?? '';
+                  Clipboard.setData(ClipboardData(text: password));
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('${account?.label ?? account?.username ?? '默认账号'} 密码已复制'), duration: const Duration(seconds: 2)),
+                  );
+                },
+                itemBuilder: (context) => [
+                  PopupMenuItem<AccountEntry?>(
+                    value: null,
+                    child: Row(
+                      children: [
+                        const Icon(Icons.person_outline, size: 20),
+                        const SizedBox(width: 8),
+                        Expanded(child: Text('默认: ${item.username}')),
+                      ],
+                    ),
+                  ),
+                  ...item.accounts!.map((acc) => PopupMenuItem<AccountEntry?>(
+                    value: acc,
+                    child: Row(
+                      children: [
+                        const Icon(Icons.person_outline, size: 20),
+                        const SizedBox(width: 8),
+                        Expanded(child: Text('${acc.label ?? '账号'}: ${acc.username}')),
+                      ],
+                    ),
+                  )),
+                ],
+              )
+            else
               IconButton(
                 icon: const Icon(Icons.copy),
                 onPressed: () {
@@ -178,8 +252,8 @@ class PasswordItemCard extends ConsumerWidget {
                 },
                 tooltip: '复制密码',
               ),
-            ],
-          ),
+          ],
+        ),
         ),
       ),
     );

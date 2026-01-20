@@ -21,6 +21,7 @@ class _AddAccountPageState extends ConsumerState<AddAccountPage> {
   late final TextEditingController _titleController;
   late final TextEditingController _usernameController;
   late final TextEditingController _passwordController;
+  late final List<_AccountControllerGroup> _extraAccounts;
   late final List<TextEditingController> _mnemonicControllers;
   late final List<FocusNode> _mnemonicFocusNodes;
   late final TextEditingController _privateKeyController;
@@ -42,6 +43,15 @@ class _AddAccountPageState extends ConsumerState<AddAccountPage> {
     _titleController = TextEditingController(text: widget.item?.title);
     _usernameController = TextEditingController(text: widget.item?.username);
     _passwordController = TextEditingController(text: widget.item?.password);
+    
+    // 初始化额外账号
+    _extraAccounts = (widget.item?.accounts ?? []).map((acc) {
+      return _AccountControllerGroup(
+        username: acc.username,
+        password: acc.password,
+        label: acc.label,
+      );
+    }).toList();
     
     // 初始化助记词控制器
     final mnemonic = widget.item?.mnemonic ?? '';
@@ -78,6 +88,9 @@ class _AddAccountPageState extends ConsumerState<AddAccountPage> {
     _titleController.dispose();
     _usernameController.dispose();
     _passwordController.dispose();
+    for (var group in _extraAccounts) {
+      group.dispose();
+    }
     for (var controller in _mnemonicControllers) {
       controller.dispose();
     }
@@ -186,6 +199,13 @@ class _AddAccountPageState extends ConsumerState<AddAccountPage> {
       passwordDuration: int.tryParse(_durationController.text),
       passwordLastChanged: widget.item?.passwordLastChanged ?? DateTime.now(),
       passwordHistory: widget.item?.passwordHistory,
+      accounts: _extraAccounts.where((g) => g.usernameController.text.isNotEmpty).map((g) {
+        return AccountEntry(
+          username: g.usernameController.text,
+          password: g.passwordController.text,
+          label: g.labelController.text.isEmpty ? null : g.labelController.text,
+        );
+      }).toList(),
     );
 
     final action = (widget.item == null || widget.item!.id.isEmpty)
@@ -317,6 +337,80 @@ class _AddAccountPageState extends ConsumerState<AddAccountPage> {
                 onTap: _showCategoryPicker,
               ),
             ]),
+            if (!isCrypto) ...[
+              const SizedBox(height: 16),
+              _buildSection(
+                context, 
+                '更多账号', 
+                [
+                  ..._extraAccounts.asMap().entries.map((entry) {
+                    final index = entry.key;
+                    final group = entry.value;
+                    return Column(
+                      children: [
+                        if (index > 0) const Divider(),
+                        Padding(
+                          padding: const EdgeInsets.only(left: 16, right: 8, top: 8),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Text('账号 ${index + 2}', 
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    color: Theme.of(context).colorScheme.primary,
+                                  )
+                                ),
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.remove_circle_outline, color: Colors.red),
+                                onPressed: () => setState(() => _extraAccounts.removeAt(index)),
+                              ),
+                            ],
+                          ),
+                        ),
+                        _buildTextField(
+                          label: '备注',
+                          controller: group.labelController,
+                          hintText: '账号用途 (如: 工作, 个人)',
+                        ),
+                        _buildTextField(
+                          label: '用户名',
+                          controller: group.usernameController,
+                          hintText: '用户名或邮箱',
+                        ),
+                        _buildTextField(
+                          label: '密码',
+                          controller: group.passwordController,
+                          isPassword: group.obscurePassword,
+                          hintText: '账号密码',
+                          suffixIcon: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              IconButton(
+                                icon: Icon(group.obscurePassword ? Icons.visibility_off_outlined : Icons.visibility_outlined),
+                                onPressed: () => setState(() => group.obscurePassword = !group.obscurePassword),
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.casino_outlined),
+                                onPressed: () {
+                                  final newPassword = PasswordGenerator.generate(length: 16);
+                                  setState(() => group.passwordController.text = newPassword);
+                                },
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    );
+                  }),
+                  ListTile(
+                    leading: Icon(Icons.add_circle_outline, color: Theme.of(context).colorScheme.primary),
+                    title: Text('添加额外账号', style: TextStyle(color: Theme.of(context).colorScheme.primary)),
+                    onTap: () => setState(() => _extraAccounts.add(_AccountControllerGroup())),
+                  ),
+                ],
+              ),
+            ],
             const SizedBox(height: 16),
             if (isCrypto) ...[
               _buildSection(context, '私钥信息', [
@@ -919,5 +1013,27 @@ class _AddAccountPageState extends ConsumerState<AddAccountPage> {
         ],
       ),
     );
+  }
+}
+
+class _AccountControllerGroup {
+  final TextEditingController usernameController;
+  final TextEditingController passwordController;
+  final TextEditingController labelController;
+  bool obscurePassword;
+
+  _AccountControllerGroup({
+    String? username,
+    String? password,
+    String? label,
+    this.obscurePassword = true,
+  })  : usernameController = TextEditingController(text: username),
+        passwordController = TextEditingController(text: password),
+        labelController = TextEditingController(text: label);
+
+  void dispose() {
+    usernameController.dispose();
+    passwordController.dispose();
+    labelController.dispose();
   }
 }

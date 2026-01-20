@@ -13,99 +13,123 @@ class VaultRepository {
 
   Future<List<VaultItem>> getAllItems(SecretKey masterKey) async {
     final rows = await _db.select(_db.vaultItems).get();
-    List<VaultItem> items = [];
     
-    for (var row in rows) {
-      String? decryptedSecret;
-      String? decryptedPassword;
-      String? decryptedMnemonic;
-      String? decryptedPrivateKey;
-      String? decryptedAddress;
-      String? decryptedNote;
-      String? decryptedPasswordHistory;
+    // 如果数据量很大，分批处理以避免阻塞 Web UI 线程
+    final List<VaultItem> items = [];
+    const int batchSize = 10; // 每批处理 10 条数据
+    
+    for (int i = 0; i < rows.length; i += batchSize) {
+      final batch = rows.sublist(i, i + batchSize > rows.length ? rows.length : i + batchSize);
+      
+      final decryptedBatch = await Future.wait(batch.map((row) async {
+        String? decryptedSecret;
+        String? decryptedPassword;
+        String? decryptedMnemonic;
+        String? decryptedPrivateKey;
+        String? decryptedAddress;
+        String? decryptedNote;
+        String? decryptedPasswordHistory;
+        String? decryptedAccounts;
 
-      if (row.secret != null) {
-        decryptedSecret = await _encryptionService.decrypt(
-          base64.decode(row.secret!), 
-          masterKey
-        );
-      }
+        final decryptionTasks = <Future<void>>[];
 
-      if (row.password != null) {
-        decryptedPassword = await _encryptionService.decrypt(
-          base64.decode(row.password!), 
-          masterKey
-        );
-      }
-
-      if (row.mnemonic != null) {
-        decryptedMnemonic = await _encryptionService.decrypt(
-          base64.decode(row.mnemonic!), 
-          masterKey
-        );
-      }
-
-      if (row.privateKey != null) {
-        decryptedPrivateKey = await _encryptionService.decrypt(
-          base64.decode(row.privateKey!), 
-          masterKey
-        );
-      }
-
-      if (row.address != null) {
-        decryptedAddress = await _encryptionService.decrypt(
-          base64.decode(row.address!), 
-          masterKey
-        );
-      }
-
-      if (row.note != null) {
-        try {
-          decryptedNote = await _encryptionService.decrypt(
-            base64.decode(row.note!), 
-            masterKey
-          );
-        } catch (e) {
-          // Fallback if note was not encrypted
-          decryptedNote = row.note;
+        if (row.secret != null) {
+          decryptionTasks.add(_encryptionService.decrypt(base64.decode(row.secret!), masterKey)
+              .then((v) => decryptedSecret = v));
         }
-      }
 
-      if (row.passwordHistory != null) {
-        decryptedPasswordHistory = await _encryptionService.decrypt(
-          base64.decode(row.passwordHistory!), 
-          masterKey
+        if (row.password != null) {
+          decryptionTasks.add(_encryptionService.decrypt(base64.decode(row.password!), masterKey)
+              .then((v) => decryptedPassword = v));
+        }
+
+        if (row.mnemonic != null) {
+          decryptionTasks.add(_encryptionService.decrypt(base64.decode(row.mnemonic!), masterKey)
+              .then((v) => decryptedMnemonic = v));
+        }
+
+        if (row.privateKey != null) {
+          decryptionTasks.add(_encryptionService.decrypt(base64.decode(row.privateKey!), masterKey)
+              .then((v) => decryptedPrivateKey = v));
+        }
+
+        if (row.address != null) {
+          decryptionTasks.add(_encryptionService.decrypt(base64.decode(row.address!), masterKey)
+              .then((v) => decryptedAddress = v));
+        }
+
+        if (row.note != null) {
+          decryptionTasks.add(_encryptionService.decrypt(base64.decode(row.note!), masterKey)
+              .then((v) => decryptedNote = v)
+              .catchError((_) => decryptedNote = row.note));
+        }
+
+        if (row.passwordHistory != null) {
+          decryptionTasks.add(_encryptionService.decrypt(base64.decode(row.passwordHistory!), masterKey)
+              .then((v) => decryptedPasswordHistory = v));
+        }
+
+        if (row.accounts != null) {
+          decryptionTasks.add(_encryptionService.decrypt(base64.decode(row.accounts!), masterKey)
+              .then((v) => decryptedAccounts = v));
+        }
+
+        if (decryptionTasks.isNotEmpty) {
+          await Future.wait(decryptionTasks);
+        }
+
+        List<PasswordHistoryEntry>? history;
+        if (decryptedPasswordHistory != null) {
+          try {
+            final List<dynamic> jsonList = jsonDecode(decryptedPasswordHistory!);
+            history = jsonList.map((e) => PasswordHistoryEntry.fromJson(e)).toList();
+          } catch (e) {
+            print('History decode failed: $e');
+          }
+        }
+
+        List<AccountEntry>? accounts;
+        if (decryptedAccounts != null) {
+          try {
+            final List<dynamic> jsonList = jsonDecode(decryptedAccounts!);
+            accounts = jsonList.map((e) => AccountEntry.fromJson(e)).toList();
+          } catch (e) {
+            print('Accounts decode failed: $e');
+          }
+        }
+
+        return VaultItem(
+          id: row.id,
+          type: VaultItemType.values[row.type],
+          title: row.title,
+          username: row.username,
+          secret: decryptedSecret,
+          password: decryptedPassword,
+          mnemonic: decryptedMnemonic,
+          privateKey: decryptedPrivateKey,
+          address: decryptedAddress,
+          network: row.network,
+          period: row.period,
+          isFavorite: row.isFavorite,
+          url: row.url,
+          note: decryptedNote,
+          category: row.category,
+          email: row.email,
+          passwordHistory: history,
+          accounts: accounts,
+          passwordLastChanged: row.passwordLastChanged,
+          passwordDuration: row.passwordDuration,
         );
+      }));
+      
+      items.addAll(decryptedBatch);
+      
+      // 给 UI 线程一个喘息的机会
+      if (rows.length > batchSize) {
+        await Future.delayed(Duration.zero);
       }
-
-      List<PasswordHistoryEntry>? history;
-      if (decryptedPasswordHistory != null) {
-        final List<dynamic> jsonList = jsonDecode(decryptedPasswordHistory);
-        history = jsonList.map((e) => PasswordHistoryEntry.fromJson(e)).toList();
-      }
-
-      items.add(VaultItem(
-        id: row.id,
-        type: VaultItemType.values[row.type],
-        title: row.title,
-        username: row.username,
-        secret: decryptedSecret,
-        password: decryptedPassword,
-        mnemonic: decryptedMnemonic,
-        privateKey: decryptedPrivateKey,
-        address: decryptedAddress,
-        network: row.network,
-        period: row.period,
-        isFavorite: row.isFavorite,
-        url: row.url,
-        note: decryptedNote,
-        category: row.category,
-        email: row.email,
-        passwordHistory: history,
-        passwordLastChanged: row.passwordLastChanged,
-        passwordDuration: row.passwordDuration,
-      ));
     }
+    
     return items;
   }
 
@@ -117,6 +141,7 @@ class VaultRepository {
     String? encryptedAddress;
     String? encryptedNote;
     String? encryptedPasswordHistory;
+    String? encryptedAccounts;
 
     if (item.secret != null) {
       final bytes = await _encryptionService.encrypt(item.secret!, masterKey);
@@ -154,6 +179,12 @@ class VaultRepository {
       encryptedPasswordHistory = base64.encode(bytes);
     }
 
+    if (item.accounts != null && item.accounts!.isNotEmpty) {
+      final accountsJson = jsonEncode(item.accounts!.map((e) => e.toJson()).toList());
+      final bytes = await _encryptionService.encrypt(accountsJson, masterKey);
+      encryptedAccounts = base64.encode(bytes);
+    }
+
     await _db.into(_db.vaultItems).insert(
       VaultItemsCompanion.insert(
         id: item.id,
@@ -173,6 +204,7 @@ class VaultRepository {
         category: Value(item.category),
         email: Value(item.email),
         passwordHistory: Value(encryptedPasswordHistory),
+        accounts: Value(encryptedAccounts),
         passwordLastChanged: Value(item.passwordLastChanged),
         passwordDuration: Value(item.passwordDuration),
       ),
@@ -229,6 +261,7 @@ class VaultRepository {
     String? encryptedAddress;
     String? encryptedNote;
     String? encryptedPasswordHistory;
+    String? encryptedAccounts;
 
     if (item.secret != null) {
       final bytes = await _encryptionService.encrypt(item.secret!, masterKey);
@@ -266,6 +299,12 @@ class VaultRepository {
       encryptedPasswordHistory = base64.encode(bytes);
     }
 
+    if (item.accounts != null && item.accounts!.isNotEmpty) {
+      final accountsJson = jsonEncode(item.accounts!.map((e) => e.toJson()).toList());
+      final bytes = await _encryptionService.encrypt(accountsJson, masterKey);
+      encryptedAccounts = base64.encode(bytes);
+    }
+
     await (_db.update(_db.vaultItems)..where((t) => t.id.equals(item.id))).write(
       VaultItemsCompanion(
         title: Value(item.title),
@@ -283,6 +322,7 @@ class VaultRepository {
         category: Value(item.category),
         email: Value(item.email),
         passwordHistory: Value(encryptedPasswordHistory),
+        accounts: Value(encryptedAccounts),
         passwordLastChanged: Value(lastChanged),
         passwordDuration: Value(item.passwordDuration),
       ),
