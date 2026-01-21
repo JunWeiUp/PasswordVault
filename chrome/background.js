@@ -18,51 +18,92 @@ let lastNotificationTime = 0;
 let cachedMasterKey = null; // Memory cache for derived key (base64 string)
 let lastActiveContext = null; // Store context of where the icon was clicked
 
+async function hashPassword(password) {
+  if (!password) return "";
+  const encoder = new TextEncoder();
+  const data = encoder.encode(password);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return btoa(String.fromCharCode.apply(null, hashArray));
+}
+
+async function checkCredentialsMismatch(creds) {
+  const domain = getDomain(creds.url);
+  const result = await chrome.storage.local.get(['known_accounts']);
+  const knownAccountsMap = result.known_accounts || {};
+  
+  const domainKey = Object.keys(knownAccountsMap).find(d => domain === d || domain.endsWith('.' + d));
+  if (!domainKey) return { mismatch: true, reason: 'new_domain' };
+
+  const accounts = knownAccountsMap[domainKey];
+  const matchingAccount = accounts.find(a => a.username === creds.username);
+  
+  if (!matchingAccount) return { mismatch: true, reason: 'new_account' };
+
+  const hashedInput = await hashPassword(creds.password);
+  if (hashedInput !== matchingAccount.passwordHash) {
+    return { mismatch: true, reason: 'wrong_password' };
+  }
+
+  return { mismatch: false };
+}
+
 // Handle messages
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   console.log('📩 Background received message:', message.type);
   
   if (message.type === 'DETECTED_LOGIN') {
-    // Throttling to prevent duplicate notifications (e.g., both click and submit)
-    const now = Date.now();
-    if (lastDetectedCredentials && 
-        lastDetectedCredentials.username === message.data.username && 
-        lastDetectedCredentials.password === message.data.password && 
-        (now - lastNotificationTime) < 5000) {
-      console.log('⏭️ Duplicate login detection ignored');
-      return true;
-    }
-
-    console.log('📝 Credentials detected:', message.data.username);
-    lastDetectedCredentials = {
-      ...message.data,
-      tabId: sender.tab?.id,
-      timestamp: now
-    };
-    lastNotificationTime = now;
-    
-    // Create notification to save
-    const notificationId = 'save_password_' + now;
-    chrome.notifications.create(notificationId, {
-      type: 'basic',
-      iconUrl: chrome.runtime.getURL('icons/icon192.png'),
-      title: 'SecurePass: 是否保存此账号?',
-      message: `检测到 ${message.data.username} 的登录，是否保存到保险箱？`,
-      buttons: [{ title: '立即保存' }, { title: '暂不保存' }],
-      priority: 2,
-      requireInteraction: true
-    }, (id) => {
-      if (chrome.runtime.lastError) {
-        console.error('❌ Notification Error:', chrome.runtime.lastError.message);
-      } else {
-        console.log('✅ Notification created successfully:', id);
+    (async () => {
+      // Throttling to prevent duplicate notifications (e.g., both click and submit)
+      const now = Date.now();
+      if (lastDetectedCredentials && 
+          lastDetectedCredentials.username === message.data.username && 
+          lastDetectedCredentials.password === message.data.password && 
+          (now - lastNotificationTime) < 5000) {
+        console.log('⏭️ Duplicate login detection ignored');
+        return;
       }
-    });
+
+      console.log('📝 Credentials detected:', message.data.username);
+      
+      const checkResult = await checkCredentialsMismatch(message.data);
+      
+      lastDetectedCredentials = {
+        ...message.data,
+        tabId: sender.tab?.id,
+        timestamp: now,
+        mismatch: checkResult.mismatch,
+        reason: checkResult.reason
+      };
+      lastNotificationTime = now;
+      
+      if (checkResult.mismatch) {
+        updateBadgeForTab(sender.tab?.id);
+      }
+
+      // Create notification to save
+      const notificationId = 'save_password_' + now;
+      chrome.notifications.create(notificationId, {
+        type: 'basic',
+        iconUrl: chrome.runtime.getURL('icons/icon192.png'),
+        title: checkResult.mismatch ? 'SecurePass: 检测到账号变动' : 'SecurePass: 是否保存此账号?',
+        message: checkResult.reason === 'wrong_password' 
+          ? `检测到 ${message.data.username} 的密码与保险箱中不一致，是否更新？`
+          : `检测到 ${message.data.username} 的登录，是否保存到保险箱？`,
+        buttons: [{ title: '立即保存/更新' }, { title: '暂不处理' }],
+        priority: 2,
+        requireInteraction: true
+      });
+    })();
+    return true;
   } 
   else if (message.type === 'CONFIRM_SAVE') {
     console.log('📥 Confirm save message received:', message.data.username);
     savePendingCredentials(message.data);
     
+    // Clear last detected after saving
+    lastDetectedCredentials = null;
+
     // Also open the popup window so they can see the pending save
     chrome.windows.create({
       url: chrome.runtime.getURL('index.html'),
@@ -74,6 +115,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
     if (sendResponse) sendResponse({ success: true });
     return true;
+  }
+  else if (message.type === 'CLEAR_LAST_DETECTED') {
+    console.log('🗑️ Clearing last detected credentials');
+    lastDetectedCredentials = null;
+    if (sendResponse) sendResponse({ success: true });
   }
   else if (message.type === 'SET_MASTER_KEY') {
     console.log('🔑 Master key cached in background');
@@ -105,11 +151,34 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     });
   }
   else if (message.type === 'GET_ACTIVE_CONTEXT') {
-    console.log('🔍 Returning active context:', lastActiveContext);
-    sendResponse(lastActiveContext);
-    // lastActiveContext = null; // Clear after retrieval to avoid stale data
+    (async () => {
+      console.log('🔍 GET_ACTIVE_CONTEXT requested');
+      
+      // If we already have a forced context (e.g. from context menu), use it
+      if (lastActiveContext) {
+        console.log('🎯 Returning existing active context:', lastActiveContext);
+        sendResponse(lastActiveContext);
+        return;
+      }
+
+      // Otherwise, check if the current active tab has a mismatch
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (tab && lastDetectedCredentials && lastDetectedCredentials.tabId === tab.id && lastDetectedCredentials.mismatch) {
+        console.log('⚠️ Current tab has mismatch, returning mismatch context');
+        sendResponse({
+          type: 'mismatch_detected',
+          data: lastDetectedCredentials
+        });
+        return;
+      }
+
+      console.log('ℹ️ No active context to return');
+      sendResponse(null);
+    })();
+    return true; // Keep message channel open for async sendResponse
   }
   else if (message.type === 'CLEAR_ACTIVE_CONTEXT') {
+    console.log('🧹 Clearing active context');
     lastActiveContext = null;
     sendResponse({ success: true });
   }
@@ -216,6 +285,15 @@ async function updateBadgeForTab(tabId) {
       return;
     }
 
+    // Check for detected mismatch first
+    if (lastDetectedCredentials && 
+        lastDetectedCredentials.tabId === tabId && 
+        lastDetectedCredentials.mismatch) {
+      chrome.action.setBadgeText({ text: '!', tabId: tabId });
+      chrome.action.setBadgeBackgroundColor({ color: '#F44336', tabId: tabId }); // Red for warning
+      return;
+    }
+
     chrome.storage.local.get(['known_domains'], (result) => {
       const knownDomains = result.known_domains || [];
       const hasMatch = knownDomains.some(d => domain === d || domain.endsWith('.' + d));
@@ -231,6 +309,33 @@ async function updateBadgeForTab(tabId) {
     console.error('❌ Error updating badge:', e);
   }
 }
+
+// Handle action icon clicks
+chrome.action.onClicked.addListener(async (tab) => {
+  // If we have a mismatch, open the popup to add/update the account
+  if (lastDetectedCredentials && lastDetectedCredentials.tabId === tab.id && lastDetectedCredentials.mismatch) {
+    console.log('⚠️ Mismatch detected, opening popup for add/update');
+    
+    // Set the active context so the popup knows what to show
+    lastActiveContext = {
+      type: 'mismatch_detected',
+      data: lastDetectedCredentials
+    };
+
+    chrome.windows.create({
+      url: chrome.runtime.getURL('index.html'),
+      type: 'popup',
+      width: 400,
+      height: 600,
+      focused: true
+    });
+    return;
+  }
+
+  // Default behavior: open the extension's default popup or a specific page
+  // Note: If manifest has "default_popup", this listener might not trigger depending on Chrome version.
+  // We'll check manifest.json next to see if we need to remove default_popup.
+});
 
 // Listen for tab updates (URL changes)
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {

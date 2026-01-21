@@ -89,10 +89,24 @@ class ExtensionHelper {
       
       if (result != null && result.isA<JSObject>()) {
         final obj = result as JSObject;
+        final data = obj.getProperty('data'.toJS);
+        
+        Map<String, dynamic>? dataMap;
+        if (data != null && data.isA<JSObject>()) {
+          final dataObj = data as JSObject;
+          dataMap = {
+            'url': (dataObj.getProperty('url'.toJS) as JSString?)?.toDart,
+            'username': (dataObj.getProperty('username'.toJS) as JSString?)?.toDart,
+            'reason': (dataObj.getProperty('reason'.toJS) as JSString?)?.toDart,
+          };
+        }
+
         return {
           'url': (obj.getProperty('url'.toJS) as JSString?)?.toDart,
           'origin': (obj.getProperty('origin'.toJS) as JSString?)?.toDart,
           'username': (obj.getProperty('username'.toJS) as JSString?)?.toDart,
+          'type': (obj.getProperty('type'.toJS) as JSString?)?.toDart,
+          'data': dataMap,
         };
       }
     } catch (e) {
@@ -199,6 +213,17 @@ class ExtensionHelper {
       debugPrint('✅ ExtensionHelper.syncKnownDomains: ${domains.length} domains');
     } catch (e) {
       debugPrint('❌ ExtensionHelper.syncKnownDomains error: $e');
+    }
+  }
+
+  static Future<void> syncKnownAccounts(Map<String, List<Map<String, String>>> accounts) async {
+    if (!isExtension) return;
+    try {
+      final jsAccounts = accounts.jsify();
+      await _chromeStorageSet('known_accounts'.toJS, jsAccounts).toDart;
+      debugPrint('✅ ExtensionHelper.syncKnownAccounts synced');
+    } catch (e) {
+      debugPrint('❌ ExtensionHelper.syncKnownAccounts error: $e');
     }
   }
 

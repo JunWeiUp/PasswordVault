@@ -34,12 +34,45 @@ Future<bool> saveJsonFileImpl(String jsonString, String fileName) async {
   return false;
 }
 
+Future<bool> saveCsvFileImpl(String csvString, String fileName) async {
+  if (Platform.isAndroid || Platform.isIOS) {
+    final tempDir = await getTemporaryDirectory();
+    final file = File('${tempDir.path}/$fileName');
+    await file.writeAsString(csvString);
+
+    final result = await Share.shareXFiles(
+      [XFile(file.path)],
+      subject: 'SecurePass CSV 备份',
+    );
+
+    return result.status == ShareResultStatus.success;
+  } else {
+    String? outputPath = await FilePicker.platform.saveFile(
+      dialogTitle: '选择导出位置',
+      fileName: fileName,
+      type: FileType.custom,
+      allowedExtensions: ['csv', 'enc'],
+    );
+
+    if (outputPath != null) {
+      final File file = File(outputPath);
+      await file.writeAsString(csvString);
+      return true;
+    }
+  }
+  return false;
+}
+
 Future<String?> pickJsonFileImpl() async {
   return _pickFileImpl(['json']);
 }
 
 Future<String?> pickCsvFileImpl() async {
   return _pickFileImpl(['csv']);
+}
+
+Future<String?> pickCsvOrEncFileImpl() async {
+  return _pickFileImpl(['csv', 'enc']);
 }
 
 Future<String?> _pickFileImpl(List<String> extensions) async {

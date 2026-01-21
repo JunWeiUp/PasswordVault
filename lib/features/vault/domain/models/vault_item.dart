@@ -1,4 +1,4 @@
-enum VaultItemType { password, totp, crypto }
+enum VaultItemType { password, totp, crypto, secureNote }
 
 class VaultItem {
   final String id;

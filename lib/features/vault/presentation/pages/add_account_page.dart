@@ -66,7 +66,10 @@ class _AddAccountPageState extends ConsumerState<AddAccountPage> {
 
     _privateKeyController = TextEditingController(text: widget.item?.privateKey);
     _addressController = TextEditingController(text: widget.item?.address);
-    _categoryController = TextEditingController(text: widget.item?.category ?? (widget.item?.type == VaultItemType.crypto ? '加密资产' : '社交媒体'));
+    _categoryController = TextEditingController(text: widget.item?.category ?? (
+      widget.item?.type == VaultItemType.crypto ? '加密资产' : 
+      (widget.item?.type == VaultItemType.secureNote ? '笔记' : '社交媒体')
+    ));
     _emailController = TextEditingController(text: widget.item?.email);
     _urlController = TextEditingController(text: widget.item?.url);
     _noteController = TextEditingController(text: widget.item?.note);
@@ -238,13 +241,14 @@ class _AddAccountPageState extends ConsumerState<AddAccountPage> {
   Widget build(BuildContext context) {
     final type = widget.item?.type ?? VaultItemType.password;
     final isCrypto = type == VaultItemType.crypto;
+    final isSecureNote = type == VaultItemType.secureNote;
 
     return Scaffold(
       appBar: AppBar(
         title: Text(
           (widget.item == null || widget.item!.id.isEmpty) 
-            ? (isCrypto ? '添加钱包' : '添加账号') 
-            : (isCrypto ? '编辑钱包' : '编辑账号'),
+            ? (isCrypto ? '添加钱包' : (isSecureNote ? '添加备注' : '添加账号')) 
+            : (isCrypto ? '编辑钱包' : (isSecureNote ? '编辑备注' : '编辑账号')),
           style: const TextStyle(fontWeight: FontWeight.bold),
         ),
         centerTitle: true,
@@ -263,17 +267,18 @@ class _AddAccountPageState extends ConsumerState<AddAccountPage> {
           children: [
             _buildSection(context, '基本信息', [
               _buildTextField(
-                label: isCrypto ? '钱包名称' : '账号名称',
+                label: isCrypto ? '钱包名称' : (isSecureNote ? '备注名称' : '账号名称'),
                 controller: _titleController,
                 isRequired: true,
-                hintText: isCrypto ? '如: MetaMask, Trust Wallet' : '如: Google, GitHub',
+                hintText: isCrypto ? '如: MetaMask, Trust Wallet' : (isSecureNote ? '如: 银行卡信息, 备忘' : '如: Google, GitHub'),
               ),
-              if (!isCrypto)
+              if (!isCrypto && !isSecureNote)
                 _buildTextField(
                   label: '用户名',
                   controller: _usernameController,
                   isRequired: true,
                   hintText: '用户名或邮箱',
+                  autofillHints: const [AutofillHints.username, AutofillHints.email],
                 ),
               if (isCrypto)
                 _buildTextField(
@@ -305,12 +310,13 @@ class _AddAccountPageState extends ConsumerState<AddAccountPage> {
                   trailing: const Icon(Icons.chevron_right),
                   onTap: _showNetworkPicker,
                 ),
-              if (!isCrypto)
+              if (!isCrypto && !isSecureNote)
                 _buildTextField(
                   label: '密码',
                   controller: _passwordController,
                   isPassword: _obscurePassword,
                   hintText: '账号密码',
+                  autofillHints: const [AutofillHints.password],
                   suffixIcon: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -343,7 +349,7 @@ class _AddAccountPageState extends ConsumerState<AddAccountPage> {
                 onTap: _showCategoryPicker,
               ),
             ]),
-            if (!isCrypto) ...[
+            if (!isCrypto && !isSecureNote) ...[
               const SizedBox(height: 16),
               _buildSection(
                 context, 
@@ -661,24 +667,24 @@ class _AddAccountPageState extends ConsumerState<AddAccountPage> {
                 ),
               ]),
             const SizedBox(height: 16),
-            _buildSection(context, '可选信息', [
-              if (!isCrypto)
+            _buildSection(context, isSecureNote ? '笔记内容' : '可选信息', [
+              if (!isCrypto && !isSecureNote)
                 _buildTextField(
                   label: '邮箱',
                   controller: _emailController,
                   hintText: '关联邮箱',
                 ),
-              if (!isCrypto)
+              if (!isCrypto && !isSecureNote)
                 _buildTextField(
                   label: '网站',
                   controller: _urlController,
                   hintText: 'https://example.com',
                 ),
               _buildTextField(
-                label: '备注',
+                label: isSecureNote ? '内容' : '备注',
                 controller: _noteController,
-                hintText: '额外信息...',
-                maxLines: 3,
+                hintText: isSecureNote ? '在此输入您的笔记...' : '额外信息...',
+                maxLines: isSecureNote ? 10 : 3,
               ),
             ]),
             const SizedBox(height: 16),
@@ -830,6 +836,7 @@ class _AddAccountPageState extends ConsumerState<AddAccountPage> {
     int maxLines = 1,
     Widget? suffixIcon,
     TextInputType? keyboardType,
+    List<String>? autofillHints,
   }) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -838,6 +845,7 @@ class _AddAccountPageState extends ConsumerState<AddAccountPage> {
         obscureText: isPassword,
         maxLines: maxLines,
         keyboardType: keyboardType,
+        autofillHints: autofillHints,
         decoration: InputDecoration(
           labelText: isRequired ? '$label *' : label,
           hintText: hintText,

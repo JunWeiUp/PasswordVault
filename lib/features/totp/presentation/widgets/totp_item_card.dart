@@ -44,8 +44,51 @@ class TotpItemCard extends ConsumerWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(item.title, style: Theme.of(context).textTheme.titleMedium),
-              Text(item.username, style: Theme.of(context).textTheme.bodyMedium),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(item.title, style: Theme.of(context).textTheme.titleMedium),
+                        Text(item.username, style: Theme.of(context).textTheme.bodyMedium),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    icon: Icon(
+                      item.isFavorite ? Icons.star : Icons.star_border,
+                      color: item.isFavorite ? Colors.amber : Colors.grey,
+                    ),
+                    onPressed: () {
+                      final updatedItem = VaultItem(
+                        id: item.id,
+                        type: item.type,
+                        title: item.title,
+                        username: item.username,
+                        secret: item.secret,
+                        password: item.password,
+                        mnemonic: item.mnemonic,
+                        privateKey: item.privateKey,
+                        address: item.address,
+                        network: item.network,
+                        period: item.period,
+                        isFavorite: !item.isFavorite,
+                        url: item.url,
+                        note: item.note,
+                        category: item.category,
+                        email: item.email,
+                        passwordHistory: item.passwordHistory,
+                        accounts: item.accounts,
+                        passwordLastChanged: item.passwordLastChanged,
+                        passwordDuration: item.passwordDuration,
+                      );
+                      ref.read(vaultItemsProvider.notifier).updateItem(updatedItem);
+                    },
+                  ),
+                ],
+              ),
               const SizedBox(height: 16),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,

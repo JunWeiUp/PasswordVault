@@ -20,6 +20,11 @@ class PasswordItemCard extends ConsumerWidget {
     final bool hasTotp = item.secret != null && item.secret!.isNotEmpty;
     final bool hasMultipleAccounts = item.accounts != null && item.accounts!.isNotEmpty;
     
+    final healthReport = ref.watch(passwordHealthProvider);
+    final issues = healthReport.getIssues(item.id);
+    final isWeak = issues.contains(PasswordHealthIssue.weak);
+    final isReused = issues.contains(PasswordHealthIssue.reused);
+
     String? totpCode;
     double? totpProgress;
     
@@ -132,6 +137,36 @@ class PasswordItemCard extends ConsumerWidget {
                               style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
                             ),
                           ),
+                        if (isWeak) ...[
+                          const SizedBox(width: 4),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Colors.red.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(4),
+                              border: Border.all(color: Colors.red.withOpacity(0.3)),
+                            ),
+                            child: const Text(
+                              '弱密码',
+                              style: TextStyle(color: Colors.red, fontSize: 10, fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                        ],
+                        if (isReused) ...[
+                          const SizedBox(width: 4),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Colors.orange.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(4),
+                              border: Border.all(color: Colors.orange.withOpacity(0.3)),
+                            ),
+                            child: const Text(
+                              '重复使用',
+                              style: TextStyle(color: Colors.orange, fontSize: 10, fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                        ],
                       ],
                     ),
                     Text(
@@ -207,6 +242,37 @@ class PasswordItemCard extends ConsumerWidget {
                   tooltip: '自动填充',
                 color: Theme.of(context).colorScheme.primary,
               ),
+            IconButton(
+              icon: Icon(
+                item.isFavorite ? Icons.star : Icons.star_border,
+                color: item.isFavorite ? Colors.amber : Colors.grey,
+              ),
+              onPressed: () {
+                final updatedItem = VaultItem(
+                  id: item.id,
+                  type: item.type,
+                  title: item.title,
+                  username: item.username,
+                  secret: item.secret,
+                  password: item.password,
+                  mnemonic: item.mnemonic,
+                  privateKey: item.privateKey,
+                  address: item.address,
+                  network: item.network,
+                  period: item.period,
+                  isFavorite: !item.isFavorite,
+                  url: item.url,
+                  note: item.note,
+                  category: item.category,
+                  email: item.email,
+                  passwordHistory: item.passwordHistory,
+                  accounts: item.accounts,
+                  passwordLastChanged: item.passwordLastChanged,
+                  passwordDuration: item.passwordDuration,
+                );
+                ref.read(vaultItemsProvider.notifier).updateItem(updatedItem);
+              },
+            ),
             if (hasMultipleAccounts)
               PopupMenuButton<AccountEntry?>(
                 icon: const Icon(Icons.copy),

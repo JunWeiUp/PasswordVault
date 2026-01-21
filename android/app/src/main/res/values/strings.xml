@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="autofill_service_description">SecurePass 自动填充服务</string>
+</resources>

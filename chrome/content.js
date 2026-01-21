@@ -309,8 +309,15 @@ function showSaveBanner(creds) {
     });
   };
 
-  document.getElementById('securepass-ignore-btn').onclick = () => banner.remove();
-  document.getElementById('securepass-close-x').onclick = () => banner.remove();
+  document.getElementById('securepass-ignore-btn').onclick = () => {
+    banner.remove();
+    chrome.runtime.sendMessage({ type: 'CLEAR_LAST_DETECTED' });
+  };
+  
+  document.getElementById('securepass-close-x').onclick = () => {
+    banner.remove();
+    chrome.runtime.sendMessage({ type: 'CLEAR_LAST_DETECTED' });
+  };
 
   // Auto-hide after 30 seconds
   setTimeout(() => {
@@ -382,3 +389,15 @@ document.addEventListener('keydown', (e) => {
 const observer = new MutationObserver(() => injectIcons());
 observer.observe(document.body, { childList: true, subtree: true });
 injectIcons();
+
+// Check for pending save banner on load (handles page redirects after login)
+chrome.runtime.sendMessage({ type: 'GET_LAST_DETECTED' }, (lastCreds) => {
+  if (lastCreds && lastCreds.username && lastCreds.password) {
+    const now = Date.now();
+    // If detected within last 15 seconds for this origin, show the banner
+    if (now - lastCreds.timestamp < 15000 && lastCreds.origin === window.location.origin) {
+      console.log('🔄 Restoring save banner after navigation');
+      showSaveBanner(lastCreds);
+    }
+  }
+});

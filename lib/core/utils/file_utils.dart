@@ -7,7 +7,12 @@ abstract class FileUtils {
   static Future<bool> saveJsonFile(String jsonString, String fileName) =>
       saveJsonFileImpl(jsonString, fileName);
 
+  static Future<bool> saveCsvFile(String csvString, String fileName) =>
+      saveCsvFileImpl(csvString, fileName);
+
   static Future<String?> pickJsonFile() => pickJsonFileImpl();
 
   static Future<String?> pickCsvFile() => pickCsvFileImpl();
+
+  static Future<String?> pickCsvOrEncFile() => pickCsvOrEncFileImpl();
 }

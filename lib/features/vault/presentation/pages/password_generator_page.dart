@@ -1,6 +1,7 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../../../../core/extension/extension_helper.dart';
 import '../../../../core/utils/password_generator.dart';
 
 class PasswordGeneratorPage extends StatefulWidget {
@@ -45,6 +46,21 @@ class _PasswordGeneratorPageState extends State<PasswordGeneratorPage> {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('已复制到剪贴板')),
     );
+  }
+
+  Future<void> _fillCurrentPage() async {
+    if (_useUppercase == false && _useLowercase == false && _useNumbers == false && _useSymbols == false) return;
+    if (!ExtensionHelper.isExtension) return;
+
+    final contextData = await ExtensionHelper.getActiveContext();
+    final username = contextData?['username'] as String? ?? '';
+    await ExtensionHelper.fillCredentials(username, _generatedPassword);
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('已填充到当前页面')),
+      );
+    }
   }
 
   @override
@@ -98,6 +114,14 @@ class _PasswordGeneratorPageState extends State<PasswordGeneratorPage> {
                         onPressed: _copyToClipboard,
                         primary: true,
                       ),
+                      if (ExtensionHelper.isExtension) ...[
+                        const SizedBox(width: 16),
+                        _ActionButton(
+                          icon: Icons.input,
+                          label: '填充',
+                          onPressed: _fillCurrentPage,
+                        ),
+                      ],
                     ],
                   ),
                 ],

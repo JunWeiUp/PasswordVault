@@ -10,6 +10,7 @@ import 'package:uuid/uuid.dart';
 import 'core/extension/extension_helper.dart';
 import 'features/vault/presentation/widgets/password_item_card.dart';
 import 'features/vault/presentation/widgets/crypto_item_card.dart';
+import 'features/vault/presentation/widgets/secure_note_item_card.dart';
 import 'core/utils/import_export_helper.dart';
 import 'features/vault/presentation/pages/add_account_page.dart';
 import 'features/vault/presentation/pages/password_generator_page.dart';
@@ -122,10 +123,36 @@ class SecurePassApp extends StatelessWidget {
 void _showImportExport(BuildContext context, WidgetRef ref) {
   showModalBottomSheet(
     context: context,
+    isScrollControlled: true,
     builder: (context) => SafeArea(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.of(context).size.height * 0.8,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    '导入/导出',
+                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                ],
+              ),
+            ),
+            const Divider(height: 1),
+            Flexible(
+              child: ListView(
+                shrinkWrap: true,
+                children: [
           ListTile(
             leading: const Icon(Icons.library_add_outlined),
             title: const Text('批量导入 2FA (otpauth URIs)'),
@@ -154,6 +181,28 @@ void _showImportExport(BuildContext context, WidgetRef ref) {
               if (success) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(content: Text('导出成功')),
+                );
+              }
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.table_view),
+            title: const Text('导出 CSV'),
+            subtitle: const Text('适合迁移到其他密码管理器'),
+            onTap: () async {
+              Navigator.pop(context);
+              final itemsAsync = ref.read(vaultItemsProvider);
+              final items = itemsAsync.valueOrNull ?? [];
+              if (items.isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('没有可导出的数据')),
+                );
+                return;
+              }
+              final success = await ImportExportHelper.exportToCsv(items);
+              if (success) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('CSV 导出成功')),
                 );
               }
             },
@@ -188,6 +237,36 @@ void _showImportExport(BuildContext context, WidgetRef ref) {
             },
           ),
           ListTile(
+            leading: const Icon(Icons.lock),
+            title: const Text('导出加密 CSV'),
+            subtitle: const Text('CSV 内容已加密（base64）'),
+            onTap: () async {
+              Navigator.pop(context);
+              final items = ref.read(vaultItemsProvider).valueOrNull ?? [];
+              if (items.isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('没有可导出的数据')),
+                );
+                return;
+              }
+
+              final masterPassword = ref.read(masterPasswordProvider).password;
+              final encryptionService = ref.read(encryptionServiceProvider);
+
+              final success = await ImportExportHelper.exportToCsv(
+                items,
+                masterPassword: masterPassword,
+                encryptionService: encryptionService,
+                encrypted: true,
+              );
+              if (success) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('加密 CSV 导出成功')),
+                );
+              }
+            },
+          ),
+          ListTile(
             leading: const Icon(Icons.file_upload),
             title: const Text('导入数据 (JSON)'),
             subtitle: const Text('支持加密和非加密格式'),
@@ -205,27 +284,45 @@ void _showImportExport(BuildContext context, WidgetRef ref) {
                 );
 
                 if (importedItems != null && importedItems.isNotEmpty) {
-                  final newItems = <VaultItem>[];
-                  for (final item in importedItems) {
-                    // 为导入的项目生成新的 ID，避免冲突
-                    newItems.add(VaultItem(
-                      id: const Uuid().v4(),
-                      type: item.type,
-                      title: item.title,
-                      username: item.username,
-                      secret: item.secret,
-                      password: item.password,
-                      mnemonic: item.mnemonic,
-                      address: item.address,
-                      period: item.period,
-                      isFavorite: item.isFavorite,
-                      url: item.url,
-                      note: item.note,
-                    ));
-                  }
-                  await ref.read(vaultItemsProvider.notifier).addItems(newItems);
+                  await _handleImportMergeResult(
+                    context,
+                    ref,
+                    importedItems,
+                    sourceLabel: 'JSON',
+                  );
+                }
+              } catch (e) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('导入失败: $e'), backgroundColor: Colors.red),
+                );
+              }
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.lock_open),
+            title: const Text('导入加密 CSV'),
+            subtitle: const Text('解析加密导出的 CSV 文件'),
+            onTap: () async {
+              Navigator.pop(context);
+              try {
+                final masterPassword = ref.read(masterPasswordProvider).password;
+                if (masterPassword == null || masterPassword.isEmpty) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('成功导入 ${newItems.length} 个项目')),
+                    const SnackBar(content: Text('请先解锁以获取主密码')),
+                  );
+                  return;
+                }
+                final encryptionService = ref.read(encryptionServiceProvider);
+                final importedItems = await ImportExportHelper.importFromEncryptedCsv(
+                  masterPassword: masterPassword,
+                  encryptionService: encryptionService,
+                );
+                if (importedItems != null && importedItems.isNotEmpty) {
+                  await _handleImportMergeResult(
+                    context,
+                    ref,
+                    importedItems,
+                    sourceLabel: '加密 CSV',
                   );
                 }
               } catch (e) {
@@ -245,9 +342,11 @@ void _showImportExport(BuildContext context, WidgetRef ref) {
                 final importedItems = await ImportExportHelper.importFromLastPassCsv();
 
                 if (importedItems != null && importedItems.isNotEmpty) {
-                  await ref.read(vaultItemsProvider.notifier).addItems(importedItems);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('成功从 LastPass 导入 ${importedItems.length} 个项目')),
+                  await _handleImportMergeResult(
+                    context,
+                    ref,
+                    importedItems,
+                    sourceLabel: 'LastPass',
                   );
                 }
               } catch (e) {
@@ -257,9 +356,102 @@ void _showImportExport(BuildContext context, WidgetRef ref) {
               }
             },
           ),
-        ],
+          ListTile(
+            leading: const Icon(Icons.upload_file_outlined),
+            title: const Text('导入 Bitwarden 数据 (CSV)'),
+            subtitle: const Text('支持从 Bitwarden 导出的 CSV 文件'),
+            onTap: () async {
+              Navigator.pop(context);
+              try {
+                final importedItems = await ImportExportHelper.importFromBitwardenCsv();
+                if (importedItems != null && importedItems.isNotEmpty) {
+                  await _handleImportMergeResult(
+                    context,
+                    ref,
+                    importedItems,
+                    sourceLabel: 'Bitwarden',
+                  );
+                }
+              } catch (e) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('导入失败: $e'), backgroundColor: Colors.red),
+                );
+              }
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.upload_file_outlined),
+            title: const Text('导入 1Password 数据 (CSV)'),
+            subtitle: const Text('支持从 1Password 导出的 CSV 文件'),
+            onTap: () async {
+              Navigator.pop(context);
+              try {
+                final importedItems = await ImportExportHelper.importFrom1PasswordCsv();
+                if (importedItems != null && importedItems.isNotEmpty) {
+                  await _handleImportMergeResult(
+                    context,
+                    ref,
+                    importedItems,
+                    sourceLabel: '1Password',
+                  );
+                }
+              } catch (e) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('导入失败: $e'), backgroundColor: Colors.red),
+                );
+              }
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.upload_file_outlined),
+            title: const Text('导入 Chrome 密码 (CSV)'),
+            subtitle: const Text('支持从 Chrome 导出的 CSV 文件'),
+            onTap: () async {
+              Navigator.pop(context);
+              try {
+                final importedItems = await ImportExportHelper.importFromChromeCsv();
+                if (importedItems != null && importedItems.isNotEmpty) {
+                  await _handleImportMergeResult(
+                    context,
+                    ref,
+                    importedItems,
+                    sourceLabel: 'Chrome',
+                  );
+                }
+              } catch (e) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('导入失败: $e'), backgroundColor: Colors.red),
+                );
+              }
+            },
+          ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     ),
+  );
+}
+
+Future<void> _handleImportMergeResult(
+  BuildContext context,
+  WidgetRef ref,
+  List<VaultItem> importedItems, {
+  String sourceLabel = '导入',
+}) async {
+  if (importedItems.isEmpty) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('没有可导入的数据')),
+    );
+    return;
+  }
+
+  final result = await ref.read(vaultItemsProvider.notifier).mergeImportedItems(importedItems);
+  final message = '$sourceLabel 导入完成：新增 ${result.added}，更新 ${result.updated}，跳过 ${result.skipped}';
+  ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(content: Text(message)),
   );
 }
 
@@ -460,9 +652,7 @@ class _MainNavigationScreenState extends ConsumerState<MainNavigationScreen> {
     final url = await ExtensionHelper.getCurrentTabUrl();
     if (url == null || url.isEmpty) return;
 
-    final uri = Uri.tryParse(url);
-    if (uri == null) return;
-    final host = uri.host.toLowerCase();
+    final host = _extractHost(url);
     if (host.isEmpty) return;
 
     final vaultItemsAsync = ref.read(vaultItemsProvider);
@@ -471,12 +661,7 @@ class _MainNavigationScreenState extends ConsumerState<MainNavigationScreen> {
     final items = vaultItemsAsync.valueOrNull ?? [];
     final matchingItem = items.where((item) {
       if (item.url == null || item.url!.isEmpty) return false;
-      try {
-        final itemUri = Uri.parse(item.url!);
-        return itemUri.host.toLowerCase() == host;
-      } catch (e) {
-        return item.url!.toLowerCase().contains(host);
-      }
+      return _hostMatches(item.url, url);
     }).firstOrNull;
 
     if (matchingItem != null) {
@@ -508,9 +693,57 @@ class _MainNavigationScreenState extends ConsumerState<MainNavigationScreen> {
     }
 
     final origin = contextData['origin'] as String?;
-    if (origin == null) return;
+    final type = contextData['type'] as String?;
+    
+    if (origin == null && type != 'mismatch_detected') return;
 
-    debugPrint('🎯 Handling active context for origin: $origin');
+    debugPrint('🎯 Handling active context: $type for origin: $origin');
+
+    if (type == 'mismatch_detected') {
+      final mismatchData = contextData['data'] as Map<Object?, Object?>?;
+      if (mismatchData == null) return;
+      
+      final url = mismatchData['url'] as String?;
+      final username = mismatchData['username'] as String?;
+      final reason = mismatchData['reason'] as String?;
+      
+      debugPrint('⚠️ Mismatch detected context: $reason for $username at $url');
+      
+      final vaultItemsAsync = ref.read(vaultItemsProvider);
+      if (vaultItemsAsync is! AsyncData<List<VaultItem>>) return;
+      final vaultItems = vaultItemsAsync.valueOrNull ?? [];
+      
+      // Find matching item
+      final matches = vaultItems.where((item) => 
+        item.type == VaultItemType.password && 
+        _hostMatches(item.url, url ?? '')
+      ).toList();
+      
+      final exactMatch = matches.where((m) => m.username == username).firstOrNull;
+      
+      if (!mounted) return;
+      
+      if (exactMatch != null) {
+        debugPrint('✅ Found exact match for mismatch, navigating to edit...');
+        ref.read(selectedTabProvider.notifier).state = 1;
+        context.push('/add-account', extra: exactMatch);
+      } else {
+        debugPrint('➕ No exact match for mismatch, navigating to add...');
+        ref.read(selectedTabProvider.notifier).state = 1;
+        context.push('/add-account', extra: VaultItem(
+          id: '',
+          type: VaultItemType.password,
+          title: _extractHost(url),
+          username: username ?? '',
+          url: url,
+        ));
+      }
+      
+      await ExtensionHelper.clearActiveContext();
+      return;
+    }
+
+    if (origin == null) return;
 
     final vaultItemsAsync = ref.read(vaultItemsProvider);
     if (vaultItemsAsync is! AsyncData<List<VaultItem>>) return;
@@ -520,7 +753,7 @@ class _MainNavigationScreenState extends ConsumerState<MainNavigationScreen> {
     // Find matching items for this origin
     final matches = vaultItems.where((item) => 
       item.type == VaultItemType.password && 
-      (item.url?.contains(origin) ?? false)
+      _hostMatches(item.url, origin)
     ).toList();
 
     if (!mounted) return;
@@ -581,15 +814,25 @@ class _MainNavigationScreenState extends ConsumerState<MainNavigationScreen> {
     final usernameController = TextEditingController(text: data['username']);
     final passwordController = TextEditingController(text: data['password']);
     final urlController = TextEditingController(text: data['url']);
+    final existingMatch = _findBestMatchForPending(data);
+    final isUpdate = existingMatch != null;
 
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('保存新账号'),
+        title: Text(isUpdate ? '更新已保存账号' : '保存新账号'),
         content: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              if (isUpdate)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: Text(
+                    '检测到该网站已有账号，将更新密码并保留历史记录。',
+                    style: TextStyle(color: Theme.of(context).colorScheme.primary),
+                  ),
+                ),
               TextField(
                 controller: titleController,
                 decoration: const InputDecoration(labelText: '名称'),
@@ -617,21 +860,33 @@ class _MainNavigationScreenState extends ConsumerState<MainNavigationScreen> {
           ),
           ElevatedButton(
             onPressed: () async {
-              final newItem = VaultItem(
-                id: const Uuid().v4(),
-                type: VaultItemType.password,
-                title: titleController.text,
-                username: usernameController.text,
-                password: passwordController.text,
-                url: urlController.text,
-              );
-
               try {
-                await ref.read(vaultItemsProvider.notifier).addItem(newItem);
+                if (isUpdate) {
+                  final updatedItem = _mergePendingIntoItem(
+                    existingMatch!,
+                    titleController.text,
+                    usernameController.text,
+                    passwordController.text,
+                    urlController.text,
+                  );
+                  await ref.read(vaultItemsProvider.notifier).updateItem(updatedItem);
+                } else {
+                  final newItem = VaultItem(
+                    id: const Uuid().v4(),
+                    type: VaultItemType.password,
+                    title: titleController.text,
+                    username: usernameController.text,
+                    password: passwordController.text,
+                    url: urlController.text,
+                  );
+                  await ref.read(vaultItemsProvider.notifier).addItem(newItem);
+                }
                 await ExtensionHelper.clearPendingSaves();
                 if (context.mounted) {
                   Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已保存到保险箱')));
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text(isUpdate ? '已更新密码' : '已保存到保险箱')),
+                  );
                 }
               } catch (e) {
                 if (context.mounted) {
@@ -639,11 +894,87 @@ class _MainNavigationScreenState extends ConsumerState<MainNavigationScreen> {
                 }
               }
             },
-            child: const Text('保存'),
+            child: Text(isUpdate ? '更新密码' : '保存'),
           ),
         ],
       ),
     );
+  }
+
+  VaultItem? _findBestMatchForPending(Map<String, dynamic> data) {
+    final vaultItems = ref.read(vaultItemsProvider).valueOrNull ?? [];
+    final url = data['url']?.toString();
+    final username = data['username']?.toString() ?? '';
+    if (url == null || url.isEmpty) return null;
+
+    final matches = vaultItems.where((item) {
+      return item.type == VaultItemType.password && _hostMatches(item.url, url);
+    }).toList();
+
+    if (matches.isEmpty) return null;
+    if (username.isNotEmpty) {
+      final exact = matches.where((item) => item.username == username).firstOrNull;
+      if (exact != null) return exact;
+    }
+    return matches.first;
+  }
+
+  VaultItem _mergePendingIntoItem(
+    VaultItem existing,
+    String title,
+    String username,
+    String password,
+    String url,
+  ) {
+    return VaultItem(
+      id: existing.id,
+      type: existing.type,
+      title: title.isNotEmpty ? title : existing.title,
+      username: username.isNotEmpty ? username : existing.username,
+      password: password.isNotEmpty ? password : existing.password,
+      secret: existing.secret,
+      mnemonic: existing.mnemonic,
+      privateKey: existing.privateKey,
+      address: existing.address,
+      network: existing.network,
+      period: existing.period,
+      isFavorite: existing.isFavorite,
+      url: url.isNotEmpty ? url : existing.url,
+      note: existing.note,
+      category: existing.category,
+      email: existing.email,
+      passwordHistory: existing.passwordHistory,
+      accounts: existing.accounts,
+      passwordLastChanged: existing.passwordLastChanged,
+      passwordDuration: existing.passwordDuration,
+    );
+  }
+
+  String _extractHost(String? url) {
+    if (url == null || url.trim().isEmpty) return '';
+    final trimmed = url.trim();
+    if (!trimmed.contains('://')) {
+      final noPath = trimmed.split('/').first;
+      return noPath.toLowerCase();
+    }
+    try {
+      return Uri.parse(trimmed).host.toLowerCase();
+    } catch (_) {
+      return trimmed.toLowerCase();
+    }
+  }
+
+  bool _hostMatches(String? itemUrl, String originOrUrl) {
+    if (itemUrl == null || itemUrl.trim().isEmpty) return false;
+    final itemHost = _extractHost(itemUrl);
+    if (itemHost.isEmpty) return false;
+
+    final originHost = _extractHost(originOrUrl);
+    if (originHost.isEmpty) return itemUrl.toLowerCase().contains(originOrUrl.toLowerCase());
+
+    return itemHost == originHost ||
+        itemHost.endsWith('.$originHost') ||
+        originHost.endsWith('.$itemHost');
   }
 
   @override
@@ -672,7 +1003,7 @@ class _MainNavigationScreenState extends ConsumerState<MainNavigationScreen> {
                 },
               )
             : Text(
-                selectedIndex == 0 ? '验证码' : (selectedIndex == 1 ? '帐号管理' : (selectedIndex == 2 ? '加密资产' : '设置')),
+                selectedIndex == 0 ? '验证码' : (selectedIndex == 1 ? '帐号管理' : (selectedIndex == 2 ? '加密资产' : (selectedIndex == 3 ? '安全备注' : '设置'))),
                 style: const TextStyle(fontWeight: FontWeight.bold),
               ),
         centerTitle: !isSearching,
@@ -693,7 +1024,18 @@ class _MainNavigationScreenState extends ConsumerState<MainNavigationScreen> {
                 tooltip: '批量导入',
                 onPressed: () => _showBulkImportDialog(context, ref),
               ),
-            if (selectedIndex < 3)
+            if (selectedIndex < 4)
+              IconButton(
+                icon: Icon(
+                  ref.watch(showFavoritesOnlyProvider) ? Icons.star : Icons.star_border,
+                  color: ref.watch(showFavoritesOnlyProvider) ? Colors.amber : null,
+                ),
+                tooltip: '只显示收藏',
+                onPressed: () {
+                  ref.read(showFavoritesOnlyProvider.notifier).state = !ref.read(showFavoritesOnlyProvider);
+                },
+              ),
+            if (selectedIndex < 4)
               IconButton(
                 icon: const Icon(Icons.search),
                 onPressed: () {
@@ -705,7 +1047,7 @@ class _MainNavigationScreenState extends ConsumerState<MainNavigationScreen> {
       ),
       body: Column(
         children: [
-          if (selectedIndex < 3 && !isSearching) const CategoryFilterBar(),
+          if (selectedIndex < 4 && !isSearching) const CategoryFilterBar(),
           Expanded(
             child: IndexedStack(
               index: selectedIndex,
@@ -713,13 +1055,14 @@ class _MainNavigationScreenState extends ConsumerState<MainNavigationScreen> {
                 VaultListContent(type: VaultItemType.totp),
                 VaultListContent(type: VaultItemType.password),
                 VaultListContent(type: VaultItemType.crypto),
+                VaultListContent(type: VaultItemType.secureNote),
                 SettingsContent(),
               ],
             ),
           ),
         ],
       ),
-      floatingActionButton: selectedIndex < 3 && !isSearching
+      floatingActionButton: selectedIndex < 4 && !isSearching
           ? FloatingActionButton.extended(
               onPressed: () {
                 if (selectedIndex == 0) {
@@ -738,9 +1081,16 @@ class _MainNavigationScreenState extends ConsumerState<MainNavigationScreen> {
                     title: '', 
                     username: ''
                   ));
+                } else if (selectedIndex == 3) {
+                  context.push('/add-account', extra: VaultItem(
+                    id: '', 
+                    type: VaultItemType.secureNote, 
+                    title: '', 
+                    username: ''
+                  ));
                 }
               },
-              label: Text(selectedIndex == 0 ? '添加代码' : (selectedIndex == 1 ? '添加帐号' : '添加钱包')),
+              label: Text(selectedIndex == 0 ? '添加代码' : (selectedIndex == 1 ? '添加帐号' : (selectedIndex == 2 ? '添加钱包' : '添加备注'))),
               icon: const Icon(Icons.add),
             )
           : null,
@@ -761,10 +1111,15 @@ class _MainNavigationScreenState extends ConsumerState<MainNavigationScreen> {
             label: '帐号',
           ),
           NavigationDestination(
-              icon: Icon(Icons.currency_bitcoin),
-              selectedIcon: Icon(Icons.currency_bitcoin),
-              label: '加密资产',
-            ),
+            icon: Icon(Icons.currency_bitcoin),
+            selectedIcon: Icon(Icons.currency_bitcoin),
+            label: '加密资产',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.note),
+            selectedIcon: Icon(Icons.note),
+            label: '安全备注',
+          ),
           NavigationDestination(
             icon: Icon(Icons.settings),
             selectedIcon: Icon(Icons.settings),
@@ -813,6 +1168,8 @@ class VaultListContent extends ConsumerWidget {
                 return PasswordItemCard(item: item);
               case VaultItemType.crypto:
                 return CryptoItemCard(item: item);
+              case VaultItemType.secureNote:
+                return SecureNoteItemCard(item: item);
             }
           },
         );
@@ -890,13 +1247,163 @@ class SettingsContent extends ConsumerWidget {
     );
   }
 
+  void _showSecurityReport(BuildContext context, PasswordHealthReport report) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => DraggableScrollableSheet(
+        initialChildSize: 0.6,
+        maxChildSize: 0.9,
+        minChildSize: 0.4,
+        expand: false,
+        builder: (context, scrollController) => Padding(
+          padding: const EdgeInsets.all(20.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                '安全报告',
+                style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 20),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                children: [
+                  _buildStatItem(context, '弱密码', report.weakCount, Colors.red),
+                  _buildStatItem(context, '重复使用', report.reusedCount, Colors.orange),
+                  _buildStatItem(context, '已过期', report.expiredCount, Colors.blue),
+                ],
+              ),
+              const SizedBox(height: 30),
+              const Text(
+                '详细建议',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 10),
+              Expanded(
+                child: ListView(
+                  controller: scrollController,
+                  children: [
+                    if (report.weakCount > 0)
+                      _buildAdviceItem(
+                        context,
+                        Icons.warning_amber_rounded,
+                        Colors.red,
+                        '修改弱密码',
+                        '有 ${report.weakCount} 个账号使用了弱密码。建议使用长度至少 12 位，且包含大小写字母、数字和符号的随机密码。',
+                      ),
+                    if (report.reusedCount > 0)
+                      _buildAdviceItem(
+                        context,
+                        Icons.repeat,
+                        Colors.orange,
+                        '避免重复使用密码',
+                        '有 ${report.reusedCount} 个账号重复使用了相同的密码。如果其中一个账号被破解，其他账号也会面临风险。',
+                      ),
+                    if (report.expiredCount > 0)
+                      _buildAdviceItem(
+                        context,
+                        Icons.history,
+                        Colors.blue,
+                        '定期更换密码',
+                        '有 ${report.expiredCount} 个账号的密码已超过建议的使用期限。建议定期更换重要账号的密码。',
+                      ),
+                    if (report.weakCount == 0 && report.reusedCount == 0 && report.expiredCount == 0)
+                      const Center(
+                        child: Padding(
+                          padding: EdgeInsets.symmetric(vertical: 40),
+                          child: Column(
+                            children: [
+                              Icon(Icons.check_circle, color: Colors.green, size: 64),
+                              SizedBox(height: 16),
+                              Text('太棒了！您的密码库非常安全。'),
+                            ],
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStatItem(BuildContext context, String label, int count, Color color) {
+    return Column(
+      children: [
+        Text(
+          '$count',
+          style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: color),
+        ),
+        Text(label, style: TextStyle(color: Colors.grey[600], fontSize: 12)),
+      ],
+    );
+  }
+
+  Widget _buildAdviceItem(BuildContext context, IconData icon, Color color, String title, String advice) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.1),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(icon, color: color, size: 20),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
+                const SizedBox(height: 4),
+                Text(advice, style: TextStyle(color: Colors.grey[600], fontSize: 13)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final masterState = ref.watch(masterPasswordProvider);
+    final healthReport = ref.watch(passwordHealthProvider);
+    final totalIssues = healthReport.weakCount + healthReport.reusedCount + healthReport.expiredCount;
 
     return ListView(
       children: [
         _buildSection(context, '安全', [
+          ListTile(
+            leading: const Icon(Icons.security),
+            title: const Text('安全检查'),
+            subtitle: Text(totalIssues > 0 ? '发现 $totalIssues 个风险' : '未发现风险'),
+            trailing: totalIssues > 0 
+              ? Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: Colors.red,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(
+                    '$totalIssues',
+                    style: const TextStyle(color: Colors.white, fontSize: 12),
+                  ),
+                )
+              : const Icon(Icons.check_circle_outline, color: Colors.green),
+            onTap: () => _showSecurityReport(context, healthReport),
+          ),
           ListTile(
             leading: const Icon(Icons.lock_outline),
             title: const Text('修改主密码'),

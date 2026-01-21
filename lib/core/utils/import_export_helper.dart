@@ -3,7 +3,6 @@ import 'package:flutter/foundation.dart';
 import 'package:cryptography/cryptography.dart';
 import 'package:csv/csv.dart';
 import 'package:uuid/uuid.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import '../../features/vault/domain/models/vault_item.dart';
 import '../security/encryption_service.dart';
 import 'file_utils.dart';
@@ -176,6 +175,79 @@ class ImportExportHelper {
     }
   }
 
+  static Future<bool> exportToCsv(
+    List<VaultItem> items, {
+    String? masterPassword,
+    EncryptionService? encryptionService,
+    bool encrypted = false,
+  }) async {
+    try {
+      final headers = [
+        'type',
+        'title',
+        'username',
+        'password',
+        'secret',
+        'period',
+        'url',
+        'note',
+        'category',
+        'email',
+        'network',
+        'address',
+        'privateKey',
+        'mnemonic',
+      ];
+
+      final rows = <List<dynamic>>[
+        headers,
+        ...items.map((item) {
+          return [
+            item.type.name,
+            item.title,
+            item.username,
+            item.password ?? '',
+            item.secret ?? '',
+            item.period.toString(),
+            item.url ?? '',
+            item.note ?? '',
+            item.category ?? '',
+            item.email ?? '',
+            item.network ?? '',
+            item.address ?? '',
+            item.privateKey ?? '',
+            item.mnemonic ?? '',
+          ];
+        }),
+      ];
+
+      final csvString = const ListToCsvConverter().convert(rows);
+      if (!encrypted) {
+        final fileName = kIsWeb
+            ? 'securepass_export.csv'
+            : 'securepass_export_${DateTime.now().millisecondsSinceEpoch}.csv';
+        return await FileUtils.saveCsvFile(csvString, fileName);
+      }
+
+      if (masterPassword == null || encryptionService == null) {
+        throw Exception('加密导出需要主密码');
+      }
+
+      final backupKey = await encryptionService.deriveKeySimple(masterPassword.trim());
+      final encryptedBytes = await encryptionService.encrypt(csvString, backupKey);
+      final payload = base64.encode(encryptedBytes);
+
+      final fileName = kIsWeb
+          ? 'securepass_export_encrypted.csv.enc'
+          : 'securepass_export_enc_${DateTime.now().millisecondsSinceEpoch}.csv.enc';
+
+      return await FileUtils.saveCsvFile(payload, fileName);
+    } catch (e) {
+      debugPrint('CSV export failed: $e');
+      return false;
+    }
+  }
+
   static Future<List<VaultItem>?> importFromLastPassCsv() async {
     try {
       final String? content = await FileUtils.pickCsvFile();
@@ -249,6 +321,268 @@ class ImportExportHelper {
       ));
     }
     return items;
+  }
+
+  static Future<List<VaultItem>?> importFromEncryptedCsv({
+    required String masterPassword,
+    required EncryptionService encryptionService,
+  }) async {
+    try {
+      final content = await FileUtils.pickCsvOrEncFile();
+      if (content == null) return null;
+
+      final encryptedBytes = base64.decode(content.replaceAll(RegExp(r'\s+'), ''));
+      final backupKey = await encryptionService.deriveKeySimple(masterPassword.trim());
+      final decryptedCsv = await encryptionService.decrypt(encryptedBytes, backupKey);
+
+      return parseSecurePassCsv(decryptedCsv);
+    } catch (e) {
+      debugPrint('Encrypted CSV import failed: $e');
+      rethrow;
+    }
+  }
+
+  static Future<List<VaultItem>?> importFromBitwardenCsv() async {
+    try {
+      final content = await FileUtils.pickCsvFile();
+      if (content == null) return null;
+      return parseBitwardenCsv(content);
+    } catch (e) {
+      debugPrint('Bitwarden import failed: $e');
+      rethrow;
+    }
+  }
+
+  static Future<List<VaultItem>?> importFrom1PasswordCsv() async {
+    try {
+      final content = await FileUtils.pickCsvFile();
+      if (content == null) return null;
+      return parse1PasswordCsv(content);
+    } catch (e) {
+      debugPrint('1Password import failed: $e');
+      rethrow;
+    }
+  }
+
+  static Future<List<VaultItem>?> importFromChromeCsv() async {
+    try {
+      final content = await FileUtils.pickCsvFile();
+      if (content == null) return null;
+      return parseChromeCsv(content);
+    } catch (e) {
+      debugPrint('Chrome import failed: $e');
+      rethrow;
+    }
+  }
+
+  static List<VaultItem> parseBitwardenCsv(String content) {
+    final rows = _parseCsvRows(content);
+    if (rows.isEmpty) return [];
+
+    const uuid = Uuid();
+    final items = <VaultItem>[];
+
+    for (final row in rows) {
+      final type = _valueFor(row, ['type']);
+      if (type.isNotEmpty && type.toLowerCase() != 'login') continue;
+
+      final name = _valueFor(row, ['name']);
+      final username = _valueFor(row, ['login_username', 'username']);
+      final password = _valueFor(row, ['login_password', 'password']);
+      final url = _valueFor(row, ['login_uri', 'uri', 'url']);
+      final notes = _valueFor(row, ['notes', 'note']);
+      final folder = _valueFor(row, ['folder', 'group']);
+
+      if (_isBlank(name) && _isBlank(username) && _isBlank(password) && _isBlank(url)) {
+        continue;
+      }
+
+      items.add(VaultItem(
+        id: uuid.v4(),
+        type: VaultItemType.password,
+        title: name.isNotEmpty ? name : (url.isNotEmpty ? url : 'Bitwarden 导入'),
+        username: username,
+        password: password.isEmpty ? null : password,
+        url: url.isEmpty ? null : url,
+        note: notes.isEmpty ? null : notes,
+        category: folder.isNotEmpty ? folder : 'Bitwarden 导入',
+      ));
+    }
+
+    return items;
+  }
+
+  static List<VaultItem> parse1PasswordCsv(String content) {
+    final rows = _parseCsvRows(content);
+    if (rows.isEmpty) return [];
+
+    const uuid = Uuid();
+    final items = <VaultItem>[];
+
+    for (final row in rows) {
+      final title = _valueFor(row, ['title', 'name']);
+      final username = _valueFor(row, ['username', 'login']);
+      final password = _valueFor(row, ['password']);
+      final url = _valueFor(row, ['url', 'website', 'website url']);
+      final notes = _valueFor(row, ['notes', 'note']);
+      final category = _valueFor(row, ['category', 'vault']);
+
+      if (_isBlank(title) && _isBlank(username) && _isBlank(password) && _isBlank(url)) {
+        continue;
+      }
+
+      items.add(VaultItem(
+        id: uuid.v4(),
+        type: VaultItemType.password,
+        title: title.isNotEmpty ? title : (url.isNotEmpty ? url : '1Password 导入'),
+        username: username,
+        password: password.isEmpty ? null : password,
+        url: url.isEmpty ? null : url,
+        note: notes.isEmpty ? null : notes,
+        category: category.isNotEmpty ? category : '1Password 导入',
+      ));
+    }
+
+    return items;
+  }
+
+  static List<VaultItem> parseChromeCsv(String content) {
+    final rows = _parseCsvRows(content);
+    if (rows.isEmpty) return [];
+
+    const uuid = Uuid();
+    final items = <VaultItem>[];
+
+    for (final row in rows) {
+      final name = _valueFor(row, ['name', 'title']);
+      final url = _valueFor(row, ['url', 'origin']);
+      final username = _valueFor(row, ['username', 'user']);
+      final password = _valueFor(row, ['password']);
+      final note = _valueFor(row, ['note', 'notes']);
+
+      if (_isBlank(name) && _isBlank(username) && _isBlank(password) && _isBlank(url)) {
+        continue;
+      }
+
+      items.add(VaultItem(
+        id: uuid.v4(),
+        type: VaultItemType.password,
+        title: name.isNotEmpty ? name : (url.isNotEmpty ? url : 'Chrome 导入'),
+        username: username,
+        password: password.isEmpty ? null : password,
+        url: url.isEmpty ? null : url,
+        note: note.isEmpty ? null : note,
+        category: 'Chrome 导入',
+      ));
+    }
+
+    return items;
+  }
+
+  static List<VaultItem> parseSecurePassCsv(String content) {
+    final rows = _parseCsvRows(content);
+    if (rows.isEmpty) return [];
+
+    const uuid = Uuid();
+    final items = <VaultItem>[];
+
+    for (final row in rows) {
+      final typeRaw = _valueFor(row, ['type']);
+      final type = _parseType(typeRaw);
+      final title = _valueFor(row, ['title', 'name']);
+      final username = _valueFor(row, ['username', 'user']);
+      final password = _valueFor(row, ['password']);
+      final secret = _valueFor(row, ['secret']);
+      final periodRaw = _valueFor(row, ['period']);
+      final url = _valueFor(row, ['url']);
+      final note = _valueFor(row, ['note', 'notes']);
+      final category = _valueFor(row, ['category']);
+      final email = _valueFor(row, ['email']);
+      final network = _valueFor(row, ['network']);
+      final address = _valueFor(row, ['address']);
+      final privateKey = _valueFor(row, ['privatekey', 'private_key']);
+      final mnemonic = _valueFor(row, ['mnemonic']);
+
+      if (_isBlank(title) && _isBlank(username) && _isBlank(password) && _isBlank(url)) {
+        continue;
+      }
+
+      final period = int.tryParse(periodRaw) ?? 30;
+
+      items.add(VaultItem(
+        id: uuid.v4(),
+        type: type,
+        title: title.isNotEmpty ? title : (url.isNotEmpty ? url : 'SecurePass 导入'),
+        username: username,
+        password: password.isEmpty ? null : password,
+        secret: secret.isEmpty ? null : secret,
+        period: period,
+        url: url.isEmpty ? null : url,
+        note: note.isEmpty ? null : note,
+        category: category.isEmpty ? null : category,
+        email: email.isEmpty ? null : email,
+        network: network.isEmpty ? null : network,
+        address: address.isEmpty ? null : address,
+        privateKey: privateKey.isEmpty ? null : privateKey,
+        mnemonic: mnemonic.isEmpty ? null : mnemonic,
+      ));
+    }
+
+    return items;
+  }
+
+  static List<Map<String, String>> _parseCsvRows(String content) {
+    // 尝试识别换行符
+    String eol = '\n';
+    if (content.contains('\r\n')) {
+      eol = '\r\n';
+    }
+
+    final rows = CsvToListConverter(
+      shouldParseNumbers: false,
+      eol: eol,
+    ).convert(content);
+
+    if (rows.isEmpty) return [];
+    final header = rows.first.map((e) => e.toString().trim().toLowerCase()).toList();
+    if (header.where((h) => h.isNotEmpty).isEmpty) return [];
+
+    final List<Map<String, String>> result = [];
+    for (var i = 1; i < rows.length; i++) {
+      final row = rows[i];
+      if (row.isEmpty) continue;
+      final map = <String, String>{};
+      for (var h = 0; h < header.length; h++) {
+        final key = header[h];
+        if (key.isEmpty) continue;
+        map[key] = _safeGet(row, h).trim();
+      }
+      if (map.isNotEmpty) {
+        result.add(map);
+      }
+    }
+    return result;
+  }
+
+  static String _valueFor(Map<String, String> row, List<String> keys) {
+    for (final key in keys) {
+      final value = row[key.toLowerCase()];
+      if (value != null && value.trim().isNotEmpty) {
+        return value.trim();
+      }
+    }
+    return '';
+  }
+
+  static bool _isBlank(String? value) {
+    return value == null || value.trim().isEmpty;
+  }
+
+  static VaultItemType _parseType(String raw) {
+    final normalized = raw.trim().toLowerCase();
+    if (normalized == 'totp') return VaultItemType.totp;
+    if (normalized == 'crypto') return VaultItemType.crypto;
+    return VaultItemType.password;
   }
 
   static String _safeGet(List<dynamic> row, int index) {
