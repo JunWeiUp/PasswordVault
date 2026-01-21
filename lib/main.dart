@@ -205,32 +205,27 @@ void _showImportExport(BuildContext context, WidgetRef ref) {
                 );
 
                 if (importedItems != null && importedItems.isNotEmpty) {
-                  int count = 0;
+                  final newItems = <VaultItem>[];
                   for (final item in importedItems) {
-                    try {
-                      // 为导入的项目生成新的 ID，避免冲突
-                      final newItem = VaultItem(
-                        id: const Uuid().v4(),
-                        type: item.type,
-                        title: item.title,
-                        username: item.username,
-                        secret: item.secret,
-                        password: item.password,
-                        mnemonic: item.mnemonic,
-                        address: item.address,
-                        period: item.period,
-                        isFavorite: item.isFavorite,
-                        url: item.url,
-                        note: item.note,
-                      );
-                      await ref.read(vaultItemsProvider.notifier).addItem(newItem);
-                      count++;
-                    } catch (e) {
-                      debugPrint('Import item failed: $e');
-                    }
+                    // 为导入的项目生成新的 ID，避免冲突
+                    newItems.add(VaultItem(
+                      id: const Uuid().v4(),
+                      type: item.type,
+                      title: item.title,
+                      username: item.username,
+                      secret: item.secret,
+                      password: item.password,
+                      mnemonic: item.mnemonic,
+                      address: item.address,
+                      period: item.period,
+                      isFavorite: item.isFavorite,
+                      url: item.url,
+                      note: item.note,
+                    ));
                   }
+                  await ref.read(vaultItemsProvider.notifier).addItems(newItems);
                   ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('成功导入 $count 个项目')),
+                    SnackBar(content: Text('成功导入 ${newItems.length} 个项目')),
                   );
                 }
               } catch (e) {
@@ -250,17 +245,9 @@ void _showImportExport(BuildContext context, WidgetRef ref) {
                 final importedItems = await ImportExportHelper.importFromLastPassCsv();
 
                 if (importedItems != null && importedItems.isNotEmpty) {
-                  int count = 0;
-                  for (final item in importedItems) {
-                    try {
-                      await ref.read(vaultItemsProvider.notifier).addItem(item);
-                      count++;
-                    } catch (e) {
-                      debugPrint('Import item failed: $e');
-                    }
-                  }
+                  await ref.read(vaultItemsProvider.notifier).addItems(importedItems);
                   ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('成功从 LastPass 导入 $count 个项目')),
+                    SnackBar(content: Text('成功从 LastPass 导入 ${importedItems.length} 个项目')),
                   );
                 }
               } catch (e) {
@@ -428,14 +415,43 @@ class MainNavigationScreen extends ConsumerStatefulWidget {
 
 class _MainNavigationScreenState extends ConsumerState<MainNavigationScreen> {
   final TextEditingController _searchController = TextEditingController();
+  bool _pendingCheckCurrentTab = false;
+  bool _pendingHandleActiveContext = false;
 
   @override
   void initState() {
     super.initState();
     if (ExtensionHelper.isExtension) {
+      _pendingCheckCurrentTab = true;
+      _pendingHandleActiveContext = true;
+      ref.listen<AsyncValue<List<VaultItem>>>(vaultItemsProvider, (previous, next) {
+        if (next is AsyncData<List<VaultItem>>) {
+          if (_pendingCheckCurrentTab) {
+            _pendingCheckCurrentTab = false;
+            _checkCurrentTabMatch();
+          }
+          if (_pendingHandleActiveContext) {
+            _pendingHandleActiveContext = false;
+            _handleActiveContext();
+          }
+        }
+      });
       _checkPendingSaves();
-      _handleActiveContext();
-      _checkCurrentTabMatch();
+      _tryRunPendingExtensionChecks();
+    }
+  }
+
+  void _tryRunPendingExtensionChecks() {
+    final vaultItemsAsync = ref.read(vaultItemsProvider);
+    if (vaultItemsAsync is AsyncData<List<VaultItem>>) {
+      if (_pendingCheckCurrentTab) {
+        _pendingCheckCurrentTab = false;
+        _checkCurrentTabMatch();
+      }
+      if (_pendingHandleActiveContext) {
+        _pendingHandleActiveContext = false;
+        _handleActiveContext();
+      }
     }
   }
 
@@ -449,12 +465,8 @@ class _MainNavigationScreenState extends ConsumerState<MainNavigationScreen> {
     final host = uri.host.toLowerCase();
     if (host.isEmpty) return;
 
-    // Wait for items to be loaded
     final vaultItemsAsync = ref.read(vaultItemsProvider);
-    if (vaultItemsAsync is AsyncLoading) {
-      await Future.delayed(const Duration(milliseconds: 500));
-      return _checkCurrentTabMatch();
-    }
+    if (vaultItemsAsync is! AsyncData<List<VaultItem>>) return;
 
     final items = vaultItemsAsync.valueOrNull ?? [];
     final matchingItem = items.where((item) {
@@ -500,16 +512,8 @@ class _MainNavigationScreenState extends ConsumerState<MainNavigationScreen> {
 
     debugPrint('🎯 Handling active context for origin: $origin');
 
-    // Wait for vault items to be loaded
     final vaultItemsAsync = ref.read(vaultItemsProvider);
-    
-    // If it's loading or has an error, we might need to wait or skip
-    if (vaultItemsAsync is AsyncLoading) {
-      debugPrint('⏳ Vault items still loading, waiting...');
-      // We can't easily wait here without complex logic, but we can try again after a short delay
-      Future.delayed(const Duration(milliseconds: 500), _handleActiveContext);
-      return;
-    }
+    if (vaultItemsAsync is! AsyncData<List<VaultItem>>) return;
 
     final vaultItems = vaultItemsAsync.valueOrNull ?? [];
     

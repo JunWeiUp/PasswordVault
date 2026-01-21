@@ -51,6 +51,7 @@ class MasterPasswordNotifier extends StateNotifier<MasterPasswordState> {
   static const _passwordKey = 'saved_master_password';
   static const _biometricKey = 'biometric_enabled';
   static const _lastAuthTimeKey = 'last_auth_time';
+  static const _cachedMasterKey = 'cached_master_key';
   static const _authTimeout = Duration(minutes: 10);
 
   Future<void> _loadFromPrefs() async {
@@ -82,6 +83,7 @@ class MasterPasswordNotifier extends StateNotifier<MasterPasswordState> {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_passwordKey, password);
     await prefs.setString(_lastAuthTimeKey, DateTime.now().toIso8601String());
+    await prefs.remove(_cachedMasterKey);
     _cachedDerivedKey = null;
     if (ExtensionHelper.isExtension) {
       await ExtensionHelper.clearCachedMasterKey();
@@ -106,6 +108,7 @@ class MasterPasswordNotifier extends StateNotifier<MasterPasswordState> {
     } else {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove(_lastAuthTimeKey);
+      await prefs.remove(_cachedMasterKey);
     }
     state = state.copyWith(isAuthenticated: authenticated);
   }
@@ -114,6 +117,7 @@ class MasterPasswordNotifier extends StateNotifier<MasterPasswordState> {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_passwordKey);
     await prefs.remove(_biometricKey);
+    await prefs.remove(_cachedMasterKey);
     _cachedDerivedKey = null;
     if (ExtensionHelper.isExtension) {
       await ExtensionHelper.clearCachedMasterKey();
@@ -134,7 +138,7 @@ final masterKeySaltProvider = FutureProvider<List<int>?>((ref) async {
 final masterKeyProvider = FutureProvider<SecretKey?>((ref) async {
   final masterState = ref.watch(masterPasswordProvider);
   final password = masterState.password;
-  if (password == null) return null;
+  if (password == null || !masterState.isAuthenticated) return null;
 
   // 1. 尝试从内存缓存获取已计算好的密钥
   if (_cachedDerivedKey != null) {
@@ -154,6 +158,18 @@ final masterKeyProvider = FutureProvider<SecretKey?>((ref) async {
   final encryptionService = EncryptionService();
   final prefs = await SharedPreferences.getInstance();
 
+  final lastAuthStr = prefs.getString(MasterPasswordNotifier._lastAuthTimeKey);
+  if (lastAuthStr != null) {
+    final lastAuth = DateTime.tryParse(lastAuthStr);
+    if (lastAuth != null && DateTime.now().difference(lastAuth) < MasterPasswordNotifier._authTimeout) {
+      final cachedBase64 = prefs.getString(MasterPasswordNotifier._cachedMasterKey);
+      if (cachedBase64 != null) {
+        _cachedDerivedKey = base64.decode(cachedBase64);
+        return SecretKey(_cachedDerivedKey!);
+      }
+    }
+  }
+
   List<int> salt;
   final saltBase64 = prefs.getString('master_key_salt');
 
@@ -172,6 +188,7 @@ final masterKeyProvider = FutureProvider<SecretKey?>((ref) async {
   // 3. 存入缓存
   final bytes = await key.extractBytes();
   _cachedDerivedKey = bytes;
+  await prefs.setString(MasterPasswordNotifier._cachedMasterKey, base64.encode(bytes));
 
   // 3.1 同步到插件后台，以便下次秒开
   if (ExtensionHelper.isExtension) {

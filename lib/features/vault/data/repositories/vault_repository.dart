@@ -11,6 +11,85 @@ class VaultRepository {
 
   VaultRepository(this._db, this._encryptionService);
 
+  Future<VaultItemsCompanion> _buildInsertCompanion(
+    VaultItem item,
+    SecretKey masterKey,
+  ) async {
+    String? encryptedSecret;
+    String? encryptedPassword;
+    String? encryptedMnemonic;
+    String? encryptedPrivateKey;
+    String? encryptedAddress;
+    String? encryptedNote;
+    String? encryptedPasswordHistory;
+    String? encryptedAccounts;
+
+    if (item.secret != null) {
+      final bytes = await _encryptionService.encrypt(item.secret!, masterKey);
+      encryptedSecret = base64.encode(bytes);
+    }
+
+    if (item.password != null) {
+      final bytes = await _encryptionService.encrypt(item.password!, masterKey);
+      encryptedPassword = base64.encode(bytes);
+    }
+
+    if (item.mnemonic != null) {
+      final bytes = await _encryptionService.encrypt(item.mnemonic!, masterKey);
+      encryptedMnemonic = base64.encode(bytes);
+    }
+
+    if (item.privateKey != null) {
+      final bytes = await _encryptionService.encrypt(item.privateKey!, masterKey);
+      encryptedPrivateKey = base64.encode(bytes);
+    }
+
+    if (item.address != null) {
+      final bytes = await _encryptionService.encrypt(item.address!, masterKey);
+      encryptedAddress = base64.encode(bytes);
+    }
+
+    if (item.note != null) {
+      final bytes = await _encryptionService.encrypt(item.note!, masterKey);
+      encryptedNote = base64.encode(bytes);
+    }
+
+    if (item.passwordHistory != null && item.passwordHistory!.isNotEmpty) {
+      final historyJson = jsonEncode(item.passwordHistory!.map((e) => e.toJson()).toList());
+      final bytes = await _encryptionService.encrypt(historyJson, masterKey);
+      encryptedPasswordHistory = base64.encode(bytes);
+    }
+
+    if (item.accounts != null && item.accounts!.isNotEmpty) {
+      final accountsJson = jsonEncode(item.accounts!.map((e) => e.toJson()).toList());
+      final bytes = await _encryptionService.encrypt(accountsJson, masterKey);
+      encryptedAccounts = base64.encode(bytes);
+    }
+
+    return VaultItemsCompanion.insert(
+      id: item.id,
+      type: item.type.index,
+      title: item.title,
+      username: item.username,
+      secret: Value(encryptedSecret),
+      password: Value(encryptedPassword),
+      mnemonic: Value(encryptedMnemonic),
+      privateKey: Value(encryptedPrivateKey),
+      address: Value(encryptedAddress),
+      network: Value(item.network),
+      period: Value(item.period),
+      isFavorite: Value(item.isFavorite),
+      url: Value(item.url),
+      note: Value(encryptedNote),
+      category: Value(item.category),
+      email: Value(item.email),
+      passwordHistory: Value(encryptedPasswordHistory),
+      accounts: Value(encryptedAccounts),
+      passwordLastChanged: Value(item.passwordLastChanged),
+      passwordDuration: Value(item.passwordDuration),
+    );
+  }
+
   Future<List<VaultItem>> getAllItems(SecretKey masterKey) async {
     final rows = await _db.select(_db.vaultItems).get();
     
@@ -134,82 +213,26 @@ class VaultRepository {
   }
 
   Future<void> addItem(VaultItem item, SecretKey masterKey) async {
-    String? encryptedSecret;
-    String? encryptedPassword;
-    String? encryptedMnemonic;
-    String? encryptedPrivateKey;
-    String? encryptedAddress;
-    String? encryptedNote;
-    String? encryptedPasswordHistory;
-    String? encryptedAccounts;
-
-    if (item.secret != null) {
-      final bytes = await _encryptionService.encrypt(item.secret!, masterKey);
-      encryptedSecret = base64.encode(bytes);
-    }
-
-    if (item.password != null) {
-      final bytes = await _encryptionService.encrypt(item.password!, masterKey);
-      encryptedPassword = base64.encode(bytes);
-    }
-
-    if (item.mnemonic != null) {
-      final bytes = await _encryptionService.encrypt(item.mnemonic!, masterKey);
-      encryptedMnemonic = base64.encode(bytes);
-    }
-
-    if (item.privateKey != null) {
-      final bytes = await _encryptionService.encrypt(item.privateKey!, masterKey);
-      encryptedPrivateKey = base64.encode(bytes);
-    }
-
-    if (item.address != null) {
-      final bytes = await _encryptionService.encrypt(item.address!, masterKey);
-      encryptedAddress = base64.encode(bytes);
-    }
-
-    if (item.note != null) {
-      final bytes = await _encryptionService.encrypt(item.note!, masterKey);
-      encryptedNote = base64.encode(bytes);
-    }
-
-    if (item.passwordHistory != null && item.passwordHistory!.isNotEmpty) {
-      final historyJson = jsonEncode(item.passwordHistory!.map((e) => e.toJson()).toList());
-      final bytes = await _encryptionService.encrypt(historyJson, masterKey);
-      encryptedPasswordHistory = base64.encode(bytes);
-    }
-
-    if (item.accounts != null && item.accounts!.isNotEmpty) {
-      final accountsJson = jsonEncode(item.accounts!.map((e) => e.toJson()).toList());
-      final bytes = await _encryptionService.encrypt(accountsJson, masterKey);
-      encryptedAccounts = base64.encode(bytes);
-    }
-
+    final companion = await _buildInsertCompanion(item, masterKey);
     await _db.into(_db.vaultItems).insert(
-      VaultItemsCompanion.insert(
-        id: item.id,
-        type: item.type.index,
-        title: item.title,
-        username: item.username,
-        secret: Value(encryptedSecret),
-        password: Value(encryptedPassword),
-        mnemonic: Value(encryptedMnemonic),
-        privateKey: Value(encryptedPrivateKey),
-        address: Value(encryptedAddress),
-        network: Value(item.network),
-        period: Value(item.period),
-        isFavorite: Value(item.isFavorite),
-        url: Value(item.url),
-        note: Value(encryptedNote),
-        category: Value(item.category),
-        email: Value(item.email),
-        passwordHistory: Value(encryptedPasswordHistory),
-        accounts: Value(encryptedAccounts),
-        passwordLastChanged: Value(item.passwordLastChanged),
-        passwordDuration: Value(item.passwordDuration),
-      ),
+      companion,
       mode: InsertMode.insertOrReplace,
     );
+  }
+
+  Future<void> addItems(List<VaultItem> items, SecretKey masterKey) async {
+    if (items.isEmpty) return;
+    final companions = <VaultItemsCompanion>[];
+    for (final item in items) {
+      companions.add(await _buildInsertCompanion(item, masterKey));
+    }
+    await _db.batch((batch) {
+      batch.insertAll(
+        _db.vaultItems,
+        companions,
+        mode: InsertMode.insertOrReplace,
+      );
+    });
   }
 
   Future<void> updateItem(VaultItem item, SecretKey masterKey) async {

@@ -90,6 +90,20 @@ class VaultNotifier extends StateNotifier<AsyncValue<List<VaultItem>>> {
     }
   }
 
+  Future<void> addItems(List<VaultItem> items) async {
+    if (items.isEmpty) return;
+    try {
+      final masterKey = await _ref.read(masterKeyProvider.future);
+      if (masterKey == null) throw Exception('主密钥尚未就绪');
+
+      await _repository.addItems(items, masterKey);
+      await refresh();
+    } catch (e) {
+      print('Add items failed: $e');
+      rethrow;
+    }
+  }
+
   Future<void> updateItem(VaultItem item) async {
     final masterKey = await _ref.read(masterKeyProvider.future);
     if (masterKey == null) return;

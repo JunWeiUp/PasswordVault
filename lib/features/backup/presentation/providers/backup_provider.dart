@@ -217,8 +217,6 @@ class BackupService {
       items = list.map((e) => VaultItem.fromJson(e)).toList();
     }
     
-    for (final item in items) {
-      await _ref.read(vaultItemsProvider.notifier).addItem(item);
-    }
+    await _ref.read(vaultItemsProvider.notifier).addItems(items);
   }
 }
