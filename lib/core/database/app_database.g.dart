@@ -135,6 +135,15 @@ class $VaultItemsTable extends VaultItems
   late final GeneratedColumn<String> accounts = GeneratedColumn<String>(
       'accounts', aliasedName, true,
       type: DriftSqlType.string, requiredDuringInsert: false);
+  late final GeneratedColumn<bool> isDeleted = GeneratedColumn<bool>(
+      'is_deleted', aliasedName, false,
+      type: DriftSqlType.bool,
+      requiredDuringInsert: false,
+      defaultConstraints: GeneratedColumn.constraintIsAlways(
+          'DEFAULT 0')); // 0 is false in SQLite
+  late final GeneratedColumn<DateTime> deletedAt = GeneratedColumn<DateTime>(
+      'deleted_at', aliasedName, true,
+      type: DriftSqlType.dateTime, requiredDuringInsert: false);
   @override
   List<GeneratedColumn> get $columns => [
         id,
@@ -157,7 +166,9 @@ class $VaultItemsTable extends VaultItems
         passwordHistory,
         passwordLastChanged,
         passwordDuration,
-        accounts
+        accounts,
+        isDeleted,
+        deletedAt
       ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -322,6 +333,10 @@ class $VaultItemsTable extends VaultItems
           .read(DriftSqlType.int, data['${effectivePrefix}password_duration']),
       accounts: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}accounts']),
+      isDeleted: attachedDatabase.typeMapping
+          .read(DriftSqlType.bool, data['${effectivePrefix}is_deleted'])!,
+      deletedAt: attachedDatabase.typeMapping
+          .read(DriftSqlType.dateTime, data['${effectivePrefix}deleted_at']),
     );
   }
 
@@ -353,7 +368,9 @@ class VaultItemEntity extends DataClass implements Insertable<VaultItemEntity> {
   final DateTime? passwordLastChanged;
   final int? passwordDuration;
   final String? accounts;
-  const VaultItemEntity(
+  final bool isDeleted;
+  final DateTime? deletedAt;
+  VaultItemEntity(
       {required this.id,
       required this.type,
       required this.title,
@@ -374,7 +391,9 @@ class VaultItemEntity extends DataClass implements Insertable<VaultItemEntity> {
       this.passwordHistory,
       this.passwordLastChanged,
       this.passwordDuration,
-      this.accounts});
+      this.accounts,
+      required this.isDeleted,
+      this.deletedAt});
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
@@ -504,6 +523,8 @@ class VaultItemEntity extends DataClass implements Insertable<VaultItemEntity> {
           serializer.fromJson<DateTime?>(json['passwordLastChanged']),
       passwordDuration: serializer.fromJson<int?>(json['passwordDuration']),
       accounts: serializer.fromJson<String?>(json['accounts']),
+      isDeleted: serializer.fromJson<bool>(json['isDeleted']),
+      deletedAt: serializer.fromJson<DateTime?>(json['deletedAt']),
     );
   }
   @override
@@ -555,7 +576,9 @@ class VaultItemEntity extends DataClass implements Insertable<VaultItemEntity> {
           Value<String?> passwordHistory = const Value.absent(),
           Value<DateTime?> passwordLastChanged = const Value.absent(),
           Value<int?> passwordDuration = const Value.absent(),
-          Value<String?> accounts = const Value.absent()}) =>
+          Value<String?> accounts = const Value.absent(),
+          bool? isDeleted,
+          Value<DateTime?> deletedAt = const Value.absent()}) =>
       VaultItemEntity(
         id: id ?? this.id,
         type: type ?? this.type,
@@ -584,6 +607,8 @@ class VaultItemEntity extends DataClass implements Insertable<VaultItemEntity> {
             ? passwordDuration.value
             : this.passwordDuration,
         accounts: accounts.present ? accounts.value : this.accounts,
+        isDeleted: isDeleted ?? this.isDeleted,
+        deletedAt: deletedAt.present ? deletedAt.value : this.deletedAt,
       );
   VaultItemEntity copyWithCompanion(VaultItemsCompanion data) {
     return VaultItemEntity(
@@ -616,6 +641,8 @@ class VaultItemEntity extends DataClass implements Insertable<VaultItemEntity> {
           ? data.passwordDuration.value
           : this.passwordDuration,
       accounts: data.accounts.present ? data.accounts.value : this.accounts,
+      isDeleted: data.isDeleted.present ? data.isDeleted.value : this.isDeleted,
+      deletedAt: data.deletedAt.present ? data.deletedAt.value : this.deletedAt,
     );
   }
 
@@ -642,9 +669,11 @@ class VaultItemEntity extends DataClass implements Insertable<VaultItemEntity> {
           ..write('passwordHistory: $passwordHistory, ')
           ..write('passwordLastChanged: $passwordLastChanged, ')
           ..write('passwordDuration: $passwordDuration, ')
-          ..write('accounts: $accounts')
-          ..write(')'))
-        .toString();
+      ..write('accounts: $accounts, ')
+      ..write('isDeleted: $isDeleted, ')
+      ..write('deletedAt: $deletedAt')
+      ..write(')'))
+    .toString();
   }
 
   @override
@@ -669,7 +698,9 @@ class VaultItemEntity extends DataClass implements Insertable<VaultItemEntity> {
         passwordHistory,
         passwordLastChanged,
         passwordDuration,
-        accounts
+        accounts,
+        isDeleted,
+        deletedAt
       ]);
   @override
   bool operator ==(Object other) =>
@@ -720,6 +751,8 @@ class VaultItemsCompanion extends UpdateCompanion<VaultItemEntity> {
   final Value<DateTime?> passwordLastChanged;
   final Value<int?> passwordDuration;
   final Value<String?> accounts;
+  final Value<bool> isDeleted;
+  final Value<DateTime?> deletedAt;
   final Value<int> rowid;
   const VaultItemsCompanion({
     this.id = const Value.absent(),
@@ -743,6 +776,8 @@ class VaultItemsCompanion extends UpdateCompanion<VaultItemEntity> {
     this.passwordLastChanged = const Value.absent(),
     this.passwordDuration = const Value.absent(),
     this.accounts = const Value.absent(),
+    this.isDeleted = const Value.absent(),
+    this.deletedAt = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   VaultItemsCompanion.insert({
@@ -767,6 +802,8 @@ class VaultItemsCompanion extends UpdateCompanion<VaultItemEntity> {
     this.passwordLastChanged = const Value.absent(),
     this.passwordDuration = const Value.absent(),
     this.accounts = const Value.absent(),
+    this.isDeleted = const Value.absent(),
+    this.deletedAt = const Value.absent(),
     this.rowid = const Value.absent(),
   })  : id = Value(id),
         type = Value(type),
@@ -845,6 +882,8 @@ class VaultItemsCompanion extends UpdateCompanion<VaultItemEntity> {
       Value<DateTime?>? passwordLastChanged,
       Value<int?>? passwordDuration,
       Value<String?>? accounts,
+      Value<bool>? isDeleted,
+      Value<DateTime?>? deletedAt,
       Value<int>? rowid}) {
     return VaultItemsCompanion(
       id: id ?? this.id,
@@ -868,6 +907,8 @@ class VaultItemsCompanion extends UpdateCompanion<VaultItemEntity> {
       passwordLastChanged: passwordLastChanged ?? this.passwordLastChanged,
       passwordDuration: passwordDuration ?? this.passwordDuration,
       accounts: accounts ?? this.accounts,
+      isDeleted: isDeleted ?? this.isDeleted,
+      deletedAt: deletedAt ?? this.deletedAt,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -938,6 +979,12 @@ class VaultItemsCompanion extends UpdateCompanion<VaultItemEntity> {
     }
     if (accounts.present) {
       map['accounts'] = Variable<String>(accounts.value);
+    }
+    if (isDeleted.present) {
+      map['is_deleted'] = Variable<bool>(isDeleted.value);
+    }
+    if (deletedAt.present) {
+      map['deleted_at'] = Variable<DateTime>(deletedAt.value);
     }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);

@@ -6,8 +6,10 @@ set -e
 echo "🚀 Starting Chrome Extension build process..."
 
 # 1. Build Flutter Web
-echo "📦 Building Flutter web (HTML renderer) with source maps..."
-flutter build web --web-renderer html --release --no-tree-shake-icons --source-maps
+echo "📦 Building Flutter web with source maps..."
+# 在新版本 Flutter 中，--web-renderer 选项已被移除或更改。
+# 我们在 loader.js 中强制 initializeEngine 使用 'html' 渲染器。
+flutter build web --release --no-tree-shake-icons --source-maps
 
 # 2. Prepare build directory
 EXT_DIR="build/chrome_extension"
@@ -18,6 +20,12 @@ mkdir -p "$EXT_DIR"
 # 3. Copy built files
 echo "📂 Copying web assets..."
 cp -r build/web/* "$EXT_DIR/"
+
+# 3.5 Copy CanvasKit (Ensure it's local)
+if [ -d "build/web/canvaskit" ]; then
+  echo "📂 Copying local CanvasKit..."
+  cp -r build/web/canvaskit "$EXT_DIR/"
+fi
 
 # 4. Copy extension specific files
 echo "📂 Copying extension configuration..."
@@ -135,18 +143,34 @@ window.chromeStorageRemove = function(key) {
 
 window.addEventListener('load', function(ev) {
   console.log("🚀 window load event fired");
+  
+  // 强制使用本地 CanvasKit
+  window.flutterConfiguration = {
+    canvasKitBaseUrl: "canvaskit/"
+  };
+
   _flutter.loader.loadEntrypoint({
     serviceWorkerSettings: null,
     onEntrypointLoaded: function(engineInitializer) {
       console.log("📦 entrypoint loaded, initializing engine...");
-      engineInitializer.initializeEngine({
-        renderer: 'html',
+      
+      const config = {
+        canvasKitBaseUrl: "canvaskit/",
         useColorEmoji: true
-      }).then(function(appRunner) {
+      };
+
+      engineInitializer.initializeEngine(config).then(function(appRunner) {
         console.log("🏃 engine initialized, running app...");
         appRunner.runApp();
       }).catch(function(err) {
         console.error("❌ Engine initialization failed:", err);
+        // 如果 CanvasKit 初始化失败，尝试强制使用 HTML 渲染器
+        console.log("🔄 Retrying with HTML renderer...");
+        engineInitializer.initializeEngine({
+            renderer: 'html'
+        }).then(function(appRunner) {
+            appRunner.runApp();
+        });
       });
     }
   });

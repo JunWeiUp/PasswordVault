@@ -86,60 +86,60 @@ class CryptoItemCard extends ConsumerWidget {
                         item.note!,
                         style: Theme.of(context).textTheme.bodySmall,
                         maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                  ],
-                ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
               ),
-              IconButton(
-                icon: const Icon(Icons.copy),
-                onPressed: () {
-                  if (item.address != null) {
-                    Clipboard.setData(ClipboardData(text: item.address!));
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('地址已复制'), duration: Duration(seconds: 2)),
-                    );
-                  }
-                },
-                tooltip: '复制地址',
-              ),
-              IconButton(
-                icon: Icon(
-                  item.isFavorite ? Icons.star : Icons.star_border,
-                  color: item.isFavorite ? Colors.amber : Colors.grey,
-                ),
-                onPressed: () {
-                  final updatedItem = VaultItem(
-                    id: item.id,
-                    type: item.type,
-                    title: item.title,
-                    username: item.username,
-                    secret: item.secret,
-                    password: item.password,
-                    mnemonic: item.mnemonic,
-                    privateKey: item.privateKey,
-                    address: item.address,
-                    network: item.network,
-                    period: item.period,
-                    isFavorite: !item.isFavorite,
-                    url: item.url,
-                    note: item.note,
-                    category: item.category,
-                    email: item.email,
-                    passwordHistory: item.passwordHistory,
-                    accounts: item.accounts,
-                    passwordLastChanged: item.passwordLastChanged,
-                    passwordDuration: item.passwordDuration,
+            ),
+            IconButton(
+              icon: const Icon(Icons.copy),
+              onPressed: () {
+                if (item.address != null) {
+                  Clipboard.setData(ClipboardData(text: item.address!));
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('地址已复制'), duration: Duration(seconds: 2)),
                   );
-                  ref.read(vaultItemsProvider.notifier).updateItem(updatedItem);
-                },
+                }
+              },
+              tooltip: '复制地址',
+            ),
+            IconButton(
+              icon: Icon(
+                item.isFavorite ? Icons.star : Icons.star_border,
+                color: item.isFavorite ? Colors.amber : Colors.grey,
               ),
-            ],
-          ),
+              onPressed: () {
+                final updatedItem = VaultItem(
+                  id: item.id,
+                  type: item.type,
+                  title: item.title,
+                  username: item.username,
+                  secret: item.secret,
+                  password: item.password,
+                  mnemonic: item.mnemonic,
+                  privateKey: item.privateKey,
+                  address: item.address,
+                  network: item.network,
+                  period: item.period,
+                  isFavorite: !item.isFavorite,
+                  url: item.url,
+                  note: item.note,
+                  category: item.category,
+                  email: item.email,
+                  passwordHistory: item.passwordHistory,
+                  accounts: item.accounts,
+                  passwordLastChanged: item.passwordLastChanged,
+                  passwordDuration: item.passwordDuration,
+                );
+                ref.read(vaultItemsProvider.notifier).updateItem(updatedItem);
+              },
+            ),
+          ],
         ),
       ),
-    );
-  }
+    ),
+  );
+}
 
   void _showDeleteConfirm(BuildContext context, WidgetRef ref) {
     showDialog(
@@ -154,10 +154,13 @@ class CryptoItemCard extends ConsumerWidget {
           ),
           TextButton(
             onPressed: () {
-              ref.read(vaultItemsProvider.notifier).deleteItem(item.id);
+              ref.read(vaultItemsProvider.notifier).softDeleteItem(item.id);
               Navigator.pop(context);
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('已移至回收站')),
+              );
             },
-            child: const Text('删除', style: TextStyle(color: Colors.red)),
+            child: const Text('移至回收站', style: TextStyle(color: Colors.red)),
           ),
         ],
       ),

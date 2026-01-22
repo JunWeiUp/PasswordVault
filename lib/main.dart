@@ -21,6 +21,9 @@ import 'features/backup/presentation/pages/webdav_config_page.dart';
 import 'features/backup/presentation/pages/backup_page.dart';
 import 'features/backup/presentation/providers/backup_provider.dart';
 
+import 'features/vault/presentation/pages/recycle_bin_page.dart';
+import 'features/vault/presentation/pages/security_audit_page.dart';
+
 // --- Providers ---
 // 移除了硬编码的 vaultItemsProvider，改用 vault_provider.dart 中的实现
 
@@ -49,6 +52,14 @@ final _router = GoRouter(
     GoRoute(
       path: '/webdav-config',
       builder: (context, state) => const AuthGuard(child: WebDavConfigPage()),
+    ),
+    GoRoute(
+      path: '/recycle-bin',
+      builder: (context, state) => const AuthGuard(child: RecycleBinPage()),
+    ),
+    GoRoute(
+      path: '/security-audit',
+      builder: (context, state) => const AuthGuard(child: SecurityAuditPage()),
     ),
     GoRoute(
       path: '/',
@@ -616,26 +627,16 @@ class _MainNavigationScreenState extends ConsumerState<MainNavigationScreen> {
     if (ExtensionHelper.isExtension) {
       _pendingCheckCurrentTab = true;
       _pendingHandleActiveContext = true;
-      ref.listen<AsyncValue<List<VaultItem>>>(vaultItemsProvider, (previous, next) {
-        if (next is AsyncData<List<VaultItem>>) {
-          if (_pendingCheckCurrentTab) {
-            _pendingCheckCurrentTab = false;
-            _checkCurrentTabMatch();
-          }
-          if (_pendingHandleActiveContext) {
-            _pendingHandleActiveContext = false;
-            _handleActiveContext();
-          }
-        }
-      });
       _checkPendingSaves();
       _tryRunPendingExtensionChecks();
     }
   }
 
   void _tryRunPendingExtensionChecks() {
+    debugPrint('🔍 Trying run pending extension checks...');
     final vaultItemsAsync = ref.read(vaultItemsProvider);
     if (vaultItemsAsync is AsyncData<List<VaultItem>>) {
+      debugPrint('✅ Vault items already loaded, running pending checks');
       if (_pendingCheckCurrentTab) {
         _pendingCheckCurrentTab = false;
         _checkCurrentTabMatch();
@@ -644,43 +645,58 @@ class _MainNavigationScreenState extends ConsumerState<MainNavigationScreen> {
         _pendingHandleActiveContext = false;
         _handleActiveContext();
       }
+    } else {
+      debugPrint('⏳ Vault items not yet loaded (state: ${vaultItemsAsync.runtimeType}), waiting for listener');
     }
   }
 
   Future<void> _checkCurrentTabMatch() async {
-    debugPrint('🔍 Checking current tab for matches...');
+    debugPrint('🔍 Starting _checkCurrentTabMatch...');
     final url = await ExtensionHelper.getCurrentTabUrl();
-    if (url == null || url.isEmpty) return;
+    debugPrint('🌐 Current tab URL: $url');
+    if (url == null || url.isEmpty) {
+      debugPrint('ℹ️ URL is empty, skipping match check');
+      return;
+    }
 
     final host = _extractHost(url);
-    if (host.isEmpty) return;
+    debugPrint('🏠 Extracted host: $host');
+    if (host.isEmpty) {
+      debugPrint('ℹ️ Host is empty, skipping match check');
+      return;
+    }
 
     final vaultItemsAsync = ref.read(vaultItemsProvider);
-    if (vaultItemsAsync is! AsyncData<List<VaultItem>>) return;
+    if (vaultItemsAsync is! AsyncData<List<VaultItem>>) {
+      debugPrint('⏳ Vault items not in AsyncData state (current: ${vaultItemsAsync.runtimeType})');
+      return;
+    }
 
     final items = vaultItemsAsync.valueOrNull ?? [];
-    final matchingItem = items.where((item) {
+    debugPrint('📦 Checking against ${items.length} vault items');
+    final matchingItems = items.where((item) {
       if (item.url == null || item.url!.isEmpty) return false;
       return _hostMatches(item.url, url);
-    }).firstOrNull;
+    }).toList();
 
-    if (matchingItem != null) {
-      debugPrint('🎯 Found match for current tab: ${matchingItem.title}');
+    if (matchingItems.isNotEmpty) {
+      debugPrint('🎯 Found ${matchingItems.length} matches for current tab');
       if (mounted) {
-        // Switch to Vault tab (index 1)
+        // 切换到“帐号”标签页 (index 1)
+        debugPrint('🔄 Switching to account tab and clearing filters');
         ref.read(selectedTabProvider.notifier).state = 1;
         
-        if (matchingItem.category != null) {
-          debugPrint('📂 Setting category filter: ${matchingItem.category}');
-          ref.read(selectedCategoryProvider.notifier).state = matchingItem.category;
-        } else {
-          // If no category, just search for the title/host
-          debugPrint('🔍 No category, setting search query: $host');
-          ref.read(isSearchingProvider.notifier).state = true;
-          ref.read(searchQueryProvider.notifier).state = host;
-          _searchController.text = host;
-        }
+        // 清除分类过滤器，显示该站点的所有账号
+        ref.read(selectedCategoryProvider.notifier).state = null;
+        
+        // 直接搜索域名，显示所有匹配项
+        debugPrint('🔍 Setting search query to host: $host');
+        ref.read(isSearchingProvider.notifier).state = true;
+        ref.read(searchQueryProvider.notifier).state = host;
+        _searchController.text = host;
       }
+    } else {
+      debugPrint('ℹ️ No matching items found for host: $host');
     }
   }
 
@@ -985,6 +1001,24 @@ class _MainNavigationScreenState extends ConsumerState<MainNavigationScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (ExtensionHelper.isExtension) {
+      ref.listen<AsyncValue<List<VaultItem>>>(vaultItemsProvider, (previous, next) {
+        if (next is AsyncData<List<VaultItem>>) {
+          debugPrint('📥 Vault items updated in build listener');
+          if (_pendingCheckCurrentTab) {
+            debugPrint('🎯 Triggering pending _checkCurrentTabMatch');
+            _pendingCheckCurrentTab = false;
+            _checkCurrentTabMatch();
+          }
+          if (_pendingHandleActiveContext) {
+            debugPrint('🎯 Triggering pending _handleActiveContext');
+            _pendingHandleActiveContext = false;
+            _handleActiveContext();
+          }
+        }
+      });
+    }
+
     final selectedIndex = ref.watch(selectedTabProvider);
     final isSearching = ref.watch(isSearchingProvider);
 
@@ -1145,13 +1179,37 @@ class VaultListContent extends ConsumerWidget {
       error: (err, stack) => Center(child: Text('加载失败: $err')),
       data: (_) {
         if (items.isEmpty) {
+          final isFiltering = ref.watch(selectedCategoryProvider) != null || 
+                             ref.watch(showFavoritesOnlyProvider) ||
+                             ref.watch(searchQueryProvider).isNotEmpty;
+          
           return Center(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(Icons.inventory_2_outlined, size: 64, color: Colors.grey[400]),
+                Icon(
+                  isFiltering ? Icons.search_off_rounded : Icons.inventory_2_outlined, 
+                  size: 64, 
+                  color: Colors.grey[400]
+                ),
                 const SizedBox(height: 16),
-                Text('暂无数据', style: TextStyle(color: Colors.grey[600])),
+                Text(
+                  isFiltering ? '没有找到匹配的项目' : '暂无数据', 
+                  style: TextStyle(color: Colors.grey[600], fontSize: 16)
+                ),
+                if (isFiltering)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8.0),
+                    child: TextButton(
+                      onPressed: () {
+                        ref.read(selectedCategoryProvider.notifier).state = null;
+                        ref.read(showFavoritesOnlyProvider.notifier).state = false;
+                        ref.read(searchQueryProvider.notifier).state = '';
+                        ref.read(isSearchingProvider.notifier).state = false;
+                      },
+                      child: const Text('重置过滤器'),
+                    ),
+                  ),
               ],
             ),
           );
@@ -1180,6 +1238,40 @@ class VaultListContent extends ConsumerWidget {
 
 class SettingsContent extends ConsumerWidget {
   const SettingsContent({super.key});
+
+  void _showAutoLockDialog(BuildContext context, WidgetRef ref, int currentMinutes) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('自动锁定时间'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _buildAutoLockOption(context, ref, '1 分钟', 1, currentMinutes),
+            _buildAutoLockOption(context, ref, '5 分钟', 5, currentMinutes),
+            _buildAutoLockOption(context, ref, '10 分钟', 10, currentMinutes),
+            _buildAutoLockOption(context, ref, '30 分钟', 30, currentMinutes),
+            _buildAutoLockOption(context, ref, '1 小时', 60, currentMinutes),
+            _buildAutoLockOption(context, ref, '4 小时', 240, currentMinutes),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAutoLockOption(BuildContext context, WidgetRef ref, String label, int minutes, int current) {
+    return RadioListTile<int>(
+      title: Text(label),
+      value: minutes,
+      groupValue: current,
+      onChanged: (value) {
+        if (value != null) {
+          ref.read(masterPasswordProvider.notifier).setAutoLockMinutes(value);
+          Navigator.pop(context);
+        }
+      },
+    );
+  }
 
   void _showChangeMasterPasswordDialog(BuildContext context, WidgetRef ref) {
     final oldPasswordController = TextEditingController();
@@ -1247,135 +1339,6 @@ class SettingsContent extends ConsumerWidget {
     );
   }
 
-  void _showSecurityReport(BuildContext context, PasswordHealthReport report) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (context) => DraggableScrollableSheet(
-        initialChildSize: 0.6,
-        maxChildSize: 0.9,
-        minChildSize: 0.4,
-        expand: false,
-        builder: (context, scrollController) => Padding(
-          padding: const EdgeInsets.all(20.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                '安全报告',
-                style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 20),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceAround,
-                children: [
-                  _buildStatItem(context, '弱密码', report.weakCount, Colors.red),
-                  _buildStatItem(context, '重复使用', report.reusedCount, Colors.orange),
-                  _buildStatItem(context, '已过期', report.expiredCount, Colors.blue),
-                ],
-              ),
-              const SizedBox(height: 30),
-              const Text(
-                '详细建议',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 10),
-              Expanded(
-                child: ListView(
-                  controller: scrollController,
-                  children: [
-                    if (report.weakCount > 0)
-                      _buildAdviceItem(
-                        context,
-                        Icons.warning_amber_rounded,
-                        Colors.red,
-                        '修改弱密码',
-                        '有 ${report.weakCount} 个账号使用了弱密码。建议使用长度至少 12 位，且包含大小写字母、数字和符号的随机密码。',
-                      ),
-                    if (report.reusedCount > 0)
-                      _buildAdviceItem(
-                        context,
-                        Icons.repeat,
-                        Colors.orange,
-                        '避免重复使用密码',
-                        '有 ${report.reusedCount} 个账号重复使用了相同的密码。如果其中一个账号被破解，其他账号也会面临风险。',
-                      ),
-                    if (report.expiredCount > 0)
-                      _buildAdviceItem(
-                        context,
-                        Icons.history,
-                        Colors.blue,
-                        '定期更换密码',
-                        '有 ${report.expiredCount} 个账号的密码已超过建议的使用期限。建议定期更换重要账号的密码。',
-                      ),
-                    if (report.weakCount == 0 && report.reusedCount == 0 && report.expiredCount == 0)
-                      const Center(
-                        child: Padding(
-                          padding: EdgeInsets.symmetric(vertical: 40),
-                          child: Column(
-                            children: [
-                              Icon(Icons.check_circle, color: Colors.green, size: 64),
-                              SizedBox(height: 16),
-                              Text('太棒了！您的密码库非常安全。'),
-                            ],
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildStatItem(BuildContext context, String label, int count, Color color) {
-    return Column(
-      children: [
-        Text(
-          '$count',
-          style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: color),
-        ),
-        Text(label, style: TextStyle(color: Colors.grey[600], fontSize: 12)),
-      ],
-    );
-  }
-
-  Widget _buildAdviceItem(BuildContext context, IconData icon, Color color, String title, String advice) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 16),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: color.withOpacity(0.1),
-              shape: BoxShape.circle,
-            ),
-            child: Icon(icon, color: color, size: 20),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
-                const SizedBox(height: 4),
-                Text(advice, style: TextStyle(color: Colors.grey[600], fontSize: 13)),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final masterState = ref.watch(masterPasswordProvider);
@@ -1402,7 +1365,7 @@ class SettingsContent extends ConsumerWidget {
                   ),
                 )
               : const Icon(Icons.check_circle_outline, color: Colors.green),
-            onTap: () => _showSecurityReport(context, healthReport),
+            onTap: () => context.push('/security-audit'),
           ),
           ListTile(
             leading: const Icon(Icons.lock_outline),
@@ -1416,6 +1379,12 @@ class SettingsContent extends ConsumerWidget {
               value: masterState.isBiometricEnabled,
               onChanged: (v) => ref.read(masterPasswordProvider.notifier).setBiometricEnabled(v),
             ),
+          ),
+          ListTile(
+            leading: const Icon(Icons.timer),
+            title: const Text('自动锁定'),
+            subtitle: Text('${masterState.autoLockMinutes} 分钟'),
+            onTap: () => _showAutoLockDialog(context, ref, masterState.autoLockMinutes),
           ),
           ListTile(
             leading: const Icon(Icons.logout),
@@ -1439,6 +1408,11 @@ class SettingsContent extends ConsumerWidget {
             title: const Text('WebDAV 同步'),
             subtitle: Text(ref.watch(webDavConfigProvider).isValid ? '已配置' : '未配置'),
             onTap: () => context.push('/backup'),
+          ),
+          ListTile(
+            leading: const Icon(Icons.delete_outline),
+            title: const Text('回收站'),
+            onTap: () => context.push('/recycle-bin'),
           ),
           ListTile(
             leading: const Icon(Icons.import_export),
@@ -1487,40 +1461,93 @@ class CategoryFilterBar extends ConsumerWidget {
     final selectedCategory = ref.watch(selectedCategoryProvider);
 
     return Container(
-      height: 50,
-      padding: const EdgeInsets.symmetric(vertical: 8),
+      height: 60,
+      padding: const EdgeInsets.symmetric(vertical: 10),
+      decoration: BoxDecoration(
+        color: Theme.of(context).scaffoldBackgroundColor,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.02),
+            blurRadius: 10,
+            offset: const Offset(0, 5),
+          ),
+        ],
+      ),
       child: ListView(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 16),
         children: [
-          Padding(
-            padding: const EdgeInsets.only(right: 8),
-            child: ChoiceChip(
-              label: const Text('全部'),
-              selected: selectedCategory == null,
-              onSelected: (selected) {
-                if (selected) {
-                  ref.read(selectedCategoryProvider.notifier).state = null;
-                }
-              },
-            ),
+          _buildCategoryChip(
+            context,
+            ref,
+            '全部',
+            selectedCategory == null,
+            () => ref.read(selectedCategoryProvider.notifier).state = null,
+            icon: Icons.grid_view_rounded,
           ),
-          ...categories.map((category) => Padding(
-                padding: const EdgeInsets.only(right: 8),
-                child: ChoiceChip(
-                  label: Text(category),
-                  selected: selectedCategory == category,
-                  onSelected: (selected) {
-                    if (selected) {
-                      ref.read(selectedCategoryProvider.notifier).state = category;
-                    } else if (selectedCategory == category) {
-                      ref.read(selectedCategoryProvider.notifier).state = null;
-                    }
-                  },
-                ),
+          ...categories.map((category) => _buildCategoryChip(
+                context,
+                ref,
+                category,
+                selectedCategory == category,
+                () => ref.read(selectedCategoryProvider.notifier).state = category,
+                icon: _getCategoryIcon(category),
               )),
         ],
       ),
     );
+  }
+
+  Widget _buildCategoryChip(
+    BuildContext context,
+    WidgetRef ref,
+    String label,
+    bool isSelected,
+    VoidCallback onSelected, {
+    IconData? icon,
+  }) {
+    final colorScheme = Theme.of(context).colorScheme;
+    
+    return Padding(
+      padding: const EdgeInsets.only(right: 8),
+      child: FilterChip(
+        label: Text(label),
+        selected: isSelected,
+        onSelected: (_) => onSelected(),
+        avatar: icon != null ? Icon(icon, size: 16, color: isSelected ? colorScheme.onPrimary : colorScheme.primary) : null,
+        showCheckmark: false,
+        backgroundColor: colorScheme.surfaceVariant.withOpacity(0.3),
+        selectedColor: colorScheme.primary,
+        labelStyle: TextStyle(
+          color: isSelected ? colorScheme.onPrimary : colorScheme.onSurfaceVariant,
+          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+        ),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+          side: BorderSide.none,
+        ),
+      ),
+    );
+  }
+
+  IconData _getCategoryIcon(String category) {
+    switch (category) {
+      case '社交媒体':
+        return Icons.share_rounded;
+      case '财务':
+        return Icons.account_balance_wallet_rounded;
+      case '工作':
+        return Icons.work_rounded;
+      case '购物':
+        return Icons.shopping_cart_rounded;
+      case '娱乐':
+        return Icons.movie_rounded;
+      case '加密资产':
+        return Icons.currency_bitcoin_rounded;
+      case '笔记':
+        return Icons.notes_rounded;
+      default:
+        return Icons.folder_rounded;
+    }
   }
 }

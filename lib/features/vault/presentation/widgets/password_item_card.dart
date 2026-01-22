@@ -351,11 +351,14 @@ class PasswordItemCard extends ConsumerWidget {
           ),
           TextButton(
             onPressed: () {
-              ref.read(vaultItemsProvider.notifier).deleteItem(item.id);
+              ref.read(vaultItemsProvider.notifier).softDeleteItem(item.id);
               Navigator.pop(context);
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('已移至回收站')),
+              );
             },
             style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: const Text('删除'),
+            child: const Text('移至回收站'),
           ),
         ],
       ),

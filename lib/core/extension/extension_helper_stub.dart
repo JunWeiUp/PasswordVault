@@ -21,5 +21,7 @@ class ExtensionHelper {
 
   static Future<void> syncKnownDomains(List<String> domains) async {}
 
+  static Future<void> syncKnownAccounts(Map<String, List<Map<String, String>>> accounts) async {}
+
   static Future<String?> getCurrentTabUrl() async => null;
 }

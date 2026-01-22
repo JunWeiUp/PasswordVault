@@ -16,12 +16,14 @@ class MasterPasswordState {
   final bool isBiometricEnabled;
   final bool hasMasterPassword;
   final bool isAuthenticated;
+  final int autoLockMinutes;
 
   MasterPasswordState({
     this.password,
     this.isBiometricEnabled = false,
     this.hasMasterPassword = false,
     this.isAuthenticated = false,
+    this.autoLockMinutes = 10,
   });
 
   MasterPasswordState copyWith({
@@ -29,12 +31,14 @@ class MasterPasswordState {
     bool? isBiometricEnabled,
     bool? hasMasterPassword,
     bool? isAuthenticated,
+    int? autoLockMinutes,
   }) {
     return MasterPasswordState(
       password: password ?? this.password,
       isBiometricEnabled: isBiometricEnabled ?? this.isBiometricEnabled,
       hasMasterPassword: hasMasterPassword ?? this.hasMasterPassword,
       isAuthenticated: isAuthenticated ?? this.isAuthenticated,
+      autoLockMinutes: autoLockMinutes ?? this.autoLockMinutes,
     );
   }
 }
@@ -52,21 +56,22 @@ class MasterPasswordNotifier extends StateNotifier<MasterPasswordState> {
   static const _biometricKey = 'biometric_enabled';
   static const _lastAuthTimeKey = 'last_auth_time';
   static const _cachedMasterKey = 'cached_master_key';
-  static const _authTimeout = Duration(minutes: 10);
+  static const _autoLockKey = 'auto_lock_minutes';
 
   Future<void> _loadFromPrefs() async {
     final prefs = await SharedPreferences.getInstance();
     final password = prefs.getString(_passwordKey);
     final isBiometricEnabled = prefs.getBool(_biometricKey) ?? false;
+    final autoLockMinutes = prefs.getInt(_autoLockKey) ?? 10;
     
     bool isAuthenticated = false;
     if (password != null) {
       final lastAuthStr = prefs.getString(_lastAuthTimeKey);
       if (lastAuthStr != null) {
         final lastAuth = DateTime.tryParse(lastAuthStr);
-        if (lastAuth != null && DateTime.now().difference(lastAuth) < _authTimeout) {
+        if (lastAuth != null && DateTime.now().difference(lastAuth) < Duration(minutes: autoLockMinutes)) {
           isAuthenticated = true;
-          debugPrint('🔓 Auto-authenticated within 10 minutes');
+          debugPrint('🔓 Auto-authenticated within $autoLockMinutes minutes');
         }
       }
     }
@@ -76,6 +81,7 @@ class MasterPasswordNotifier extends StateNotifier<MasterPasswordState> {
       hasMasterPassword: password != null,
       isBiometricEnabled: isBiometricEnabled,
       isAuthenticated: isAuthenticated,
+      autoLockMinutes: autoLockMinutes,
     );
   }
 
@@ -99,6 +105,12 @@ class MasterPasswordNotifier extends StateNotifier<MasterPasswordState> {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_biometricKey, enabled);
     state = state.copyWith(isBiometricEnabled: enabled);
+  }
+
+  Future<void> setAutoLockMinutes(int minutes) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_autoLockKey, minutes);
+    state = state.copyWith(autoLockMinutes: minutes);
   }
 
   Future<void> setAuthenticated(bool authenticated) async {
@@ -161,7 +173,9 @@ final masterKeyProvider = FutureProvider<SecretKey?>((ref) async {
   final lastAuthStr = prefs.getString(MasterPasswordNotifier._lastAuthTimeKey);
   if (lastAuthStr != null) {
     final lastAuth = DateTime.tryParse(lastAuthStr);
-    if (lastAuth != null && DateTime.now().difference(lastAuth) < MasterPasswordNotifier._authTimeout) {
+    final autoLockMinutes = prefs.getInt(MasterPasswordNotifier._autoLockKey) ?? 10;
+    
+    if (lastAuth != null && DateTime.now().difference(lastAuth) < Duration(minutes: autoLockMinutes)) {
       final cachedBase64 = prefs.getString(MasterPasswordNotifier._cachedMasterKey);
       if (cachedBase64 != null) {
         _cachedDerivedKey = base64.decode(cachedBase64);

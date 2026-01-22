@@ -144,9 +144,22 @@ class VaultNotifier extends StateNotifier<AsyncValue<List<VaultItem>>> {
     await refresh();
   }
 
-  Future<void> deleteItem(String id) async {
+  Future<void> softDeleteItem(String id) async {
+    await _repository.softDeleteItem(id);
+    await refresh();
+    _ref.read(deletedVaultItemsProvider.notifier).refresh();
+  }
+
+  Future<void> restoreItem(String id) async {
+    await _repository.restoreItem(id);
+    await refresh();
+    _ref.read(deletedVaultItemsProvider.notifier).refresh();
+  }
+
+  Future<void> permanentlyDeleteItem(String id) async {
     await _repository.deleteItem(id);
     await refresh();
+    _ref.read(deletedVaultItemsProvider.notifier).refresh();
   }
 
   Future<ImportMergeResult> mergeImportedItems(List<VaultItem> importedItems) async {
@@ -366,9 +379,46 @@ class ImportMergeResult {
   });
 }
 
+class DeletedVaultNotifier extends StateNotifier<AsyncValue<List<VaultItem>>> {
+  final VaultRepository _repository;
+  final Ref _ref;
+
+  DeletedVaultNotifier(this._repository, this._ref) : super(const AsyncValue.loading()) {
+    _ref.listen(masterKeyProvider, (previous, next) {
+      if (next is AsyncData && next.value != null) {
+        refresh();
+      }
+    }, fireImmediately: true);
+  }
+
+  Future<void> refresh() async {
+    if (state is! AsyncLoading) {
+      state = AsyncLoading<List<VaultItem>>().copyWithPrevious(state);
+    }
+
+    final masterKey = _ref.read(masterKeyProvider).valueOrNull;
+    if (masterKey == null) {
+      state = const AsyncValue.data([]);
+      return;
+    }
+
+    try {
+      final items = await _repository.getAllItems(masterKey, includeDeleted: true);
+      state = AsyncValue.data(items.where((item) => item.isDeleted).toList());
+    } catch (e, st) {
+      state = AsyncValue.error(e, st);
+    }
+  }
+}
+
 final vaultItemsProvider = StateNotifierProvider<VaultNotifier, AsyncValue<List<VaultItem>>>((ref) {
   final repository = ref.watch(vaultRepositoryProvider);
   return VaultNotifier(repository, ref);
+});
+
+final deletedVaultItemsProvider = StateNotifierProvider<DeletedVaultNotifier, AsyncValue<List<VaultItem>>>((ref) {
+  final repository = ref.watch(vaultRepositoryProvider);
+  return DeletedVaultNotifier(repository, ref);
 });
 
 // --- Category & Network Providers ---

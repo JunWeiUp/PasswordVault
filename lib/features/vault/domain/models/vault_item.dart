@@ -17,6 +17,8 @@ class VaultItem {
   final String? note;     // 备注
   final String? category; // 分类
   final String? email;    // 邮箱
+  final bool isDeleted;   // 是否已删除（回收站）
+  final DateTime? deletedAt; // 删除时间
   final List<PasswordHistoryEntry>? passwordHistory;
   final List<AccountEntry>? accounts;
   final DateTime? passwordLastChanged;
@@ -39,6 +41,8 @@ class VaultItem {
     this.note,
     this.category,
     this.email,
+    this.isDeleted = false,
+    this.deletedAt,
     this.passwordHistory,
     this.accounts,
     this.passwordLastChanged,
@@ -63,6 +67,8 @@ class VaultItem {
       'note': note,
       'category': category,
       'email': email,
+      'isDeleted': isDeleted,
+      'deletedAt': deletedAt?.toIso8601String(),
       'passwordHistory': passwordHistory?.map((e) => e.toJson()).toList(),
       'accounts': accounts?.map((e) => e.toJson()).toList(),
       'passwordLastChanged': passwordLastChanged?.toIso8601String(),
@@ -88,6 +94,8 @@ class VaultItem {
       note: json['note'] as String?,
       category: json['category'] as String?,
       email: json['email'] as String?,
+      isDeleted: json['isDeleted'] as bool? ?? false,
+      deletedAt: json['deletedAt'] != null ? DateTime.parse(json['deletedAt'] as String) : null,
       passwordHistory: (json['passwordHistory'] as List?)
           ?.map((e) => PasswordHistoryEntry.fromJson(e as Map<String, dynamic>))
           .toList(),

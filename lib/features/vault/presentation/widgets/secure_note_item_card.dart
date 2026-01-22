@@ -114,10 +114,13 @@ class SecureNoteItemCard extends ConsumerWidget {
           ),
           TextButton(
             onPressed: () {
-              ref.read(vaultItemsProvider.notifier).deleteItem(item.id);
+              ref.read(vaultItemsProvider.notifier).softDeleteItem(item.id);
               Navigator.pop(context);
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('已移至回收站')),
+              );
             },
-            child: const Text('删除', style: TextStyle(color: Colors.red)),
+            child: const Text('移至回收站', style: TextStyle(color: Colors.red)),
           ),
         ],
       ),

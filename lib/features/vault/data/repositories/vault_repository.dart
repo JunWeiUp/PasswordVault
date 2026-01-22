@@ -87,11 +87,17 @@ class VaultRepository {
       accounts: Value(encryptedAccounts),
       passwordLastChanged: Value(item.passwordLastChanged),
       passwordDuration: Value(item.passwordDuration),
+      isDeleted: Value(item.isDeleted),
+      deletedAt: Value(item.deletedAt),
     );
   }
 
-  Future<List<VaultItem>> getAllItems(SecretKey masterKey) async {
-    final rows = await _db.select(_db.vaultItems).get();
+  Future<List<VaultItem>> getAllItems(SecretKey masterKey, {bool includeDeleted = false}) async {
+    final query = _db.select(_db.vaultItems);
+    if (!includeDeleted) {
+      query.where((t) => (t as dynamic).isDeleted.equals(false));
+    }
+    final rows = await query.get();
     
     // 如果数据量很大，分批处理以避免阻塞 Web UI 线程
     final List<VaultItem> items = [];
@@ -140,7 +146,10 @@ class VaultRepository {
         if (row.note != null) {
           decryptionTasks.add(_encryptionService.decrypt(base64.decode(row.note!), masterKey)
               .then((v) => decryptedNote = v)
-              .catchError((_) => decryptedNote = row.note));
+              .catchError((_) {
+                decryptedNote = row.note;
+                return row.note ?? '';
+              }));
         }
 
         if (row.passwordHistory != null) {
@@ -198,6 +207,8 @@ class VaultRepository {
           accounts: accounts,
           passwordLastChanged: row.passwordLastChanged,
           passwordDuration: row.passwordDuration,
+          isDeleted: (row as dynamic).isDeleted ?? false,
+          deletedAt: (row as dynamic).deletedAt,
         );
       }));
       
@@ -463,6 +474,24 @@ class VaultRepository {
         accounts: Value(encryptedAccounts),
         passwordLastChanged: Value(lastChanged),
         passwordDuration: Value(item.passwordDuration),
+      ),
+    );
+  }
+
+  Future<void> softDeleteItem(String id) async {
+    await (_db.update(_db.vaultItems)..where((t) => t.id.equals(id))).write(
+      VaultItemsCompanion(
+        isDeleted: const Value(true),
+        deletedAt: Value(DateTime.now()),
+      ),
+    );
+  }
+
+  Future<void> restoreItem(String id) async {
+    await (_db.update(_db.vaultItems)..where((t) => t.id.equals(id))).write(
+      VaultItemsCompanion(
+        isDeleted: const Value(false),
+        deletedAt: const Value(null),
       ),
     );
   }
