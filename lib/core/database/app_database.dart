@@ -89,27 +89,39 @@ class AppDatabase extends _$AppDatabase {
         }
       }
       if (from < 6) {
-        await m.addColumn(vaultItems, vaultItems.passwordHistory);
-        await m.addColumn(vaultItems, vaultItems.passwordLastChanged);
-        await m.addColumn(vaultItems, vaultItems.passwordDuration);
+        try {
+          await m.addColumn(vaultItems, vaultItems.passwordHistory);
+          await m.addColumn(vaultItems, vaultItems.passwordLastChanged);
+          await m.addColumn(vaultItems, vaultItems.passwordDuration);
+        } catch (_) {}
       }
       if (from < 7) {
-        await m.addColumn(vaultItems, vaultItems.accounts);
+        try {
+          await m.addColumn(vaultItems, vaultItems.accounts);
+        } catch (_) {}
       }
       if (from < 8) {
-        await m.addColumn(vaultItems, vaultItems.isDeleted);
-        await m.addColumn(vaultItems, vaultItems.deletedAt);
+        try {
+          await m.addColumn(vaultItems, vaultItems.isDeleted);
+          await m.addColumn(vaultItems, vaultItems.deletedAt);
+        } catch (_) {}
       }
       if (from < 9) {
-        await m.addColumn(vaultItems, vaultItems.tags);
+        try {
+          await m.addColumn(vaultItems, vaultItems.tags);
+        } catch (_) {}
       }
       if (from < 10) {
-        await m.createTable(sharedVaults);
-        await m.createTable(sharedMembers);
-        await m.addColumn(vaultItems, vaultItems.sharedVaultId);
+        try {
+          await m.createTable(sharedVaults);
+          await m.createTable(sharedMembers);
+          await m.addColumn(vaultItems, vaultItems.sharedVaultId);
+        } catch (_) {}
       }
       if (from < 11) {
-        await m.addColumn(sharedVaults, sharedVaults.isDiscoverable);
+        try {
+          await m.addColumn(sharedVaults, sharedVaults.isDiscoverable);
+        } catch (_) {}
       }
     },
     beforeOpen: (details) async {

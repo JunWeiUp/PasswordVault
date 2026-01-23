@@ -75,11 +75,7 @@ class VaultNotifier extends StateNotifier<AsyncValue<List<VaultItem>>> {
     }
 
     try {
-<<<<<<< Updated upstream
-      final items = await _repository.getAllItems(masterKey, fallbacks: fallbacks);
-=======
-      final items = await _repository.getAllItems(masterKey, userKeyPair: userKeyPair);
->>>>>>> Stashed changes
+      final items = await _repository.getAllItems(masterKey, fallbacks: fallbacks, userKeyPair: userKeyPair);
       state = AsyncValue.data(items);
       
       // 同步域名列表到扩展
@@ -90,6 +86,21 @@ class VaultNotifier extends StateNotifier<AsyncValue<List<VaultItem>>> {
       }
     } catch (e, st) {
       print('Refresh failed: $e');
+      state = AsyncValue.error(e, st);
+    }
+  }
+
+  Future<void> clearAllData() async {
+    state = const AsyncValue.loading();
+    try {
+      await _repository.deleteAllData();
+      state = const AsyncValue.data([]);
+      
+      // 显式使其他相关 provider 失效，强制刷新
+      _ref.invalidate(sharedVaultsProvider);
+      _ref.invalidate(deletedVaultItemsProvider);
+      
+    } catch (e, st) {
       state = AsyncValue.error(e, st);
     }
   }
@@ -216,14 +227,9 @@ class VaultNotifier extends StateNotifier<AsyncValue<List<VaultItem>>> {
       throw Exception('主密钥尚未就绪');
     }
 
-<<<<<<< Updated upstream
     final fallbacks = await _ref.read(fallbackKeysProvider.future);
-
-    final existingItems = state.valueOrNull ?? await _repository.getAllItems(masterKey, fallbacks: fallbacks);
-=======
     final userKeyPair = await _ref.read(userKeyPairProvider.future);
-    final existingItems = state.valueOrNull ?? await _repository.getAllItems(masterKey, userKeyPair: userKeyPair);
->>>>>>> Stashed changes
+    final existingItems = state.valueOrNull ?? await _repository.getAllItems(masterKey, fallbacks: fallbacks, userKeyPair: userKeyPair);
     final existingIndex = <String, VaultItem>{};
     for (final item in existingItems) {
       final key = _buildMergeKey(item);
@@ -462,12 +468,8 @@ class DeletedVaultNotifier extends StateNotifier<AsyncValue<List<VaultItem>>> {
     }
 
     try {
-<<<<<<< Updated upstream
-      final items = await _repository.getAllItems(masterKey, includeDeleted: true, fallbacks: fallbacks);
-=======
       final userKeyPair = await _ref.read(userKeyPairProvider.future);
-      final items = await _repository.getAllItems(masterKey, includeDeleted: true, userKeyPair: userKeyPair);
->>>>>>> Stashed changes
+      final items = await _repository.getAllItems(masterKey, includeDeleted: true, fallbacks: fallbacks, userKeyPair: userKeyPair);
       state = AsyncValue.data(items.where((item) => item.isDeleted).toList());
     } catch (e, st) {
       state = AsyncValue.error(e, st);

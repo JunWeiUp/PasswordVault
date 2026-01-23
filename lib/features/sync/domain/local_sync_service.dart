@@ -354,10 +354,11 @@ class LocalSyncService extends ChangeNotifier {
       try {
         final masterKey = await _ref.read(masterKeyProvider.future);
         final fallbacks = await _ref.read(fallbackKeysProvider.future);
+        final userKeyPair = await _ref.read(userKeyPairProvider.future);
         if (masterKey == null) return Response.forbidden('Master key not ready');
         
         final repository = _ref.read(vaultRepositoryProvider);
-        final items = await repository.getAllItems(masterKey, includeDeleted: true, fallbacks: fallbacks);
+        final items = await repository.getAllItems(masterKey, includeDeleted: true, fallbacks: fallbacks, userKeyPair: userKeyPair);
         
         final encryptedPayload = await _encryptPayload(items);
         return Response.ok(jsonEncode({

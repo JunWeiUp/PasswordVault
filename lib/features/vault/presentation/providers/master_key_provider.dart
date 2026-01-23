@@ -305,7 +305,6 @@ final masterKeyProvider = FutureProvider<SecretKey?>((ref) async {
   return key;
 });
 
-<<<<<<< Updated upstream
 /// 提供所有可能的备选密钥，用于解密不同时期或不同方案加密的数据
 final fallbackKeysProvider = FutureProvider<List<SecretKey>>((ref) async {
   final masterState = ref.watch(masterPasswordProvider);
@@ -328,7 +327,8 @@ final fallbackKeysProvider = FutureProvider<List<SecretKey>>((ref) async {
   );
 
   return [simpleKey, standardBackupKey];
-=======
+});
+
 final userKeyPairProvider = FutureProvider<SimpleKeyPair?>((ref) async {
   final masterState = ref.watch(masterPasswordProvider);
   final masterKey = await ref.watch(masterKeyProvider.future);
@@ -346,5 +346,4 @@ final userKeyPairProvider = FutureProvider<SimpleKeyPair?>((ref) async {
     debugPrint('Failed to decrypt user key pair: $e');
     return null;
   }
->>>>>>> Stashed changes
 });

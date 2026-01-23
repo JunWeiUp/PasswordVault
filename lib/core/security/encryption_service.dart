@@ -38,13 +38,8 @@ class EncryptionService {
     return secretBox.concatenation();
   }
 
-<<<<<<< Updated upstream
   // 解密：支持多个候选密钥，防止因密钥派生方案变更导致解密失败
   Future<String> decrypt(List<int> encryptedData, SecretKey key, {List<SecretKey>? fallbacks}) async {
-=======
-  // 加密
-  Future<String> decrypt(List<int> encryptedData, SecretKey key) async {
->>>>>>> Stashed changes
     final secretBox = SecretBox.fromConcatenation(
       encryptedData,
       nonceLength: _cipher.nonceLength,

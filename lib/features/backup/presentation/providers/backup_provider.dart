@@ -35,6 +35,12 @@ class WebDavConfigNotifier extends StateNotifier<WebDavConfig> {
     await prefs.setString(_key, json.encode(config.toJson()));
     state = config;
   }
+
+  Future<void> clearConfig() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_key);
+    state = WebDavConfig(url: '', username: '', password: '');
+  }
 }
 
 final backupHistoryProvider = FutureProvider<List<BackupHistory>>((ref) async {

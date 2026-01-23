@@ -1446,6 +1446,43 @@ class SettingsContent extends ConsumerWidget {
     );
   }
 
+  void _showClearDataDialog(BuildContext context, WidgetRef ref) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('清空所有数据'),
+        content: const Text('确定要清空所有数据吗？此操作不可撤销，所有密码、共享库和同步配置将被永久删除。'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('取消')),
+          ElevatedButton(
+            onPressed: () async {
+              try {
+                await ref.read(vaultItemsProvider.notifier).clearAllData();
+                if (context.mounted) {
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('所有数据已成功清空'), backgroundColor: Colors.green),
+                  );
+                }
+              } catch (e) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('清空失败: $e'), backgroundColor: Colors.red),
+                  );
+                }
+              }
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('确认清空'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildAutoLockOption(BuildContext context, WidgetRef ref, String label, int minutes, int current) {
     return RadioListTile<int>(
       title: Text(label),
@@ -1619,6 +1656,11 @@ class SettingsContent extends ConsumerWidget {
             leading: const Icon(Icons.import_export),
             title: const Text('导入与导出'),
             onTap: () => _showImportExport(context, ref),
+          ),
+          ListTile(
+            leading: const Icon(Icons.delete_forever_outlined, color: Colors.red),
+            title: const Text('清空所有数据', style: TextStyle(color: Colors.red)),
+            onTap: () => _showClearDataDialog(context, ref),
           ),
         ]),
         _buildSection(context, '关于', [

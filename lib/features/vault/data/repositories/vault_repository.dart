@@ -106,11 +106,8 @@ class VaultRepository {
   Future<List<VaultItem>> getAllItems(
     SecretKey masterKey, {
     bool includeDeleted = false,
-<<<<<<< Updated upstream
     List<SecretKey>? fallbacks,
-=======
     SimpleKeyPair? userKeyPair,
->>>>>>> Stashed changes
   }) async {
     final query = _db.select(_db.vaultItems);
     if (!includeDeleted) {
@@ -155,14 +152,13 @@ class VaultRepository {
 
         final decryptionTasks = <Future<void>>[];
 
-<<<<<<< Updated upstream
         // 辅助函数：安全解密，单个字段失败不影响整体
         Future<String?> _safeDecrypt(String? encryptedData, String fieldName) async {
           if (encryptedData == null) return null;
           try {
             return await _encryptionService.decrypt(
               base64.decode(encryptedData), 
-              masterKey, 
+              encryptionKey, 
               fallbacks: fallbacks
             );
           } catch (e) {
@@ -181,65 +177,8 @@ class VaultRepository {
         decryptionTasks.add(_safeDecrypt(row.note, 'note').then((v) => decryptedNote = v));
         decryptionTasks.add(_safeDecrypt(row.passwordHistory, 'passwordHistory').then((v) => decryptedPasswordHistory = v));
         decryptionTasks.add(_safeDecrypt(row.accounts, 'accounts').then((v) => decryptedAccounts = v));
-=======
-        if (row.secret != null) {
-          decryptionTasks.add(_encryptionService
-              .decrypt(base64.decode(row.secret!), encryptionKey)
-              .then((v) => decryptedSecret = v));
-        }
+        decryptionTasks.add(_safeDecrypt(row.tags, 'tags').then((v) => decryptedTags = v));
 
-        if (row.password != null) {
-          decryptionTasks.add(_encryptionService
-              .decrypt(base64.decode(row.password!), encryptionKey)
-              .then((v) => decryptedPassword = v));
-        }
-
-        if (row.mnemonic != null) {
-          decryptionTasks.add(_encryptionService
-              .decrypt(base64.decode(row.mnemonic!), encryptionKey)
-              .then((v) => decryptedMnemonic = v));
-        }
-
-        if (row.privateKey != null) {
-          decryptionTasks.add(_encryptionService
-              .decrypt(base64.decode(row.privateKey!), encryptionKey)
-              .then((v) => decryptedPrivateKey = v));
-        }
-
-        if (row.address != null) {
-          decryptionTasks.add(_encryptionService
-              .decrypt(base64.decode(row.address!), encryptionKey)
-              .then((v) => decryptedAddress = v));
-        }
-
-        if (row.note != null) {
-          decryptionTasks.add(_encryptionService
-              .decrypt(base64.decode(row.note!), encryptionKey)
-              .then((v) => decryptedNote = v)
-              .catchError((_) {
-            decryptedNote = row.note;
-            return row.note ?? '';
-          }));
-        }
-
-        if (row.passwordHistory != null) {
-          decryptionTasks.add(_encryptionService
-              .decrypt(base64.decode(row.passwordHistory!), encryptionKey)
-              .then((v) => decryptedPasswordHistory = v));
-        }
-
-        if (row.accounts != null) {
-          decryptionTasks.add(_encryptionService
-              .decrypt(base64.decode(row.accounts!), encryptionKey)
-              .then((v) => decryptedAccounts = v));
-        }
->>>>>>> Stashed changes
-
-        if (row.tags != null) {
-          decryptionTasks.add(_encryptionService
-              .decrypt(base64.decode(row.tags!), encryptionKey)
-              .then((v) => decryptedTags = v));
-        }
 
         if (decryptionTasks.isNotEmpty) {
           await Future.wait(decryptionTasks);
@@ -337,6 +276,15 @@ class VaultRepository {
     for (final item in items) {
       await addItem(item, masterKey, userKeyPair: userKeyPair);
     }
+  }
+
+  /// 清空所有数据（用于设置中的“清空数据”功能）
+  Future<void> deleteAllData() async {
+    await _db.transaction(() async {
+      await _db.delete(_db.vaultItems).go();
+      await _db.delete(_db.sharedMembers).go();
+      await _db.delete(_db.sharedVaults).go();
+    });
   }
 
   Future<void> updateItem(
