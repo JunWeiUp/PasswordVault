@@ -23,6 +23,9 @@ class VaultItem {
   final List<AccountEntry>? accounts;
   final DateTime? passwordLastChanged;
   final int? passwordDuration; // Days
+  final List<String> tags;
+  final DateTime? updatedAt;
+  final String? sharedVaultId;
 
   VaultItem({
     required this.id,
@@ -47,6 +50,9 @@ class VaultItem {
     this.accounts,
     this.passwordLastChanged,
     this.passwordDuration,
+    this.tags = const [],
+    this.updatedAt,
+    this.sharedVaultId,
   });
 
   Map<String, dynamic> toJson() {
@@ -73,39 +79,206 @@ class VaultItem {
       'accounts': accounts?.map((e) => e.toJson()).toList(),
       'passwordLastChanged': passwordLastChanged?.toIso8601String(),
       'passwordDuration': passwordDuration,
+      'tags': tags,
+      'updatedAt': updatedAt?.toIso8601String(),
+      'sharedVaultId': sharedVaultId,
     };
   }
 
   factory VaultItem.fromJson(Map<String, dynamic> json) {
+    VaultItemType type;
+    try {
+      type = VaultItemType.values.byName(json['type'] as String);
+    } catch (e) {
+      type = VaultItemType.password;
+    }
+
     return VaultItem(
-      id: json['id'] as String,
-      type: VaultItemType.values.byName(json['type'] as String),
-      title: json['title'] as String,
-      username: json['username'] as String,
-      secret: json['secret'] as String?,
-      password: json['password'] as String?,
-      mnemonic: json['mnemonic'] as String?,
-      privateKey: json['privateKey'] as String?,
-      address: json['address'] as String?,
-      network: json['network'] as String?,
+      id: json['id']?.toString() ?? '',
+      type: type,
+      title: json['title']?.toString() ?? '',
+      username: json['username']?.toString() ?? '',
+      secret: json['secret']?.toString(),
+      password: json['password']?.toString(),
+      mnemonic: json['mnemonic']?.toString(),
+      privateKey: json['privateKey']?.toString(),
+      address: json['address']?.toString(),
+      network: json['network']?.toString(),
       period: json['period'] as int? ?? 30,
       isFavorite: json['isFavorite'] as bool? ?? false,
-      url: json['url'] as String?,
-      note: json['note'] as String?,
-      category: json['category'] as String?,
-      email: json['email'] as String?,
+      url: json['url']?.toString(),
+      note: json['note']?.toString(),
+      category: json['category']?.toString(),
+      email: json['email']?.toString(),
       isDeleted: json['isDeleted'] as bool? ?? false,
-      deletedAt: json['deletedAt'] != null ? DateTime.parse(json['deletedAt'] as String) : null,
+      deletedAt: json['deletedAt'] != null ? DateTime.tryParse(json['deletedAt'].toString()) : null,
       passwordHistory: (json['passwordHistory'] as List?)
           ?.map((e) => PasswordHistoryEntry.fromJson(e as Map<String, dynamic>))
           .toList(),
       accounts: (json['accounts'] as List?)
           ?.map((e) => AccountEntry.fromJson(e as Map<String, dynamic>))
           .toList(),
-      passwordLastChanged: json['passwordLastChanged'] != null
-          ? DateTime.parse(json['passwordLastChanged'] as String)
-          : null,
+      passwordLastChanged: json['passwordLastChanged'] != null ? DateTime.tryParse(json['passwordLastChanged'].toString()) : null,
       passwordDuration: json['passwordDuration'] as int?,
+      tags: (json['tags'] as List?)?.map((e) => e.toString()).toList() ?? [],
+      updatedAt: json['updatedAt'] != null ? DateTime.tryParse(json['updatedAt'].toString()) : null,
+      sharedVaultId: json['sharedVaultId']?.toString(),
+    );
+  }
+
+  VaultItem copyWith({
+    String? id,
+    VaultItemType? type,
+    String? title,
+    String? username,
+    String? secret,
+    String? password,
+    String? mnemonic,
+    String? privateKey,
+    String? address,
+    String? network,
+    int? period,
+    bool? isFavorite,
+    String? url,
+    String? note,
+    String? category,
+    String? email,
+    bool? isDeleted,
+    DateTime? deletedAt,
+    List<PasswordHistoryEntry>? passwordHistory,
+    List<AccountEntry>? accounts,
+    DateTime? passwordLastChanged,
+    int? passwordDuration,
+    List<String>? tags,
+    DateTime? updatedAt,
+    String? sharedVaultId,
+  }) {
+    return VaultItem(
+      id: id ?? this.id,
+      type: type ?? this.type,
+      title: title ?? this.title,
+      username: username ?? this.username,
+      secret: secret ?? this.secret,
+      password: password ?? this.password,
+      mnemonic: mnemonic ?? this.mnemonic,
+      privateKey: privateKey ?? this.privateKey,
+      address: address ?? this.address,
+      network: network ?? this.network,
+      period: period ?? this.period,
+      isFavorite: isFavorite ?? this.isFavorite,
+      url: url ?? this.url,
+      note: note ?? this.note,
+      category: category ?? this.category,
+      email: email ?? this.email,
+      isDeleted: isDeleted ?? this.isDeleted,
+      deletedAt: deletedAt ?? this.deletedAt,
+      passwordHistory: passwordHistory ?? this.passwordHistory,
+      accounts: accounts ?? this.accounts,
+      passwordLastChanged: passwordLastChanged ?? this.passwordLastChanged,
+      passwordDuration: passwordDuration ?? this.passwordDuration,
+      tags: tags ?? this.tags,
+      updatedAt: updatedAt ?? this.updatedAt,
+      sharedVaultId: sharedVaultId ?? this.sharedVaultId,
+    );
+  }
+}
+
+enum SharedMemberRole { viewer, editor, owner }
+
+class SharedVault {
+  final String id;
+  final String name;
+  final String encryptedVaultKey; // 对当前用户加密后的 VaultKey (Base64)
+  final DateTime createdAt;
+  final DateTime updatedAt;
+  final bool isDiscoverable; // 是否在局域网内可发现
+
+  SharedVault({
+    required this.id,
+    required this.name,
+    required this.encryptedVaultKey,
+    required this.createdAt,
+    required this.updatedAt,
+    this.isDiscoverable = false,
+  });
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'name': name,
+      'encryptedVaultKey': encryptedVaultKey,
+      'createdAt': createdAt.toIso8601String(),
+      'updatedAt': updatedAt.toIso8601String(),
+      'isDiscoverable': isDiscoverable,
+    };
+  }
+
+  factory SharedVault.fromJson(Map<String, dynamic> json) {
+    return SharedVault(
+      id: json['id'] as String,
+      name: json['name'] as String,
+      encryptedVaultKey: json['encryptedVaultKey'] as String,
+      createdAt: DateTime.parse(json['createdAt'] as String),
+      updatedAt: DateTime.parse(json['updatedAt'] as String),
+      isDiscoverable: json['isDiscoverable'] as bool? ?? false,
+    );
+  }
+
+  SharedVault copyWith({
+    String? id,
+    String? name,
+    String? encryptedVaultKey,
+    DateTime? createdAt,
+    DateTime? updatedAt,
+    bool? isDiscoverable,
+  }) {
+    return SharedVault(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      encryptedVaultKey: encryptedVaultKey ?? this.encryptedVaultKey,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+      isDiscoverable: isDiscoverable ?? this.isDiscoverable,
+    );
+  }
+}
+
+class SharedMember {
+  final String id;
+  final String vaultId;
+  final String userPublicKey; // 成员的公钥 (Base64)
+  final String encryptedVaultKey; // 对该成员加密后的 VaultKey (Base64)
+  final SharedMemberRole role;
+  final String? name; // 成员备注名
+
+  SharedMember({
+    required this.id,
+    required this.vaultId,
+    required this.userPublicKey,
+    required this.encryptedVaultKey,
+    required this.role,
+    this.name,
+  });
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'vaultId': vaultId,
+      'userPublicKey': userPublicKey,
+      'encryptedVaultKey': encryptedVaultKey,
+      'role': role.name,
+      'name': name,
+    };
+  }
+
+  factory SharedMember.fromJson(Map<String, dynamic> json) {
+    return SharedMember(
+      id: json['id'] as String,
+      vaultId: json['vaultId'] as String,
+      userPublicKey: json['userPublicKey'] as String,
+      encryptedVaultKey: json['encryptedVaultKey'] as String,
+      role: SharedMemberRole.values.byName(json['role'] as String),
+      name: json['name'] as String?,
     );
   }
 }
@@ -140,15 +313,15 @@ class AccountEntry {
 
   factory AccountEntry.fromJson(Map<String, dynamic> json) {
     return AccountEntry(
-      id: json['id'] as String? ?? '', // 兼容旧数据
-      username: json['username'] as String,
-      password: json['password'] as String,
-      label: json['label'] as String?,
+      id: json['id']?.toString() ?? '',
+      username: json['username']?.toString() ?? '',
+      password: json['password']?.toString() ?? '',
+      label: json['label']?.toString(),
       passwordHistory: (json['passwordHistory'] as List?)
           ?.map((e) => PasswordHistoryEntry.fromJson(e as Map<String, dynamic>))
           .toList(),
       passwordLastChanged: json['passwordLastChanged'] != null
-          ? DateTime.parse(json['passwordLastChanged'] as String)
+          ? DateTime.tryParse(json['passwordLastChanged'].toString())
           : null,
     );
   }

@@ -3,7 +3,7 @@ import 'package:cryptography/cryptography.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
-import '../../../../core/database/app_database.dart' hide VaultItem;
+import '../../../../core/database/app_database.dart';
 import '../../../../core/security/encryption_service.dart';
 import '../../../../core/extension/extension_helper.dart';
 import '../../domain/models/vault_item.dart';
@@ -18,6 +18,29 @@ final vaultRepositoryProvider = Provider((ref) {
   final db = ref.watch(databaseProvider);
   final encryptionService = ref.watch(encryptionServiceProvider);
   return VaultRepository(db, encryptionService);
+});
+
+final sharedVaultsProvider = FutureProvider<List<SharedVault>>((ref) async {
+  final repository = ref.watch(vaultRepositoryProvider);
+  final userKeyPair = await ref.watch(userKeyPairProvider.future);
+  
+  if (userKeyPair == null) return [];
+  
+  return repository.getSharedVaults(userKeyPair);
+});
+
+final sharedVaultByIdProvider = FutureProvider.family<SharedVault?, String>((ref, vaultId) async {
+  final vaults = await ref.watch(sharedVaultsProvider.future);
+  try {
+    return vaults.firstWhere((v) => v.id == vaultId);
+  } catch (_) {
+    return null;
+  }
+});
+
+final vaultMembersProvider = FutureProvider.family<List<SharedMember>, String>((ref, vaultId) async {
+  final repository = ref.watch(vaultRepositoryProvider);
+  return repository.getVaultMembers(vaultId);
 });
 
 class VaultNotifier extends StateNotifier<AsyncValue<List<VaultItem>>> {
@@ -42,6 +65,9 @@ class VaultNotifier extends StateNotifier<AsyncValue<List<VaultItem>>> {
 
     final masterKeyAsync = _ref.read(masterKeyProvider);
     final masterKey = masterKeyAsync.valueOrNull;
+    final userKeyPair = await _ref.read(userKeyPairProvider.future);
+    
+    final fallbacks = _ref.read(fallbackKeysProvider).valueOrNull;
     
     if (masterKey == null) {
       state = const AsyncValue.data([]);
@@ -49,11 +75,19 @@ class VaultNotifier extends StateNotifier<AsyncValue<List<VaultItem>>> {
     }
 
     try {
-      final items = await _repository.getAllItems(masterKey);
+<<<<<<< Updated upstream
+      final items = await _repository.getAllItems(masterKey, fallbacks: fallbacks);
+=======
+      final items = await _repository.getAllItems(masterKey, userKeyPair: userKeyPair);
+>>>>>>> Stashed changes
       state = AsyncValue.data(items);
       
       // 同步域名列表到扩展
-      _syncDomainsToExtension(items);
+      try {
+        _syncDomainsToExtension(items);
+      } catch (e) {
+        debugPrint('Failed to sync domains to extension: $e');
+      }
     } catch (e, st) {
       print('Refresh failed: $e');
       state = AsyncValue.error(e, st);
@@ -63,50 +97,54 @@ class VaultNotifier extends StateNotifier<AsyncValue<List<VaultItem>>> {
   Future<void> _syncDomainsToExtension(List<VaultItem> items) async {
     if (!ExtensionHelper.isExtension) return;
 
-    final domains = <String>{};
-    final Map<String, List<Map<String, String>>> accountsMetadata = {};
-    final sha256 = Sha256();
+    try {
+      final domains = <String>{};
+      final Map<String, List<Map<String, String>>> accountsMetadata = {};
+      final sha256 = Sha256();
 
-    for (final item in items) {
-      if (item.type != VaultItemType.password || item.url == null || item.url!.isEmpty) continue;
+      for (final item in items) {
+        if (item.type != VaultItemType.password || item.url == null || item.url!.isEmpty) continue;
 
-      String domain;
-      try {
-        final uri = Uri.parse(item.url!);
-        domain = uri.host.toLowerCase();
-      } catch (e) {
-        domain = item.url!.toLowerCase().trim();
-      }
-      if (domain.isEmpty) continue;
+        String domain;
+        try {
+          final uri = Uri.parse(item.url!);
+          domain = uri.host.toLowerCase();
+        } catch (e) {
+          domain = item.url!.toLowerCase().trim();
+        }
+        if (domain.isEmpty) continue;
 
-      domains.add(domain);
+        domains.add(domain);
 
-      final accounts = accountsMetadata.putIfAbsent(domain, () => []);
-      
-      // 添加主账号
-      if (item.username.isNotEmpty) {
-        final pwd = item.password ?? '';
-        final hash = await sha256.hash(utf8.encode(pwd));
-        accounts.add({
-          'username': item.username,
-          'passwordHash': base64Encode(hash.bytes),
-        });
-      }
-      
-      // 添加额外账号
-      if (item.accounts != null) {
-        for (final acc in item.accounts!) {
-          final hash = await sha256.hash(utf8.encode(acc.password));
+        final accounts = accountsMetadata.putIfAbsent(domain, () => []);
+        
+        // 添加主账号
+        if (item.username.isNotEmpty) {
+          final pwd = item.password ?? '';
+          final hash = await sha256.hash(utf8.encode(pwd));
           accounts.add({
-            'username': acc.username,
+            'username': item.username,
             'passwordHash': base64Encode(hash.bytes),
           });
         }
+        
+        // 添加额外账号
+        if (item.accounts != null) {
+          for (final acc in item.accounts!) {
+            final hash = await sha256.hash(utf8.encode(acc.password));
+            accounts.add({
+              'username': acc.username,
+              'passwordHash': base64Encode(hash.bytes),
+            });
+          }
+        }
       }
-    }
 
-    await ExtensionHelper.syncKnownDomains(domains.toList());
-    await ExtensionHelper.syncKnownAccounts(accountsMetadata);
+      await ExtensionHelper.syncKnownDomains(domains.toList());
+      await ExtensionHelper.syncKnownAccounts(accountsMetadata);
+    } catch (e) {
+      debugPrint('Error in _syncDomainsToExtension: $e');
+    }
   }
 
   Future<void> addItem(VaultItem item) async {
@@ -114,7 +152,9 @@ class VaultNotifier extends StateNotifier<AsyncValue<List<VaultItem>>> {
       final masterKey = await _ref.read(masterKeyProvider.future);
       if (masterKey == null) throw Exception('主密钥尚未就绪');
 
-      await _repository.addItem(item, masterKey);
+      final userKeyPair = await _ref.read(userKeyPairProvider.future);
+
+      await _repository.addItem(item, masterKey, userKeyPair: userKeyPair);
       await refresh();
     } catch (e) {
       print('Add item failed: $e');
@@ -127,8 +167,10 @@ class VaultNotifier extends StateNotifier<AsyncValue<List<VaultItem>>> {
     try {
       final masterKey = await _ref.read(masterKeyProvider.future);
       if (masterKey == null) throw Exception('主密钥尚未就绪');
+      
+      final userKeyPair = await _ref.read(userKeyPairProvider.future);
 
-      await _repository.addItems(items, masterKey);
+      await _repository.addItems(items, masterKey, userKeyPair: userKeyPair);
       await refresh();
     } catch (e) {
       print('Add items failed: $e');
@@ -140,7 +182,9 @@ class VaultNotifier extends StateNotifier<AsyncValue<List<VaultItem>>> {
     final masterKey = await _ref.read(masterKeyProvider.future);
     if (masterKey == null) return;
 
-    await _repository.updateItem(item, masterKey);
+    final userKeyPair = await _ref.read(userKeyPairProvider.future);
+
+    await _repository.updateItem(item, masterKey, userKeyPair: userKeyPair);
     await refresh();
   }
 
@@ -172,7 +216,14 @@ class VaultNotifier extends StateNotifier<AsyncValue<List<VaultItem>>> {
       throw Exception('主密钥尚未就绪');
     }
 
-    final existingItems = state.valueOrNull ?? await _repository.getAllItems(masterKey);
+<<<<<<< Updated upstream
+    final fallbacks = await _ref.read(fallbackKeysProvider.future);
+
+    final existingItems = state.valueOrNull ?? await _repository.getAllItems(masterKey, fallbacks: fallbacks);
+=======
+    final userKeyPair = await _ref.read(userKeyPairProvider.future);
+    final existingItems = state.valueOrNull ?? await _repository.getAllItems(masterKey, userKeyPair: userKeyPair);
+>>>>>>> Stashed changes
     final existingIndex = <String, VaultItem>{};
     for (final item in existingItems) {
       final key = _buildMergeKey(item);
@@ -210,13 +261,13 @@ class VaultNotifier extends StateNotifier<AsyncValue<List<VaultItem>>> {
       if (_isSameItem(existing, merged)) {
         skipped++;
       } else {
-        await _repository.updateItem(merged, masterKey);
+        await _repository.updateItem(merged, masterKey, userKeyPair: userKeyPair);
         updated++;
       }
     }
 
     if (itemsToAdd.isNotEmpty) {
-      await _repository.addItems(itemsToAdd, masterKey);
+      await _repository.addItems(itemsToAdd, masterKey, userKeyPair: userKeyPair);
     }
 
     await refresh();
@@ -246,6 +297,8 @@ class VaultNotifier extends StateNotifier<AsyncValue<List<VaultItem>>> {
       accounts: item.accounts,
       passwordLastChanged: item.passwordLastChanged,
       passwordDuration: item.passwordDuration,
+      tags: item.tags,
+      sharedVaultId: item.sharedVaultId,
     );
   }
 
@@ -273,6 +326,8 @@ class VaultNotifier extends StateNotifier<AsyncValue<List<VaultItem>>> {
       accounts: item.accounts,
       passwordLastChanged: item.passwordLastChanged,
       passwordDuration: item.passwordDuration,
+      tags: item.tags,
+      sharedVaultId: item.sharedVaultId,
     );
   }
 
@@ -327,6 +382,8 @@ class VaultNotifier extends StateNotifier<AsyncValue<List<VaultItem>>> {
       accounts: existing.accounts,
       passwordLastChanged: existing.passwordLastChanged,
       passwordDuration: existing.passwordDuration,
+      tags: existing.tags.isNotEmpty ? existing.tags : incoming.tags,
+      sharedVaultId: existing.sharedVaultId ?? incoming.sharedVaultId,
     );
   }
 
@@ -343,7 +400,8 @@ class VaultNotifier extends StateNotifier<AsyncValue<List<VaultItem>>> {
         a.note == b.note &&
         a.category == b.category &&
         a.email == b.email &&
-        a.isFavorite == b.isFavorite;
+        a.isFavorite == b.isFavorite &&
+        listEquals(a.tags, b.tags);
   }
 
   String? _cleanValue(String? value) {
@@ -397,13 +455,19 @@ class DeletedVaultNotifier extends StateNotifier<AsyncValue<List<VaultItem>>> {
     }
 
     final masterKey = _ref.read(masterKeyProvider).valueOrNull;
+    final fallbacks = _ref.read(fallbackKeysProvider).valueOrNull;
     if (masterKey == null) {
       state = const AsyncValue.data([]);
       return;
     }
 
     try {
-      final items = await _repository.getAllItems(masterKey, includeDeleted: true);
+<<<<<<< Updated upstream
+      final items = await _repository.getAllItems(masterKey, includeDeleted: true, fallbacks: fallbacks);
+=======
+      final userKeyPair = await _ref.read(userKeyPairProvider.future);
+      final items = await _repository.getAllItems(masterKey, includeDeleted: true, userKeyPair: userKeyPair);
+>>>>>>> Stashed changes
       state = AsyncValue.data(items.where((item) => item.isDeleted).toList());
     } catch (e, st) {
       state = AsyncValue.error(e, st);
@@ -571,11 +635,37 @@ final categoriesProvider = StateProvider<List<String>>((ref) {
 });
 
 final selectedCategoryProvider = StateProvider<String?>((ref) => null);
+final selectedTagProvider = StateProvider<String?>((ref) => null);
+final selectedSharedVaultIdProvider = StateProvider<String?>((ref) => null);
 final showFavoritesOnlyProvider = StateProvider<bool>((ref) => false);
+
+final allTagsProvider = Provider<List<String>>((ref) {
+  final vaultAsync = ref.watch(vaultItemsProvider);
+  return vaultAsync.maybeWhen(
+    data: (items) {
+      final tags = <String>{};
+      for (final item in items) {
+        tags.addAll(item.tags);
+      }
+      return tags.toList()..sort();
+    },
+    orElse: () => [],
+  );
+});
+
+final vaultItemsBySharedVaultProvider = Provider.family<List<VaultItem>, String>((ref, vaultId) {
+  final vaultAsync = ref.watch(vaultItemsProvider);
+  return vaultAsync.maybeWhen(
+    data: (items) => items.where((item) => item.sharedVaultId == vaultId).toList(),
+    orElse: () => [],
+  );
+});
 
 final filteredVaultItemsProvider = Provider.family<List<VaultItem>, VaultItemType>((ref, type) {
   final vaultAsync = ref.watch(vaultItemsProvider);
   final selectedCategory = ref.watch(selectedCategoryProvider);
+  final selectedTag = ref.watch(selectedTagProvider);
+  final selectedSharedVaultId = ref.watch(selectedSharedVaultIdProvider);
   final showFavoritesOnly = ref.watch(showFavoritesOnlyProvider);
   final searchQuery = ref.watch(searchQueryProvider).toLowerCase();
   
@@ -584,15 +674,18 @@ final filteredVaultItemsProvider = Provider.family<List<VaultItem>, VaultItemTyp
       return items.where((item) {
         final matchesType = item.type == type;
         final matchesCategory = selectedCategory == null || item.category == selectedCategory;
+        final matchesTag = selectedTag == null || item.tags.contains(selectedTag);
+        final matchesSharedVault = selectedSharedVaultId == null || item.sharedVaultId == selectedSharedVaultId;
         final matchesFavorite = !showFavoritesOnly || item.isFavorite;
         
         final matchesSearch = searchQuery.isEmpty || 
             (item.title.toLowerCase().contains(searchQuery)) ||
             (item.username.toLowerCase().contains(searchQuery)) ||
             (item.url?.toLowerCase().contains(searchQuery) ?? false) ||
-            (item.note?.toLowerCase().contains(searchQuery) ?? false);
+            (item.note?.toLowerCase().contains(searchQuery) ?? false) ||
+            (item.tags.any((tag) => tag.toLowerCase().contains(searchQuery)));
 
-        return matchesType && matchesCategory && matchesFavorite && matchesSearch;
+        return matchesType && matchesCategory && matchesTag && matchesSharedVault && matchesFavorite && matchesSearch;
       }).toList();
     },
     orElse: () => [],

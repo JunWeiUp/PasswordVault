@@ -8,6 +8,7 @@ import '../../../totp/presentation/providers/totp_provider.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/vault_provider.dart';
 import '../../../../core/extension/extension_helper.dart';
+import 'favicon_widget.dart';
 
 class PasswordItemCard extends ConsumerWidget {
   final VaultItem item;
@@ -39,8 +40,8 @@ class PasswordItemCard extends ConsumerWidget {
       shape: RoundedRectangleBorder(
         side: BorderSide(
           color: isExpired 
-            ? Colors.red.withOpacity(0.5) 
-            : Theme.of(context).dividerColor.withOpacity(0.1)
+            ? Colors.red.withValues(alpha: 0.5) 
+            : Theme.of(context).dividerColor.withValues(alpha: 0.1)
         ),
         borderRadius: BorderRadius.circular(16),
       ),
@@ -56,22 +57,11 @@ class PasswordItemCard extends ConsumerWidget {
           padding: const EdgeInsets.all(16.0),
           child: Row(
             children: [
-              // 网站图标占位
-              Container(
-                width: 48,
-                height: 48,
-                decoration: BoxDecoration(
-                  color: isExpired 
-                    ? Colors.red.withOpacity(0.1)
-                    : Theme.of(context).colorScheme.primaryContainer,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(
-                  isExpired ? Icons.warning_amber_rounded : Icons.vpn_key_outlined,
-                  color: isExpired 
-                    ? Colors.red 
-                    : Theme.of(context).colorScheme.onPrimaryContainer,
-                ),
+              // 网站图标
+              FaviconWidget(
+                url: item.url,
+                title: item.title,
+                size: 48,
               ),
               const SizedBox(width: 16),
               Expanded(
@@ -93,9 +83,9 @@ class PasswordItemCard extends ConsumerWidget {
                             margin: const EdgeInsets.only(right: 8),
                             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                             decoration: BoxDecoration(
-                              color: Theme.of(context).colorScheme.secondary.withOpacity(0.1),
+                              color: Theme.of(context).colorScheme.secondary.withValues(alpha: 0.1),
                               borderRadius: BorderRadius.circular(4),
-                              border: Border.all(color: Theme.of(context).colorScheme.secondary.withOpacity(0.3)),
+                              border: Border.all(color: Theme.of(context).colorScheme.secondary.withValues(alpha: 0.3)),
                             ),
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
@@ -142,9 +132,9 @@ class PasswordItemCard extends ConsumerWidget {
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                             decoration: BoxDecoration(
-                              color: Colors.red.withOpacity(0.1),
+                              color: Colors.red.withValues(alpha: 0.1),
                               borderRadius: BorderRadius.circular(4),
-                              border: Border.all(color: Colors.red.withOpacity(0.3)),
+                              border: Border.all(color: Colors.red.withValues(alpha: 0.3)),
                             ),
                             child: const Text(
                               '弱密码',
@@ -157,9 +147,9 @@ class PasswordItemCard extends ConsumerWidget {
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                             decoration: BoxDecoration(
-                              color: Colors.orange.withOpacity(0.1),
+                              color: Colors.orange.withValues(alpha: 0.1),
                               borderRadius: BorderRadius.circular(4),
-                              border: Border.all(color: Colors.orange.withOpacity(0.3)),
+                              border: Border.all(color: Colors.orange.withValues(alpha: 0.3)),
                             ),
                             child: const Text(
                               '重复使用',
@@ -173,6 +163,28 @@ class PasswordItemCard extends ConsumerWidget {
                       item.username,
                       style: Theme.of(context).textTheme.bodyMedium,
                     ),
+                    if (item.tags.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Wrap(
+                          spacing: 4,
+                          children: item.tags.map((tag) => Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                            decoration: BoxDecoration(
+                              color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              tag,
+                              style: TextStyle(
+                                fontSize: 10,
+                                color: Theme.of(context).colorScheme.primary,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          )).toList(),
+                        ),
+                      ),
                     if (item.url != null && item.url!.isNotEmpty)
                       Text(
                         item.url!,
@@ -195,7 +207,7 @@ class PasswordItemCard extends ConsumerWidget {
                         child: Container(
                           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                           decoration: BoxDecoration(
-                            color: Theme.of(context).colorScheme.primary.withOpacity(0.05),
+                            color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.05),
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: Row(
@@ -219,7 +231,7 @@ class PasswordItemCard extends ConsumerWidget {
                                 child: CircularProgressIndicator(
                                   value: totpProgress,
                                   strokeWidth: 2,
-                                  backgroundColor: Theme.of(context).colorScheme.primary.withOpacity(0.1),
+                                  backgroundColor: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
                                 ),
                               ),
                             ],
@@ -248,28 +260,7 @@ class PasswordItemCard extends ConsumerWidget {
                 color: item.isFavorite ? Colors.amber : Colors.grey,
               ),
               onPressed: () {
-                final updatedItem = VaultItem(
-                  id: item.id,
-                  type: item.type,
-                  title: item.title,
-                  username: item.username,
-                  secret: item.secret,
-                  password: item.password,
-                  mnemonic: item.mnemonic,
-                  privateKey: item.privateKey,
-                  address: item.address,
-                  network: item.network,
-                  period: item.period,
-                  isFavorite: !item.isFavorite,
-                  url: item.url,
-                  note: item.note,
-                  category: item.category,
-                  email: item.email,
-                  passwordHistory: item.passwordHistory,
-                  accounts: item.accounts,
-                  passwordLastChanged: item.passwordLastChanged,
-                  passwordDuration: item.passwordDuration,
-                );
+                final updatedItem = item.copyWith(isFavorite: !item.isFavorite);
                 ref.read(vaultItemsProvider.notifier).updateItem(updatedItem);
               },
             ),

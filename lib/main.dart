@@ -23,6 +23,14 @@ import 'features/backup/presentation/providers/backup_provider.dart';
 
 import 'features/vault/presentation/pages/recycle_bin_page.dart';
 import 'features/vault/presentation/pages/security_audit_page.dart';
+import 'features/sync/presentation/pages/local_sync_page.dart';
+import 'features/sync/presentation/providers/sync_provider.dart';
+import 'features/vault/presentation/pages/sharing/shared_vault_list_page.dart';
+import 'features/vault/presentation/pages/sharing/create_shared_vault_page.dart';
+import 'features/vault/presentation/pages/sharing/share_public_key_page.dart';
+import 'features/vault/presentation/pages/sharing/add_member_page.dart';
+import 'features/vault/presentation/pages/sharing/shared_vault_details_page.dart';
+import 'features/vault/presentation/pages/sharing/lan_discovery_page.dart';
 
 // --- Providers ---
 // 移除了硬编码的 vaultItemsProvider，改用 vault_provider.dart 中的实现
@@ -62,8 +70,47 @@ final _router = GoRouter(
       builder: (context, state) => const AuthGuard(child: SecurityAuditPage()),
     ),
     GoRoute(
+      path: '/local-sync',
+      builder: (context, state) => const AuthGuard(child: LocalSyncPage()),
+    ),
+    GoRoute(
+      path: '/sharing',
+      builder: (context, state) => const AuthGuard(child: SharedVaultListPage()),
+    ),
+    GoRoute(
+      path: '/sharing/create',
+      builder: (context, state) => const AuthGuard(child: CreateSharedVaultPage()),
+    ),
+    GoRoute(
+      path: '/sharing/public-key',
+      builder: (context, state) => const AuthGuard(child: SharePublicKeyPage()),
+    ),
+    GoRoute(
+      path: '/sharing/lan-discovery',
+      builder: (context, state) => const AuthGuard(child: LanDiscoveryPage()),
+    ),
+    GoRoute(
+      path: '/sharing/add-member/:vaultId',
+      builder: (context, state) {
+        final vaultId = state.pathParameters['vaultId']!;
+        return AuthGuard(child: AddMemberPage(vaultId: vaultId));
+      },
+    ),
+    GoRoute(
+      path: '/sharing/details/:vaultId',
+      builder: (context, state) {
+        final vaultId = state.pathParameters['vaultId']!;
+        final vault = state.extra as SharedVault?;
+        return AuthGuard(child: SharedVaultDetailsPage(vaultId: vaultId, vault: vault));
+      },
+    ),
+    GoRoute(
       path: '/',
-      builder: (context, state) => const AuthGuard(child: MainNavigationScreen()),
+      builder: (context, state) {
+        final extra = state.extra as Map<String, dynamic>?;
+        final filterVaultId = extra?['filterVaultId'] as String?;
+        return AuthGuard(child: MainNavigationScreen(filterVaultId: filterVaultId));
+      },
       routes: [
         GoRoute(
           path: 'add-account',
@@ -538,79 +585,145 @@ void _showAddItemDialog(BuildContext context, WidgetRef ref, VaultItemType type)
   final usernameController = TextEditingController();
   final secretOrPasswordController = TextEditingController();
   final urlController = TextEditingController();
+  
+  String? selectedVaultId = ref.read(selectedSharedVaultIdProvider);
 
   showDialog(
     context: context,
-    builder: (context) => AlertDialog(
-      title: Text(type == VaultItemType.totp ? '添加 2FA 代码' : '添加帐号密码'),
-      content: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: titleController,
-              decoration: const InputDecoration(labelText: '名称 (如: Google, GitHub)'),
+    builder: (context) => StatefulBuilder(
+      builder: (context, setState) {
+        final sharedVaultsAsync = ref.watch(sharedVaultsProvider);
+        
+        return AlertDialog(
+          title: Text(type == VaultItemType.totp ? '添加 2FA 代码' : '添加帐号密码'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: titleController,
+                  decoration: const InputDecoration(labelText: '名称 (如: Google, GitHub)'),
+                ),
+                TextField(
+                  controller: usernameController,
+                  decoration: const InputDecoration(labelText: '用户名/邮箱'),
+                ),
+                TextField(
+                  controller: secretOrPasswordController,
+                  decoration: InputDecoration(
+                    labelText: type == VaultItemType.totp ? '密钥 (Secret Key)' : '密码',
+                  ),
+                  obscureText: type == VaultItemType.password,
+                ),
+                if (type == VaultItemType.password)
+                  TextField(
+                    controller: urlController,
+                    decoration: const InputDecoration(labelText: '网站链接 (可选)'),
+                  ),
+                const SizedBox(height: 16),
+                // 存放位置选择
+                sharedVaultsAsync.when(
+                  data: (vaults) {
+                    if (vaults.isEmpty) return const SizedBox.shrink();
+                    
+                    String vaultName = '个人库';
+                    if (selectedVaultId != null) {
+                      try {
+                        vaultName = vaults.firstWhere((v) => v.id == selectedVaultId).name;
+                      } catch (_) {
+                        selectedVaultId = null;
+                      }
+                    }
+                    
+                    return ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: const Icon(Icons.folder_shared_outlined),
+                      title: const Text('存放位置', style: TextStyle(fontSize: 14)),
+                      subtitle: Text(vaultName, style: const TextStyle(fontSize: 12)),
+                      trailing: const Icon(Icons.arrow_drop_down),
+                      onTap: () {
+                        showModalBottomSheet(
+                          context: context,
+                          builder: (context) => SafeArea(
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                ListTile(
+                                  leading: const Icon(Icons.person_outline),
+                                  title: const Text('个人库 (默认)'),
+                                  trailing: selectedVaultId == null ? const Icon(Icons.check, color: Colors.blue) : null,
+                                  onTap: () {
+                                    setState(() => selectedVaultId = null);
+                                    Navigator.pop(context);
+                                  },
+                                ),
+                                ...vaults.map((v) => ListTile(
+                                  leading: const Icon(Icons.folder_shared_outlined),
+                                  title: Text(v.name),
+                                  trailing: selectedVaultId == v.id ? const Icon(Icons.check, color: Colors.blue) : null,
+                                  onTap: () {
+                                    setState(() => selectedVaultId = v.id);
+                                    Navigator.pop(context);
+                                  },
+                                )),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    );
+                  },
+                  loading: () => const SizedBox.shrink(),
+                  error: (_, __) => const SizedBox.shrink(),
+                ),
+              ],
             ),
-            TextField(
-              controller: usernameController,
-              decoration: const InputDecoration(labelText: '用户名/邮箱'),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('取消'),
             ),
-            TextField(
-              controller: secretOrPasswordController,
-              decoration: InputDecoration(
-                labelText: type == VaultItemType.totp ? '密钥 (Secret Key)' : '密码',
-              ),
-              obscureText: type == VaultItemType.password,
+            ElevatedButton(
+              onPressed: () {
+                if (titleController.text.isEmpty || secretOrPasswordController.text.isEmpty) {
+                  return;
+                }
+
+                final newItem = VaultItem(
+                  id: const Uuid().v4(),
+                  type: type,
+                  title: titleController.text,
+                  username: usernameController.text,
+                  secret: type == VaultItemType.totp ? secretOrPasswordController.text : null,
+                  password: type == VaultItemType.password ? secretOrPasswordController.text : null,
+                  url: urlController.text.isEmpty ? null : urlController.text,
+                  sharedVaultId: selectedVaultId,
+                );
+
+                ref.read(vaultItemsProvider.notifier).addItem(newItem).then((_) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('保存成功')),
+                  );
+                }).catchError((e) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('保存失败: $e'), backgroundColor: Colors.red),
+                  );
+                });
+                Navigator.pop(context);
+              },
+              child: const Text('保存'),
             ),
-            if (type == VaultItemType.password)
-              TextField(
-                controller: urlController,
-                decoration: const InputDecoration(labelText: '网站链接 (可选)'),
-              ),
           ],
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('取消'),
-        ),
-        ElevatedButton(
-          onPressed: () {
-            if (titleController.text.isEmpty || secretOrPasswordController.text.isEmpty) {
-              return;
-            }
-
-            final newItem = VaultItem(
-              id: Uuid().v4(),
-              type: type,
-              title: titleController.text,
-              username: usernameController.text,
-              secret: type == VaultItemType.totp ? secretOrPasswordController.text : null,
-              password: type == VaultItemType.password ? secretOrPasswordController.text : null,
-              url: urlController.text.isEmpty ? null : urlController.text,
-            );
-
-            ref.read(vaultItemsProvider.notifier).addItem(newItem).then((_) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('保存成功')),
-              );
-            }).catchError((e) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('保存失败: $e'), backgroundColor: Colors.red),
-              );
-            });
-            Navigator.pop(context);
-          },
-          child: const Text('保存'),
-        ),
-      ],
+        );
+      },
     ),
   );
 }
 
 class MainNavigationScreen extends ConsumerStatefulWidget {
-  const MainNavigationScreen({super.key});
+  final String? filterVaultId;
+  const MainNavigationScreen({this.filterVaultId, super.key});
 
   @override
   ConsumerState<MainNavigationScreen> createState() => _MainNavigationScreenState();
@@ -624,11 +737,24 @@ class _MainNavigationScreenState extends ConsumerState<MainNavigationScreen> {
   @override
   void initState() {
     super.initState();
+    if (widget.filterVaultId != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        ref.read(selectedSharedVaultIdProvider.notifier).state = widget.filterVaultId;
+      });
+    }
     if (ExtensionHelper.isExtension) {
       _pendingCheckCurrentTab = true;
       _pendingHandleActiveContext = true;
       _checkPendingSaves();
       _tryRunPendingExtensionChecks();
+    }
+  }
+
+  @override
+  void didUpdateWidget(MainNavigationScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.filterVaultId != oldWidget.filterVaultId && widget.filterVaultId != null) {
+      ref.read(selectedSharedVaultIdProvider.notifier).state = widget.filterVaultId;
     }
   }
 
@@ -963,6 +1089,8 @@ class _MainNavigationScreenState extends ConsumerState<MainNavigationScreen> {
       accounts: existing.accounts,
       passwordLastChanged: existing.passwordLastChanged,
       passwordDuration: existing.passwordDuration,
+      tags: existing.tags,
+      sharedVaultId: existing.sharedVaultId,
     );
   }
 
@@ -1018,6 +1146,9 @@ class _MainNavigationScreenState extends ConsumerState<MainNavigationScreen> {
         }
       });
     }
+
+    // Watch sync status to trigger UI refresh when background sync completes
+    ref.watch(syncStatusProvider);
 
     final selectedIndex = ref.watch(selectedTabProvider);
     final isSearching = ref.watch(isSearchingProvider);
@@ -1082,6 +1213,8 @@ class _MainNavigationScreenState extends ConsumerState<MainNavigationScreen> {
       body: Column(
         children: [
           if (selectedIndex < 4 && !isSearching) const CategoryFilterBar(),
+          if (selectedIndex < 4 && !isSearching) const TagFilterBar(),
+          if (selectedIndex < 4 && !isSearching) const SharedVaultFilterIndicator(),
           Expanded(
             child: IndexedStack(
               index: selectedIndex,
@@ -1099,6 +1232,7 @@ class _MainNavigationScreenState extends ConsumerState<MainNavigationScreen> {
       floatingActionButton: selectedIndex < 4 && !isSearching
           ? FloatingActionButton.extended(
               onPressed: () {
+                final sharedVaultId = ref.read(selectedSharedVaultIdProvider);
                 if (selectedIndex == 0) {
                   _showAddItemDialog(context, ref, VaultItemType.totp);
                 } else if (selectedIndex == 1) {
@@ -1106,21 +1240,24 @@ class _MainNavigationScreenState extends ConsumerState<MainNavigationScreen> {
                     id: '', 
                     type: VaultItemType.password, 
                     title: '', 
-                    username: ''
+                    username: '',
+                    sharedVaultId: sharedVaultId,
                   ));
                 } else if (selectedIndex == 2) {
                   context.push('/add-account', extra: VaultItem(
                     id: '', 
                     type: VaultItemType.crypto, 
                     title: '', 
-                    username: ''
+                    username: '',
+                    sharedVaultId: sharedVaultId,
                   ));
                 } else if (selectedIndex == 3) {
                   context.push('/add-account', extra: VaultItem(
                     id: '', 
                     type: VaultItemType.secureNote, 
                     title: '', 
-                    username: ''
+                    username: '',
+                    sharedVaultId: sharedVaultId,
                   ));
                 }
               },
@@ -1165,6 +1302,52 @@ class _MainNavigationScreenState extends ConsumerState<MainNavigationScreen> {
   }
 }
 
+class SharedVaultFilterIndicator extends ConsumerWidget {
+  const SharedVaultFilterIndicator({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final selectedVaultId = ref.watch(selectedSharedVaultIdProvider);
+    if (selectedVaultId == null) return const SizedBox.shrink();
+
+    final sharedVaultsAsync = ref.watch(sharedVaultsProvider);
+    return sharedVaultsAsync.when(
+      data: (vaults) {
+        final vault = vaults.where((v) => v.id == selectedVaultId).firstOrNull;
+        if (vault == null) return const SizedBox.shrink();
+
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          color: Theme.of(context).colorScheme.primaryContainer.withOpacity(0.3),
+          child: Row(
+            children: [
+              const Icon(Icons.people_outline, size: 16),
+              const SizedBox(width: 8),
+              Text(
+                '正在查看共享库: ${vault.name}',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Theme.of(context).colorScheme.primary,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const Spacer(),
+              GestureDetector(
+                onTap: () {
+                  ref.read(selectedSharedVaultIdProvider.notifier).state = null;
+                },
+                child: const Icon(Icons.close, size: 16),
+              ),
+            ],
+          ),
+        );
+      },
+      loading: () => const SizedBox.shrink(),
+      error: (_, __) => const SizedBox.shrink(),
+    );
+  }
+}
+
 class VaultListContent extends ConsumerWidget {
   final VaultItemType type;
   const VaultListContent({required this.type, super.key});
@@ -1180,6 +1363,8 @@ class VaultListContent extends ConsumerWidget {
       data: (_) {
         if (items.isEmpty) {
           final isFiltering = ref.watch(selectedCategoryProvider) != null || 
+                             ref.watch(selectedTagProvider) != null ||
+                             ref.watch(selectedSharedVaultIdProvider) != null ||
                              ref.watch(showFavoritesOnlyProvider) ||
                              ref.watch(searchQueryProvider).isNotEmpty;
           
@@ -1203,6 +1388,8 @@ class VaultListContent extends ConsumerWidget {
                     child: TextButton(
                       onPressed: () {
                         ref.read(selectedCategoryProvider.notifier).state = null;
+                        ref.read(selectedTagProvider.notifier).state = null;
+                        ref.read(selectedSharedVaultIdProvider.notifier).state = null;
                         ref.read(showFavoritesOnlyProvider.notifier).state = false;
                         ref.read(searchQueryProvider.notifier).state = '';
                         ref.read(isSearchingProvider.notifier).state = false;
@@ -1402,12 +1589,26 @@ class SettingsContent extends ConsumerWidget {
             onTap: () => context.go('/password-generator'),
           ),
         ]),
+        _buildSection(context, '协作与共享', [
+          ListTile(
+            leading: const Icon(Icons.people_outline),
+            title: const Text('共享库 (家庭/团队)'),
+            subtitle: const Text('零知识共享文件夹'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => context.push('/sharing'),
+          ),
+        ]),
         _buildSection(context, '数据管理', [
           ListTile(
             leading: const Icon(Icons.cloud_sync_outlined),
             title: const Text('WebDAV 同步'),
             subtitle: Text(ref.watch(webDavConfigProvider).isValid ? '已配置' : '未配置'),
             onTap: () => context.push('/backup'),
+          ),
+          ListTile(
+            leading: const Icon(Icons.sync_alt),
+            title: const Text('局域网同步'),
+            onTap: () => context.push('/local-sync'),
           ),
           ListTile(
             leading: const Icon(Icons.delete_outline),
@@ -1467,7 +1668,7 @@ class CategoryFilterBar extends ConsumerWidget {
         color: Theme.of(context).scaffoldBackgroundColor,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.02),
+            color: Colors.black.withValues(alpha: 0.02),
             blurRadius: 10,
             offset: const Offset(0, 5),
           ),
@@ -1516,7 +1717,7 @@ class CategoryFilterBar extends ConsumerWidget {
         onSelected: (_) => onSelected(),
         avatar: icon != null ? Icon(icon, size: 16, color: isSelected ? colorScheme.onPrimary : colorScheme.primary) : null,
         showCheckmark: false,
-        backgroundColor: colorScheme.surfaceVariant.withOpacity(0.3),
+        backgroundColor: colorScheme.surfaceVariant.withValues(alpha: 0.3),
         selectedColor: colorScheme.primary,
         labelStyle: TextStyle(
           color: isSelected ? colorScheme.onPrimary : colorScheme.onSurfaceVariant,
@@ -1549,5 +1750,50 @@ class CategoryFilterBar extends ConsumerWidget {
       default:
         return Icons.folder_rounded;
     }
+  }
+}
+
+class TagFilterBar extends ConsumerWidget {
+  const TagFilterBar({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tags = ref.watch(allTagsProvider);
+    final selectedTag = ref.watch(selectedTagProvider);
+
+    if (tags.isEmpty) return const SizedBox.shrink();
+
+    return Container(
+      height: 40,
+      margin: const EdgeInsets.only(bottom: 8),
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: ChoiceChip(
+              label: const Text('所有标签', style: TextStyle(fontSize: 12)),
+              selected: selectedTag == null,
+              onSelected: (selected) {
+                if (selected) {
+                  ref.read(selectedTagProvider.notifier).state = null;
+                }
+              },
+            ),
+          ),
+          ...tags.map((tag) => Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: ChoiceChip(
+                  label: Text(tag, style: const TextStyle(fontSize: 12)),
+                  selected: selectedTag == tag,
+                  onSelected: (selected) {
+                    ref.read(selectedTagProvider.notifier).state = selected ? tag : null;
+                  },
+                ),
+              )),
+        ],
+      ),
+    );
   }
 }

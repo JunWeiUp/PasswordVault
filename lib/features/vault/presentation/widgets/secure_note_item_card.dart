@@ -15,7 +15,7 @@ class SecureNoteItemCard extends ConsumerWidget {
       elevation: 0,
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       shape: RoundedRectangleBorder(
-        side: BorderSide(color: Theme.of(context).dividerColor.withOpacity(0.1)),
+        side: BorderSide(color: Theme.of(context).dividerColor.withValues(alpha: 0.1)),
         borderRadius: BorderRadius.circular(16),
       ),
       child: InkWell(
@@ -34,7 +34,7 @@ class SecureNoteItemCard extends ConsumerWidget {
                 width: 48,
                 height: 48,
                 decoration: BoxDecoration(
-                  color: Colors.purple.withOpacity(0.1),
+                  color: Colors.purple.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: const Icon(
@@ -53,6 +53,28 @@ class SecureNoteItemCard extends ConsumerWidget {
                         fontWeight: FontWeight.bold,
                       ),
                     ),
+                    if (item.tags.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Wrap(
+                          spacing: 4,
+                          children: item.tags.map((tag) => Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                            decoration: BoxDecoration(
+                              color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              tag,
+                              style: TextStyle(
+                                fontSize: 10,
+                                color: Theme.of(context).colorScheme.primary,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          )).toList(),
+                        ),
+                      ),
                     if (item.note != null && item.note!.isNotEmpty)
                       Text(
                         item.note!,
@@ -69,28 +91,7 @@ class SecureNoteItemCard extends ConsumerWidget {
                   color: item.isFavorite ? Colors.amber : Colors.grey,
                 ),
                 onPressed: () {
-                  final updatedItem = VaultItem(
-                    id: item.id,
-                    type: item.type,
-                    title: item.title,
-                    username: item.username,
-                    secret: item.secret,
-                    password: item.password,
-                    mnemonic: item.mnemonic,
-                    privateKey: item.privateKey,
-                    address: item.address,
-                    network: item.network,
-                    period: item.period,
-                    isFavorite: !item.isFavorite,
-                    url: item.url,
-                    note: item.note,
-                    category: item.category,
-                    email: item.email,
-                    passwordHistory: item.passwordHistory,
-                    accounts: item.accounts,
-                    passwordLastChanged: item.passwordLastChanged,
-                    passwordDuration: item.passwordDuration,
-                  );
+                  final updatedItem = item.copyWith(isFavorite: !item.isFavorite);
                   ref.read(vaultItemsProvider.notifier).updateItem(updatedItem);
                 },
               ),

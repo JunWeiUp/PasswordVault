@@ -8,6 +8,7 @@ import '../../../../core/utils/bip39_words.dart';
 import '../../../../core/utils/crypto_utils.dart';
 import '../../domain/models/vault_item.dart';
 import '../providers/vault_provider.dart';
+import '../widgets/favicon_widget.dart';
 
 class AddAccountPage extends ConsumerStatefulWidget {
   final VaultItem? item;
@@ -31,6 +32,9 @@ class _AddAccountPageState extends ConsumerState<AddAccountPage> {
   late final TextEditingController _urlController;
   late final TextEditingController _noteController;
   late final TextEditingController _durationController;
+  late final TextEditingController _tagInputController;
+  String? _selectedSharedVaultId;
+  late List<String> _tags;
   String? _totpSecret;
   String? _selectedNetwork;
   bool _obscurePassword = true;
@@ -72,9 +76,18 @@ class _AddAccountPageState extends ConsumerState<AddAccountPage> {
     ));
     _emailController = TextEditingController(text: widget.item?.email);
     _urlController = TextEditingController(text: widget.item?.url);
+    _urlController.addListener(() {
+      setState(() {});
+    });
+    _titleController.addListener(() {
+      setState(() {});
+    });
     _noteController = TextEditingController(text: widget.item?.note);
     _durationController = TextEditingController(text: widget.item?.passwordDuration?.toString() ?? '');
+    _tagInputController = TextEditingController();
+    _tags = List.from(widget.item?.tags ?? []);
     _totpSecret = widget.item?.secret;
+    _selectedSharedVaultId = widget.item?.sharedVaultId;
     _selectedNetwork = widget.item?.network ?? (widget.item?.type == VaultItemType.crypto ? 'ETH' : null);
 
     // 添加监听器以自动生成地址
@@ -110,6 +123,7 @@ class _AddAccountPageState extends ConsumerState<AddAccountPage> {
     _urlController.dispose();
     _noteController.dispose();
     _durationController.dispose();
+    _tagInputController.dispose();
     super.dispose();
   }
 
@@ -205,6 +219,8 @@ class _AddAccountPageState extends ConsumerState<AddAccountPage> {
       passwordDuration: int.tryParse(_durationController.text),
       passwordLastChanged: widget.item?.passwordLastChanged ?? DateTime.now(),
       passwordHistory: widget.item?.passwordHistory,
+      tags: _tags,
+      sharedVaultId: _selectedSharedVaultId,
       accounts: _extraAccounts.where((g) => g.usernameController.text.isNotEmpty).map((g) {
         return AccountEntry(
           id: g.id.isEmpty ? const Uuid().v4() : g.id,
@@ -245,11 +261,25 @@ class _AddAccountPageState extends ConsumerState<AddAccountPage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(
-          (widget.item == null || widget.item!.id.isEmpty) 
-            ? (isCrypto ? '添加钱包' : (isSecureNote ? '添加备注' : '添加账号')) 
-            : (isCrypto ? '编辑钱包' : (isSecureNote ? '编辑备注' : '编辑账号')),
-          style: const TextStyle(fontWeight: FontWeight.bold),
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (widget.item?.url != null || _urlController.text.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: FaviconWidget(
+                  url: _urlController.text.isNotEmpty ? _urlController.text : widget.item?.url,
+                  title: _titleController.text.isNotEmpty ? _titleController.text : (widget.item?.title ?? ''),
+                  size: 24,
+                ),
+              ),
+            Text(
+              (widget.item == null || widget.item!.id.isEmpty) 
+                ? (isCrypto ? '添加钱包' : (isSecureNote ? '添加备注' : '添加账号')) 
+                : (isCrypto ? '编辑钱包' : (isSecureNote ? '编辑备注' : '编辑账号')),
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+          ],
         ),
         centerTitle: true,
         actions: [
@@ -348,6 +378,7 @@ class _AddAccountPageState extends ConsumerState<AddAccountPage> {
                 trailing: const Icon(Icons.chevron_right),
                 onTap: _showCategoryPicker,
               ),
+              _buildSharedVaultPicker(),
             ]),
             if (!isCrypto && !isSecureNote) ...[
               const SizedBox(height: 16),
@@ -487,10 +518,10 @@ class _AddAccountPageState extends ConsumerState<AddAccountPage> {
                         itemBuilder: (context, index) {
                           return Container(
                             decoration: BoxDecoration(
-                              color: Theme.of(context).dividerColor.withOpacity(0.05),
+                              color: Theme.of(context).dividerColor.withValues(alpha: 0.05),
                               borderRadius: BorderRadius.circular(12),
                               border: Border.all(
-                                color: Theme.of(context).dividerColor.withOpacity(0.1),
+                                color: Theme.of(context).dividerColor.withValues(alpha: 0.1),
                               ),
                             ),
                             child: Stack(
@@ -502,7 +533,7 @@ class _AddAccountPageState extends ConsumerState<AddAccountPage> {
                                   child: Text(
                                     '${index + 1}',
                                     style: TextStyle(
-                                      color: Theme.of(context).colorScheme.primary.withOpacity(0.4),
+                                      color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.4),
                                       fontSize: 9,
                                       fontWeight: FontWeight.bold,
                                     ),
@@ -541,7 +572,7 @@ class _AddAccountPageState extends ConsumerState<AddAccountPage> {
                                           hintText: '单词',
                                           hintStyle: TextStyle(
                                             fontSize: 14,
-                                            color: Theme.of(context).hintColor.withOpacity(0.3),
+                                            color: Theme.of(context).hintColor.withValues(alpha: 0.3),
                                           ),
                                         ),
                                       );
@@ -637,7 +668,7 @@ class _AddAccountPageState extends ConsumerState<AddAccountPage> {
                           const SizedBox(width: 12),
                           Container(
                             decoration: BoxDecoration(
-                              color: Theme.of(context).colorScheme.primary.withOpacity(0.1),
+                              color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
                               borderRadius: BorderRadius.circular(12),
                             ),
                             child: IconButton(
@@ -686,6 +717,8 @@ class _AddAccountPageState extends ConsumerState<AddAccountPage> {
                 hintText: isSecureNote ? '在此输入您的笔记...' : '额外信息...',
                 maxLines: isSecureNote ? 10 : 3,
               ),
+              const SizedBox(height: 8),
+              _buildTagsSection(),
             ]),
             const SizedBox(height: 16),
             if (!isCrypto)
@@ -720,6 +753,92 @@ class _AddAccountPageState extends ConsumerState<AddAccountPage> {
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildTagsSection() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('标签', style: TextStyle(fontWeight: FontWeight.bold)),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 4,
+            children: [
+              ..._tags.map((tag) => Chip(
+                    label: Text(tag, style: const TextStyle(fontSize: 12)),
+                    onDeleted: () {
+                      setState(() {
+                        _tags.remove(tag);
+                      });
+                    },
+                    deleteIconColor: Colors.red,
+                    padding: EdgeInsets.zero,
+                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  )),
+              ActionChip(
+                label: const Icon(Icons.add, size: 16),
+                onPressed: _showAddTagDialog,
+                padding: EdgeInsets.zero,
+                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showAddTagDialog() {
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('添加标签'),
+          content: TextField(
+            controller: _tagInputController,
+            autofocus: true,
+            decoration: const InputDecoration(
+              hintText: '输入标签名称',
+            ),
+            onSubmitted: (value) {
+              if (value.isNotEmpty) {
+                setState(() {
+                  if (!_tags.contains(value)) {
+                    _tags.add(value);
+                  }
+                  _tagInputController.clear();
+                });
+                Navigator.pop(context);
+              }
+            },
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('取消'),
+            ),
+            TextButton(
+              onPressed: () {
+                final value = _tagInputController.text;
+                if (value.isNotEmpty) {
+                  setState(() {
+                    if (!_tags.contains(value)) {
+                      _tags.add(value);
+                    }
+                    _tagInputController.clear();
+                  });
+                }
+                Navigator.pop(context);
+              },
+              child: const Text('确定'),
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -806,7 +925,7 @@ class _AddAccountPageState extends ConsumerState<AddAccountPage> {
         Card(
           elevation: 0,
           shape: RoundedRectangleBorder(
-            side: BorderSide(color: Theme.of(context).dividerColor.withOpacity(0.1)),
+            side: BorderSide(color: Theme.of(context).dividerColor.withValues(alpha: 0.1)),
             borderRadius: BorderRadius.circular(16),
           ),
           child: Column(
@@ -933,6 +1052,78 @@ class _AddAccountPageState extends ConsumerState<AddAccountPage> {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildSharedVaultPicker() {
+    final sharedVaultsAsync = ref.watch(sharedVaultsProvider);
+
+    return sharedVaultsAsync.when(
+      data: (vaults) {
+        if (vaults.isEmpty) return const SizedBox.shrink();
+
+        String subtitle = '个人库';
+        if (_selectedSharedVaultId != null) {
+          try {
+            final vault = vaults.firstWhere((v) => v.id == _selectedSharedVaultId);
+            subtitle = '共享库: ${vault.name}';
+          } catch (_) {
+            _selectedSharedVaultId = null;
+          }
+        }
+
+        return ListTile(
+          leading: const Icon(Icons.folder_shared_outlined),
+          title: const Text('存放位置'),
+          subtitle: Text(subtitle),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () => _showSharedVaultPicker(vaults),
+        );
+      },
+      loading: () => const SizedBox.shrink(),
+      error: (_, __) => const SizedBox.shrink(),
+    );
+  }
+
+  void _showSharedVaultPicker(List<SharedVault> vaults) {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Padding(
+                padding: EdgeInsets.all(16),
+                child: Text('选择存放位置', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              ),
+              const Divider(height: 1),
+              ListTile(
+                leading: const Icon(Icons.person_outline),
+                title: const Text('个人库 (默认)'),
+                trailing: _selectedSharedVaultId == null ? const Icon(Icons.check, color: Colors.blue) : null,
+                onTap: () {
+                  setState(() => _selectedSharedVaultId = null);
+                  Navigator.pop(context);
+                },
+              ),
+              ...vaults.map((vault) => ListTile(
+                    leading: const Icon(Icons.folder_shared_outlined),
+                    title: Text(vault.name),
+                    trailing: _selectedSharedVaultId == vault.id ? const Icon(Icons.check, color: Colors.blue) : null,
+                    onTap: () {
+                      setState(() => _selectedSharedVaultId = vault.id);
+                      Navigator.pop(context);
+                    },
+                  )),
+              const SizedBox(height: 16),
+            ],
+          ),
+        );
+      },
     );
   }
 

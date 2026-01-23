@@ -17,6 +17,8 @@ class MasterPasswordState {
   final bool hasMasterPassword;
   final bool isAuthenticated;
   final int autoLockMinutes;
+  final String? userPublicKey; // Base64 encoded public key
+  final String? encryptedUserPrivateKey; // Base64 encoded, encrypted by master key
 
   MasterPasswordState({
     this.password,
@@ -24,6 +26,8 @@ class MasterPasswordState {
     this.hasMasterPassword = false,
     this.isAuthenticated = false,
     this.autoLockMinutes = 10,
+    this.userPublicKey,
+    this.encryptedUserPrivateKey,
   });
 
   MasterPasswordState copyWith({
@@ -32,6 +36,8 @@ class MasterPasswordState {
     bool? hasMasterPassword,
     bool? isAuthenticated,
     int? autoLockMinutes,
+    String? userPublicKey,
+    String? encryptedUserPrivateKey,
   }) {
     return MasterPasswordState(
       password: password ?? this.password,
@@ -39,6 +45,8 @@ class MasterPasswordState {
       hasMasterPassword: hasMasterPassword ?? this.hasMasterPassword,
       isAuthenticated: isAuthenticated ?? this.isAuthenticated,
       autoLockMinutes: autoLockMinutes ?? this.autoLockMinutes,
+      userPublicKey: userPublicKey ?? this.userPublicKey,
+      encryptedUserPrivateKey: encryptedUserPrivateKey ?? this.encryptedUserPrivateKey,
     );
   }
 }
@@ -57,12 +65,16 @@ class MasterPasswordNotifier extends StateNotifier<MasterPasswordState> {
   static const _lastAuthTimeKey = 'last_auth_time';
   static const _cachedMasterKey = 'cached_master_key';
   static const _autoLockKey = 'auto_lock_minutes';
+  static const _userPublicKey = 'user_public_key';
+  static const _encryptedUserPrivateKey = 'encrypted_user_private_key';
 
   Future<void> _loadFromPrefs() async {
     final prefs = await SharedPreferences.getInstance();
     final password = prefs.getString(_passwordKey);
     final isBiometricEnabled = prefs.getBool(_biometricKey) ?? false;
     final autoLockMinutes = prefs.getInt(_autoLockKey) ?? 10;
+    final userPubKey = prefs.getString(_userPublicKey);
+    final encUserPrivKey = prefs.getString(_encryptedUserPrivateKey);
     
     bool isAuthenticated = false;
     if (password != null) {
@@ -82,6 +94,8 @@ class MasterPasswordNotifier extends StateNotifier<MasterPasswordState> {
       isBiometricEnabled: isBiometricEnabled,
       isAuthenticated: isAuthenticated,
       autoLockMinutes: autoLockMinutes,
+      userPublicKey: userPubKey,
+      encryptedUserPrivateKey: encUserPrivKey,
     );
   }
 
@@ -94,10 +108,40 @@ class MasterPasswordNotifier extends StateNotifier<MasterPasswordState> {
     if (ExtensionHelper.isExtension) {
       await ExtensionHelper.clearCachedMasterKey();
     }
+    
+    // 生成用户密钥对
+    final encryptionService = EncryptionService();
+    final keyPair = await encryptionService.generateKeyPair();
+    final pubKey = await keyPair.extractPublicKey();
+    final privKeyBytes = await keyPair.extractPrivateKeyBytes();
+    
+    // 使用主密码派生的密钥加密私钥
+    // 这里需要临时计算主密钥
+    List<int> salt;
+    final saltBase64 = prefs.getString('master_key_salt');
+    if (saltBase64 != null) {
+      salt = base64.decode(saltBase64);
+    } else {
+      final random = Random.secure();
+      salt = List<int>.generate(16, (i) => random.nextInt(256));
+      await prefs.setString('master_key_salt', base64.encode(salt));
+    }
+    
+    final masterKey = await encryptionService.deriveKey(password, salt);
+    final encryptedPrivKey = await encryptionService.encrypt(base64.encode(privKeyBytes), masterKey);
+    
+    final pubKeyBase64 = base64.encode(pubKey.bytes);
+    final encPrivKeyBase64 = base64.encode(encryptedPrivKey);
+    
+    await prefs.setString(_userPublicKey, pubKeyBase64);
+    await prefs.setString(_encryptedUserPrivateKey, encPrivKeyBase64);
+
     state = state.copyWith(
       password: password,
       hasMasterPassword: true,
       isAuthenticated: true,
+      userPublicKey: pubKeyBase64,
+      encryptedUserPrivateKey: encPrivKeyBase64,
     );
   }
 
@@ -135,6 +179,54 @@ class MasterPasswordNotifier extends StateNotifier<MasterPasswordState> {
       await ExtensionHelper.clearCachedMasterKey();
     }
     state = MasterPasswordState();
+  }
+
+  /// 确保用户密钥对已生成，如果不存在则自动生成
+  Future<void> ensureUserKeyPair() async {
+    if (state.userPublicKey != null && state.encryptedUserPrivateKey != null) {
+      return;
+    }
+
+    final password = state.password;
+    if (password == null || !state.isAuthenticated) {
+      throw Exception('用户尚未认证，无法生成密钥对');
+    }
+
+    final encryptionService = EncryptionService();
+    final prefs = await SharedPreferences.getInstance();
+
+    // 1. 获取主密钥
+    List<int> salt;
+    final saltBase64 = prefs.getString('master_key_salt');
+    if (saltBase64 != null) {
+      salt = base64.decode(saltBase64);
+    } else {
+      final random = Random.secure();
+      salt = List<int>.generate(16, (i) => random.nextInt(256));
+      await prefs.setString('master_key_salt', base64.encode(salt));
+    }
+    
+    final masterKey = await encryptionService.deriveKey(password, salt);
+
+    // 2. 生成用户密钥对
+    final keyPair = await encryptionService.generateKeyPair();
+    final pubKey = await keyPair.extractPublicKey();
+    final privKeyBytes = await keyPair.extractPrivateKeyBytes();
+    
+    // 3. 加密并存储
+    final encryptedPrivKey = await encryptionService.encrypt(base64.encode(privKeyBytes), masterKey);
+    final pubKeyBase64 = base64.encode(pubKey.bytes);
+    final encPrivKeyBase64 = base64.encode(encryptedPrivKey);
+    
+    await prefs.setString(_userPublicKey, pubKeyBase64);
+    await prefs.setString(_encryptedUserPrivateKey, encPrivKeyBase64);
+
+    state = state.copyWith(
+      userPublicKey: pubKeyBase64,
+      encryptedUserPrivateKey: encPrivKeyBase64,
+    );
+    
+    debugPrint('🔑 User key pair automatically generated');
   }
 }
 
@@ -211,4 +303,48 @@ final masterKeyProvider = FutureProvider<SecretKey?>((ref) async {
   }
 
   return key;
+});
+
+<<<<<<< Updated upstream
+/// 提供所有可能的备选密钥，用于解密不同时期或不同方案加密的数据
+final fallbackKeysProvider = FutureProvider<List<SecretKey>>((ref) async {
+  final masterState = ref.watch(masterPasswordProvider);
+  final password = masterState.password;
+  if (password == null || !masterState.isAuthenticated) return [];
+
+  final encryptionService = EncryptionService();
+  
+  // 方案 1: SHA-256 极简方案 (Version 3.0.0+)
+  final simpleKey = await encryptionService.deriveKeySimple(password);
+  
+  // 方案 2: 标准固定盐值方案 (Version 2.0.0)
+  final standardSalt = utf8.encode('SecurePass_Backup_Standard_Salt_2024');
+  final standardBackupKey = await encryptionService.deriveKey(
+    password, 
+    standardSalt,
+    iterations: 2,
+    memory: 32 * 1024,
+    parallelism: 1,
+  );
+
+  return [simpleKey, standardBackupKey];
+=======
+final userKeyPairProvider = FutureProvider<SimpleKeyPair?>((ref) async {
+  final masterState = ref.watch(masterPasswordProvider);
+  final masterKey = await ref.watch(masterKeyProvider.future);
+  
+  if (masterKey == null || masterState.encryptedUserPrivateKey == null) return null;
+  
+  final encryptionService = EncryptionService();
+  try {
+    final encryptedPrivKey = base64.decode(masterState.encryptedUserPrivateKey!);
+    final decryptedPrivKeyBase64 = await encryptionService.decrypt(encryptedPrivKey, masterKey);
+    final privKeyBytes = base64.decode(decryptedPrivKeyBase64);
+    
+    return await encryptionService.keyPairFromPrivateKey(privKeyBytes);
+  } catch (e) {
+    debugPrint('Failed to decrypt user key pair: $e');
+    return null;
+  }
+>>>>>>> Stashed changes
 });

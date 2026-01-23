@@ -232,10 +232,15 @@ class ExtensionHelper {
     try {
       final message = {'type': 'GET_CURRENT_TAB_URL'}.jsify() as JSObject;
       final response = await _chromeSendMessage(message).toDart;
+      
       if (response != null && response.isA<JSObject>()) {
         final obj = response as JSObject;
-        final url = obj.getProperty('url'.toJS);
-        return url?.isA<JSString>() == true ? (url as JSString).toDart : null;
+        if (obj.hasProperty('url'.toJS).toDart) {
+          final url = obj.getProperty('url'.toJS);
+          if (url != null && url.isA<JSString>()) {
+            return (url as JSString).toDart;
+          }
+        }
       }
     } catch (e) {
       debugPrint('❌ ExtensionHelper.getCurrentTabUrl error: $e');
