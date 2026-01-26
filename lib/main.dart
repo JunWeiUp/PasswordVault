@@ -636,66 +636,126 @@ class _MainNavigationScreenState extends ConsumerState<MainNavigationScreen> {
   void _tryRunPendingExtensionChecks() {
     final vaultItemsAsync = ref.read(vaultItemsProvider);
     if (vaultItemsAsync is AsyncData<List<VaultItem>>) {
-      if (_pendingCheckCurrentTab) {
-        _pendingCheckCurrentTab = false;
-        _checkCurrentTabMatch();
-      }
-      if (_pendingHandleActiveContext) {
-        _pendingHandleActiveContext = false;
-        _handleActiveContext();
-      }
+      // Execute checks with a small delay to ensure UI is ready
+      Future.delayed(const Duration(milliseconds: 200), () {
+        if (!mounted) return;
+        if (_pendingHandleActiveContext) {
+          _pendingHandleActiveContext = false;
+          _handleActiveContext();
+        } else if (_pendingCheckCurrentTab) {
+          _pendingCheckCurrentTab = false;
+          _checkCurrentTabMatch();
+        }
+      });
     }
   }
 
   Future<void> _checkCurrentTabMatch() async {
     debugPrint('🔍 Checking current tab for matches...');
+    
+    // Wait a bit for UI to be ready
+    await Future.delayed(const Duration(milliseconds: 300));
+    
+    if (!mounted) return;
+    
     final url = await ExtensionHelper.getCurrentTabUrl();
-    if (url == null || url.isEmpty) return;
+    if (url == null || url.isEmpty) {
+      debugPrint('⚠️ No URL found for current tab');
+      return;
+    }
 
     final host = _extractHost(url);
-    if (host.isEmpty) return;
+    if (host.isEmpty) {
+      debugPrint('⚠️ Could not extract host from URL: $url');
+      return;
+    }
 
+    debugPrint('🌐 Current tab host: $host');
+
+    // Wait for vault items to be loaded
+    final vaultItemsAsync = ref.read(vaultItemsProvider);
+    if (vaultItemsAsync is! AsyncData<List<VaultItem>>) {
+      debugPrint('⏳ Waiting for vault items to load...');
+      // Listen for data to be ready
+      ref.listen<AsyncValue<List<VaultItem>>>(vaultItemsProvider, (previous, next) {
+        if (next is AsyncData<List<VaultItem>> && mounted) {
+          _performTabMatch(url, host);
+        }
+      });
+      return;
+    }
+
+    await _performTabMatch(url, host);
+  }
+
+  Future<void> _performTabMatch(String url, String host) async {
+    if (!mounted) return;
+    
     final vaultItemsAsync = ref.read(vaultItemsProvider);
     if (vaultItemsAsync is! AsyncData<List<VaultItem>>) return;
 
     final items = vaultItemsAsync.valueOrNull ?? [];
-    final matchingItem = items.where((item) {
+    final matchingItems = items.where((item) {
+      if (item.type != VaultItemType.password) return false;
       if (item.url == null || item.url!.isEmpty) return false;
       return _hostMatches(item.url, url);
-    }).firstOrNull;
+    }).toList();
 
-    if (matchingItem != null) {
-      debugPrint('🎯 Found match for current tab: ${matchingItem.title}');
+    if (matchingItems.isNotEmpty) {
+      debugPrint('🎯 Found ${matchingItems.length} match(es) for current tab: $host');
       if (mounted) {
         // Switch to Vault tab (index 1)
         ref.read(selectedTabProvider.notifier).state = 1;
         
-        if (matchingItem.category != null) {
-          debugPrint('📂 Setting category filter: ${matchingItem.category}');
-          ref.read(selectedCategoryProvider.notifier).state = matchingItem.category;
-        } else {
-          // If no category, just search for the title/host
-          debugPrint('🔍 No category, setting search query: $host');
-          ref.read(isSearchingProvider.notifier).state = true;
-          ref.read(searchQueryProvider.notifier).state = host;
-          _searchController.text = host;
-        }
+        // Wait a bit for tab switch to complete
+        await Future.delayed(const Duration(milliseconds: 100));
+        
+        if (!mounted) return;
+        
+        // Always enable search and search for the host
+        debugPrint('🔍 Setting search query: $host');
+        ref.read(isSearchingProvider.notifier).state = true;
+        ref.read(searchQueryProvider.notifier).state = host;
+        _searchController.text = host;
+        
+        // Clear category filter to show all matching items
+        ref.read(selectedCategoryProvider.notifier).state = null;
+        
+        debugPrint('✅ Successfully navigated to account page with search: $host');
       }
+    } else {
+      debugPrint('ℹ️ No matching accounts found for: $host');
     }
   }
 
   Future<void> _handleActiveContext() async {
     debugPrint('🔍 Checking for active context from extension...');
+    
+    // Wait a bit for UI to be ready
+    await Future.delayed(const Duration(milliseconds: 300));
+    
+    if (!mounted) return;
+    
     final contextData = await ExtensionHelper.getActiveContext();
+    
+    // If no active context, check current tab for matches
     if (contextData == null) {
-      debugPrint('ℹ️ No active context found.');
+      debugPrint('ℹ️ No active context found, checking current tab...');
+      await _checkCurrentTabMatch();
       return;
     }
 
     final origin = contextData['origin'] as String?;
     final type = contextData['type'] as String?;
     
-    if (origin == null && type != 'mismatch_detected') return;
+    debugPrint('📦 Active context: type=$type, origin=$origin');
+    
+    if (origin == null && type != 'mismatch_detected') {
+      // If no origin but has context, still check current tab
+      debugPrint('ℹ️ No origin in context, checking current tab...');
+      await _checkCurrentTabMatch();
+      return;
+    }
 
     debugPrint('🎯 Handling active context: $type for origin: $origin');
 
@@ -745,8 +805,18 @@ class _MainNavigationScreenState extends ConsumerState<MainNavigationScreen> {
 
     if (origin == null) return;
 
-    final vaultItemsAsync = ref.read(vaultItemsProvider);
-    if (vaultItemsAsync is! AsyncData<List<VaultItem>>) return;
+    // Wait for vault items to be loaded if needed
+    var vaultItemsAsync = ref.read(vaultItemsProvider);
+    if (vaultItemsAsync is! AsyncData<List<VaultItem>>) {
+      debugPrint('⏳ Waiting for vault items to load...');
+      // Wait for data with timeout
+      await Future.delayed(const Duration(milliseconds: 500));
+      vaultItemsAsync = ref.read(vaultItemsProvider);
+      if (vaultItemsAsync is! AsyncData<List<VaultItem>>) {
+        debugPrint('⚠️ Vault items still not loaded, skipping context handling');
+        return;
+      }
+    }
 
     final vaultItems = vaultItemsAsync.valueOrNull ?? [];
     
@@ -759,25 +829,42 @@ class _MainNavigationScreenState extends ConsumerState<MainNavigationScreen> {
     if (!mounted) return;
 
     if (matches.isNotEmpty) {
-      debugPrint('✅ Found ${matches.length} matching items, navigating to edit...');
+      debugPrint('✅ Found ${matches.length} matching items, navigating to account page with search...');
       // Switch to vault tab first
       ref.read(selectedTabProvider.notifier).state = 1;
       
-      final username = contextData['username'] as String?;
-      final exactMatch = matches.where((m) => m.username == username).firstOrNull ?? matches.first;
+      // Wait a bit for tab switch to complete
+      await Future.delayed(const Duration(milliseconds: 100));
       
-      // Navigate to add-account page which also serves as edit page when extra is provided
-      context.push('/add-account', extra: exactMatch);
+      if (!mounted) return;
+      
+      // Extract host from origin and search for it
+      final host = _extractHost(origin);
+      if (host.isNotEmpty) {
+        debugPrint('🔍 Setting search query: $host');
+        ref.read(isSearchingProvider.notifier).state = true;
+        ref.read(searchQueryProvider.notifier).state = host;
+        _searchController.text = host;
+        
+        // Clear category filter to show all matching items
+        ref.read(selectedCategoryProvider.notifier).state = null;
+        
+        debugPrint('✅ Successfully navigated to account page with search: $host');
+      }
     } else {
       debugPrint('➕ No matching items, navigating to add...');
       // Navigate to add-account page with pre-filled data
-      context.push('/add-account', extra: VaultItem(
-        id: '',
-        type: VaultItemType.password,
-        title: origin.split('//').last,
-        username: contextData['username'] ?? '',
-        url: contextData['url'],
-      ));
+      ref.read(selectedTabProvider.notifier).state = 1;
+      await Future.delayed(const Duration(milliseconds: 100));
+      if (mounted) {
+        context.push('/add-account', extra: VaultItem(
+          id: '',
+          type: VaultItemType.password,
+          title: origin.split('//').last,
+          username: contextData['username'] ?? '',
+          url: contextData['url'],
+        ));
+      }
     }
     
     // Clear context so it doesn't trigger again on next open

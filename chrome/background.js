@@ -154,7 +154,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     (async () => {
       console.log('🔍 GET_ACTIVE_CONTEXT requested');
       
-      // If we already have a forced context (e.g. from context menu), use it
+      // If we already have a forced context (e.g. from context menu or icon click), use it
       if (lastActiveContext) {
         console.log('🎯 Returning existing active context:', lastActiveContext);
         sendResponse(lastActiveContext);
@@ -170,6 +170,24 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           data: lastDetectedCredentials
         });
         return;
+      }
+
+      // If no context but we have a tab, create context from current tab
+      if (tab && tab.url) {
+        try {
+          const url = new URL(tab.url);
+          const context = {
+            url: tab.url,
+            origin: url.origin,
+            username: '',
+          };
+          console.log('🌐 Creating context from current tab:', url.origin);
+          // Don't set lastActiveContext here, just return it so popup can check current tab
+          sendResponse(context);
+          return;
+        } catch (e) {
+          console.error('❌ Failed to parse tab URL:', e);
+        }
       }
 
       console.log('ℹ️ No active context to return');
@@ -332,9 +350,29 @@ chrome.action.onClicked.addListener(async (tab) => {
     return;
   }
 
-  // Default behavior: open the extension's default popup or a specific page
-  // Note: If manifest has "default_popup", this listener might not trigger depending on Chrome version.
-  // We'll check manifest.json next to see if we need to remove default_popup.
+  // Default behavior: set context for current tab to trigger auto-search
+  if (tab && tab.url) {
+    try {
+      const url = new URL(tab.url);
+      lastActiveContext = {
+        url: tab.url,
+        origin: url.origin,
+        username: '',
+      };
+      console.log('🔍 Setting active context for tab:', url.origin);
+    } catch (e) {
+      console.error('❌ Failed to parse tab URL:', e);
+    }
+  }
+
+  // Open the popup
+  chrome.windows.create({
+    url: chrome.runtime.getURL('index.html'),
+    type: 'popup',
+    width: 400,
+    height: 600,
+    focused: true
+  });
 });
 
 // Listen for tab updates (URL changes)
