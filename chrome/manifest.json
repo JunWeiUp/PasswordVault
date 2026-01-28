@@ -24,7 +24,8 @@
     "tabs",
     "webNavigation",
     "contextMenus",
-    "unlimitedStorage"
+    "unlimitedStorage",
+    "<all_urls>"
   ],
   "host_permissions": [
     "*://*/*"

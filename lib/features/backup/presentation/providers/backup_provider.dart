@@ -35,6 +35,12 @@ class WebDavConfigNotifier extends StateNotifier<WebDavConfig> {
     await prefs.setString(_key, json.encode(config.toJson()));
     state = config;
   }
+
+  Future<void> clearConfig() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_key);
+    state = WebDavConfig(url: '', username: '', password: '');
+  }
 }
 
 final backupHistoryProvider = FutureProvider<List<BackupHistory>>((ref) async {
@@ -96,7 +102,13 @@ class BackupService {
 
     final itemsAsync = _ref.read(vaultItemsProvider);
     final items = itemsAsync.valueOrNull ?? [];
-    if (items.isEmpty) throw Exception('No data to backup');
+    
+    final repository = _ref.read(vaultRepositoryProvider);
+    final userKeyPair = await _ref.read(userKeyPairProvider.future);
+    final sharedVaults = userKeyPair != null ? await repository.getSharedVaults(userKeyPair) : <SharedVault>[];
+    final sharedMembers = await repository.getAllSharedMembers();
+
+    if (items.isEmpty && sharedVaults.isEmpty) throw Exception('No data to backup');
 
     final client = dav.newClient(
       config.url,
@@ -110,7 +122,7 @@ class BackupService {
 
     final Map<String, dynamic> backupData = {
       'metadata': {
-        'version': encrypt ? '1.1.1' : '1.0.0',
+        'version': encrypt ? '1.2.0' : '1.1.0', // Bump version for shared vaults support
         'createdAt': DateTime.now().toIso8601String(),
         'encrypted': encrypt,
       },
@@ -118,6 +130,8 @@ class BackupService {
 
     final Map<String, dynamic> itemsData = {
       'items': items.map((e) => e.toJson()).toList(),
+      'sharedVaults': sharedVaults.map((e) => e.toJson()).toList(),
+      'sharedMembers': sharedMembers.map((e) => e.toJson()).toList(),
     };
 
     if (encrypt) {
@@ -137,7 +151,7 @@ class BackupService {
       metadata['memory'] = 32 * 1024;
       metadata['parallelism'] = 1;
     } else {
-      backupData['items'] = itemsData['items'];
+      backupData.addAll(itemsData);
     }
 
     final jsonStr = json.encode(backupData);
@@ -162,7 +176,10 @@ class BackupService {
     final jsonStr = utf8.decode(bytes);
     final Map<String, dynamic> data = json.decode(jsonStr);
     
-    List<VaultItem> items;
+    List<VaultItem> items = [];
+    List<SharedVault> sharedVaults = [];
+    List<SharedMember> sharedMembers = [];
+    
     final metadata = data['metadata'] as Map<String, dynamic>?;
     final bool isEncrypted = metadata?['encrypted'] ?? false;
 
@@ -186,7 +203,6 @@ class BackupService {
         final memory = metadata?['memory'] as int? ?? 32 * 1024;
         final parallelism = metadata?['parallelism'] as int? ?? 1;
         
-        // 使用备份中的 salt 和参数派生密钥，确保跨平台一致
         decryptionKey = await encryptionService.deriveKey(
           password, 
           salt,
@@ -195,28 +211,65 @@ class BackupService {
           parallelism: parallelism,
         );
       } else {
-        // 兼容旧版备份
         final masterKey = await _ref.read(masterKeyProvider.future);
         if (masterKey == null) throw Exception('主密钥尚未就绪');
         decryptionKey = masterKey;
       }
 
       try {
-         final decryptedJson = await encryptionService.decrypt(encryptedBytes, decryptionKey);
-         final Map<String, dynamic> decryptedData = json.decode(decryptedJson);
-         final List<dynamic> list = decryptedData['items'];
-         items = list.map((e) => VaultItem.fromJson(e)).toList();
-       } catch (e) {
-         if (e.toString().contains('MAC') || e.toString().contains('authentication code')) {
-           throw Exception('解密失败：主密码错误或备份数据损坏');
-         }
-         rethrow;
-       }
+        final decryptedJson = await encryptionService.decrypt(encryptedBytes, decryptionKey);
+        final Map<String, dynamic> decryptedData = json.decode(decryptedJson);
+        
+        final List<dynamic> list = decryptedData['items'];
+        items = list.map((e) => VaultItem.fromJson(e)).toList();
+        
+        if (decryptedData.containsKey('sharedVaults')) {
+          final List<dynamic> svList = decryptedData['sharedVaults'];
+          sharedVaults = svList.map((e) => SharedVault.fromJson(e)).toList();
+        }
+        
+        if (decryptedData.containsKey('sharedMembers')) {
+          final List<dynamic> smList = decryptedData['sharedMembers'];
+          sharedMembers = smList.map((e) => SharedMember.fromJson(e)).toList();
+        }
+      } catch (e) {
+        if (e.toString().contains('MAC') || e.toString().contains('authentication code')) {
+          throw Exception('解密失败：主密码错误或备份数据损坏');
+        }
+        rethrow;
+      }
     } else {
-      final List<dynamic> list = data['items'] ?? data; // 兼容旧格式
-      items = list.map((e) => VaultItem.fromJson(e)).toList();
+      if (data.containsKey('items')) {
+        final List<dynamic> list = data['items'];
+        items = list.map((e) => VaultItem.fromJson(e)).toList();
+        
+        if (data.containsKey('sharedVaults')) {
+          final List<dynamic> svList = data['sharedVaults'];
+          sharedVaults = svList.map((e) => SharedVault.fromJson(e)).toList();
+        }
+        
+        if (data.containsKey('sharedMembers')) {
+          final List<dynamic> smList = data['sharedMembers'];
+          sharedMembers = smList.map((e) => SharedMember.fromJson(e)).toList();
+        }
+      } else {
+        // 兼容极旧格式（直接是一个数组）
+        final List<dynamic> list = data as List;
+        items = list.map((e) => VaultItem.fromJson(e)).toList();
+      }
     }
     
+    // 恢复数据
+    final repository = _ref.read(vaultRepositoryProvider);
+    if (sharedVaults.isNotEmpty) {
+      await repository.addSharedVaults(sharedVaults);
+    }
+    if (sharedMembers.isNotEmpty) {
+      await repository.addSharedMembers(sharedMembers);
+    }
     await _ref.read(vaultItemsProvider.notifier).addItems(items);
+    
+    // 刷新共享库列表
+    _ref.invalidate(sharedVaultsProvider);
   }
 }

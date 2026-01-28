@@ -223,7 +223,14 @@ function injectIcons() {
 
 // Detection logic for login
 function notifyLogin(creds) {
-  if (creds.username && creds.password && creds.password.length > 3) {
+  // Check if there are multiple password fields on the page (common in "change password" forms)
+  const passwordFields = document.querySelectorAll('input[type="password"]');
+  if (passwordFields.length >= 3) {
+    console.log('ℹ️ Multiple password fields detected, likely a change password form. Skipping auto-save.');
+    return;
+  }
+
+  if (creds.username && creds.password && creds.password.length >= 4) {
     console.log('🚀 Detected login attempt for:', creds.username);
     
     // 1. Send to background for system notification
@@ -328,7 +335,7 @@ function showSaveBanner(creds) {
 // Standard form submission - track more scenarios
 document.addEventListener('submit', (e) => {
   const pwd = e.target.querySelector('input[type="password"]');
-  if (pwd) {
+  if (pwd && pwd.value && pwd.value.length >= 4) {
     console.log('📝 Form submitted with password field');
     notifyLogin(detector.getCredentials(pwd));
   }
@@ -350,18 +357,35 @@ document.addEventListener('click', (e) => {
   const target = e.target.closest('button, input[type="submit"], input[type="button"], a');
   if (!target) return;
   
-  const isButton = target.tagName === 'BUTTON' || (target.tagName === 'INPUT' && (target.type === 'submit' || target.type === 'button'));
-  const btnText = (target.innerText || target.value || target.title || '').toLowerCase();
-  const loginTerms = ['login', 'log in', 'signin', 'sign in', '登录', '进入', '确定', 'ok', 'submit', 'next', '下一步', 'auth', 'verify'];
+  const isSubmitInput = target.tagName === 'INPUT' && (target.type === 'submit' || target.type === 'button');
+  const isButton = target.tagName === 'BUTTON';
+  const btnText = (target.innerText || target.value || target.title || '').toLowerCase().trim();
   
-  if (isButton || loginTerms.some(term => btnText.includes(term)) || target.type === 'submit') {
-    const pwd = document.querySelector('input[type="password"]');
-    if (pwd && pwd.value) {
-      console.log('📝 Clicked login-like button with password field');
+  // Refined login terms - avoid very common short words like "ok" unless it's a submit type
+  const loginTerms = ['login', 'log in', 'signin', 'sign in', '登录', '进入', '确定', 'submit', 'next', '下一步', 'auth', 'verify', 'connect', '注册', 'register', 'signup', 'sign up'];
+  
+  // Check if it's a potential submission button
+  const isPotentialSubmit = 
+    target.type === 'submit' || 
+    loginTerms.some(term => btnText === term || (btnText.length < 10 && btnText.includes(term)));
+
+  if (isPotentialSubmit) {
+    // Look for password field in the same form or container
+    const form = target.closest('form');
+    let pwd = null;
+    
+    if (form) {
+      pwd = form.querySelector('input[type="password"]');
+    }
+    
+    // Fallback: look for ANY password field on the page if the button looks very much like a login button
+    if (!pwd) {
+      pwd = document.querySelector('input[type="password"]');
+    }
+
+    if (pwd && pwd.value && pwd.value.length >= 4) {
+      console.log('📝 Clicked login button with password field');
       notifyLogin(detector.getCredentials(pwd));
-    } else if (currentCreds.password) {
-      console.log('📝 Clicked login-like button, using cached creds');
-      notifyLogin(currentCreds);
     }
   }
 }, true);
