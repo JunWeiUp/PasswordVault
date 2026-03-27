@@ -54,12 +54,14 @@ dependencies:
   local_auth: ^2.3.0
   webdav_client: ^1.2.2
   csv: ^6.0.0
-  nsd: ^4.1.0
+  hex: ^0.2.0
+  intl: ^0.19.0
+  nsd: 4.0.0
   shelf: ^1.4.1
   shelf_router: ^1.1.4
   network_info_plus: ^6.0.0
   qr_flutter: ^4.1.0
-  mobile_scanner: ^7.1.4
+  mobile_scanner: ^6.0.0
 
 dev_dependencies:
   flutter_test:

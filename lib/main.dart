@@ -1774,7 +1774,7 @@ class CategoryFilterBar extends ConsumerWidget {
         color: Theme.of(context).scaffoldBackgroundColor,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.02),
+            color: Colors.black.withOpacity(0.02),
             blurRadius: 10,
             offset: const Offset(0, 5),
           ),
@@ -1823,7 +1823,7 @@ class CategoryFilterBar extends ConsumerWidget {
         onSelected: (_) => onSelected(),
         avatar: icon != null ? Icon(icon, size: 16, color: isSelected ? colorScheme.onPrimary : colorScheme.primary) : null,
         showCheckmark: false,
-        backgroundColor: colorScheme.surfaceVariant.withValues(alpha: 0.3),
+        backgroundColor: colorScheme.surfaceVariant.withOpacity(0.3),
         selectedColor: colorScheme.primary,
         labelStyle: TextStyle(
           color: isSelected ? colorScheme.onPrimary : colorScheme.onSurfaceVariant,

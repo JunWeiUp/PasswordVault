@@ -1908,8 +1908,8 @@ final class $$SharedVaultsTableReferences extends BaseReferences<_$AppDatabase,
                   db.sharedVaults.id, db.vaultItems.sharedVaultId));
 
   $$VaultItemsTableProcessedTableManager get vaultItemsRefs {
-    final manager = $$VaultItemsTableTableManager($_db, $_db.vaultItems).filter(
-        (f) => f.sharedVaultId.id.sqlEquals($_itemColumn<String>('id')!));
+    final manager = $$VaultItemsTableTableManager($_db, $_db.vaultItems)
+        .filter((f) => f.sharedVaultId.id($_item.id));
 
     final cache = $_typedResult.readTableOrNull(_vaultItemsRefsTable($_db));
     return ProcessedTableManager(
@@ -1924,7 +1924,7 @@ final class $$SharedVaultsTableReferences extends BaseReferences<_$AppDatabase,
 
   $$SharedMembersTableProcessedTableManager get sharedMembersRefs {
     final manager = $$SharedMembersTableTableManager($_db, $_db.sharedMembers)
-        .filter((f) => f.vaultId.id.sqlEquals($_itemColumn<String>('id')!));
+        .filter((f) => f.vaultId.id($_item.id));
 
     final cache = $_typedResult.readTableOrNull(_sharedMembersRefsTable($_db));
     return ProcessedTableManager(
@@ -2180,8 +2180,7 @@ class $$SharedVaultsTableTableManager extends RootTableManager<
               getPrefetchedDataCallback: (items) async {
                 return [
                   if (vaultItemsRefs)
-                    await $_getPrefetchedData<SharedVaultEntity,
-                            $SharedVaultsTable, VaultItemEntity>(
+                    await $_getPrefetchedData(
                         currentTable: table,
                         referencedTable: $$SharedVaultsTableReferences
                             ._vaultItemsRefsTable(db),
@@ -2193,8 +2192,7 @@ class $$SharedVaultsTableTableManager extends RootTableManager<
                                 .where((e) => e.sharedVaultId == item.id),
                         typedResults: items),
                   if (sharedMembersRefs)
-                    await $_getPrefetchedData<SharedVaultEntity,
-                            $SharedVaultsTable, SharedMemberEntity>(
+                    await $_getPrefetchedData(
                         currentTable: table,
                         referencedTable: $$SharedVaultsTableReferences
                             ._sharedMembersRefsTable(db),
@@ -2290,10 +2288,9 @@ final class $$VaultItemsTableReferences
           db.vaultItems.sharedVaultId, db.sharedVaults.id));
 
   $$SharedVaultsTableProcessedTableManager? get sharedVaultId {
-    final $_column = $_itemColumn<String>('shared_vault_id');
-    if ($_column == null) return null;
+    if ($_item.sharedVaultId == null) return null;
     final manager = $$SharedVaultsTableTableManager($_db, $_db.sharedVaults)
-        .filter((f) => f.id.sqlEquals($_column));
+        .filter((f) => f.id($_item.sharedVaultId!));
     final item = $_typedResult.readTableOrNull(_sharedVaultIdTable($_db));
     if (item == null) return manager;
     return ProcessedTableManager(
@@ -2834,10 +2831,8 @@ final class $$SharedMembersTableReferences extends BaseReferences<_$AppDatabase,
           $_aliasNameGenerator(db.sharedMembers.vaultId, db.sharedVaults.id));
 
   $$SharedVaultsTableProcessedTableManager get vaultId {
-    final $_column = $_itemColumn<String>('vault_id')!;
-
     final manager = $$SharedVaultsTableTableManager($_db, $_db.sharedVaults)
-        .filter((f) => f.id.sqlEquals($_column));
+        .filter((f) => f.id($_item.vaultId));
     final item = $_typedResult.readTableOrNull(_vaultIdTable($_db));
     if (item == null) return manager;
     return ProcessedTableManager(

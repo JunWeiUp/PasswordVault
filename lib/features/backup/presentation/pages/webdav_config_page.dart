@@ -91,7 +91,7 @@ class _WebDavConfigPageState extends ConsumerState<WebDavConfigPage> {
           children: [
             Card(
               elevation: 0,
-              color: Colors.blue.withValues(alpha: 0.05),
+              color: Colors.blue.withOpacity(0.05),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               child: Padding(
                 padding: const EdgeInsets.all(16.0),

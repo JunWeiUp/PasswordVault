@@ -56,7 +56,7 @@ class SecurityAuditPage extends ConsumerWidget {
   Widget _buildSummaryHeader(BuildContext context, PasswordHealthReport report) {
     return Container(
       padding: const EdgeInsets.all(16),
-      color: Theme.of(context).colorScheme.surfaceVariant.withValues(alpha: 0.3),
+      color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.3),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [

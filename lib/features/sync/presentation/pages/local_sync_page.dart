@@ -59,7 +59,7 @@ class _LocalSyncPageState extends ConsumerState<LocalSyncPage> {
         children: [
           if (kIsWeb)
             Card(
-              color: Colors.blue.withValues(alpha: 0.1),
+              color: Colors.blue.withOpacity(0.1),
               child: const Padding(
                 padding: EdgeInsets.all(16),
                 child: Column(
