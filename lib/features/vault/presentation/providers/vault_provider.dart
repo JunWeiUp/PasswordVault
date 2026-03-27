@@ -116,37 +116,55 @@ class VaultNotifier extends StateNotifier<AsyncValue<List<VaultItem>>> {
       for (final item in items) {
         if (item.type != VaultItemType.password || item.url == null || item.url!.isEmpty) continue;
 
-        String domain;
-        try {
-          final uri = Uri.parse(item.url!);
-          domain = uri.host.toLowerCase();
-        } catch (e) {
-          domain = item.url!.toLowerCase().trim();
-        }
-        if (domain.isEmpty) continue;
+        // 支持逗号或分号分隔的多个域名/URL
+        final rawUrls = item.url!.split(RegExp(r'[,\n;]')).map((u) => u.trim()).where((u) => u.isNotEmpty);
 
-        domains.add(domain);
+        for (final rawUrl in rawUrls) {
+          String domain;
+          try {
+            final uri = Uri.parse(rawUrl);
+            domain = uri.host.toLowerCase();
+            if (domain.isEmpty) {
+              // 可能是直接输入了域名，如 google.com
+              domain = rawUrl.toLowerCase();
+            }
+          } catch (e) {
+            domain = rawUrl.toLowerCase();
+          }
+          if (domain.isEmpty) continue;
 
-        final accounts = accountsMetadata.putIfAbsent(domain, () => []);
-        
-        // 添加主账号
-        if (item.username.isNotEmpty) {
-          final pwd = item.password ?? '';
-          final hash = await sha256.hash(utf8.encode(pwd));
-          accounts.add({
-            'username': item.username,
-            'passwordHash': base64Encode(hash.bytes),
-          });
-        }
-        
-        // 添加额外账号
-        if (item.accounts != null) {
-          for (final acc in item.accounts!) {
-            final hash = await sha256.hash(utf8.encode(acc.password));
-            accounts.add({
-              'username': acc.username,
+          domains.add(domain);
+
+          final accounts = accountsMetadata.putIfAbsent(domain, () => []);
+          
+          // 添加主账号 (如果尚未添加)
+          if (item.username.isNotEmpty) {
+            final pwd = item.password ?? '';
+            final hash = await sha256.hash(utf8.encode(pwd));
+            final newAccount = {
+              'username': item.username,
               'passwordHash': base64Encode(hash.bytes),
-            });
+            };
+            
+            // 避免在同一个域名下重复添加相同的用户名
+            if (!accounts.any((a) => a['username'] == item.username)) {
+              accounts.add(newAccount);
+            }
+          }
+          
+          // 添加额外账号
+          if (item.accounts != null) {
+            for (final acc in item.accounts!) {
+              final hash = await sha256.hash(utf8.encode(acc.password));
+              final newAccount = {
+                'username': acc.username,
+                'passwordHash': base64Encode(hash.bytes),
+              };
+              
+              if (!accounts.any((a) => a['username'] == acc.username)) {
+                accounts.add(newAccount);
+              }
+            }
           }
         }
       }
@@ -358,11 +376,18 @@ class VaultNotifier extends StateNotifier<AsyncValue<List<VaultItem>>> {
 
   String _extractHost(String? url) {
     if (url == null || url.trim().isEmpty) return '';
+    
+    // 如果包含多个 URL/域名，取第一个作为主域名（用于标题生成或分类）
+    final firstUrl = url.split(RegExp(r'[,\n;]')).first.trim();
+    if (firstUrl.isEmpty) return '';
+    
     try {
-      final uri = Uri.parse(url.trim());
-      return uri.host.toLowerCase();
+      final uri = Uri.parse(firstUrl);
+      final host = uri.host.toLowerCase();
+      if (host.isNotEmpty) return host;
+      return firstUrl.toLowerCase();
     } catch (_) {
-      return url.trim().toLowerCase();
+      return firstUrl.toLowerCase();
     }
   }
 

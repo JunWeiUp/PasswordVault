@@ -707,9 +707,10 @@ class _AddAccountPageState extends ConsumerState<AddAccountPage> {
                 ),
               if (!isCrypto && !isSecureNote)
                 _buildTextField(
-                  label: '网站',
+                  label: '网站/域名',
                   controller: _urlController,
-                  hintText: 'https://example.com',
+                  hintText: '支持多个域名，以逗号或分号分隔',
+                  maxLines: 2,
                 ),
               _buildTextField(
                 label: isSecureNote ? '内容' : '备注',

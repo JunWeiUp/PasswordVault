@@ -618,7 +618,10 @@ void _showAddItemDialog(BuildContext context, WidgetRef ref, VaultItemType type)
                 if (type == VaultItemType.password)
                   TextField(
                     controller: urlController,
-                    decoration: const InputDecoration(labelText: '网站链接 (可选)'),
+                    decoration: const InputDecoration(
+                      labelText: '网站/域名 (支持多个，逗号分隔)',
+                      hintText: 'example.com, example.net',
+                    ),
                   ),
                 const SizedBox(height: 16),
                 // 存放位置选择
@@ -1058,7 +1061,11 @@ class _MainNavigationScreenState extends ConsumerState<MainNavigationScreen> {
               ),
               TextField(
                 controller: urlController,
-                decoration: const InputDecoration(labelText: '网站'),
+                decoration: const InputDecoration(
+                  labelText: '网站/域名',
+                  hintText: '支持多个域名，以逗号或分号分隔',
+                ),
+                maxLines: 1,
               ),
             ],
           ),
@@ -1164,7 +1171,12 @@ class _MainNavigationScreenState extends ConsumerState<MainNavigationScreen> {
 
   String _extractHost(String? url) {
     if (url == null || url.trim().isEmpty) return '';
-    final trimmed = url.trim();
+    
+    // 如果包含多个 URL/域名，取第一个作为主域名（用于标题生成或匹配基准）
+    final firstUrl = url.split(RegExp(r'[,\n;]')).first.trim();
+    if (firstUrl.isEmpty) return '';
+    
+    final trimmed = firstUrl;
     if (!trimmed.contains('://')) {
       final noPath = trimmed.split('/').first;
       return noPath.toLowerCase();
@@ -1178,15 +1190,31 @@ class _MainNavigationScreenState extends ConsumerState<MainNavigationScreen> {
 
   bool _hostMatches(String? itemUrl, String originOrUrl) {
     if (itemUrl == null || itemUrl.trim().isEmpty) return false;
-    final itemHost = _extractHost(itemUrl);
-    if (itemHost.isEmpty) return false;
-
+    
+    // 支持多个域名/URL
+    final itemUrls = itemUrl.split(RegExp(r'[,\n;]')).map((u) => u.trim()).where((u) => u.isNotEmpty);
     final originHost = _extractHost(originOrUrl);
-    if (originHost.isEmpty) return itemUrl.toLowerCase().contains(originOrUrl.toLowerCase());
+    
+    for (final rawUrl in itemUrls) {
+      final itemHost = _extractHost(rawUrl);
+      if (itemHost.isEmpty) {
+        if (rawUrl.toLowerCase().contains(originOrUrl.toLowerCase())) return true;
+        continue;
+      }
 
-    return itemHost == originHost ||
-        itemHost.endsWith('.$originHost') ||
-        originHost.endsWith('.$itemHost');
+      if (originHost.isEmpty) {
+        if (rawUrl.toLowerCase().contains(originOrUrl.toLowerCase())) return true;
+        continue;
+      }
+
+      if (itemHost == originHost ||
+          itemHost.endsWith('.$originHost') ||
+          originHost.endsWith('.$itemHost')) {
+        return true;
+      }
+    }
+    
+    return false;
   }
 
   @override
