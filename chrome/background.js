@@ -250,15 +250,25 @@ function savePendingCredentials(creds) {
 
 // Handle notification button clicks
 chrome.notifications.onButtonClicked.addListener((notificationId, buttonIndex) => {
-  if (notificationId.startsWith('save_password_') && buttonIndex === 0 && lastDetectedCredentials) {
-    savePendingCredentials(lastDetectedCredentials);
+  if (notificationId.startsWith('save_password_') && lastDetectedCredentials) {
+    if (buttonIndex === 0) {
+      // "立即保存/更新" - Open popup with context
+      console.log('🔔 Opening popup for save/update from notification button click');
+      
+      lastActiveContext = {
+        type: 'mismatch_detected',
+        data: lastDetectedCredentials
+      };
+
+      chrome.windows.create({
+        url: chrome.runtime.getURL('index.html'),
+        type: 'popup',
+        width: 400,
+        height: 600,
+        focused: true
+      });
+    }
     chrome.notifications.clear(notificationId);
-    chrome.notifications.create('save_confirm_' + Date.now(), {
-      type: 'basic',
-      iconUrl: chrome.runtime.getURL('icons/icon192.png'),
-      title: 'SecurePass',
-      message: '已存入待保存列表，请在插件主界面完成添加。'
-    });
   } else {
     chrome.notifications.clear(notificationId);
   }
@@ -267,12 +277,28 @@ chrome.notifications.onButtonClicked.addListener((notificationId, buttonIndex) =
 // Handle notification body clicks
 chrome.notifications.onClicked.addListener((notificationId) => {
   console.log('🖱️ Notification clicked:', notificationId);
-  chrome.notifications.clear(notificationId);
   
-  // In Chrome, we can't easily open the popup from background, 
-  // but we can focus the window or provide a hint.
-  if (notificationId.startsWith('fill_hint_')) {
+  if (notificationId.startsWith('save_password_') && lastDetectedCredentials) {
+    // Treat notification click same as "立即保存/更新" button
+    console.log('🔔 Opening popup for save/update from notification click');
+    
+    lastActiveContext = {
+      type: 'mismatch_detected',
+      data: lastDetectedCredentials
+    };
+
+    chrome.windows.create({
+      url: chrome.runtime.getURL('index.html'),
+      type: 'popup',
+      width: 400,
+      height: 600,
+      focused: true
+    });
+    
+    chrome.notifications.clear(notificationId);
+  } else if (notificationId.startsWith('fill_hint_')) {
     // Just clearing it is fine, the user now knows to click the extension icon
+    chrome.notifications.clear(notificationId);
   }
 });
 

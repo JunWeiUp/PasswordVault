@@ -884,6 +884,7 @@ class _MainNavigationScreenState extends ConsumerState<MainNavigationScreen> {
       
       final url = mismatchData['url'] as String?;
       final username = mismatchData['username'] as String?;
+      final password = mismatchData['password'] as String?;
       final reason = mismatchData['reason'] as String?;
       
       debugPrint('⚠️ Mismatch detected context: $reason for $username at $url');
@@ -905,7 +906,9 @@ class _MainNavigationScreenState extends ConsumerState<MainNavigationScreen> {
       if (exactMatch != null) {
         debugPrint('✅ Found exact match for mismatch, navigating to edit...');
         ref.read(selectedTabProvider.notifier).state = 1;
-        context.push('/add-account', extra: exactMatch);
+        // Create updated item with the new password
+        final updatedItem = exactMatch.copyWith(password: password);
+        context.push('/add-account', extra: updatedItem);
       } else {
         debugPrint('➕ No exact match for mismatch, navigating to add...');
         ref.read(selectedTabProvider.notifier).state = 1;
@@ -914,6 +917,7 @@ class _MainNavigationScreenState extends ConsumerState<MainNavigationScreen> {
           type: VaultItemType.password,
           title: _extractHost(url),
           username: username ?? '',
+          password: password ?? '',
           url: url,
         ));
       }

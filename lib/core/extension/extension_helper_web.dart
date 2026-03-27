@@ -97,6 +97,7 @@ class ExtensionHelper {
           dataMap = {
             'url': (dataObj.getProperty('url'.toJS) as JSString?)?.toDart,
             'username': (dataObj.getProperty('username'.toJS) as JSString?)?.toDart,
+            'password': (dataObj.getProperty('password'.toJS) as JSString?)?.toDart,
             'reason': (dataObj.getProperty('reason'.toJS) as JSString?)?.toDart,
           };
         }
