@@ -64,15 +64,47 @@
    flutter pub run build_runner build --delete-conflicting-outputs
    ```
 
-4. **运行应用**:
-   ```bash
-   # 运行移动端或 Web 端
-   flutter run
-   ```
+### 运行应用
 
-### 编译浏览器扩展
+```bash
+# 运行到已连接的设备或模拟器
+flutter run
 
-本项目支持编译为 Chrome 扩展，请运行项目根目录下的脚本：
+# 运行 Web 版
+flutter run -d chrome
+```
+
+## 🛠️ 常用开发与打包命令
+
+### 开发环境配置
+
+```bash
+# 获取依赖
+flutter pub get
+
+# 重新生成数据库和 Riverpod 代码 (Drift/Riverpod)
+flutter pub run build_runner build --delete-conflicting-outputs
+```
+
+### 移动端打包 (Android)
+
+本项目已优化 Android 打包体积（启用 R8 混淆、资源压缩、ABI 分离）。
+
+```bash
+# 生成分架构的 APK (体积更小，推荐)
+# 产物位于 build/app/outputs/flutter-apk/
+flutter build apk --release --split-per-abi
+
+# 生成 App Bundle (用于 Google Play 发布)
+flutter build appbundle
+
+# 分析 APK 体积构成
+flutter build apk --release --analyze-size --target-platform android-arm64
+```
+
+### 浏览器扩展打包
+
+本项目支持编译为 Chrome 扩展，请运行根目录下的脚本：
 
 ```bash
 chmod +x build_extension.sh
