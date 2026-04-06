@@ -44,7 +44,7 @@ dependencies:
   shared_preferences: ^2.2.3
   drift: ^2.19.0
   sqlite3_flutter_libs: ^0.5.24
-  cryptography_flutter: 2.3.2
+  cryptography_flutter: ^2.3.3
   uuid: ^4.4.0
   share_plus: ^10.1.0
   web3dart: ^2.7.3
@@ -69,6 +69,7 @@ dev_dependencies:
   flutter_lints: ^4.0.0
   drift_dev: ^2.19.0
   build_runner: ^2.4.9
+  flutter_native_splash: ^2.4.1
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec

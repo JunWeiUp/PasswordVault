@@ -1,5 +1,6 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'core/theme/app_theme.dart';
@@ -612,6 +613,18 @@ void _showAddItemDialog(BuildContext context, WidgetRef ref, VaultItemType type)
                   controller: secretOrPasswordController,
                   decoration: InputDecoration(
                     labelText: type == VaultItemType.totp ? '密钥 (Secret Key)' : '密码',
+                    suffixIcon: IconButton(
+                      icon: const Icon(Icons.copy_rounded, size: 20),
+                      tooltip: '复制',
+                      onPressed: () {
+                        if (secretOrPasswordController.text.isNotEmpty) {
+                          Clipboard.setData(ClipboardData(text: secretOrPasswordController.text));
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('内容已复制到剪贴板')),
+                          );
+                        }
+                      },
+                    ),
                   ),
                   obscureText: type == VaultItemType.password,
                 ),

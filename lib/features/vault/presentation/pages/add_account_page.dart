@@ -360,6 +360,18 @@ class _AddAccountPageState extends ConsumerState<AddAccountPage> {
                         },
                       ),
                       IconButton(
+                        icon: const Icon(Icons.copy_rounded),
+                        tooltip: '复制密码',
+                        onPressed: () {
+                          if (_passwordController.text.isNotEmpty) {
+                            Clipboard.setData(ClipboardData(text: _passwordController.text));
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('密码已复制到剪贴板')),
+                            );
+                          }
+                        },
+                      ),
+                      IconButton(
                         icon: const Icon(Icons.casino_outlined),
                         tooltip: '生成随机密码',
                         onPressed: () {
@@ -431,10 +443,24 @@ class _AddAccountPageState extends ConsumerState<AddAccountPage> {
                       children: [
                         IconButton(
                           icon: Icon(group.obscurePassword ? Icons.visibility_off_outlined : Icons.visibility_outlined),
+                          tooltip: group.obscurePassword ? '显示密码' : '隐藏密码',
                           onPressed: () => setState(() => group.obscurePassword = !group.obscurePassword),
                         ),
                         IconButton(
+                          icon: const Icon(Icons.copy_rounded),
+                          tooltip: '复制密码',
+                          onPressed: () {
+                            if (group.passwordController.text.isNotEmpty) {
+                              Clipboard.setData(ClipboardData(text: group.passwordController.text));
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('密码已复制到剪贴板')),
+                              );
+                            }
+                          },
+                        ),
+                        IconButton(
                           icon: const Icon(Icons.casino_outlined),
+                          tooltip: '生成随机密码',
                           onPressed: () {
                             final newPassword = PasswordGenerator.generate(length: 16);
                             setState(() => group.passwordController.text = newPassword);
@@ -493,9 +519,27 @@ class _AddAccountPageState extends ConsumerState<AddAccountPage> {
                   controller: _privateKeyController,
                   isPassword: _obscureMnemonic,
                   hintText: '输入钱包私钥',
-                  suffixIcon: IconButton(
-                    icon: Icon(_obscureMnemonic ? Icons.visibility_off_outlined : Icons.visibility_outlined),
-                    onPressed: () => setState(() => _obscureMnemonic = !_obscureMnemonic),
+                  suffixIcon: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        icon: Icon(_obscureMnemonic ? Icons.visibility_off_outlined : Icons.visibility_outlined),
+                        tooltip: _obscureMnemonic ? '显示私钥' : '隐藏私钥',
+                        onPressed: () => setState(() => _obscureMnemonic = !_obscureMnemonic),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.copy_rounded),
+                        tooltip: '复制私钥',
+                        onPressed: () {
+                          if (_privateKeyController.text.isNotEmpty) {
+                            Clipboard.setData(ClipboardData(text: _privateKeyController.text));
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('私钥已复制到剪贴板')),
+                            );
+                          }
+                        },
+                      ),
+                    ],
                   ),
                 ),
               ]),
@@ -1222,10 +1266,22 @@ class _AddAccountPageState extends ConsumerState<AddAccountPage> {
           inputFormatters: [
             FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z2-7\s]')),
           ],
-          decoration: const InputDecoration(
+          decoration: InputDecoration(
             labelText: '密钥 (Secret Key)',
             hintText: 'JBSWY3DPEHPK3PXP',
             helperText: '通常是 16 或 32 位字符',
+            suffixIcon: IconButton(
+              icon: const Icon(Icons.copy_rounded, size: 20),
+              tooltip: '复制密钥',
+              onPressed: () {
+                if (controller.text.isNotEmpty) {
+                  Clipboard.setData(ClipboardData(text: controller.text.replaceAll(' ', '')));
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('密钥已复制到剪贴板')),
+                  );
+                }
+              },
+            ),
           ),
         ),
         actions: [

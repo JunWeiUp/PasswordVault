@@ -7,7 +7,10 @@
 -keep class io.flutter.plugins.** { *; }
 -keep class com.google.crypto.tink.** { *; }
 -keep class org.sqlite.** { *; }
--keep class com.example.password.** { *; }
+
+# 保留自动填充服务类 (Android 系统调用)
+-keep class com.example.password.autofill.SecurePassAutofillService { *; }
+-keep class com.example.password.MainActivity { *; }
 
 # 忽略缺失的 Google Play Core 库 (通常不需要)
 -dontwarn com.google.android.play.core.**
