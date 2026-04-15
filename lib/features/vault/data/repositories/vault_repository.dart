@@ -15,8 +15,9 @@ class VaultRepository {
 
   Future<VaultItemsCompanion> _buildInsertCompanion(
     VaultItem item,
-    SecretKey encryptionKey,
-  ) async {
+    SecretKey encryptionKey, {
+    DateTime? preserveUpdatedAt,
+  }) async {
     String? encryptedSecret;
     String? encryptedPassword;
     String? encryptedMnemonic;
@@ -75,7 +76,7 @@ class VaultRepository {
       encryptedTags = base64.encode(bytes);
     }
 
-    return VaultItemsCompanion.insert(
+    final companion = VaultItemsCompanion.insert(
       id: item.id,
       type: item.type.index,
       title: item.title,
@@ -101,6 +102,11 @@ class VaultRepository {
       deletedAt: Value(item.deletedAt),
       sharedVaultId: Value(item.sharedVaultId),
     );
+
+    if (preserveUpdatedAt != null) {
+      return companion.copyWith(updatedAt: Value(preserveUpdatedAt));
+    }
+    return companion;
   }
 
   Future<List<VaultItem>> getAllItems(
@@ -279,6 +285,119 @@ class VaultRepository {
   }
 
   /// 清空所有数据（用于设置中的“清空数据”功能）
+  Future<void> addItemPreservingTimestamp(
+    VaultItem item,
+    SecretKey masterKey, {
+    SimpleKeyPair? userKeyPair,
+  }) async {
+    SecretKey encryptionKey = masterKey;
+    if (item.sharedVaultId != null && userKeyPair != null) {
+      final key = await getSharedVaultKey(item.sharedVaultId!, userKeyPair);
+      if (key != null) encryptionKey = key;
+    }
+
+    final companion = await _buildInsertCompanion(
+      item, encryptionKey,
+      preserveUpdatedAt: item.updatedAt,
+    );
+    await _db.into(_db.vaultItems).insert(
+      companion,
+      mode: InsertMode.insertOrReplace,
+    );
+    onItemChanged?.call(item.sharedVaultId);
+  }
+
+  Future<void> updateItemFromBackup(
+    VaultItem item,
+    SecretKey masterKey, {
+    SimpleKeyPair? userKeyPair,
+  }) async {
+    SecretKey encryptionKey = masterKey;
+    if (item.sharedVaultId != null && userKeyPair != null) {
+      final key = await getSharedVaultKey(item.sharedVaultId!, userKeyPair);
+      if (key != null) encryptionKey = key;
+    }
+
+    String? encryptedSecret;
+    String? encryptedPassword;
+    String? encryptedMnemonic;
+    String? encryptedPrivateKey;
+    String? encryptedAddress;
+    String? encryptedNote;
+    String? encryptedPasswordHistory;
+    String? encryptedAccounts;
+    String? encryptedTags;
+
+    if (item.secret != null) {
+      final bytes = await _encryptionService.encrypt(item.secret!, encryptionKey);
+      encryptedSecret = base64.encode(bytes);
+    }
+    if (item.password != null) {
+      final bytes = await _encryptionService.encrypt(item.password!, encryptionKey);
+      encryptedPassword = base64.encode(bytes);
+    }
+    if (item.mnemonic != null) {
+      final bytes = await _encryptionService.encrypt(item.mnemonic!, encryptionKey);
+      encryptedMnemonic = base64.encode(bytes);
+    }
+    if (item.privateKey != null) {
+      final bytes = await _encryptionService.encrypt(item.privateKey!, encryptionKey);
+      encryptedPrivateKey = base64.encode(bytes);
+    }
+    if (item.address != null) {
+      final bytes = await _encryptionService.encrypt(item.address!, encryptionKey);
+      encryptedAddress = base64.encode(bytes);
+    }
+    if (item.note != null) {
+      final bytes = await _encryptionService.encrypt(item.note!, encryptionKey);
+      encryptedNote = base64.encode(bytes);
+    }
+    if (item.passwordHistory != null && item.passwordHistory!.isNotEmpty) {
+      final historyJson = jsonEncode(item.passwordHistory!.map((e) => e.toJson()).toList());
+      final bytes = await _encryptionService.encrypt(historyJson, encryptionKey);
+      encryptedPasswordHistory = base64.encode(bytes);
+    }
+    if (item.accounts != null && item.accounts!.isNotEmpty) {
+      final accountsJson = jsonEncode(item.accounts!.map((e) => e.toJson()).toList());
+      final bytes = await _encryptionService.encrypt(accountsJson, encryptionKey);
+      encryptedAccounts = base64.encode(bytes);
+    }
+    if (item.tags.isNotEmpty) {
+      final tagsJson = jsonEncode(item.tags);
+      final bytes = await _encryptionService.encrypt(tagsJson, encryptionKey);
+      encryptedTags = base64.encode(bytes);
+    }
+
+    await (_db.update(_db.vaultItems)..where((t) => t.id.equals(item.id))).write(
+      VaultItemsCompanion(
+        title: Value(item.title),
+        username: Value(item.username),
+        secret: Value(encryptedSecret),
+        password: Value(encryptedPassword),
+        mnemonic: Value(encryptedMnemonic),
+        privateKey: Value(encryptedPrivateKey),
+        address: Value(encryptedAddress),
+        network: Value(item.network),
+        period: Value(item.period),
+        isFavorite: Value(item.isFavorite),
+        url: Value(item.url),
+        note: Value(encryptedNote),
+        category: Value(item.category),
+        email: Value(item.email),
+        passwordHistory: Value(encryptedPasswordHistory),
+        accounts: Value(encryptedAccounts),
+        tags: Value(encryptedTags),
+        passwordLastChanged: Value(item.passwordLastChanged),
+        passwordDuration: Value(item.passwordDuration),
+        updatedAt: Value(item.updatedAt ?? DateTime.now()),
+        isDeleted: Value(item.isDeleted),
+        deletedAt: Value(item.deletedAt),
+        sharedVaultId: Value(item.sharedVaultId),
+      ),
+    );
+    onItemChanged?.call(item.sharedVaultId);
+  }
+
   Future<void> deleteAllData() async {
     await _db.transaction(() async {
       await _db.delete(_db.vaultItems).go();
@@ -999,6 +1118,50 @@ class VaultRepository {
         mode: InsertMode.insertOrReplace,
       );
     });
+  }
+
+  Future<Map<String, int>> mergeSharedVaults(List<SharedVault> backupVaults) async {
+    if (backupVaults.isEmpty) return {'added': 0, 'updated': 0, 'skipped': 0};
+
+    final existingRows = await _db.select(_db.sharedVaults).get();
+    final existingIndex = <String, DateTime>{};
+    for (final row in existingRows) {
+      existingIndex[row.id] = row.updatedAt;
+    }
+
+    int added = 0, updated = 0, skipped = 0;
+
+    for (final vault in backupVaults) {
+      final localUpdatedAt = existingIndex[vault.id];
+      if (localUpdatedAt == null) {
+        await _db.into(_db.sharedVaults).insert(
+          SharedVaultsCompanion.insert(
+            id: vault.id,
+            name: vault.name,
+            encryptedVaultKey: vault.encryptedVaultKey,
+            createdAt: Value(vault.createdAt),
+            updatedAt: Value(vault.updatedAt),
+            isDiscoverable: Value(vault.isDiscoverable),
+          ),
+          mode: InsertMode.insertOrReplace,
+        );
+        added++;
+      } else if (vault.updatedAt.isAfter(localUpdatedAt)) {
+        await (_db.update(_db.sharedVaults)..where((t) => t.id.equals(vault.id))).write(
+          SharedVaultsCompanion(
+            name: Value(vault.name),
+            encryptedVaultKey: Value(vault.encryptedVaultKey),
+            updatedAt: Value(vault.updatedAt),
+            isDiscoverable: Value(vault.isDiscoverable),
+          ),
+        );
+        updated++;
+      } else {
+        skipped++;
+      }
+    }
+
+    return {'added': added, 'updated': updated, 'skipped': skipped};
   }
 
   Future<void> updateSharedVaultDiscoverable(String vaultId, bool isDiscoverable) async {

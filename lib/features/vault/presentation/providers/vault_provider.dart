@@ -207,6 +207,55 @@ class VaultNotifier extends StateNotifier<AsyncValue<List<VaultItem>>> {
     }
   }
 
+  Future<ImportMergeResult> mergeBackupItems(List<VaultItem> backupItems) async {
+    if (backupItems.isEmpty) {
+      return const ImportMergeResult(added: 0, updated: 0, skipped: 0);
+    }
+
+    final masterKey = await _ref.read(masterKeyProvider.future);
+    if (masterKey == null) throw Exception('主密钥尚未就绪');
+
+    final fallbacks = await _ref.read(fallbackKeysProvider.future);
+    final userKeyPair = await _ref.read(userKeyPairProvider.future);
+    final existingItems = await _repository.getAllItems(
+      masterKey, includeDeleted: true, fallbacks: fallbacks, userKeyPair: userKeyPair,
+    );
+    final existingIndex = <String, VaultItem>{};
+    for (final item in existingItems) {
+      existingIndex[item.id] = item;
+    }
+
+    final sortedBackup = List<VaultItem>.from(backupItems);
+    sortedBackup.sort((a, b) =>
+      (a.updatedAt ?? DateTime(2000)).compareTo(b.updatedAt ?? DateTime(2000)));
+
+    int added = 0, updated = 0, skipped = 0;
+
+    for (final backupItem in sortedBackup) {
+      final existing = existingIndex[backupItem.id];
+      if (existing == null) {
+        await _repository.addItemPreservingTimestamp(
+          backupItem, masterKey, userKeyPair: userKeyPair,
+        );
+        added++;
+      } else {
+        final backupTime = backupItem.updatedAt ?? DateTime(2000);
+        final localTime = existing.updatedAt ?? DateTime(2000);
+        if (backupTime.isAfter(localTime)) {
+          await _repository.updateItemFromBackup(
+            backupItem, masterKey, userKeyPair: userKeyPair,
+          );
+          updated++;
+        } else {
+          skipped++;
+        }
+      }
+    }
+
+    await refresh();
+    return ImportMergeResult(added: added, updated: updated, skipped: skipped);
+  }
+
   Future<void> updateItem(VaultItem item) async {
     final masterKey = await _ref.read(masterKeyProvider.future);
     if (masterKey == null) return;

@@ -163,7 +163,7 @@ class BackupService {
     _ref.invalidate(backupHistoryProvider);
   }
 
-  Future<void> restoreBackup(BackupHistory history) async {
+  Future<ImportMergeResult> restoreBackup(BackupHistory history) async {
     final config = _ref.read(webDavConfigProvider);
     final client = dav.newClient(
       config.url,
@@ -259,17 +259,18 @@ class BackupService {
       }
     }
     
-    // 恢复数据
+    // 恢复数据：按时间合并，不直接覆盖
     final repository = _ref.read(vaultRepositoryProvider);
     if (sharedVaults.isNotEmpty) {
-      await repository.addSharedVaults(sharedVaults);
+      await repository.mergeSharedVaults(sharedVaults);
     }
     if (sharedMembers.isNotEmpty) {
       await repository.addSharedMembers(sharedMembers);
     }
-    await _ref.read(vaultItemsProvider.notifier).addItems(items);
+    final result = await _ref.read(vaultItemsProvider.notifier).mergeBackupItems(items);
     
     // 刷新共享库列表
     _ref.invalidate(sharedVaultsProvider);
+    return result;
   }
 }

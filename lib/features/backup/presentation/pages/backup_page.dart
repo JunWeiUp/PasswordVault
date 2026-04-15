@@ -197,7 +197,7 @@ class BackupPage extends ConsumerWidget {
                 context: context,
                 builder: (context) => AlertDialog(
                   title: const Text('恢复备份'),
-                  content: const Text('恢复备份将导入备份中的所有数据，可能会产生重复项。确定继续吗？'),
+                  content: const Text('将按时间智能合并备份数据，仅更新比本地更旧的条目，不会覆盖较新的本地数据。确定继续吗？'),
                   actions: [
                     TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('取消')),
                     TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('确定')),
@@ -206,9 +206,11 @@ class BackupPage extends ConsumerWidget {
               );
               if (confirmed == true) {
                 try {
-                  await ref.read(backupServiceProvider).restoreBackup(item);
+                  final result = await ref.read(backupServiceProvider).restoreBackup(item);
                   if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('恢复成功')));
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                      content: Text('恢复完成：新增 ${result.added} 项，更新 ${result.updated} 项，跳过 ${result.skipped} 项'),
+                    ));
                   }
                 } catch (e) {
                   if (context.mounted) {
