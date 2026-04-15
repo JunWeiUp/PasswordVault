@@ -1,4 +1,4 @@
-package com.example.password.autofill
+package com.securepass.vault.autofill
 
 import android.app.assist.AssistStructure
 import android.content.Context
@@ -87,7 +87,6 @@ class SecurePassAutofillService : AutofillService() {
     }
 
     override fun onSaveRequest(request: android.service.autofill.SaveRequest, callback: SaveCallback) {
-        // 暂时不处理系统保存请求（保存逻辑在应用内完成）
         callback.onSuccess()
     }
 

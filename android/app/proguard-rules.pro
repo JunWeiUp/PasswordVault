@@ -9,8 +9,8 @@
 -keep class org.sqlite.** { *; }
 
 # 保留自动填充服务类 (Android 系统调用)
--keep class com.example.password.autofill.SecurePassAutofillService { *; }
--keep class com.example.password.MainActivity { *; }
+-keep class com.securepass.vault.autofill.SecurePassAutofillService { *; }
+-keep class com.securepass.vault.MainActivity { *; }
 
 # 忽略缺失的 Google Play Core 库 (通常不需要)
 -dontwarn com.google.android.play.core.**

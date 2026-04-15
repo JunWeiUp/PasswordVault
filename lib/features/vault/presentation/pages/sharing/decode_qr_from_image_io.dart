@@ -1,31 +1,42 @@
 import 'dart:io';
+import 'dart:typed_data';
 
-import 'package:google_mlkit_barcode_scanning/google_mlkit_barcode_scanning.dart';
-import 'package:path_provider/path_provider.dart';
+import 'package:image/image.dart' as img;
+import 'package:zxing2/qrcode.dart';
 
-/// 使用 ML Kit 从本地图片解析首个 QR 内容（仅 Android / iOS）。
+/// 使用纯 Dart（zxing2）从本地图片解析首个 QR 内容，无 ML Kit 原生库。
 Future<String?> decodeQrFromImageFile({String? path, List<int>? bytes}) async {
-  if (!Platform.isAndroid && !Platform.isIOS) return null;
-
-  String? filePath = path;
-  if ((filePath == null || filePath.isEmpty) && bytes != null && bytes.isNotEmpty) {
-    final dir = await getTemporaryDirectory();
-    final f = File('${dir.path}/qr_pick_${DateTime.now().millisecondsSinceEpoch}.bin');
-    await f.writeAsBytes(bytes, flush: true);
-    filePath = f.path;
-  }
-  if (filePath == null || filePath.isEmpty) return null;
-
-  final input = InputImage.fromFilePath(filePath);
-  final scanner = BarcodeScanner(formats: [BarcodeFormat.qrCode]);
-  try {
-    final barcodes = await scanner.processImage(input);
-    for (final b in barcodes) {
-      final v = b.rawValue;
-      if (v != null && v.trim().isNotEmpty) return v.trim();
-    }
+  late Uint8List data;
+  if (bytes != null && bytes.isNotEmpty) {
+    data = Uint8List.fromList(bytes);
+  } else if (path != null && path.isNotEmpty) {
+    data = await File(path).readAsBytes();
+  } else {
     return null;
-  } finally {
-    await scanner.close();
   }
+
+  final image = img.decodeImage(data);
+  if (image == null) return null;
+
+  final rgba = image.convert(numChannels: 4);
+  final source = RGBLuminanceSource(
+    rgba.width,
+    rgba.height,
+    rgba.getBytes(order: img.ChannelOrder.abgr).buffer.asInt32List(),
+  );
+
+  for (final makeBinarizer in [
+    () => GlobalHistogramBinarizer(source),
+    () => HybridBinarizer(source),
+  ]) {
+    try {
+      final bitmap = BinaryBitmap(makeBinarizer());
+      final result = QRCodeReader().decode(bitmap);
+      final text = result.text;
+      if (text.trim().isNotEmpty) return text.trim();
+    } catch (_) {
+      continue;
+    }
+  }
+  return null;
 }

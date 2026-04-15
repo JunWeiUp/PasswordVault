@@ -68,7 +68,8 @@ jobs:
 
       - name: Stage Android per-ABI APKs
         run: |
-          for abi in armeabi-v7a arm64-v8a x86_64; do
+          # 与 android/app/build.gradle 中 ndk.abiFilters 一致（仅 ARM，不含 x86_64）
+          for abi in armeabi-v7a arm64-v8a; do
             f="build/app/outputs/flutter-apk/app-${abi}-debug.apk"
             if [ -f "$f" ]; then
               cp "$f" "release_assets/PasswordVault-${{ github.ref_name }}-android-${abi}-debug.apk"
