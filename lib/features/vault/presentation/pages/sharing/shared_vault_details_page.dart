@@ -187,7 +187,7 @@ class SharedVaultDetailsPage extends ConsumerWidget {
               ),
               ...members.map((member) => ListTile(
                 leading: CircleAvatar(
-                  backgroundColor: _getRoleColor(member.role).withOpacity(0.1),
+                  backgroundColor: _getRoleColor(member.role).withValues(alpha: 0.1),
                   child: Icon(_getRoleIcon(member.role), size: 20, color: _getRoleColor(member.role)),
                 ),
                 title: Text(member.name ?? '未知用户'),
@@ -201,9 +201,9 @@ class SharedVaultDetailsPage extends ConsumerWidget {
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                       decoration: BoxDecoration(
-                        color: _getRoleColor(member.role).withOpacity(0.1),
+                        color: _getRoleColor(member.role).withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: _getRoleColor(member.role).withOpacity(0.3)),
+                        border: Border.all(color: _getRoleColor(member.role).withValues(alpha: 0.3)),
                       ),
                       child: Text(
                         _getRoleName(member.role),
@@ -335,7 +335,7 @@ class SharedVaultDetailsPage extends ConsumerWidget {
   Widget _buildVaultHeader(BuildContext context, WidgetRef ref, List<SharedMember> members) {
     return Container(
       padding: const EdgeInsets.all(24),
-      color: Theme.of(context).primaryColor.withOpacity(0.05),
+      color: Theme.of(context).primaryColor.withValues(alpha: 0.05),
       child: Column(
         children: [
           const CircleAvatar(

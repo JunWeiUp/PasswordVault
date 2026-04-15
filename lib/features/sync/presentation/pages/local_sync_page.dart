@@ -44,11 +44,10 @@ class _LocalSyncPageState extends ConsumerState<LocalSyncPage> {
                 if (syncService.isEnabled) {
                   await syncService.stop();
                   await syncService.start();
-                  if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('正在重新搜索设备...'), duration: Duration(seconds: 1)),
-                    );
-                  }
+                  if (!context.mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('正在重新搜索设备...'), duration: Duration(seconds: 1)),
+                  );
                 }
               },
             ),
@@ -59,7 +58,7 @@ class _LocalSyncPageState extends ConsumerState<LocalSyncPage> {
         children: [
           if (kIsWeb)
             Card(
-              color: Colors.blue.withOpacity(0.1),
+              color: Colors.blue.withValues(alpha: 0.1),
               child: const Padding(
                 padding: EdgeInsets.all(16),
                 child: Column(
@@ -212,7 +211,7 @@ class _LocalSyncPageState extends ConsumerState<LocalSyncPage> {
 
     return showDialog(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (dialogContext) => AlertDialog(
         title: const Text('连接到设备'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -238,7 +237,7 @@ class _LocalSyncPageState extends ConsumerState<LocalSyncPage> {
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('取消')),
+          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('取消')),
           TextButton(
             onPressed: () async {
               final host = hostController.text.trim();
@@ -251,31 +250,29 @@ class _LocalSyncPageState extends ConsumerState<LocalSyncPage> {
                 return;
               }
 
-              Navigator.pop(context);
+              Navigator.pop(dialogContext);
               
               // 显示加载中
               showDialog(
                 context: context,
                 barrierDismissible: false,
-                builder: (context) => const Center(child: CircularProgressIndicator()),
+                builder: (_) => const Center(child: CircularProgressIndicator()),
               );
 
               try {
                 await syncService.connectToAddress(host, port);
-                if (mounted) {
-                  Navigator.pop(context); // 关闭加载
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('同步成功')),
-                  );
-                  ref.read(vaultItemsProvider.notifier).refresh();
-                }
+                if (!context.mounted) return;
+                Navigator.pop(context); // 关闭加载
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('同步成功')),
+                );
+                ref.read(vaultItemsProvider.notifier).refresh();
               } catch (e) {
-                if (mounted) {
-                  Navigator.pop(context); // 关闭加载
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('连接失败: $e')),
-                  );
-                }
+                if (!context.mounted) return;
+                Navigator.pop(context); // 关闭加载
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('连接失败: $e')),
+                );
               }
             },
             child: const Text('连接'),
@@ -298,7 +295,7 @@ class _LocalSyncPageState extends ConsumerState<LocalSyncPage> {
   Future<void> _showNameDialog(LocalSyncService syncService) async {
     return showDialog(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (dialogContext) => AlertDialog(
         title: const Text('设置设备名称'),
         content: TextField(
           controller: _nameController,
@@ -306,15 +303,14 @@ class _LocalSyncPageState extends ConsumerState<LocalSyncPage> {
           autofocus: true,
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('取消')),
+          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('取消')),
           TextButton(
             onPressed: () async {
               if (_nameController.text.isNotEmpty) {
                 await syncService.setDeviceName(_nameController.text);
-                if (mounted) {
-                  setState(() {});
-                  Navigator.pop(context);
-                }
+                if (!dialogContext.mounted) return;
+                setState(() {});
+                Navigator.pop(dialogContext);
               }
             },
             child: const Text('保存'),

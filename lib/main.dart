@@ -238,18 +238,19 @@ void _showImportExport(BuildContext context, WidgetRef ref) {
             title: const Text('导出所有数据 (JSON)'),
             subtitle: const Text('未加密，请妥善保管'),
             onTap: () async {
+              final messenger = ScaffoldMessenger.of(context);
               Navigator.pop(context);
               final itemsAsync = ref.read(vaultItemsProvider);
               final items = itemsAsync.valueOrNull ?? [];
               if (items.isEmpty) {
-                ScaffoldMessenger.of(context).showSnackBar(
+                messenger.showSnackBar(
                   const SnackBar(content: Text('没有可导出的数据')),
                 );
                 return;
               }
               final success = await ImportExportHelper.exportToJson(items);
               if (success) {
-                ScaffoldMessenger.of(context).showSnackBar(
+                messenger.showSnackBar(
                   const SnackBar(content: Text('导出成功')),
                 );
               }
@@ -260,18 +261,19 @@ void _showImportExport(BuildContext context, WidgetRef ref) {
             title: const Text('导出 CSV'),
             subtitle: const Text('适合迁移到其他密码管理器'),
             onTap: () async {
+              final messenger = ScaffoldMessenger.of(context);
               Navigator.pop(context);
               final itemsAsync = ref.read(vaultItemsProvider);
               final items = itemsAsync.valueOrNull ?? [];
               if (items.isEmpty) {
-                ScaffoldMessenger.of(context).showSnackBar(
+                messenger.showSnackBar(
                   const SnackBar(content: Text('没有可导出的数据')),
                 );
                 return;
               }
               final success = await ImportExportHelper.exportToCsv(items);
               if (success) {
-                ScaffoldMessenger.of(context).showSnackBar(
+                messenger.showSnackBar(
                   const SnackBar(content: Text('CSV 导出成功')),
                 );
               }
@@ -311,10 +313,11 @@ void _showImportExport(BuildContext context, WidgetRef ref) {
             title: const Text('导出加密 CSV'),
             subtitle: const Text('CSV 内容已加密（base64）'),
             onTap: () async {
+              final messenger = ScaffoldMessenger.of(context);
               Navigator.pop(context);
               final items = ref.read(vaultItemsProvider).valueOrNull ?? [];
               if (items.isEmpty) {
-                ScaffoldMessenger.of(context).showSnackBar(
+                messenger.showSnackBar(
                   const SnackBar(content: Text('没有可导出的数据')),
                 );
                 return;
@@ -330,7 +333,7 @@ void _showImportExport(BuildContext context, WidgetRef ref) {
                 encrypted: true,
               );
               if (success) {
-                ScaffoldMessenger.of(context).showSnackBar(
+                messenger.showSnackBar(
                   const SnackBar(content: Text('加密 CSV 导出成功')),
                 );
               }
@@ -341,6 +344,7 @@ void _showImportExport(BuildContext context, WidgetRef ref) {
             title: const Text('导入数据 (JSON)'),
             subtitle: const Text('支持加密和非加密格式'),
             onTap: () async {
+              final messenger = ScaffoldMessenger.of(context);
               Navigator.pop(context);
               try {
                 final masterKey = await ref.read(masterKeyProvider.future);
@@ -355,14 +359,14 @@ void _showImportExport(BuildContext context, WidgetRef ref) {
 
                 if (importedItems != null && importedItems.isNotEmpty) {
                   await _handleImportMergeResult(
-                    context,
+                    messenger,
                     ref,
                     importedItems,
                     sourceLabel: 'JSON',
                   );
                 }
               } catch (e) {
-                ScaffoldMessenger.of(context).showSnackBar(
+                messenger.showSnackBar(
                   SnackBar(content: Text('导入失败: $e'), backgroundColor: Colors.red),
                 );
               }
@@ -373,11 +377,12 @@ void _showImportExport(BuildContext context, WidgetRef ref) {
             title: const Text('导入加密 CSV'),
             subtitle: const Text('解析加密导出的 CSV 文件'),
             onTap: () async {
+              final messenger = ScaffoldMessenger.of(context);
               Navigator.pop(context);
               try {
                 final masterPassword = ref.read(masterPasswordProvider).password;
                 if (masterPassword == null || masterPassword.isEmpty) {
-                  ScaffoldMessenger.of(context).showSnackBar(
+                  messenger.showSnackBar(
                     const SnackBar(content: Text('请先解锁以获取主密码')),
                   );
                   return;
@@ -389,14 +394,14 @@ void _showImportExport(BuildContext context, WidgetRef ref) {
                 );
                 if (importedItems != null && importedItems.isNotEmpty) {
                   await _handleImportMergeResult(
-                    context,
+                    messenger,
                     ref,
                     importedItems,
                     sourceLabel: '加密 CSV',
                   );
                 }
               } catch (e) {
-                ScaffoldMessenger.of(context).showSnackBar(
+                messenger.showSnackBar(
                   SnackBar(content: Text('导入失败: $e'), backgroundColor: Colors.red),
                 );
               }
@@ -407,20 +412,21 @@ void _showImportExport(BuildContext context, WidgetRef ref) {
             title: const Text('导入 LastPass 数据 (CSV)'),
             subtitle: const Text('支持从 LastPass 导出的 CSV 文件'),
             onTap: () async {
+              final messenger = ScaffoldMessenger.of(context);
               Navigator.pop(context);
               try {
                 final importedItems = await ImportExportHelper.importFromLastPassCsv();
 
                 if (importedItems != null && importedItems.isNotEmpty) {
                   await _handleImportMergeResult(
-                    context,
+                    messenger,
                     ref,
                     importedItems,
                     sourceLabel: 'LastPass',
                   );
                 }
               } catch (e) {
-                ScaffoldMessenger.of(context).showSnackBar(
+                messenger.showSnackBar(
                   SnackBar(content: Text('导入失败: $e'), backgroundColor: Colors.red),
                 );
               }
@@ -431,19 +437,20 @@ void _showImportExport(BuildContext context, WidgetRef ref) {
             title: const Text('导入 Bitwarden 数据 (CSV)'),
             subtitle: const Text('支持从 Bitwarden 导出的 CSV 文件'),
             onTap: () async {
+              final messenger = ScaffoldMessenger.of(context);
               Navigator.pop(context);
               try {
                 final importedItems = await ImportExportHelper.importFromBitwardenCsv();
                 if (importedItems != null && importedItems.isNotEmpty) {
                   await _handleImportMergeResult(
-                    context,
+                    messenger,
                     ref,
                     importedItems,
                     sourceLabel: 'Bitwarden',
                   );
                 }
               } catch (e) {
-                ScaffoldMessenger.of(context).showSnackBar(
+                messenger.showSnackBar(
                   SnackBar(content: Text('导入失败: $e'), backgroundColor: Colors.red),
                 );
               }
@@ -454,19 +461,20 @@ void _showImportExport(BuildContext context, WidgetRef ref) {
             title: const Text('导入 1Password 数据 (CSV)'),
             subtitle: const Text('支持从 1Password 导出的 CSV 文件'),
             onTap: () async {
+              final messenger = ScaffoldMessenger.of(context);
               Navigator.pop(context);
               try {
                 final importedItems = await ImportExportHelper.importFrom1PasswordCsv();
                 if (importedItems != null && importedItems.isNotEmpty) {
                   await _handleImportMergeResult(
-                    context,
+                    messenger,
                     ref,
                     importedItems,
                     sourceLabel: '1Password',
                   );
                 }
               } catch (e) {
-                ScaffoldMessenger.of(context).showSnackBar(
+                messenger.showSnackBar(
                   SnackBar(content: Text('导入失败: $e'), backgroundColor: Colors.red),
                 );
               }
@@ -477,19 +485,20 @@ void _showImportExport(BuildContext context, WidgetRef ref) {
             title: const Text('导入 Chrome 密码 (CSV)'),
             subtitle: const Text('支持从 Chrome 导出的 CSV 文件'),
             onTap: () async {
+              final messenger = ScaffoldMessenger.of(context);
               Navigator.pop(context);
               try {
                 final importedItems = await ImportExportHelper.importFromChromeCsv();
                 if (importedItems != null && importedItems.isNotEmpty) {
                   await _handleImportMergeResult(
-                    context,
+                    messenger,
                     ref,
                     importedItems,
                     sourceLabel: 'Chrome',
                   );
                 }
               } catch (e) {
-                ScaffoldMessenger.of(context).showSnackBar(
+                messenger.showSnackBar(
                   SnackBar(content: Text('导入失败: $e'), backgroundColor: Colors.red),
                 );
               }
@@ -506,13 +515,13 @@ void _showImportExport(BuildContext context, WidgetRef ref) {
 }
 
 Future<void> _handleImportMergeResult(
-  BuildContext context,
+  ScaffoldMessengerState messenger,
   WidgetRef ref,
   List<VaultItem> importedItems, {
   String sourceLabel = '导入',
 }) async {
   if (importedItems.isEmpty) {
-    ScaffoldMessenger.of(context).showSnackBar(
+    messenger.showSnackBar(
       const SnackBar(content: Text('没有可导入的数据')),
     );
     return;
@@ -520,7 +529,7 @@ Future<void> _handleImportMergeResult(
 
   final result = await ref.read(vaultItemsProvider.notifier).mergeImportedItems(importedItems);
   final message = '$sourceLabel 导入完成：新增 ${result.added}，更新 ${result.updated}，跳过 ${result.skipped}';
-  ScaffoldMessenger.of(context).showSnackBar(
+  messenger.showSnackBar(
     SnackBar(content: Text(message)),
   );
 }
@@ -728,16 +737,17 @@ void _showAddItemDialog(BuildContext context, WidgetRef ref, VaultItemType type)
                   sharedVaultId: selectedVaultId,
                 );
 
+                final messenger = ScaffoldMessenger.of(context);
+                Navigator.pop(context);
                 ref.read(vaultItemsProvider.notifier).addItem(newItem).then((_) {
-                  ScaffoldMessenger.of(context).showSnackBar(
+                  messenger.showSnackBar(
                     const SnackBar(content: Text('保存成功')),
                   );
                 }).catchError((e) {
-                  ScaffoldMessenger.of(context).showSnackBar(
+                  messenger.showSnackBar(
                     SnackBar(content: Text('保存失败: $e'), backgroundColor: Colors.red),
                   );
                 });
-                Navigator.pop(context);
               },
               child: const Text('保存'),
             ),
@@ -1270,41 +1280,34 @@ class _MainNavigationScreenState extends ConsumerState<MainNavigationScreen> {
               padding: EdgeInsets.all(16),
               child: Text('排序方式', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             ),
-            RadioListTile<SortMode>(
-              title: const Text('名称 A → Z'),
-              value: SortMode.nameAsc,
+            RadioGroup<SortMode>(
               groupValue: current,
               onChanged: (v) {
-                ref.read(sortModeProvider.notifier).setSortMode(v!);
-                Navigator.pop(context);
+                if (v != null) {
+                  ref.read(sortModeProvider.notifier).setSortMode(v);
+                  Navigator.pop(context);
+                }
               },
-            ),
-            RadioListTile<SortMode>(
-              title: const Text('名称 Z → A'),
-              value: SortMode.nameDesc,
-              groupValue: current,
-              onChanged: (v) {
-                ref.read(sortModeProvider.notifier).setSortMode(v!);
-                Navigator.pop(context);
-              },
-            ),
-            RadioListTile<SortMode>(
-              title: const Text('最近修改优先'),
-              value: SortMode.updatedDesc,
-              groupValue: current,
-              onChanged: (v) {
-                ref.read(sortModeProvider.notifier).setSortMode(v!);
-                Navigator.pop(context);
-              },
-            ),
-            RadioListTile<SortMode>(
-              title: const Text('最早修改优先'),
-              value: SortMode.updatedAsc,
-              groupValue: current,
-              onChanged: (v) {
-                ref.read(sortModeProvider.notifier).setSortMode(v!);
-                Navigator.pop(context);
-              },
+              child: Column(
+                children: [
+                  RadioListTile<SortMode>(
+                    title: const Text('名称 A → Z'),
+                    value: SortMode.nameAsc,
+                  ),
+                  RadioListTile<SortMode>(
+                    title: const Text('名称 Z → A'),
+                    value: SortMode.nameDesc,
+                  ),
+                  RadioListTile<SortMode>(
+                    title: const Text('最近修改优先'),
+                    value: SortMode.updatedDesc,
+                  ),
+                  RadioListTile<SortMode>(
+                    title: const Text('最早修改优先'),
+                    value: SortMode.updatedAsc,
+                  ),
+                ],
+              ),
             ),
           ],
         ),
@@ -1316,8 +1319,8 @@ class _MainNavigationScreenState extends ConsumerState<MainNavigationScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceVariant,
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 4, offset: const Offset(0, -2))],
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.1), blurRadius: 4, offset: const Offset(0, -2))],
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -1368,15 +1371,14 @@ class _MainNavigationScreenState extends ConsumerState<MainNavigationScreen> {
         ],
       ),
     );
-    if (confirmed != true || !mounted) return;
+    if (confirmed != true || !context.mounted) return;
     for (final id in ids) {
       await ref.read(vaultItemsProvider.notifier).softDeleteItem(id);
     }
     ref.read(selectedItemIdsProvider.notifier).state = {};
     ref.read(isMultiSelectProvider.notifier).state = false;
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('已将 ${ids.length} 项移至回收站')));
-    }
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('已将 ${ids.length} 项移至回收站')));
   }
 
   Future<void> _batchTogglePin(BuildContext context, WidgetRef ref, bool pin) async {
@@ -1391,9 +1393,8 @@ class _MainNavigationScreenState extends ConsumerState<MainNavigationScreen> {
     }
     ref.read(selectedItemIdsProvider.notifier).state = {};
     ref.read(isMultiSelectProvider.notifier).state = false;
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(pin ? '已置顶 ${ids.length} 项' : '已取消置顶 ${ids.length} 项')));
-    }
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(pin ? '已置顶 ${ids.length} 项' : '已取消置顶 ${ids.length} 项')));
   }
 
   Future<void> _batchAddTag(BuildContext context, WidgetRef ref) async {
@@ -1441,7 +1442,7 @@ class _MainNavigationScreenState extends ConsumerState<MainNavigationScreen> {
         ),
       ),
     );
-    if (tag == null || tag.isEmpty || !mounted) return;
+    if (tag == null || tag.isEmpty || !context.mounted) return;
     final items = ref.read(vaultItemsProvider).valueOrNull ?? [];
     for (final id in ids) {
       final item = items.firstWhere((e) => e.id == id, orElse: () => VaultItem(id: '', type: VaultItemType.password, title: '', username: ''));
@@ -1451,9 +1452,8 @@ class _MainNavigationScreenState extends ConsumerState<MainNavigationScreen> {
     }
     ref.read(selectedItemIdsProvider.notifier).state = {};
     ref.read(isMultiSelectProvider.notifier).state = false;
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('已为 ${ids.length} 项添加标签"$tag"')));
-    }
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('已为 ${ids.length} 项添加标签"$tag"')));
   }
 
   Future<void> _batchSetColor(BuildContext context, WidgetRef ref) async {
@@ -1473,7 +1473,7 @@ class _MainNavigationScreenState extends ConsumerState<MainNavigationScreen> {
         ),
       ),
     );
-    if (!mounted) return;
+    if (!context.mounted) return;
     final items = ref.read(vaultItemsProvider).valueOrNull ?? [];
     for (final id in ids) {
       final item = items.firstWhere((e) => e.id == id, orElse: () => VaultItem(id: '', type: VaultItemType.password, title: '', username: ''));
@@ -1483,9 +1483,8 @@ class _MainNavigationScreenState extends ConsumerState<MainNavigationScreen> {
     }
     ref.read(selectedItemIdsProvider.notifier).state = {};
     ref.read(isMultiSelectProvider.notifier).state = false;
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('已为 ${ids.length} 项设置颜色')));
-    }
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('已为 ${ids.length} 项设置颜色')));
   }
 
   Widget _colorOption(BuildContext ctx, String? value, String label, Color color) {
@@ -1498,7 +1497,7 @@ class _MainNavigationScreenState extends ConsumerState<MainNavigationScreen> {
           Container(
             width: 40, height: 40,
             decoration: BoxDecoration(
-              color: color.withOpacity(0.2),
+              color: color.withValues(alpha: 0.2),
               shape: BoxShape.circle,
               border: Border.all(color: color, width: 2),
             ),
@@ -1749,7 +1748,7 @@ class SharedVaultFilterIndicator extends ConsumerWidget {
 
         return Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          color: Theme.of(context).colorScheme.primaryContainer.withOpacity(0.3),
+          color: Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.3),
           child: Row(
             children: [
               const Icon(Icons.people_outline, size: 16),
@@ -1921,7 +1920,7 @@ class VaultListContent extends ConsumerWidget {
         if (item.isPinned)
           Positioned(
             right: 20, top: 12,
-            child: Icon(Icons.push_pin, size: 14, color: Theme.of(context).colorScheme.primary.withOpacity(0.6)),
+            child: Icon(Icons.push_pin, size: 14, color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.6)),
           ),
       ],
     );
@@ -1936,16 +1935,25 @@ class SettingsContent extends ConsumerWidget {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('自动锁定时间'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _buildAutoLockOption(context, ref, '1 分钟', 1, currentMinutes),
-            _buildAutoLockOption(context, ref, '5 分钟', 5, currentMinutes),
-            _buildAutoLockOption(context, ref, '10 分钟', 10, currentMinutes),
-            _buildAutoLockOption(context, ref, '30 分钟', 30, currentMinutes),
-            _buildAutoLockOption(context, ref, '1 小时', 60, currentMinutes),
-            _buildAutoLockOption(context, ref, '4 小时', 240, currentMinutes),
-          ],
+        content: RadioGroup<int>(
+          groupValue: currentMinutes,
+          onChanged: (value) {
+            if (value != null) {
+              ref.read(masterPasswordProvider.notifier).setAutoLockMinutes(value);
+              Navigator.pop(context);
+            }
+          },
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              RadioListTile<int>(title: const Text('1 分钟'), value: 1),
+              RadioListTile<int>(title: const Text('5 分钟'), value: 5),
+              RadioListTile<int>(title: const Text('10 分钟'), value: 10),
+              RadioListTile<int>(title: const Text('30 分钟'), value: 30),
+              RadioListTile<int>(title: const Text('1 小时'), value: 60),
+              RadioListTile<int>(title: const Text('4 小时'), value: 240),
+            ],
+          ),
         ),
       ),
     );
@@ -1988,19 +1996,6 @@ class SettingsContent extends ConsumerWidget {
     );
   }
 
-  Widget _buildAutoLockOption(BuildContext context, WidgetRef ref, String label, int minutes, int current) {
-    return RadioListTile<int>(
-      title: Text(label),
-      value: minutes,
-      groupValue: current,
-      onChanged: (value) {
-        if (value != null) {
-          ref.read(masterPasswordProvider.notifier).setAutoLockMinutes(value);
-          Navigator.pop(context);
-        }
-      },
-    );
-  }
 
   void _showChangeMasterPasswordDialog(BuildContext context, WidgetRef ref) {
     final oldPasswordController = TextEditingController();
@@ -2204,35 +2199,33 @@ class SettingsContent extends ConsumerWidget {
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            RadioListTile<ThemeMode>(
-              title: const Text('跟随系统'),
-              secondary: const Icon(Icons.brightness_auto),
-              value: ThemeMode.system,
+            RadioGroup<ThemeMode>(
               groupValue: current,
               onChanged: (v) {
-                ref.read(themeModeProvider.notifier).setThemeMode(v!);
-                Navigator.pop(context);
+                if (v != null) {
+                  ref.read(themeModeProvider.notifier).setThemeMode(v);
+                  Navigator.pop(context);
+                }
               },
-            ),
-            RadioListTile<ThemeMode>(
-              title: const Text('浅色模式'),
-              secondary: const Icon(Icons.light_mode),
-              value: ThemeMode.light,
-              groupValue: current,
-              onChanged: (v) {
-                ref.read(themeModeProvider.notifier).setThemeMode(v!);
-                Navigator.pop(context);
-              },
-            ),
-            RadioListTile<ThemeMode>(
-              title: const Text('深色模式'),
-              secondary: const Icon(Icons.dark_mode),
-              value: ThemeMode.dark,
-              groupValue: current,
-              onChanged: (v) {
-                ref.read(themeModeProvider.notifier).setThemeMode(v!);
-                Navigator.pop(context);
-              },
+              child: Column(
+                children: [
+                  RadioListTile<ThemeMode>(
+                    title: const Text('跟随系统'),
+                    secondary: const Icon(Icons.brightness_auto),
+                    value: ThemeMode.system,
+                  ),
+                  RadioListTile<ThemeMode>(
+                    title: const Text('浅色模式'),
+                    secondary: const Icon(Icons.light_mode),
+                    value: ThemeMode.light,
+                  ),
+                  RadioListTile<ThemeMode>(
+                    title: const Text('深色模式'),
+                    secondary: const Icon(Icons.dark_mode),
+                    value: ThemeMode.dark,
+                  ),
+                ],
+              ),
             ),
           ],
         ),
@@ -2276,7 +2269,7 @@ class CategoryFilterBar extends ConsumerWidget {
         color: Theme.of(context).scaffoldBackgroundColor,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.02),
+            color: Colors.black.withValues(alpha: 0.02),
             blurRadius: 10,
             offset: const Offset(0, 5),
           ),
@@ -2325,7 +2318,7 @@ class CategoryFilterBar extends ConsumerWidget {
         onSelected: (_) => onSelected(),
         avatar: icon != null ? Icon(icon, size: 16, color: isSelected ? colorScheme.onPrimary : colorScheme.primary) : null,
         showCheckmark: false,
-        backgroundColor: colorScheme.surfaceVariant.withOpacity(0.3),
+        backgroundColor: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
         selectedColor: colorScheme.primary,
         labelStyle: TextStyle(
           color: isSelected ? colorScheme.onPrimary : colorScheme.onSurfaceVariant,

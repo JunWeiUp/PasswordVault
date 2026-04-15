@@ -76,7 +76,7 @@ class _PasswordGeneratorPageState extends State<PasswordGeneratorPage> {
           // Password Display
           Card(
             elevation: 0,
-            color: theme.colorScheme.surfaceVariant.withOpacity(0.3),
+            color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(16),
               side: BorderSide(color: theme.colorScheme.outlineVariant),

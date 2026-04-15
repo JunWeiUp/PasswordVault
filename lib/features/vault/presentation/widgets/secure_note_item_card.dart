@@ -15,7 +15,7 @@ class SecureNoteItemCard extends ConsumerWidget {
       elevation: 0,
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       shape: RoundedRectangleBorder(
-        side: BorderSide(color: Theme.of(context).dividerColor.withOpacity(0.1)),
+        side: BorderSide(color: Theme.of(context).dividerColor.withValues(alpha: 0.1)),
         borderRadius: BorderRadius.circular(16),
       ),
       child: InkWell(
@@ -34,7 +34,7 @@ class SecureNoteItemCard extends ConsumerWidget {
                 width: 48,
                 height: 48,
                 decoration: BoxDecoration(
-                  color: Colors.purple.withOpacity(0.1),
+                  color: Colors.purple.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: const Icon(
@@ -61,7 +61,7 @@ class SecureNoteItemCard extends ConsumerWidget {
                           children: item.tags.map((tag) => Container(
                             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
                             decoration: BoxDecoration(
-                              color: Theme.of(context).colorScheme.primary.withOpacity(0.1),
+                              color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
                               borderRadius: BorderRadius.circular(4),
                             ),
                             child: Text(

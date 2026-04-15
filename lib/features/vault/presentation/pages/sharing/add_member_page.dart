@@ -123,7 +123,7 @@ class _AddMemberPageState extends ConsumerState<AddMemberPage> {
                 label: const Text('扫描公钥 QR 码'),
                 style: ElevatedButton.styleFrom(
                   padding: const EdgeInsets.symmetric(vertical: 16),
-                  backgroundColor: Colors.blue.withOpacity(0.1),
+                  backgroundColor: Colors.blue.withValues(alpha: 0.1),
                   foregroundColor: Colors.blue,
                   elevation: 0,
                 ),

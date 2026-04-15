@@ -40,8 +40,8 @@ class PasswordItemCard extends ConsumerWidget {
       shape: RoundedRectangleBorder(
         side: BorderSide(
           color: isExpired 
-            ? Colors.red.withOpacity(0.5) 
-            : Theme.of(context).dividerColor.withOpacity(0.1)
+            ? Colors.red.withValues(alpha: 0.5) 
+            : Theme.of(context).dividerColor.withValues(alpha: 0.1)
         ),
         borderRadius: BorderRadius.circular(16),
       ),
@@ -83,9 +83,9 @@ class PasswordItemCard extends ConsumerWidget {
                             margin: const EdgeInsets.only(right: 8),
                             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                             decoration: BoxDecoration(
-                              color: Theme.of(context).colorScheme.secondary.withOpacity(0.1),
+                              color: Theme.of(context).colorScheme.secondary.withValues(alpha: 0.1),
                               borderRadius: BorderRadius.circular(4),
-                              border: Border.all(color: Theme.of(context).colorScheme.secondary.withOpacity(0.3)),
+                              border: Border.all(color: Theme.of(context).colorScheme.secondary.withValues(alpha: 0.3)),
                             ),
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
@@ -132,9 +132,9 @@ class PasswordItemCard extends ConsumerWidget {
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                             decoration: BoxDecoration(
-                              color: Colors.red.withOpacity(0.1),
+                              color: Colors.red.withValues(alpha: 0.1),
                               borderRadius: BorderRadius.circular(4),
-                              border: Border.all(color: Colors.red.withOpacity(0.3)),
+                              border: Border.all(color: Colors.red.withValues(alpha: 0.3)),
                             ),
                             child: const Text(
                               '弱密码',
@@ -147,9 +147,9 @@ class PasswordItemCard extends ConsumerWidget {
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                             decoration: BoxDecoration(
-                              color: Colors.orange.withOpacity(0.1),
+                              color: Colors.orange.withValues(alpha: 0.1),
                               borderRadius: BorderRadius.circular(4),
-                              border: Border.all(color: Colors.orange.withOpacity(0.3)),
+                              border: Border.all(color: Colors.orange.withValues(alpha: 0.3)),
                             ),
                             child: const Text(
                               '重复使用',
@@ -171,7 +171,7 @@ class PasswordItemCard extends ConsumerWidget {
                           children: item.tags.map((tag) => Container(
                             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
                             decoration: BoxDecoration(
-                              color: Theme.of(context).colorScheme.primary.withOpacity(0.1),
+                              color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
                               borderRadius: BorderRadius.circular(4),
                             ),
                             child: Text(
@@ -207,7 +207,7 @@ class PasswordItemCard extends ConsumerWidget {
                         child: Container(
                           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                           decoration: BoxDecoration(
-                            color: Theme.of(context).colorScheme.primary.withOpacity(0.05),
+                            color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.05),
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: Row(
@@ -231,7 +231,7 @@ class PasswordItemCard extends ConsumerWidget {
                                 child: CircularProgressIndicator(
                                   value: totpProgress,
                                   strokeWidth: 2,
-                                  backgroundColor: Theme.of(context).colorScheme.primary.withOpacity(0.1),
+                                  backgroundColor: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
                                 ),
                               ),
                             ],

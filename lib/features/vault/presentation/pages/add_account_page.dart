@@ -568,10 +568,10 @@ class _AddAccountPageState extends ConsumerState<AddAccountPage> {
                         itemBuilder: (context, index) {
                           return Container(
                             decoration: BoxDecoration(
-                              color: Theme.of(context).dividerColor.withOpacity(0.05),
+                              color: Theme.of(context).dividerColor.withValues(alpha: 0.05),
                               borderRadius: BorderRadius.circular(12),
                               border: Border.all(
-                                color: Theme.of(context).dividerColor.withOpacity(0.1),
+                                color: Theme.of(context).dividerColor.withValues(alpha: 0.1),
                               ),
                             ),
                             child: Stack(
@@ -583,7 +583,7 @@ class _AddAccountPageState extends ConsumerState<AddAccountPage> {
                                   child: Text(
                                     '${index + 1}',
                                     style: TextStyle(
-                                      color: Theme.of(context).colorScheme.primary.withOpacity(0.4),
+                                      color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.4),
                                       fontSize: 9,
                                       fontWeight: FontWeight.bold,
                                     ),
@@ -622,7 +622,7 @@ class _AddAccountPageState extends ConsumerState<AddAccountPage> {
                                           hintText: '单词',
                                           hintStyle: TextStyle(
                                             fontSize: 14,
-                                            color: Theme.of(context).hintColor.withOpacity(0.3),
+                                            color: Theme.of(context).hintColor.withValues(alpha: 0.3),
                                           ),
                                         ),
                                       );
@@ -718,7 +718,7 @@ class _AddAccountPageState extends ConsumerState<AddAccountPage> {
                           const SizedBox(width: 12),
                           Container(
                             decoration: BoxDecoration(
-                              color: Theme.of(context).colorScheme.primary.withOpacity(0.1),
+                              color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
                               borderRadius: BorderRadius.circular(12),
                             ),
                             child: IconButton(
@@ -814,8 +814,8 @@ class _AddAccountPageState extends ConsumerState<AddAccountPage> {
                   width: 24, height: 24,
                   decoration: BoxDecoration(
                     color: (_colorLabel != null && _colorLabel!.isNotEmpty)
-                        ? _getColorForLabel(_colorLabel!).withOpacity(0.3)
-                        : Colors.grey.withOpacity(0.2),
+                        ? _getColorForLabel(_colorLabel!).withValues(alpha: 0.3)
+                        : Colors.grey.withValues(alpha: 0.2),
                     shape: BoxShape.circle,
                     border: Border.all(
                       color: (_colorLabel != null && _colorLabel!.isNotEmpty)
@@ -894,7 +894,7 @@ class _AddAccountPageState extends ConsumerState<AddAccountPage> {
           Container(
             width: 40, height: 40,
             decoration: BoxDecoration(
-              color: color.withOpacity(0.2),
+              color: color.withValues(alpha: 0.2),
               shape: BoxShape.circle,
               border: Border.all(color: color, width: isSelected ? 3 : 2),
             ),
@@ -1078,7 +1078,7 @@ class _AddAccountPageState extends ConsumerState<AddAccountPage> {
         Card(
           elevation: 0,
           shape: RoundedRectangleBorder(
-            side: BorderSide(color: Theme.of(context).dividerColor.withOpacity(0.1)),
+            side: BorderSide(color: Theme.of(context).dividerColor.withValues(alpha: 0.1)),
             borderRadius: BorderRadius.circular(16),
           ),
           child: Column(
