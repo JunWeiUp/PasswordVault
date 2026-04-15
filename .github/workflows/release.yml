@@ -1,6 +1,6 @@
 name: Release
 
-# 推送形如 v1.2.3 的标签时：跑检查、构建 APK，并创建 GitHub Release 上传产物。
+# 推送形如 v1.2.3 的标签时：跑检查、构建多种产物，并创建 GitHub Release 上传。
 on:
   push:
     tags:
@@ -51,14 +51,37 @@ jobs:
       - name: Run tests
         run: flutter test
 
-      # 仓库未提交 key.properties，与 CI 一致使用 debug；正式签名请在本地或配置 Secrets 后扩展。
-      - name: Build APK (debug)
+      # 未提交 key.properties：Android 均为 debug；正式签名请在本地或配置 Secrets 后扩展。
+      - name: Prepare release assets directory
+        run: mkdir -p release_assets
+
+      - name: Build APK (debug, universal)
         run: flutter build apk --debug
 
-      - name: Prepare release asset
+      - name: Stage Android universal APK
         run: |
           cp build/app/outputs/flutter-apk/app-debug.apk \
-            "PasswordVault-${{ github.ref_name }}-debug.apk"
+            "release_assets/PasswordVault-${{ github.ref_name }}-android-universal-debug.apk"
+
+      - name: Build APK (debug, split per ABI)
+        run: flutter build apk --debug --split-per-abi
+
+      - name: Stage Android per-ABI APKs
+        run: |
+          for abi in armeabi-v7a arm64-v8a x86_64; do
+            f="build/app/outputs/flutter-apk/app-${abi}-debug.apk"
+            if [ -f "$f" ]; then
+              cp "$f" "release_assets/PasswordVault-${{ github.ref_name }}-android-${abi}-debug.apk"
+            fi
+          done
+
+      - name: Build Web + Chrome extension (build_extension.sh)
+        run: bash build_extension.sh
+
+      - name: Zip Web & Chrome extension
+        run: |
+          (cd build/web && zip -r "${GITHUB_WORKSPACE}/release_assets/PasswordVault-${{ github.ref_name }}-web.zip" .)
+          (cd build && zip -r "${GITHUB_WORKSPACE}/release_assets/PasswordVault-${{ github.ref_name }}-chrome-extension.zip" chrome_extension)
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -67,8 +90,16 @@ jobs:
           prerelease: false
           generate_release_notes: true
           body: |
-            本流水线附件为 **debug** APK（与 CI 相同：无仓库内 release 签名配置）。
-            若需可上架的 release 包，请在本地使用 `key.properties` 构建，或在仓库中配置 Android 签名相关 Secrets 后扩展本 workflow。
-          files: PasswordVault-${{ github.ref_name }}-debug.apk
+            ### 附件说明
+
+            | 文件 | 说明 |
+            | --- | --- |
+            | `PasswordVault-<tag>-android-universal-debug.apk` | Android 通用包（debug，无 Play 签名） |
+            | `PasswordVault-<tag>-android-*-debug.apk` | 按 CPU 架构拆分，体积更小 |
+            | `PasswordVault-<tag>-web.zip` | 独立部署的 Flutter Web（`build_extension.sh` 同次构建产物） |
+            | `PasswordVault-<tag>-chrome-extension.zip` | 解压后在 Chrome「加载已解压的扩展程序」中选 `chrome_extension` 目录 |
+
+            可上架的 **release** 包请在本地使用 `key.properties` 构建，或在仓库中配置 Android 签名 Secrets 后扩展本 workflow。
+          files: release_assets/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
