@@ -38,6 +38,17 @@ import 'core/providers/app_providers.dart';
 // Re-export for backward compatibility
 export 'core/providers/app_providers.dart' show searchQueryProvider, selectedTabProvider, isSearchingProvider;
 
+const colorLabelMap = <String, Color>{
+  '红色': Colors.red,
+  '橙色': Colors.orange,
+  '黄色': Colors.amber,
+  '绿色': Colors.green,
+  '蓝色': Colors.blue,
+  '紫色': Colors.purple,
+  '粉色': Colors.pink,
+  '青色': Colors.teal,
+};
+
 // --- Router ---
 final _router = GoRouter(
   initialLocation: '/',
@@ -162,15 +173,17 @@ void main() {
   runApp(const ProviderScope(child: SecurePassApp()));
 }
 
-class SecurePassApp extends StatelessWidget {
+class SecurePassApp extends ConsumerWidget {
   const SecurePassApp({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final themeMode = ref.watch(themeModeProvider);
     return MaterialApp.router(
       title: 'SecurePass',
       theme: AppTheme.light,
       darkTheme: AppTheme.dark,
+      themeMode: themeMode,
       routerConfig: _router,
       debugShowCheckedModeBanner: false,
     );
@@ -1091,7 +1104,7 @@ class _MainNavigationScreenState extends ConsumerState<MainNavigationScreen> {
               try {
                 if (isUpdate) {
                   final updatedItem = _mergePendingIntoItem(
-                    existingMatch!,
+                    existingMatch,
                     titleController.text,
                     usernameController.text,
                     passwordController.text,
@@ -1228,6 +1241,259 @@ class _MainNavigationScreenState extends ConsumerState<MainNavigationScreen> {
     return false;
   }
 
+  void _showSortMenu(BuildContext context, WidgetRef ref) {
+    final current = ref.read(sortModeProvider);
+    showModalBottomSheet(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Padding(
+              padding: EdgeInsets.all(16),
+              child: Text('排序方式', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            ),
+            RadioListTile<SortMode>(
+              title: const Text('名称 A → Z'),
+              value: SortMode.nameAsc,
+              groupValue: current,
+              onChanged: (v) {
+                ref.read(sortModeProvider.notifier).setSortMode(v!);
+                Navigator.pop(context);
+              },
+            ),
+            RadioListTile<SortMode>(
+              title: const Text('名称 Z → A'),
+              value: SortMode.nameDesc,
+              groupValue: current,
+              onChanged: (v) {
+                ref.read(sortModeProvider.notifier).setSortMode(v!);
+                Navigator.pop(context);
+              },
+            ),
+            RadioListTile<SortMode>(
+              title: const Text('最近修改优先'),
+              value: SortMode.updatedDesc,
+              groupValue: current,
+              onChanged: (v) {
+                ref.read(sortModeProvider.notifier).setSortMode(v!);
+                Navigator.pop(context);
+              },
+            ),
+            RadioListTile<SortMode>(
+              title: const Text('最早修改优先'),
+              value: SortMode.updatedAsc,
+              groupValue: current,
+              onChanged: (v) {
+                ref.read(sortModeProvider.notifier).setSortMode(v!);
+                Navigator.pop(context);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBatchActionBar(BuildContext context, WidgetRef ref) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceVariant,
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 4, offset: const Offset(0, -2))],
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+        children: [
+          _batchButton(context, Icons.delete_outline, '删除', Colors.red, () => _batchDelete(context, ref)),
+          _batchButton(context, Icons.push_pin_outlined, '置顶', null, () => _batchTogglePin(context, ref, true)),
+          _batchButton(context, Icons.push_pin, '取消置顶', null, () => _batchTogglePin(context, ref, false)),
+          _batchButton(context, Icons.label_outline, '标签', null, () => _batchAddTag(context, ref)),
+          _batchButton(context, Icons.palette_outlined, '颜色', null, () => _batchSetColor(context, ref)),
+        ],
+      ),
+    );
+  }
+
+  Widget _batchButton(BuildContext context, IconData icon, String label, Color? color, VoidCallback onTap) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 22, color: color ?? Theme.of(context).colorScheme.onSurfaceVariant),
+            const SizedBox(height: 2),
+            Text(label, style: TextStyle(fontSize: 11, color: color ?? Theme.of(context).colorScheme.onSurfaceVariant)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _batchDelete(BuildContext context, WidgetRef ref) async {
+    final ids = ref.read(selectedItemIdsProvider);
+    if (ids.isEmpty) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('批量删除'),
+        content: Text('确定要将 ${ids.length} 个项目移至回收站吗？'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('删除'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    for (final id in ids) {
+      await ref.read(vaultItemsProvider.notifier).softDeleteItem(id);
+    }
+    ref.read(selectedItemIdsProvider.notifier).state = {};
+    ref.read(isMultiSelectProvider.notifier).state = false;
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('已将 ${ids.length} 项移至回收站')));
+    }
+  }
+
+  Future<void> _batchTogglePin(BuildContext context, WidgetRef ref, bool pin) async {
+    final ids = ref.read(selectedItemIdsProvider);
+    if (ids.isEmpty) return;
+    final items = ref.read(vaultItemsProvider).valueOrNull ?? [];
+    for (final id in ids) {
+      final item = items.firstWhere((e) => e.id == id, orElse: () => VaultItem(id: '', type: VaultItemType.password, title: '', username: ''));
+      if (item.id.isNotEmpty && item.isPinned != pin) {
+        await ref.read(vaultItemsProvider.notifier).updateItem(item.copyWith(isPinned: pin));
+      }
+    }
+    ref.read(selectedItemIdsProvider.notifier).state = {};
+    ref.read(isMultiSelectProvider.notifier).state = false;
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(pin ? '已置顶 ${ids.length} 项' : '已取消置顶 ${ids.length} 项')));
+    }
+  }
+
+  Future<void> _batchAddTag(BuildContext context, WidgetRef ref) async {
+    final ids = ref.read(selectedItemIdsProvider);
+    if (ids.isEmpty) return;
+    final tagController = TextEditingController();
+    final allTags = ref.read(allTagsProvider);
+    String? selectedTag;
+
+    final tag = await showDialog<String>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: const Text('添加标签'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (allTags.isNotEmpty)
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: allTags.map((t) => ChoiceChip(
+                    label: Text(t, style: const TextStyle(fontSize: 12)),
+                    selected: selectedTag == t,
+                    onSelected: (s) {
+                      setDialogState(() {
+                        selectedTag = s ? t : null;
+                        tagController.text = s ? t : '';
+                      });
+                    },
+                  )).toList(),
+                ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: tagController,
+                decoration: const InputDecoration(labelText: '或输入新标签'),
+                onChanged: (v) => setDialogState(() => selectedTag = null),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+            TextButton(onPressed: () => Navigator.pop(ctx, tagController.text.trim()), child: const Text('添加')),
+          ],
+        ),
+      ),
+    );
+    if (tag == null || tag.isEmpty || !mounted) return;
+    final items = ref.read(vaultItemsProvider).valueOrNull ?? [];
+    for (final id in ids) {
+      final item = items.firstWhere((e) => e.id == id, orElse: () => VaultItem(id: '', type: VaultItemType.password, title: '', username: ''));
+      if (item.id.isNotEmpty && !item.tags.contains(tag)) {
+        await ref.read(vaultItemsProvider.notifier).updateItem(item.copyWith(tags: [...item.tags, tag]));
+      }
+    }
+    ref.read(selectedItemIdsProvider.notifier).state = {};
+    ref.read(isMultiSelectProvider.notifier).state = false;
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('已为 ${ids.length} 项添加标签"$tag"')));
+    }
+  }
+
+  Future<void> _batchSetColor(BuildContext context, WidgetRef ref) async {
+    final ids = ref.read(selectedItemIdsProvider);
+    if (ids.isEmpty) return;
+    final color = await showDialog<String?>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('选择颜色标记'),
+        content: Wrap(
+          spacing: 12,
+          runSpacing: 12,
+          children: [
+            _colorOption(ctx, null, '无', Colors.grey),
+            ...colorLabelMap.entries.map((e) => _colorOption(ctx, e.key, e.key, e.value)),
+          ],
+        ),
+      ),
+    );
+    if (!mounted) return;
+    final items = ref.read(vaultItemsProvider).valueOrNull ?? [];
+    for (final id in ids) {
+      final item = items.firstWhere((e) => e.id == id, orElse: () => VaultItem(id: '', type: VaultItemType.password, title: '', username: ''));
+      if (item.id.isNotEmpty) {
+        await ref.read(vaultItemsProvider.notifier).updateItem(item.copyWith(colorLabel: color ?? ''));
+      }
+    }
+    ref.read(selectedItemIdsProvider.notifier).state = {};
+    ref.read(isMultiSelectProvider.notifier).state = false;
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('已为 ${ids.length} 项设置颜色')));
+    }
+  }
+
+  Widget _colorOption(BuildContext ctx, String? value, String label, Color color) {
+    return InkWell(
+      onTap: () => Navigator.pop(ctx, value),
+      borderRadius: BorderRadius.circular(8),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 40, height: 40,
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.2),
+              shape: BoxShape.circle,
+              border: Border.all(color: color, width: 2),
+            ),
+            child: value == null ? Icon(Icons.block, color: Colors.grey[400], size: 20) : null,
+          ),
+          const SizedBox(height: 4),
+          Text(label, style: const TextStyle(fontSize: 10)),
+        ],
+      ),
+    );
+  }
+
   @override
   void dispose() {
     _searchController.dispose();
@@ -1259,28 +1525,52 @@ class _MainNavigationScreenState extends ConsumerState<MainNavigationScreen> {
 
     final selectedIndex = ref.watch(selectedTabProvider);
     final isSearching = ref.watch(isSearchingProvider);
+    final isMultiSelect = ref.watch(isMultiSelectProvider);
+    final selectedIds = ref.watch(selectedItemIdsProvider);
 
     return Scaffold(
       appBar: AppBar(
-        title: isSearching
-            ? TextField(
-                controller: _searchController,
-                autofocus: true,
-                decoration: const InputDecoration(
-                  hintText: '搜索标题、用户名或备注...',
-                  border: InputBorder.none,
-                ),
-                onChanged: (value) {
-                  ref.read(searchQueryProvider.notifier).state = value;
+        leading: isMultiSelect
+            ? IconButton(
+                icon: const Icon(Icons.close),
+                onPressed: () {
+                  ref.read(isMultiSelectProvider.notifier).state = false;
+                  ref.read(selectedItemIdsProvider.notifier).state = {};
                 },
               )
-            : Text(
-                selectedIndex == 0 ? '验证码' : (selectedIndex == 1 ? '帐号管理' : (selectedIndex == 2 ? '加密资产' : (selectedIndex == 3 ? '安全备注' : '设置'))),
-                style: const TextStyle(fontWeight: FontWeight.bold),
-              ),
-        centerTitle: !isSearching,
+            : null,
+        title: isMultiSelect
+            ? Text('已选 ${selectedIds.length} 项')
+            : isSearching
+              ? TextField(
+                  controller: _searchController,
+                  autofocus: true,
+                  decoration: const InputDecoration(
+                    hintText: '搜索标题、用户名或备注...',
+                    border: InputBorder.none,
+                  ),
+                  onChanged: (value) {
+                    ref.read(searchQueryProvider.notifier).state = value;
+                  },
+                )
+              : Text(
+                  selectedIndex == 0 ? '验证码' : (selectedIndex == 1 ? '帐号管理' : (selectedIndex == 2 ? '加密资产' : (selectedIndex == 3 ? '安全备注' : '设置'))),
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+        centerTitle: !isSearching && !isMultiSelect,
         actions: [
-          if (isSearching)
+          if (isMultiSelect) ...[
+            IconButton(
+              icon: const Icon(Icons.select_all),
+              tooltip: '全选',
+              onPressed: () {
+                final type = VaultItemType.values[selectedIndex];
+                final items = ref.read(filteredVaultItemsProvider(type));
+                ref.read(selectedItemIdsProvider.notifier).state =
+                    items.map((e) => e.id).toSet();
+              },
+            ),
+          ] else if (isSearching)
             IconButton(
               icon: const Icon(Icons.close),
               onPressed: () {
@@ -1307,6 +1597,12 @@ class _MainNavigationScreenState extends ConsumerState<MainNavigationScreen> {
                   ref.read(showFavoritesOnlyProvider.notifier).state = !ref.read(showFavoritesOnlyProvider);
                 },
               ),
+            if (selectedIndex < 4) 
+              IconButton(
+                icon: const Icon(Icons.sort),
+                tooltip: '排序',
+                onPressed: () => _showSortMenu(context, ref),
+              ),
             if (selectedIndex < 4)
               IconButton(
                 icon: const Icon(Icons.search),
@@ -1314,14 +1610,23 @@ class _MainNavigationScreenState extends ConsumerState<MainNavigationScreen> {
                   ref.read(isSearchingProvider.notifier).state = true;
                 },
               ),
+            if (selectedIndex < 4)
+              IconButton(
+                icon: const Icon(Icons.checklist),
+                tooltip: '多选',
+                onPressed: () {
+                  ref.read(isMultiSelectProvider.notifier).state = true;
+                  ref.read(selectedItemIdsProvider.notifier).state = {};
+                },
+              ),
           ],
         ],
       ),
       body: Column(
         children: [
-          if (selectedIndex < 4 && !isSearching) const CategoryFilterBar(),
-          if (selectedIndex < 4 && !isSearching) const TagFilterBar(),
-          if (selectedIndex < 4 && !isSearching) const SharedVaultFilterIndicator(),
+          if (selectedIndex < 4 && !isSearching && !isMultiSelect) const CategoryFilterBar(),
+          if (selectedIndex < 4 && !isSearching && !isMultiSelect) const TagFilterBar(),
+          if (selectedIndex < 4 && !isSearching && !isMultiSelect) const SharedVaultFilterIndicator(),
           Expanded(
             child: IndexedStack(
               index: selectedIndex,
@@ -1334,9 +1639,11 @@ class _MainNavigationScreenState extends ConsumerState<MainNavigationScreen> {
               ],
             ),
           ),
+          if (isMultiSelect && selectedIds.isNotEmpty)
+            _buildBatchActionBar(context, ref),
         ],
       ),
-      floatingActionButton: selectedIndex < 4 && !isSearching
+      floatingActionButton: selectedIndex < 4 && !isSearching && !isMultiSelect
           ? FloatingActionButton.extended(
               onPressed: () {
                 final sharedVaultId = ref.read(selectedSharedVaultIdProvider);
@@ -1463,6 +1770,8 @@ class VaultListContent extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final items = ref.watch(filteredVaultItemsProvider(type));
     final vaultAsync = ref.watch(vaultItemsProvider);
+    final isMultiSelect = ref.watch(isMultiSelectProvider);
+    final selectedIds = ref.watch(selectedItemIdsProvider);
     
     return vaultAsync.when(
       loading: () => const Center(child: CircularProgressIndicator()),
@@ -1513,19 +1822,91 @@ class VaultListContent extends ConsumerWidget {
           itemCount: items.length,
           itemBuilder: (context, index) {
             final item = items[index];
+            final isSelected = selectedIds.contains(item.id);
+            
+            Widget card;
             switch (item.type) {
               case VaultItemType.totp:
-                return TotpItemCard(item: item);
+                card = TotpItemCard(item: item);
+                break;
               case VaultItemType.password:
-                return PasswordItemCard(item: item);
+                card = PasswordItemCard(item: item);
+                break;
               case VaultItemType.crypto:
-                return CryptoItemCard(item: item);
+                card = CryptoItemCard(item: item);
+                break;
               case VaultItemType.secureNote:
-                return SecureNoteItemCard(item: item);
+                card = SecureNoteItemCard(item: item);
+                break;
             }
+
+            if (!isMultiSelect) {
+              return _wrapWithColorIndicator(context, item, card);
+            }
+
+            return GestureDetector(
+              onTap: () {
+                final current = Set<String>.from(ref.read(selectedItemIdsProvider));
+                if (current.contains(item.id)) {
+                  current.remove(item.id);
+                } else {
+                  current.add(item.id);
+                }
+                ref.read(selectedItemIdsProvider.notifier).state = current;
+              },
+              child: Stack(
+                children: [
+                  AbsorbPointer(child: _wrapWithColorIndicator(context, item, card)),
+                  Positioned(
+                    left: 4,
+                    top: 12,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).scaffoldBackgroundColor,
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(
+                        isSelected ? Icons.check_circle : Icons.radio_button_unchecked,
+                        color: isSelected ? Theme.of(context).colorScheme.primary : Colors.grey,
+                        size: 24,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            );
           },
         );
       },
+    );
+  }
+
+  Widget _wrapWithColorIndicator(BuildContext context, VaultItem item, Widget card) {
+    final color = item.colorLabel != null && item.colorLabel!.isNotEmpty
+        ? colorLabelMap[item.colorLabel]
+        : null;
+    if (color == null && !item.isPinned) return card;
+
+    return Stack(
+      children: [
+        card,
+        if (color != null)
+          Positioned(
+            left: 16, top: 8, bottom: 8,
+            child: Container(
+              width: 4,
+              decoration: BoxDecoration(
+                color: color,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
+        if (item.isPinned)
+          Positioned(
+            right: 20, top: 12,
+            child: Icon(Icons.push_pin, size: 14, color: Theme.of(context).colorScheme.primary.withOpacity(0.6)),
+          ),
+      ],
     );
   }
 }
@@ -1725,6 +2106,14 @@ class SettingsContent extends ConsumerWidget {
             },
           ),
         ]),
+        _buildSection(context, '外观', [
+          ListTile(
+            leading: const Icon(Icons.palette_outlined),
+            title: const Text('主题模式'),
+            subtitle: Text(_themeModeName(ref.watch(themeModeProvider))),
+            onTap: () => _showThemeModeDialog(context, ref),
+          ),
+        ]),
         _buildSection(context, '工具', [
           ListTile(
             leading: const Icon(Icons.password),
@@ -1778,6 +2167,59 @@ class SettingsContent extends ConsumerWidget {
           ),
         ]),
       ],
+    );
+  }
+
+  String _themeModeName(ThemeMode mode) {
+    switch (mode) {
+      case ThemeMode.system: return '跟随系统';
+      case ThemeMode.light: return '浅色';
+      case ThemeMode.dark: return '深色';
+    }
+  }
+
+  void _showThemeModeDialog(BuildContext context, WidgetRef ref) {
+    final current = ref.read(themeModeProvider);
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('主题模式'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            RadioListTile<ThemeMode>(
+              title: const Text('跟随系统'),
+              secondary: const Icon(Icons.brightness_auto),
+              value: ThemeMode.system,
+              groupValue: current,
+              onChanged: (v) {
+                ref.read(themeModeProvider.notifier).setThemeMode(v!);
+                Navigator.pop(context);
+              },
+            ),
+            RadioListTile<ThemeMode>(
+              title: const Text('浅色模式'),
+              secondary: const Icon(Icons.light_mode),
+              value: ThemeMode.light,
+              groupValue: current,
+              onChanged: (v) {
+                ref.read(themeModeProvider.notifier).setThemeMode(v!);
+                Navigator.pop(context);
+              },
+            ),
+            RadioListTile<ThemeMode>(
+              title: const Text('深色模式'),
+              secondary: const Icon(Icons.dark_mode),
+              value: ThemeMode.dark,
+              groupValue: current,
+              onChanged: (v) {
+                ref.read(themeModeProvider.notifier).setThemeMode(v!);
+                Navigator.pop(context);
+              },
+            ),
+          ],
+        ),
+      ),
     );
   }
 

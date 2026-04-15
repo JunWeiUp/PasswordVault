@@ -31,6 +31,8 @@ class VaultItems extends Table {
   DateTimeColumn get deletedAt => dateTime().nullable()();
   TextColumn get tags => text().nullable()(); // Comma separated or JSON array of tags
   TextColumn get sharedVaultId => text().nullable().references(SharedVaults, #id)();
+  BoolColumn get isPinned => boolean().withDefault(const Constant(false))();
+  TextColumn get colorLabel => text().nullable()();
 
   @override
   Set<Column> get primaryKey => {id};
@@ -67,7 +69,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(impl.connect());
 
   @override
-  int get schemaVersion => 11;
+  int get schemaVersion => 12;
 
   /// Safely add a column; logs a warning if it already exists instead of silently swallowing.
   Future<void> _safeAddColumn(Migrator m, TableInfo table, GeneratedColumn column) async {
@@ -126,6 +128,10 @@ class AppDatabase extends _$AppDatabase {
       if (from < 11) {
         await _safeAddColumn(m, sharedVaults, sharedVaults.isDiscoverable);
       }
+      if (from < 12) {
+        await _safeAddColumn(m, vaultItems, vaultItems.isPinned);
+        await _safeAddColumn(m, vaultItems, vaultItems.colorLabel);
+      }
       debugPrint('DB migration: upgrade complete');
     },
     beforeOpen: (details) async {
@@ -143,6 +149,8 @@ class AppDatabase extends _$AppDatabase {
         await _safeAddColumn(m, vaultItems, vaultItems.isDeleted);
         await _safeAddColumn(m, vaultItems, vaultItems.deletedAt);
         await _safeAddColumn(m, vaultItems, vaultItems.tags);
+        await _safeAddColumn(m, vaultItems, vaultItems.isPinned);
+        await _safeAddColumn(m, vaultItems, vaultItems.colorLabel);
       }
     },
   );

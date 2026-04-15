@@ -26,6 +26,8 @@ class VaultItem {
   final List<String> tags;
   final DateTime? updatedAt;
   final String? sharedVaultId;
+  final bool isPinned;
+  final String? colorLabel;
 
   VaultItem({
     required this.id,
@@ -53,6 +55,8 @@ class VaultItem {
     this.tags = const [],
     this.updatedAt,
     this.sharedVaultId,
+    this.isPinned = false,
+    this.colorLabel,
   });
 
   Map<String, dynamic> toJson() {
@@ -82,6 +86,8 @@ class VaultItem {
       'tags': tags,
       'updatedAt': updatedAt?.toIso8601String(),
       'sharedVaultId': sharedVaultId,
+      'isPinned': isPinned,
+      'colorLabel': colorLabel,
     };
   }
 
@@ -123,6 +129,8 @@ class VaultItem {
       tags: (json['tags'] as List?)?.map((e) => e.toString()).toList() ?? [],
       updatedAt: json['updatedAt'] != null ? DateTime.tryParse(json['updatedAt'].toString()) : null,
       sharedVaultId: json['sharedVaultId']?.toString(),
+      isPinned: json['isPinned'] as bool? ?? false,
+      colorLabel: json['colorLabel']?.toString(),
     );
   }
 
@@ -152,6 +160,8 @@ class VaultItem {
     List<String>? tags,
     DateTime? updatedAt,
     String? sharedVaultId,
+    bool? isPinned,
+    String? colorLabel,
   }) {
     return VaultItem(
       id: id ?? this.id,
@@ -179,6 +189,8 @@ class VaultItem {
       tags: tags ?? this.tags,
       updatedAt: updatedAt ?? this.updatedAt,
       sharedVaultId: sharedVaultId ?? this.sharedVaultId,
+      isPinned: isPinned ?? this.isPinned,
+      colorLabel: colorLabel ?? this.colorLabel,
     );
   }
 }

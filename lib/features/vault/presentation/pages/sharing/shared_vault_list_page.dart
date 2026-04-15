@@ -4,7 +4,6 @@ import 'package:go_router/go_router.dart';
 import '../../providers/vault_provider.dart';
 import '../../../../sync/presentation/providers/sync_provider.dart';
 import '../../../../sync/domain/local_sync_service.dart';
-import '../../../domain/models/vault_item.dart';
 
 class SharedVaultListPage extends ConsumerWidget {
   const SharedVaultListPage({super.key});

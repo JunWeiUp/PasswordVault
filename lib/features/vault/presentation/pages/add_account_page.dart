@@ -39,6 +39,8 @@ class _AddAccountPageState extends ConsumerState<AddAccountPage> {
   String? _selectedNetwork;
   bool _obscurePassword = true;
   late bool _obscureMnemonic;
+  late bool _isPinned;
+  String? _colorLabel;
 
   @override
   void initState() {
@@ -89,6 +91,8 @@ class _AddAccountPageState extends ConsumerState<AddAccountPage> {
     _totpSecret = widget.item?.secret;
     _selectedSharedVaultId = widget.item?.sharedVaultId;
     _selectedNetwork = widget.item?.network ?? (widget.item?.type == VaultItemType.crypto ? 'ETH' : null);
+    _isPinned = widget.item?.isPinned ?? false;
+    _colorLabel = widget.item?.colorLabel;
 
     // 添加监听器以自动生成地址
     _privateKeyController.addListener(() => _updateAddressFromPrivateKey(showErrors: false));
@@ -221,6 +225,8 @@ class _AddAccountPageState extends ConsumerState<AddAccountPage> {
       passwordHistory: widget.item?.passwordHistory,
       tags: _tags,
       sharedVaultId: _selectedSharedVaultId,
+      isPinned: _isPinned,
+      colorLabel: (_colorLabel?.isEmpty ?? true) ? null : _colorLabel,
       accounts: _extraAccounts.where((g) => g.usernameController.text.isNotEmpty).map((g) {
         return AccountEntry(
           id: g.id.isEmpty ? const Uuid().v4() : g.id,
@@ -794,9 +800,111 @@ class _AddAccountPageState extends ConsumerState<AddAccountPage> {
                     onTap: _showPasswordHistory,
                   ),
               ]),
+            const SizedBox(height: 16),
+            _buildSection(context, '显示设置', [
+              SwitchListTile(
+                title: const Text('置顶'),
+                subtitle: const Text('在列表中始终排在最前面'),
+                secondary: const Icon(Icons.push_pin_outlined),
+                value: _isPinned,
+                onChanged: (v) => setState(() => _isPinned = v),
+              ),
+              ListTile(
+                leading: Container(
+                  width: 24, height: 24,
+                  decoration: BoxDecoration(
+                    color: (_colorLabel != null && _colorLabel!.isNotEmpty)
+                        ? _getColorForLabel(_colorLabel!).withOpacity(0.3)
+                        : Colors.grey.withOpacity(0.2),
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: (_colorLabel != null && _colorLabel!.isNotEmpty)
+                          ? _getColorForLabel(_colorLabel!)
+                          : Colors.grey,
+                      width: 2,
+                    ),
+                  ),
+                ),
+                title: const Text('颜色标记'),
+                subtitle: Text(_colorLabel ?? '无'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => _showColorPicker(),
+              ),
+            ]),
             const SizedBox(height: 32),
           ],
         ),
+      ),
+    );
+  }
+
+  Color _getColorForLabel(String label) {
+    const map = <String, Color>{
+      '红色': Colors.red,
+      '橙色': Colors.orange,
+      '黄色': Colors.amber,
+      '绿色': Colors.green,
+      '蓝色': Colors.blue,
+      '紫色': Colors.purple,
+      '粉色': Colors.pink,
+      '青色': Colors.teal,
+    };
+    return map[label] ?? Colors.grey;
+  }
+
+  void _showColorPicker() {
+    const colors = <String, Color>{
+      '红色': Colors.red,
+      '橙色': Colors.orange,
+      '黄色': Colors.amber,
+      '绿色': Colors.green,
+      '蓝色': Colors.blue,
+      '紫色': Colors.purple,
+      '粉色': Colors.pink,
+      '青色': Colors.teal,
+    };
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('选择颜色标记'),
+        content: Wrap(
+          spacing: 16,
+          runSpacing: 16,
+          children: [
+            _buildColorChoice(ctx, null, '无', Colors.grey),
+            ...colors.entries.map((e) => _buildColorChoice(ctx, e.key, e.key, e.value)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildColorChoice(BuildContext ctx, String? value, String label, Color color) {
+    final isSelected = _colorLabel == value || (_colorLabel == null && value == null);
+    return InkWell(
+      onTap: () {
+        setState(() => _colorLabel = value);
+        Navigator.pop(ctx);
+      },
+      borderRadius: BorderRadius.circular(8),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 40, height: 40,
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.2),
+              shape: BoxShape.circle,
+              border: Border.all(color: color, width: isSelected ? 3 : 2),
+            ),
+            child: value == null
+                ? Icon(Icons.block, color: Colors.grey[400], size: 20)
+                : (isSelected ? Icon(Icons.check, color: color, size: 20) : null),
+          ),
+          const SizedBox(height: 4),
+          Text(label, style: const TextStyle(fontSize: 10)),
+        ],
       ),
     );
   }
@@ -1318,7 +1426,7 @@ class _AccountControllerGroup {
   final TextEditingController labelController;
   final List<PasswordHistoryEntry>? passwordHistory;
   final DateTime? passwordLastChanged;
-  bool obscurePassword;
+  bool obscurePassword = true;
 
   _AccountControllerGroup({
     String? id,
@@ -1327,7 +1435,6 @@ class _AccountControllerGroup {
     String? label,
     this.passwordHistory,
     this.passwordLastChanged,
-    this.obscurePassword = true,
   })  : id = id ?? '',
         usernameController = TextEditingController(text: username),
         passwordController = TextEditingController(text: password),

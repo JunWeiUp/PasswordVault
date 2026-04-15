@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:cryptography/cryptography.dart';
 import 'package:password/core/security/encryption_service.dart';
 
 void main() {
@@ -90,7 +89,7 @@ void main() {
       });
 
       test('decrypt with wrong key pair fails', () async {
-        final senderKp = await service.generateKeyPair();
+        await service.generateKeyPair();
         final recipientKp = await service.generateKeyPair();
         final wrongKp = await service.generateKeyPair();
 

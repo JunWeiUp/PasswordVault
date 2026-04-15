@@ -102,6 +102,8 @@ class VaultRepository {
       isDeleted: Value(item.isDeleted),
       deletedAt: Value(item.deletedAt),
       sharedVaultId: Value(item.sharedVaultId),
+      isPinned: Value(item.isPinned),
+      colorLabel: Value(item.colorLabel),
     );
 
     if (preserveUpdatedAt != null) {
@@ -237,6 +239,8 @@ class VaultRepository {
           deletedAt: row.deletedAt,
           updatedAt: row.updatedAt,
           sharedVaultId: row.sharedVaultId,
+          isPinned: row.isPinned,
+          colorLabel: row.colorLabel,
         );
       }));
 
@@ -373,6 +377,8 @@ class VaultRepository {
       isDeleted: Value(item.isDeleted),
       deletedAt: Value(item.deletedAt),
       sharedVaultId: Value(item.sharedVaultId),
+      isPinned: Value(item.isPinned),
+      colorLabel: Value(item.colorLabel),
     );
   }
 
@@ -928,7 +934,10 @@ class VaultRepository {
       decryptionTasks.add(_encryptionService
           .decrypt(base64.decode(row.note!), encryptionKey)
           .then((v) => decryptedNote = v)
-          .catchError((_) => decryptedNote = row.note));
+          .catchError((_) {
+            decryptedNote = row.note;
+            return decryptedNote ?? '';
+          }));
     }
 
     if (row.passwordHistory != null) {
@@ -995,6 +1004,8 @@ class VaultRepository {
       deletedAt: row.deletedAt,
       updatedAt: row.updatedAt,
       sharedVaultId: row.sharedVaultId,
+      isPinned: row.isPinned,
+      colorLabel: row.colorLabel,
     );
   }
 

@@ -79,7 +79,8 @@ class ImportExportHelper {
         if (data is Map<String, dynamic>) {
           final metadata = data['metadata'] as Map<String, dynamic>?;
           final bool isEncrypted = metadata?['encrypted'] ?? false;
-          final String version = metadata?['version']?.toString() ?? '1.0.0';
+          // version reserved for future migration logic
+          final _ = metadata?['version']?.toString() ?? '1.0.0';
 
           if (isEncrypted) {
             final String? payloadBase64 = data['payload'] as String?;

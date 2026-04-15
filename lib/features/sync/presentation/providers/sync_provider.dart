@@ -1,5 +1,4 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../../core/database/app_database.dart';
 import '../../domain/local_sync_service.dart';
 import '../../../vault/presentation/providers/vault_provider.dart';
 

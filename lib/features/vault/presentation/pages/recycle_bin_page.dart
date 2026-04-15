@@ -2,10 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/vault_provider.dart';
 import '../../domain/models/vault_item.dart';
-import '../widgets/password_item_card.dart';
-import '../widgets/crypto_item_card.dart';
-import '../widgets/secure_note_item_card.dart';
-import '../../../totp/presentation/widgets/totp_item_card.dart';
 
 class RecycleBinPage extends ConsumerWidget {
   const RecycleBinPage({super.key});

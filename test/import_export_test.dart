@@ -1,6 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:password/core/utils/import_export_helper.dart';
-import 'package:password/features/vault/domain/models/vault_item.dart';
 
 void main() {
   group('LastPass CSV Parsing Tests', () {

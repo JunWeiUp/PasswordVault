@@ -374,6 +374,8 @@ class VaultNotifier extends StateNotifier<AsyncValue<List<VaultItem>>> {
       passwordDuration: item.passwordDuration,
       tags: item.tags,
       sharedVaultId: item.sharedVaultId,
+      isPinned: item.isPinned,
+      colorLabel: item.colorLabel,
     );
   }
 
@@ -403,6 +405,8 @@ class VaultNotifier extends StateNotifier<AsyncValue<List<VaultItem>>> {
       passwordDuration: item.passwordDuration,
       tags: item.tags,
       sharedVaultId: item.sharedVaultId,
+      isPinned: item.isPinned,
+      colorLabel: _cleanValue(item.colorLabel),
     );
   }
 
@@ -466,6 +470,8 @@ class VaultNotifier extends StateNotifier<AsyncValue<List<VaultItem>>> {
       passwordDuration: existing.passwordDuration,
       tags: existing.tags.isNotEmpty ? existing.tags : incoming.tags,
       sharedVaultId: existing.sharedVaultId ?? incoming.sharedVaultId,
+      isPinned: existing.isPinned || incoming.isPinned,
+      colorLabel: existing.colorLabel ?? incoming.colorLabel,
     );
   }
 
@@ -483,7 +489,9 @@ class VaultNotifier extends StateNotifier<AsyncValue<List<VaultItem>>> {
         a.category == b.category &&
         a.email == b.email &&
         a.isFavorite == b.isFavorite &&
-        listEquals(a.tags, b.tags);
+        listEquals(a.tags, b.tags) &&
+        a.isPinned == b.isPinned &&
+        a.colorLabel == b.colorLabel;
   }
 
   String? _cleanValue(String? value) {
@@ -746,10 +754,11 @@ final filteredVaultItemsProvider = Provider.family<List<VaultItem>, VaultItemTyp
   final selectedSharedVaultId = ref.watch(selectedSharedVaultIdProvider);
   final showFavoritesOnly = ref.watch(showFavoritesOnlyProvider);
   final searchQuery = ref.watch(searchQueryProvider).toLowerCase();
+  final sortMode = ref.watch(sortModeProvider);
   
   return vaultAsync.maybeWhen(
     data: (items) {
-      return items.where((item) {
+      final filtered = items.where((item) {
         final matchesType = item.type == type;
         final matchesCategory = selectedCategory == null || item.category == selectedCategory;
         final matchesTag = selectedTag == null || item.tags.contains(selectedTag);
@@ -761,10 +770,27 @@ final filteredVaultItemsProvider = Provider.family<List<VaultItem>, VaultItemTyp
             (item.username.toLowerCase().contains(searchQuery)) ||
             (item.url?.toLowerCase().contains(searchQuery) ?? false) ||
             (item.note?.toLowerCase().contains(searchQuery) ?? false) ||
+            (item.email?.toLowerCase().contains(searchQuery) ?? false) ||
             (item.tags.any((tag) => tag.toLowerCase().contains(searchQuery)));
 
         return matchesType && matchesCategory && matchesTag && matchesSharedVault && matchesFavorite && matchesSearch;
       }).toList();
+
+      filtered.sort((a, b) {
+        if (a.isPinned != b.isPinned) return a.isPinned ? -1 : 1;
+        switch (sortMode) {
+          case SortMode.nameAsc:
+            return a.title.toLowerCase().compareTo(b.title.toLowerCase());
+          case SortMode.nameDesc:
+            return b.title.toLowerCase().compareTo(a.title.toLowerCase());
+          case SortMode.updatedDesc:
+            return (b.updatedAt ?? DateTime(2000)).compareTo(a.updatedAt ?? DateTime(2000));
+          case SortMode.updatedAsc:
+            return (a.updatedAt ?? DateTime(2000)).compareTo(b.updatedAt ?? DateTime(2000));
+        }
+      });
+
+      return filtered;
     },
     orElse: () => [],
   );

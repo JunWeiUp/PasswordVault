@@ -519,6 +519,22 @@ class $VaultItemsTable extends VaultItems
       requiredDuringInsert: false,
       defaultConstraints:
           GeneratedColumn.constraintIsAlways('REFERENCES shared_vaults (id)'));
+  static const VerificationMeta _isPinnedMeta =
+      const VerificationMeta('isPinned');
+  @override
+  late final GeneratedColumn<bool> isPinned = GeneratedColumn<bool>(
+      'is_pinned', aliasedName, false,
+      type: DriftSqlType.bool,
+      requiredDuringInsert: false,
+      defaultConstraints:
+          GeneratedColumn.constraintIsAlways('CHECK ("is_pinned" IN (0, 1))'),
+      defaultValue: const Constant(false));
+  static const VerificationMeta _colorLabelMeta =
+      const VerificationMeta('colorLabel');
+  @override
+  late final GeneratedColumn<String> colorLabel = GeneratedColumn<String>(
+      'color_label', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
   @override
   List<GeneratedColumn> get $columns => [
         id,
@@ -545,7 +561,9 @@ class $VaultItemsTable extends VaultItems
         isDeleted,
         deletedAt,
         tags,
-        sharedVaultId
+        sharedVaultId,
+        isPinned,
+        colorLabel
       ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -676,6 +694,16 @@ class $VaultItemsTable extends VaultItems
           sharedVaultId.isAcceptableOrUnknown(
               data['shared_vault_id']!, _sharedVaultIdMeta));
     }
+    if (data.containsKey('is_pinned')) {
+      context.handle(_isPinnedMeta,
+          isPinned.isAcceptableOrUnknown(data['is_pinned']!, _isPinnedMeta));
+    }
+    if (data.containsKey('color_label')) {
+      context.handle(
+          _colorLabelMeta,
+          colorLabel.isAcceptableOrUnknown(
+              data['color_label']!, _colorLabelMeta));
+    }
     return context;
   }
 
@@ -736,6 +764,10 @@ class $VaultItemsTable extends VaultItems
           .read(DriftSqlType.string, data['${effectivePrefix}tags']),
       sharedVaultId: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}shared_vault_id']),
+      isPinned: attachedDatabase.typeMapping
+          .read(DriftSqlType.bool, data['${effectivePrefix}is_pinned'])!,
+      colorLabel: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}color_label']),
     );
   }
 
@@ -771,6 +803,8 @@ class VaultItemEntity extends DataClass implements Insertable<VaultItemEntity> {
   final DateTime? deletedAt;
   final String? tags;
   final String? sharedVaultId;
+  final bool isPinned;
+  final String? colorLabel;
   const VaultItemEntity(
       {required this.id,
       required this.type,
@@ -796,7 +830,9 @@ class VaultItemEntity extends DataClass implements Insertable<VaultItemEntity> {
       required this.isDeleted,
       this.deletedAt,
       this.tags,
-      this.sharedVaultId});
+      this.sharedVaultId,
+      required this.isPinned,
+      this.colorLabel});
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
@@ -859,6 +895,10 @@ class VaultItemEntity extends DataClass implements Insertable<VaultItemEntity> {
     if (!nullToAbsent || sharedVaultId != null) {
       map['shared_vault_id'] = Variable<String>(sharedVaultId);
     }
+    map['is_pinned'] = Variable<bool>(isPinned);
+    if (!nullToAbsent || colorLabel != null) {
+      map['color_label'] = Variable<String>(colorLabel);
+    }
     return map;
   }
 
@@ -915,6 +955,10 @@ class VaultItemEntity extends DataClass implements Insertable<VaultItemEntity> {
       sharedVaultId: sharedVaultId == null && nullToAbsent
           ? const Value.absent()
           : Value(sharedVaultId),
+      isPinned: Value(isPinned),
+      colorLabel: colorLabel == null && nullToAbsent
+          ? const Value.absent()
+          : Value(colorLabel),
     );
   }
 
@@ -948,6 +992,8 @@ class VaultItemEntity extends DataClass implements Insertable<VaultItemEntity> {
       deletedAt: serializer.fromJson<DateTime?>(json['deletedAt']),
       tags: serializer.fromJson<String?>(json['tags']),
       sharedVaultId: serializer.fromJson<String?>(json['sharedVaultId']),
+      isPinned: serializer.fromJson<bool>(json['isPinned']),
+      colorLabel: serializer.fromJson<String?>(json['colorLabel']),
     );
   }
   @override
@@ -979,6 +1025,8 @@ class VaultItemEntity extends DataClass implements Insertable<VaultItemEntity> {
       'deletedAt': serializer.toJson<DateTime?>(deletedAt),
       'tags': serializer.toJson<String?>(tags),
       'sharedVaultId': serializer.toJson<String?>(sharedVaultId),
+      'isPinned': serializer.toJson<bool>(isPinned),
+      'colorLabel': serializer.toJson<String?>(colorLabel),
     };
   }
 
@@ -1007,7 +1055,9 @@ class VaultItemEntity extends DataClass implements Insertable<VaultItemEntity> {
           bool? isDeleted,
           Value<DateTime?> deletedAt = const Value.absent(),
           Value<String?> tags = const Value.absent(),
-          Value<String?> sharedVaultId = const Value.absent()}) =>
+          Value<String?> sharedVaultId = const Value.absent(),
+          bool? isPinned,
+          Value<String?> colorLabel = const Value.absent()}) =>
       VaultItemEntity(
         id: id ?? this.id,
         type: type ?? this.type,
@@ -1041,6 +1091,8 @@ class VaultItemEntity extends DataClass implements Insertable<VaultItemEntity> {
         tags: tags.present ? tags.value : this.tags,
         sharedVaultId:
             sharedVaultId.present ? sharedVaultId.value : this.sharedVaultId,
+        isPinned: isPinned ?? this.isPinned,
+        colorLabel: colorLabel.present ? colorLabel.value : this.colorLabel,
       );
   VaultItemEntity copyWithCompanion(VaultItemsCompanion data) {
     return VaultItemEntity(
@@ -1079,6 +1131,9 @@ class VaultItemEntity extends DataClass implements Insertable<VaultItemEntity> {
       sharedVaultId: data.sharedVaultId.present
           ? data.sharedVaultId.value
           : this.sharedVaultId,
+      isPinned: data.isPinned.present ? data.isPinned.value : this.isPinned,
+      colorLabel:
+          data.colorLabel.present ? data.colorLabel.value : this.colorLabel,
     );
   }
 
@@ -1109,7 +1164,9 @@ class VaultItemEntity extends DataClass implements Insertable<VaultItemEntity> {
           ..write('isDeleted: $isDeleted, ')
           ..write('deletedAt: $deletedAt, ')
           ..write('tags: $tags, ')
-          ..write('sharedVaultId: $sharedVaultId')
+          ..write('sharedVaultId: $sharedVaultId, ')
+          ..write('isPinned: $isPinned, ')
+          ..write('colorLabel: $colorLabel')
           ..write(')'))
         .toString();
   }
@@ -1140,7 +1197,9 @@ class VaultItemEntity extends DataClass implements Insertable<VaultItemEntity> {
         isDeleted,
         deletedAt,
         tags,
-        sharedVaultId
+        sharedVaultId,
+        isPinned,
+        colorLabel
       ]);
   @override
   bool operator ==(Object other) =>
@@ -1170,7 +1229,9 @@ class VaultItemEntity extends DataClass implements Insertable<VaultItemEntity> {
           other.isDeleted == this.isDeleted &&
           other.deletedAt == this.deletedAt &&
           other.tags == this.tags &&
-          other.sharedVaultId == this.sharedVaultId);
+          other.sharedVaultId == this.sharedVaultId &&
+          other.isPinned == this.isPinned &&
+          other.colorLabel == this.colorLabel);
 }
 
 class VaultItemsCompanion extends UpdateCompanion<VaultItemEntity> {
@@ -1199,6 +1260,8 @@ class VaultItemsCompanion extends UpdateCompanion<VaultItemEntity> {
   final Value<DateTime?> deletedAt;
   final Value<String?> tags;
   final Value<String?> sharedVaultId;
+  final Value<bool> isPinned;
+  final Value<String?> colorLabel;
   final Value<int> rowid;
   const VaultItemsCompanion({
     this.id = const Value.absent(),
@@ -1226,6 +1289,8 @@ class VaultItemsCompanion extends UpdateCompanion<VaultItemEntity> {
     this.deletedAt = const Value.absent(),
     this.tags = const Value.absent(),
     this.sharedVaultId = const Value.absent(),
+    this.isPinned = const Value.absent(),
+    this.colorLabel = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   VaultItemsCompanion.insert({
@@ -1254,6 +1319,8 @@ class VaultItemsCompanion extends UpdateCompanion<VaultItemEntity> {
     this.deletedAt = const Value.absent(),
     this.tags = const Value.absent(),
     this.sharedVaultId = const Value.absent(),
+    this.isPinned = const Value.absent(),
+    this.colorLabel = const Value.absent(),
     this.rowid = const Value.absent(),
   })  : id = Value(id),
         type = Value(type),
@@ -1285,6 +1352,8 @@ class VaultItemsCompanion extends UpdateCompanion<VaultItemEntity> {
     Expression<DateTime>? deletedAt,
     Expression<String>? tags,
     Expression<String>? sharedVaultId,
+    Expression<bool>? isPinned,
+    Expression<String>? colorLabel,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -1314,6 +1383,8 @@ class VaultItemsCompanion extends UpdateCompanion<VaultItemEntity> {
       if (deletedAt != null) 'deleted_at': deletedAt,
       if (tags != null) 'tags': tags,
       if (sharedVaultId != null) 'shared_vault_id': sharedVaultId,
+      if (isPinned != null) 'is_pinned': isPinned,
+      if (colorLabel != null) 'color_label': colorLabel,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -1344,6 +1415,8 @@ class VaultItemsCompanion extends UpdateCompanion<VaultItemEntity> {
       Value<DateTime?>? deletedAt,
       Value<String?>? tags,
       Value<String?>? sharedVaultId,
+      Value<bool>? isPinned,
+      Value<String?>? colorLabel,
       Value<int>? rowid}) {
     return VaultItemsCompanion(
       id: id ?? this.id,
@@ -1371,6 +1444,8 @@ class VaultItemsCompanion extends UpdateCompanion<VaultItemEntity> {
       deletedAt: deletedAt ?? this.deletedAt,
       tags: tags ?? this.tags,
       sharedVaultId: sharedVaultId ?? this.sharedVaultId,
+      isPinned: isPinned ?? this.isPinned,
+      colorLabel: colorLabel ?? this.colorLabel,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -1454,6 +1529,12 @@ class VaultItemsCompanion extends UpdateCompanion<VaultItemEntity> {
     if (sharedVaultId.present) {
       map['shared_vault_id'] = Variable<String>(sharedVaultId.value);
     }
+    if (isPinned.present) {
+      map['is_pinned'] = Variable<bool>(isPinned.value);
+    }
+    if (colorLabel.present) {
+      map['color_label'] = Variable<String>(colorLabel.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -1488,6 +1569,8 @@ class VaultItemsCompanion extends UpdateCompanion<VaultItemEntity> {
           ..write('deletedAt: $deletedAt, ')
           ..write('tags: $tags, ')
           ..write('sharedVaultId: $sharedVaultId, ')
+          ..write('isPinned: $isPinned, ')
+          ..write('colorLabel: $colorLabel, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -1908,8 +1991,8 @@ final class $$SharedVaultsTableReferences extends BaseReferences<_$AppDatabase,
                   db.sharedVaults.id, db.vaultItems.sharedVaultId));
 
   $$VaultItemsTableProcessedTableManager get vaultItemsRefs {
-    final manager = $$VaultItemsTableTableManager($_db, $_db.vaultItems)
-        .filter((f) => f.sharedVaultId.id($_item.id));
+    final manager = $$VaultItemsTableTableManager($_db, $_db.vaultItems).filter(
+        (f) => f.sharedVaultId.id.sqlEquals($_itemColumn<String>('id')!));
 
     final cache = $_typedResult.readTableOrNull(_vaultItemsRefsTable($_db));
     return ProcessedTableManager(
@@ -1924,7 +2007,7 @@ final class $$SharedVaultsTableReferences extends BaseReferences<_$AppDatabase,
 
   $$SharedMembersTableProcessedTableManager get sharedMembersRefs {
     final manager = $$SharedMembersTableTableManager($_db, $_db.sharedMembers)
-        .filter((f) => f.vaultId.id($_item.id));
+        .filter((f) => f.vaultId.id.sqlEquals($_itemColumn<String>('id')!));
 
     final cache = $_typedResult.readTableOrNull(_sharedMembersRefsTable($_db));
     return ProcessedTableManager(
@@ -2180,7 +2263,8 @@ class $$SharedVaultsTableTableManager extends RootTableManager<
               getPrefetchedDataCallback: (items) async {
                 return [
                   if (vaultItemsRefs)
-                    await $_getPrefetchedData(
+                    await $_getPrefetchedData<SharedVaultEntity,
+                            $SharedVaultsTable, VaultItemEntity>(
                         currentTable: table,
                         referencedTable: $$SharedVaultsTableReferences
                             ._vaultItemsRefsTable(db),
@@ -2192,7 +2276,8 @@ class $$SharedVaultsTableTableManager extends RootTableManager<
                                 .where((e) => e.sharedVaultId == item.id),
                         typedResults: items),
                   if (sharedMembersRefs)
-                    await $_getPrefetchedData(
+                    await $_getPrefetchedData<SharedVaultEntity,
+                            $SharedVaultsTable, SharedMemberEntity>(
                         currentTable: table,
                         referencedTable: $$SharedVaultsTableReferences
                             ._sharedMembersRefsTable(db),
@@ -2248,6 +2333,8 @@ typedef $$VaultItemsTableCreateCompanionBuilder = VaultItemsCompanion Function({
   Value<DateTime?> deletedAt,
   Value<String?> tags,
   Value<String?> sharedVaultId,
+  Value<bool> isPinned,
+  Value<String?> colorLabel,
   Value<int> rowid,
 });
 typedef $$VaultItemsTableUpdateCompanionBuilder = VaultItemsCompanion Function({
@@ -2276,6 +2363,8 @@ typedef $$VaultItemsTableUpdateCompanionBuilder = VaultItemsCompanion Function({
   Value<DateTime?> deletedAt,
   Value<String?> tags,
   Value<String?> sharedVaultId,
+  Value<bool> isPinned,
+  Value<String?> colorLabel,
   Value<int> rowid,
 });
 
@@ -2288,9 +2377,10 @@ final class $$VaultItemsTableReferences
           db.vaultItems.sharedVaultId, db.sharedVaults.id));
 
   $$SharedVaultsTableProcessedTableManager? get sharedVaultId {
-    if ($_item.sharedVaultId == null) return null;
+    final $_column = $_itemColumn<String>('shared_vault_id');
+    if ($_column == null) return null;
     final manager = $$SharedVaultsTableTableManager($_db, $_db.sharedVaults)
-        .filter((f) => f.id($_item.sharedVaultId!));
+        .filter((f) => f.id.sqlEquals($_column));
     final item = $_typedResult.readTableOrNull(_sharedVaultIdTable($_db));
     if (item == null) return manager;
     return ProcessedTableManager(
@@ -2381,6 +2471,12 @@ class $$VaultItemsTableFilterComposer
 
   ColumnFilters<String> get tags => $composableBuilder(
       column: $table.tags, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<bool> get isPinned => $composableBuilder(
+      column: $table.isPinned, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get colorLabel => $composableBuilder(
+      column: $table.colorLabel, builder: (column) => ColumnFilters(column));
 
   $$SharedVaultsTableFilterComposer get sharedVaultId {
     final $$SharedVaultsTableFilterComposer composer = $composerBuilder(
@@ -2487,6 +2583,12 @@ class $$VaultItemsTableOrderingComposer
   ColumnOrderings<String> get tags => $composableBuilder(
       column: $table.tags, builder: (column) => ColumnOrderings(column));
 
+  ColumnOrderings<bool> get isPinned => $composableBuilder(
+      column: $table.isPinned, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get colorLabel => $composableBuilder(
+      column: $table.colorLabel, builder: (column) => ColumnOrderings(column));
+
   $$SharedVaultsTableOrderingComposer get sharedVaultId {
     final $$SharedVaultsTableOrderingComposer composer = $composerBuilder(
         composer: this,
@@ -2589,6 +2691,12 @@ class $$VaultItemsTableAnnotationComposer
   GeneratedColumn<String> get tags =>
       $composableBuilder(column: $table.tags, builder: (column) => column);
 
+  GeneratedColumn<bool> get isPinned =>
+      $composableBuilder(column: $table.isPinned, builder: (column) => column);
+
+  GeneratedColumn<String> get colorLabel => $composableBuilder(
+      column: $table.colorLabel, builder: (column) => column);
+
   $$SharedVaultsTableAnnotationComposer get sharedVaultId {
     final $$SharedVaultsTableAnnotationComposer composer = $composerBuilder(
         composer: this,
@@ -2658,6 +2766,8 @@ class $$VaultItemsTableTableManager extends RootTableManager<
             Value<DateTime?> deletedAt = const Value.absent(),
             Value<String?> tags = const Value.absent(),
             Value<String?> sharedVaultId = const Value.absent(),
+            Value<bool> isPinned = const Value.absent(),
+            Value<String?> colorLabel = const Value.absent(),
             Value<int> rowid = const Value.absent(),
           }) =>
               VaultItemsCompanion(
@@ -2686,6 +2796,8 @@ class $$VaultItemsTableTableManager extends RootTableManager<
             deletedAt: deletedAt,
             tags: tags,
             sharedVaultId: sharedVaultId,
+            isPinned: isPinned,
+            colorLabel: colorLabel,
             rowid: rowid,
           ),
           createCompanionCallback: ({
@@ -2714,6 +2826,8 @@ class $$VaultItemsTableTableManager extends RootTableManager<
             Value<DateTime?> deletedAt = const Value.absent(),
             Value<String?> tags = const Value.absent(),
             Value<String?> sharedVaultId = const Value.absent(),
+            Value<bool> isPinned = const Value.absent(),
+            Value<String?> colorLabel = const Value.absent(),
             Value<int> rowid = const Value.absent(),
           }) =>
               VaultItemsCompanion.insert(
@@ -2742,6 +2856,8 @@ class $$VaultItemsTableTableManager extends RootTableManager<
             deletedAt: deletedAt,
             tags: tags,
             sharedVaultId: sharedVaultId,
+            isPinned: isPinned,
+            colorLabel: colorLabel,
             rowid: rowid,
           ),
           withReferenceMapper: (p0) => p0
@@ -2831,8 +2947,10 @@ final class $$SharedMembersTableReferences extends BaseReferences<_$AppDatabase,
           $_aliasNameGenerator(db.sharedMembers.vaultId, db.sharedVaults.id));
 
   $$SharedVaultsTableProcessedTableManager get vaultId {
+    final $_column = $_itemColumn<String>('vault_id')!;
+
     final manager = $$SharedVaultsTableTableManager($_db, $_db.sharedVaults)
-        .filter((f) => f.id($_item.vaultId));
+        .filter((f) => f.id.sqlEquals($_column));
     final item = $_typedResult.readTableOrNull(_vaultIdTable($_db));
     if (item == null) return manager;
     return ProcessedTableManager(
