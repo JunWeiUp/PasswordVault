@@ -1,0 +1,57 @@
+name: Release
+
+# 推送形如 v1.2.3 的标签时：跑检查、构建 APK，并创建 GitHub Release 上传产物。
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Analyze
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings
+
+      - name: Run tests
+        run: flutter test
+
+      # 仓库未提交 key.properties，与 CI 一致使用 debug；正式签名请在本地或配置 Secrets 后扩展。
+      - name: Build APK (debug)
+        run: flutter build apk --debug
+
+      - name: Prepare release asset
+        run: |
+          cp build/app/outputs/flutter-apk/app-debug.apk \
+            "PasswordVault-${{ github.ref_name }}-debug.apk"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          body: |
+            本流水线附件为 **debug** APK（与 CI 相同：无仓库内 release 签名配置）。
+            若需可上架的 release 包，请在本地使用 `key.properties` 构建，或在仓库中配置 Android 签名相关 Secrets 后扩展本 workflow。
+          files: PasswordVault-${{ github.ref_name }}-debug.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

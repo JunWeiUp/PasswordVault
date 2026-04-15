@@ -488,6 +488,22 @@ packages:
       url: "https://mirrors.tuna.tsinghua.edu.cn/dart-pub/"
     source: hosted
     version: "14.8.1"
+  google_mlkit_barcode_scanning:
+    dependency: "direct main"
+    description:
+      name: google_mlkit_barcode_scanning
+      sha256: "1df232be24ae9cb93443d2786681efab71b5964c8c476f6072d8b4d61aa03ecc"
+      url: "https://mirrors.tuna.tsinghua.edu.cn/dart-pub/"
+    source: hosted
+    version: "0.12.1"
+  google_mlkit_commons:
+    dependency: transitive
+    description:
+      name: google_mlkit_commons
+      sha256: "9990a65f407a3ef6bae646bf10143faa93fec126683771465bc6c0b43fb0e6e9"
+      url: "https://mirrors.tuna.tsinghua.edu.cn/dart-pub/"
+    source: hosted
+    version: "0.8.1"
   graphs:
     dependency: transitive
     description:
@@ -712,14 +728,6 @@ packages:
       url: "https://mirrors.tuna.tsinghua.edu.cn/dart-pub/"
     source: hosted
     version: "2.0.0"
-  mobile_scanner:
-    dependency: "direct main"
-    description:
-      name: mobile_scanner
-      sha256: "0b466a0a8a211b366c2e87f3345715faef9b6011c7147556ad22f37de6ba3173"
-      url: "https://mirrors.tuna.tsinghua.edu.cn/dart-pub/"
-    source: hosted
-    version: "6.0.11"
   native_toolchain_c:
     dependency: transitive
     description:

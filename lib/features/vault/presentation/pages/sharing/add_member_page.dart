@@ -1,7 +1,9 @@
+import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:mobile_scanner/mobile_scanner.dart';
+import 'decode_qr_from_image.dart';
 import '../../providers/vault_provider.dart';
 import '../../providers/master_key_provider.dart';
 import '../../../domain/models/vault_item.dart';
@@ -19,7 +21,7 @@ class _AddMemberPageState extends ConsumerState<AddMemberPage> {
   final _nameController = TextEditingController();
   SharedMemberRole _selectedRole = SharedMemberRole.viewer;
   bool _isAdding = false;
-  bool _showScanner = false;
+  bool _isDecodingQr = false;
 
   @override
   void dispose() {
@@ -28,10 +30,55 @@ class _AddMemberPageState extends ConsumerState<AddMemberPage> {
     super.dispose();
   }
 
+  Future<void> _pickAndDecodeQr() async {
+    if (kIsWeb) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('网页版请手动粘贴公钥')),
+        );
+      }
+      return;
+    }
+
+    setState(() => _isDecodingQr = true);
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.image,
+        allowMultiple: false,
+        withData: true,
+      );
+      if (!mounted) return;
+      if (result == null || result.files.isEmpty) return;
+
+      final file = result.files.single;
+      final text = await decodeQrFromImageFile(
+        path: file.path,
+        bytes: file.bytes,
+      );
+      if (!mounted) return;
+
+      if (text == null || text.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('未在图片中识别到二维码，请换一张图或手动输入')),
+        );
+        return;
+      }
+      setState(() => _publicKeyController.text = text);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('识别失败: $e'), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isDecodingQr = false);
+    }
+  }
+
   Future<void> _handleAddMember() async {
     if (_publicKeyController.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('请输入或扫描公钥')),
+        const SnackBar(content: Text('请输入或从图片识别公钥')),
       );
       return;
     }
@@ -47,10 +94,10 @@ class _AddMemberPageState extends ConsumerState<AddMemberPage> {
 
     try {
       final repository = ref.read(vaultRepositoryProvider);
-      
+
       // 确保密钥对已生成
       await ref.read(masterPasswordProvider.notifier).ensureUserKeyPair();
-      
+
       final userKeyPair = await ref.read(userKeyPairProvider.future);
 
       if (userKeyPair == null) {
@@ -96,31 +143,25 @@ class _AddMemberPageState extends ConsumerState<AddMemberPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            if (_showScanner)
-              SizedBox(
-                height: 300,
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(16),
-                  child: MobileScanner(
-                    onDetect: (capture) {
-                      final List<Barcode> barcodes = capture.barcodes;
-                      for (final barcode in barcodes) {
-                        if (barcode.rawValue != null) {
-                          setState(() {
-                            _publicKeyController.text = barcode.rawValue!;
-                            _showScanner = false;
-                          });
-                        }
-                      }
-                    },
-                  ),
+            if (kIsWeb)
+              const Padding(
+                padding: EdgeInsets.only(bottom: 8),
+                child: Text(
+                  '网页版请在下方的公钥框中粘贴内容。',
+                  style: TextStyle(fontSize: 13, color: Colors.grey),
                 ),
               )
             else
               ElevatedButton.icon(
-                onPressed: () => setState(() => _showScanner = true),
-                icon: const Icon(Icons.qr_code_scanner),
-                label: const Text('扫描公钥 QR 码'),
+                onPressed: _isDecodingQr ? null : _pickAndDecodeQr,
+                icon: _isDecodingQr
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.image_outlined),
+                label: Text(_isDecodingQr ? '正在识别…' : '从相册选择公钥二维码图片'),
                 style: ElevatedButton.styleFrom(
                   padding: const EdgeInsets.symmetric(vertical: 16),
                   backgroundColor: Colors.blue.withValues(alpha: 0.1),

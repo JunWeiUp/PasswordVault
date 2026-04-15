@@ -7,9 +7,13 @@ echo "🚀 Starting Chrome Extension build process..."
 
 # 1. Build Flutter Web
 echo "📦 Building Flutter web with source maps..."
+flutter pub get
+# 移除插件等依赖变更后，旧的 web_plugin_registrant 会仍引用已删除包导致编译失败
+rm -rf .dart_tool/flutter_build
 # 在新版本 Flutter 中，--web-renderer 选项已被移除或更改。
 # 我们在 loader.js 中强制 initializeEngine 使用 'html' 渲染器。
-flutter build web --release --no-tree-shake-icons --source-maps
+# --no-wasm-dry-run：避免部分环境下 dart2wasm dry run 报错中断流程
+flutter build web --release --no-tree-shake-icons --source-maps --no-wasm-dry-run
 
 # 2. Prepare build directory
 EXT_DIR="build/chrome_extension"
