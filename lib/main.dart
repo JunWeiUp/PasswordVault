@@ -955,11 +955,12 @@ class _MainNavigationScreenState extends ConsumerState<MainNavigationScreen> {
 
     if (origin == null) return;
 
+    final fillRequested = contextData['fillRequested'] == true;
+
     // Wait for vault items to be loaded if needed
     var vaultItemsAsync = ref.read(vaultItemsProvider);
     if (vaultItemsAsync is! AsyncData<List<VaultItem>>) {
       debugPrint('⏳ Waiting for vault items to load...');
-      // Wait for data with timeout
       await Future.delayed(const Duration(milliseconds: 500));
       vaultItemsAsync = ref.read(vaultItemsProvider);
       if (vaultItemsAsync is! AsyncData<List<VaultItem>>) {
@@ -978,17 +979,35 @@ class _MainNavigationScreenState extends ConsumerState<MainNavigationScreen> {
 
     if (!mounted) return;
 
+    // Auto-fill from right-click context menu
+    if (fillRequested && contextData['username'] != null) {
+      final targetUsername = contextData['username'] as String;
+      final exactMatch = matches.where((m) => m.username == targetUsername).firstOrNull;
+      if (exactMatch != null) {
+        debugPrint('🎯 Auto-filling from context menu for: $targetUsername');
+        await ExtensionHelper.fillCredentials(exactMatch.username, exactMatch.password ?? '');
+        await ExtensionHelper.clearActiveContext();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('已自动填充'), duration: Duration(seconds: 1)),
+          );
+          // Close the popup window after a brief delay
+          Future.delayed(const Duration(milliseconds: 800), () {
+            if (mounted) Navigator.of(context).maybePop();
+          });
+        }
+        return;
+      }
+    }
+
     if (matches.isNotEmpty) {
       debugPrint('✅ Found ${matches.length} matching items, navigating to account page with search...');
-      // Switch to vault tab first
       ref.read(selectedTabProvider.notifier).state = 1;
       
-      // Wait a bit for tab switch to complete
       await Future.delayed(const Duration(milliseconds: 100));
       
       if (!mounted) return;
       
-      // Extract host from origin and search for it
       final host = _extractHost(origin);
       if (host.isNotEmpty) {
         debugPrint('🔍 Setting search query: $host');
@@ -996,14 +1015,12 @@ class _MainNavigationScreenState extends ConsumerState<MainNavigationScreen> {
         ref.read(searchQueryProvider.notifier).state = host;
         _searchController.text = host;
         
-        // Clear category filter to show all matching items
         ref.read(selectedCategoryProvider.notifier).state = null;
         
         debugPrint('✅ Successfully navigated to account page with search: $host');
       }
     } else {
       debugPrint('➕ No matching items, navigating to add...');
-      // Navigate to add-account page with pre-filled data
       ref.read(selectedTabProvider.notifier).state = 1;
       await Future.delayed(const Duration(milliseconds: 100));
       if (mounted) {
@@ -1546,7 +1563,7 @@ class _MainNavigationScreenState extends ConsumerState<MainNavigationScreen> {
                   controller: _searchController,
                   autofocus: true,
                   decoration: const InputDecoration(
-                    hintText: '搜索标题、用户名或备注...',
+                    hintText: '全局搜索：标题、用户名、域名...',
                     border: InputBorder.none,
                   ),
                   onChanged: (value) {

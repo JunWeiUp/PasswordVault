@@ -102,12 +102,18 @@ class ExtensionHelper {
           };
         }
 
+        final fillRequestedProp = obj.getProperty('fillRequested'.toJS);
+        final fillRequested = fillRequestedProp != null && fillRequestedProp.isA<JSBoolean>()
+            ? (fillRequestedProp as JSBoolean).toDart
+            : false;
+
         return {
           'url': (obj.getProperty('url'.toJS) as JSString?)?.toDart,
           'origin': (obj.getProperty('origin'.toJS) as JSString?)?.toDart,
           'username': (obj.getProperty('username'.toJS) as JSString?)?.toDart,
           'type': (obj.getProperty('type'.toJS) as JSString?)?.toDart,
           'data': dataMap,
+          'fillRequested': fillRequested,
         };
       }
     } catch (e) {

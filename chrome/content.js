@@ -294,25 +294,32 @@ function showSaveBanner(creds) {
     <div style="margin-bottom: 16px; line-height: 1.4;">
       是否将 <strong>${creds.username}</strong> 的密码保存到保险箱？
     </div>
-    <div style="display: flex; gap: 10px;">
-      <button id="securepass-save-btn" class="securepass-btn" style="flex: 1; background: #1a73e8; color: white; border: none; padding: 10px; border-radius: 6px; cursor: pointer; font-weight: 500; font-size: 14px;">立即保存</button>
-      <button id="securepass-ignore-btn" class="securepass-btn" style="flex: 1; background: #f1f3f4; color: #3c4043; border: none; padding: 10px; border-radius: 6px; cursor: pointer; font-weight: 500; font-size: 14px;">以后再说</button>
+    <div style="display: flex; gap: 8px;">
+      <button id="securepass-quick-save-btn" class="securepass-btn" style="flex: 1; background: #1a73e8; color: white; border: none; padding: 10px; border-radius: 6px; cursor: pointer; font-weight: 500; font-size: 14px;">一键保存</button>
+      <button id="securepass-detail-save-btn" class="securepass-btn" style="flex: 0; background: #e8f0fe; color: #1a73e8; border: none; padding: 10px 14px; border-radius: 6px; cursor: pointer; font-weight: 500; font-size: 13px; white-space: nowrap;">详细编辑</button>
+      <button id="securepass-ignore-btn" class="securepass-btn" style="flex: 0; background: #f1f3f4; color: #3c4043; border: none; padding: 10px 14px; border-radius: 6px; cursor: pointer; font-weight: 500; font-size: 13px;">忽略</button>
     </div>
   `;
 
   document.body.appendChild(banner);
 
-  document.getElementById('securepass-save-btn').onclick = () => {
-    showToast('🚀 正在保存并打开 SecurePass...');
-    chrome.runtime.sendMessage({ type: 'CONFIRM_SAVE', data: creds }, (response) => {
+  document.getElementById('securepass-quick-save-btn').onclick = () => {
+    chrome.runtime.sendMessage({ type: 'QUICK_SAVE', data: creds }, (response) => {
       banner.innerHTML = `
         <div style="display: flex; flex-direction: column; align-items: center; padding: 10px;">
           <div style="font-size: 24px; margin-bottom: 10px;">✅</div>
-          <div style="font-weight: 600; color: #1e8e3e; margin-bottom: 4px;">已保存成功</div>
-          <div style="font-size: 12px; color: #666; text-align: center;">请点击插件图标查看或完善信息</div>
+          <div style="font-weight: 600; color: #1e8e3e; margin-bottom: 4px;">已保存到待处理</div>
+          <div style="font-size: 12px; color: #666; text-align: center;">下次打开 SecurePass 时可完善信息</div>
         </div>
       `;
-      setTimeout(() => banner.remove(), 3000);
+      setTimeout(() => banner.remove(), 2500);
+    });
+  };
+
+  document.getElementById('securepass-detail-save-btn').onclick = () => {
+    showToast('正在打开 SecurePass...');
+    chrome.runtime.sendMessage({ type: 'CONFIRM_SAVE', data: creds }, () => {
+      banner.remove();
     });
   };
 

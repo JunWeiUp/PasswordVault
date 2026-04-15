@@ -5,11 +5,117 @@ console.log('🛡️ SecurePass Service Worker starting...');
 chrome.runtime.onInstalled.addListener((details) => {
   console.log('🛡️ SecurePass Extension installed/updated:', details.reason);
   
-  chrome.contextMenus.create({
-    id: 'fill_password',
-    title: 'SecurePass: Fill Password',
-    contexts: ['editable']
+  chrome.contextMenus.removeAll(() => {
+    chrome.contextMenus.create({
+      id: 'securepass_parent',
+      title: 'SecurePass',
+      contexts: ['editable']
+    });
+    chrome.contextMenus.create({
+      id: 'securepass_open',
+      parentId: 'securepass_parent',
+      title: '打开 SecurePass...',
+      contexts: ['editable']
+    });
+    chrome.contextMenus.create({
+      id: 'securepass_separator',
+      parentId: 'securepass_parent',
+      type: 'separator',
+      contexts: ['editable']
+    });
+    rebuildContextMenuAccounts();
   });
+});
+
+async function rebuildContextMenuAccounts() {
+  const result = await chrome.storage.local.get(['known_accounts']);
+  const knownAccounts = result.known_accounts || {};
+  
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  if (!tab || !tab.url) return;
+  
+  const domain = getDomain(tab.url);
+  if (!domain) return;
+  
+  // Remove old dynamic items
+  try {
+    const menuIds = await chrome.storage.session.get('ctx_menu_ids');
+    const oldIds = menuIds.ctx_menu_ids || [];
+    for (const id of oldIds) {
+      try { chrome.contextMenus.remove(id); } catch (_) {}
+    }
+  } catch (_) {}
+
+  const newIds = [];
+  const matchedKey = Object.keys(knownAccounts).find(d => domain === d || domain.endsWith('.' + d));
+  if (matchedKey) {
+    const accounts = knownAccounts[matchedKey];
+    for (let i = 0; i < accounts.length && i < 10; i++) {
+      const id = 'securepass_fill_' + i;
+      chrome.contextMenus.create({
+        id: id,
+        parentId: 'securepass_parent',
+        title: '填充: ' + accounts[i].username,
+        contexts: ['editable']
+      });
+      newIds.push(id);
+    }
+  }
+
+  if (newIds.length === 0) {
+    const id = 'securepass_no_match';
+    chrome.contextMenus.create({
+      id: id,
+      parentId: 'securepass_parent',
+      title: '当前域名无匹配账号',
+      enabled: false,
+      contexts: ['editable']
+    });
+    newIds.push(id);
+  }
+
+  try {
+    await chrome.storage.session.set({ ctx_menu_ids: newIds });
+  } catch (_) {}
+}
+
+chrome.contextMenus.onClicked.addListener(async (info, tab) => {
+  if (info.menuItemId === 'securepass_open') {
+    lastActiveContext = tab && tab.url ? {
+      url: tab.url,
+      origin: new URL(tab.url).origin,
+      username: '',
+    } : null;
+    chrome.windows.create({
+      url: chrome.runtime.getURL('index.html'),
+      type: 'popup', width: 400, height: 600, focused: true
+    });
+    return;
+  }
+
+  if (typeof info.menuItemId === 'string' && info.menuItemId.startsWith('securepass_fill_')) {
+    const index = parseInt(info.menuItemId.replace('securepass_fill_', ''));
+    const domain = getDomain(tab.url);
+    const result = await chrome.storage.local.get(['known_accounts']);
+    const knownAccounts = result.known_accounts || {};
+    const matchedKey = Object.keys(knownAccounts).find(d => domain === d || domain.endsWith('.' + d));
+    if (!matchedKey) return;
+    const account = knownAccounts[matchedKey][index];
+    if (!account) return;
+
+    // We can't fill the password directly from context menu because we only
+    // store the hash. Open popup with this account's username pre-selected.
+    lastActiveContext = {
+      url: tab.url,
+      origin: new URL(tab.url).origin,
+      username: account.username,
+      fillRequested: true,
+    };
+    chrome.windows.create({
+      url: chrome.runtime.getURL('index.html'),
+      type: 'popup', width: 400, height: 600, focused: true
+    });
+  }
 });
 
 // State
@@ -90,7 +196,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         message: checkResult.reason === 'wrong_password' 
           ? `检测到 ${message.data.username} 的密码与保险箱中不一致，是否更新？`
           : `检测到 ${message.data.username} 的登录，是否保存到保险箱？`,
-        buttons: [{ title: '立即保存/更新' }, { title: '暂不处理' }],
+        buttons: [{ title: '一键保存' }, { title: '暂不处理' }],
         priority: 2,
         requireInteraction: true
       });
@@ -101,19 +207,35 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     console.log('📥 Confirm save message received:', message.data.username);
     savePendingCredentials(message.data);
     
-    // Clear last detected after saving
     lastDetectedCredentials = null;
 
-    // Also open the popup window so they can see the pending save
-    chrome.windows.create({
-      url: chrome.runtime.getURL('index.html'),
-      type: 'popup',
-      width: 400,
-      height: 600,
-      focused: true
-    });
+    if (message.openPopup !== false) {
+      chrome.windows.create({
+        url: chrome.runtime.getURL('index.html'),
+        type: 'popup',
+        width: 400,
+        height: 600,
+        focused: true
+      });
+    }
 
     if (sendResponse) sendResponse({ success: true });
+    return true;
+  }
+  else if (message.type === 'QUICK_SAVE') {
+    (async () => {
+      const creds = message.data;
+      console.log('⚡ Quick save for:', creds.username);
+      savePendingCredentials(creds);
+      lastDetectedCredentials = null;
+
+      // Clear badge on the source tab
+      if (sender.tab?.id) {
+        chrome.action.setBadgeText({ text: '', tabId: sender.tab.id });
+      }
+
+      sendResponse({ success: true });
+    })();
     return true;
   }
   else if (message.type === 'CLEAR_LAST_DETECTED') {
@@ -252,21 +374,12 @@ function savePendingCredentials(creds) {
 chrome.notifications.onButtonClicked.addListener((notificationId, buttonIndex) => {
   if (notificationId.startsWith('save_password_') && lastDetectedCredentials) {
     if (buttonIndex === 0) {
-      // "立即保存/更新" - Open popup with context
-      console.log('🔔 Opening popup for save/update from notification button click');
-      
-      lastActiveContext = {
-        type: 'mismatch_detected',
-        data: lastDetectedCredentials
-      };
-
-      chrome.windows.create({
-        url: chrome.runtime.getURL('index.html'),
-        type: 'popup',
-        width: 400,
-        height: 600,
-        focused: true
-      });
+      console.log('⚡ Quick save from notification button click');
+      savePendingCredentials(lastDetectedCredentials);
+      if (lastDetectedCredentials.tabId) {
+        chrome.action.setBadgeText({ text: '', tabId: lastDetectedCredentials.tabId });
+      }
+      lastDetectedCredentials = null;
     }
     chrome.notifications.clear(notificationId);
   } else {
@@ -405,21 +518,28 @@ chrome.action.onClicked.addListener(async (tab) => {
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   if (changeInfo.status === 'complete' && tab.url) {
     updateBadgeForTab(tabId);
+    rebuildContextMenuAccounts();
   }
 });
 
 // Listen for tab activation (switching tabs)
 chrome.tabs.onActivated.addListener((activeInfo) => {
   updateBadgeForTab(activeInfo.tabId);
+  rebuildContextMenuAccounts();
 });
 
-// Listen for storage changes (when Flutter app updates known_domains)
+// Listen for storage changes (when Flutter app updates known_domains or known_accounts)
 chrome.storage.onChanged.addListener((changes, areaName) => {
-  if (areaName === 'local' && changes.known_domains) {
-    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-      if (tabs[0]) {
-        updateBadgeForTab(tabs[0].id);
-      }
-    });
+  if (areaName === 'local') {
+    if (changes.known_domains || changes.known_accounts) {
+      chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+        if (tabs[0]) {
+          updateBadgeForTab(tabs[0].id);
+        }
+      });
+    }
+    if (changes.known_accounts) {
+      rebuildContextMenuAccounts();
+    }
   }
 });
