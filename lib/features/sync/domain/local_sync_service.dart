@@ -152,6 +152,7 @@ class LocalSyncService extends ChangeNotifier {
   static const String _deviceIdKey = 'sync_device_id';
   static const String _deviceNameKey = 'sync_device_name';
   static const String _syncEnabledKey = 'sync_enabled';
+  static const String _syncTokenKey = 'sync_auth_token';
 
   HttpServer? _server;
   Discovery? _discovery;
@@ -195,8 +196,10 @@ class LocalSyncService extends ChangeNotifier {
   String? _myDeviceId;
   String? _myDeviceName;
   bool _isEnabled = false;
+  String? _syncToken;
 
   int? get port => _server?.port;
+  String? get syncToken => _syncToken;
 
   Future<List<String>> getLocalIps() async {
     if (kIsWeb) return [];
@@ -238,6 +241,12 @@ class LocalSyncService extends ChangeNotifier {
     
     _myDeviceName = prefs.getString(_deviceNameKey) ?? defaultName;
     _isEnabled = prefs.getBool(_syncEnabledKey) ?? false;
+
+    _syncToken = prefs.getString(_syncTokenKey);
+    if (_syncToken == null) {
+      _syncToken = const Uuid().v4();
+      await prefs.setString(_syncTokenKey, _syncToken!);
+    }
 
     // Set repository callback
     _ref.read(vaultRepositoryProvider).onItemChanged = (sharedVaultId) {
@@ -339,8 +348,13 @@ class LocalSyncService extends ChangeNotifier {
 
     // 1. Start HTTP Server
     final router = Router();
+
+    bool _checkAuth(Request request) {
+      final token = request.headers['x-sync-token'] ?? request.url.queryParameters['token'];
+      return token == _syncToken;
+    }
     
-    // Check sync status
+    // Check sync status (public, but does not expose secrets)
     router.get('/status', (Request request) {
       return Response.ok(jsonEncode({
         'id': _myDeviceId,
@@ -349,8 +363,9 @@ class LocalSyncService extends ChangeNotifier {
       }), headers: {'content-type': 'application/json'});
     });
 
-    // Get all items (encrypted with simple key)
+    // Get all items (encrypted with sync key, requires auth token)
     router.get('/pull', (Request request) async {
+      if (!_checkAuth(request)) return Response.forbidden('Invalid sync token');
       try {
         final masterKey = await _ref.read(masterKeyProvider.future);
         final fallbacks = await _ref.read(fallbackKeysProvider.future);
@@ -370,8 +385,9 @@ class LocalSyncService extends ChangeNotifier {
       }
     });
 
-    // Push items to this device
+    // Push items to this device (requires auth token)
     router.post('/push', (Request request) async {
+      if (!_checkAuth(request)) return Response.forbidden('Invalid sync token');
       try {
         final payload = await request.readAsString();
         final Map<String, dynamic> body = jsonDecode(payload);
@@ -853,7 +869,8 @@ class LocalSyncService extends ChangeNotifier {
     final password = _ref.read(masterPasswordProvider).password;
     if (password == null) return null;
     final encryptionService = _ref.read(encryptionServiceProvider);
-    return await encryptionService.deriveKeySimple(password);
+    final salt = utf8.encode('PasswordVault_LAN_Sync_Salt_v1');
+    return await encryptionService.deriveKey(password, salt, iterations: 2, memory: 32 * 1024, parallelism: 1);
   }
 
   Future<String> _encryptPayload(List<VaultItem> items) async {
@@ -938,7 +955,9 @@ class LocalSyncService extends ChangeNotifier {
     try {
       // 1. 从远程拉取并合并
       final pullUrl = Uri.http('${device.host}:${device.port}', '/pull');
-      final pullResponse = await http.get(pullUrl).timeout(const Duration(seconds: 10));
+      final pullResponse = await http.get(pullUrl, headers: {
+        if (_syncToken != null) 'x-sync-token': _syncToken!,
+      }).timeout(const Duration(seconds: 10));
       
       if (pullResponse.statusCode == 200) {
         final dynamic decoded = jsonDecode(pullResponse.body);
@@ -967,7 +986,10 @@ class LocalSyncService extends ChangeNotifier {
       final pushUrl = Uri.http('${device.host}:${device.port}', '/push');
       final pushResponse = await http.post(
         pushUrl,
-        headers: {'Content-Type': 'application/json'},
+        headers: {
+          'Content-Type': 'application/json',
+          if (_syncToken != null) 'x-sync-token': _syncToken!,
+        },
         body: jsonEncode({
           'payload': encryptedPayload,
           'deviceId': _myDeviceId,

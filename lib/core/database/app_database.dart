@@ -1,4 +1,5 @@
 import 'package:drift/drift.dart';
+import 'package:flutter/foundation.dart';
 import 'connection/connection.dart' as impl;
 
 part 'app_database.g.dart';
@@ -68,9 +69,27 @@ class AppDatabase extends _$AppDatabase {
   @override
   int get schemaVersion => 11;
 
+  /// Safely add a column; logs a warning if it already exists instead of silently swallowing.
+  Future<void> _safeAddColumn(Migrator m, TableInfo table, GeneratedColumn column) async {
+    try {
+      await m.addColumn(table, column);
+    } catch (e) {
+      debugPrint('DB migration: column ${column.name} likely already exists – $e');
+    }
+  }
+
+  Future<void> _safeCreateTable(Migrator m, TableInfo table) async {
+    try {
+      await m.createTable(table);
+    } catch (e) {
+      debugPrint('DB migration: table ${table.actualTableName} likely already exists – $e');
+    }
+  }
+
   @override
   MigrationStrategy get migration => MigrationStrategy(
     onUpgrade: (m, from, to) async {
+      debugPrint('DB migration: upgrading from v$from to v$to');
       if (from < 2) {
         await m.addColumn(vaultItems, vaultItems.mnemonic);
         await m.addColumn(vaultItems, vaultItems.address);
@@ -82,88 +101,48 @@ class AppDatabase extends _$AppDatabase {
         await m.addColumn(vaultItems, vaultItems.privateKey);
       }
       if (from < 5) {
-        try {
-          await m.addColumn(vaultItems, vaultItems.privateKey);
-        } catch (e) {
-          // Ignore if column exists
-        }
+        await _safeAddColumn(m, vaultItems, vaultItems.privateKey);
       }
       if (from < 6) {
-        try {
-          await m.addColumn(vaultItems, vaultItems.passwordHistory);
-          await m.addColumn(vaultItems, vaultItems.passwordLastChanged);
-          await m.addColumn(vaultItems, vaultItems.passwordDuration);
-        } catch (_) {}
+        await _safeAddColumn(m, vaultItems, vaultItems.passwordHistory);
+        await _safeAddColumn(m, vaultItems, vaultItems.passwordLastChanged);
+        await _safeAddColumn(m, vaultItems, vaultItems.passwordDuration);
       }
       if (from < 7) {
-        try {
-          await m.addColumn(vaultItems, vaultItems.accounts);
-        } catch (_) {}
+        await _safeAddColumn(m, vaultItems, vaultItems.accounts);
       }
       if (from < 8) {
-        try {
-          await m.addColumn(vaultItems, vaultItems.isDeleted);
-          await m.addColumn(vaultItems, vaultItems.deletedAt);
-        } catch (_) {}
+        await _safeAddColumn(m, vaultItems, vaultItems.isDeleted);
+        await _safeAddColumn(m, vaultItems, vaultItems.deletedAt);
       }
       if (from < 9) {
-        try {
-          await m.addColumn(vaultItems, vaultItems.tags);
-        } catch (_) {}
+        await _safeAddColumn(m, vaultItems, vaultItems.tags);
       }
       if (from < 10) {
-        try {
-          await m.createTable(sharedVaults);
-          await m.createTable(sharedMembers);
-          await m.addColumn(vaultItems, vaultItems.sharedVaultId);
-        } catch (_) {}
+        await _safeCreateTable(m, sharedVaults);
+        await _safeCreateTable(m, sharedMembers);
+        await _safeAddColumn(m, vaultItems, vaultItems.sharedVaultId);
       }
       if (from < 11) {
-        try {
-          await m.addColumn(sharedVaults, sharedVaults.isDiscoverable);
-        } catch (_) {}
+        await _safeAddColumn(m, sharedVaults, sharedVaults.isDiscoverable);
       }
+      debugPrint('DB migration: upgrade complete');
     },
     beforeOpen: (details) async {
-      // 开启外键约束
       await customStatement('PRAGMA foreign_keys = ON');
       
-      // 防御性检查：确保新列确实存在 (针对开发环境迁移失败的情况)
       if (details.versionBefore != null && details.versionNow >= 10) {
         final m = createMigrator();
-        try {
-          await m.addColumn(vaultItems, vaultItems.sharedVaultId);
-        } catch (e) { /* Ignore if exists */ }
-        
-        // 尝试创建表（如果不存在）
-        try {
-          await m.createTable(sharedVaults);
-        } catch (e) { /* Ignore */ }
-        try {
-          await m.createTable(sharedMembers);
-        } catch (e) { /* Ignore */ }
-
-        try {
-          await m.addColumn(vaultItems, vaultItems.passwordHistory);
-        } catch (e) { /* Ignore if exists */ }
-        try {
-          await m.addColumn(vaultItems, vaultItems.passwordLastChanged);
-        } catch (e) { /* Ignore if exists */ }
-        try {
-          await m.addColumn(vaultItems, vaultItems.passwordDuration);
-        } catch (e) { /* Ignore if exists */ }
-        try {
-          await m.addColumn(vaultItems, vaultItems.accounts);
-        } catch (e) { /* Ignore if exists */ }
-        try {
-          await m.addColumn(vaultItems, vaultItems.isDeleted);
-        } catch (e) { /* Ignore if exists */ }
-        try {
-          await m.addColumn(vaultItems, vaultItems.deletedAt);
-        } catch (e) { /* Ignore if exists */ }
-        try {
-          await m.addColumn(vaultItems, vaultItems.tags);
-        } catch (e) { /* Ignore if exists */ }
+        await _safeAddColumn(m, vaultItems, vaultItems.sharedVaultId);
+        await _safeCreateTable(m, sharedVaults);
+        await _safeCreateTable(m, sharedMembers);
+        await _safeAddColumn(m, vaultItems, vaultItems.passwordHistory);
+        await _safeAddColumn(m, vaultItems, vaultItems.passwordLastChanged);
+        await _safeAddColumn(m, vaultItems, vaultItems.passwordDuration);
+        await _safeAddColumn(m, vaultItems, vaultItems.accounts);
+        await _safeAddColumn(m, vaultItems, vaultItems.isDeleted);
+        await _safeAddColumn(m, vaultItems, vaultItems.deletedAt);
+        await _safeAddColumn(m, vaultItems, vaultItems.tags);
       }
     },
   );

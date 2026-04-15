@@ -123,9 +123,10 @@ lib/
 │   ├── theme/          # 应用主题配置
 │   └── utils/          # 通用工具（BIP39、文件处理、导入导出）
 ├── features/           # 业务功能模块
-│   ├── vault/          # 保管库主功能（密码、加密资产管理）
+│   ├── vault/          # 保管库主功能（密码、加密资产管理、共享库）
 │   ├── totp/           # TOTP 2FA 功能
-│   └── backup/         # WebDAV 备份与恢复
+│   ├── backup/         # WebDAV 备份与恢复
+│   └── sync/           # 局域网设备发现与同步
 └── main.dart           # 应用入口
 chrome/                 # 浏览器扩展相关的配置与脚本
 ```

@@ -5,10 +5,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:cryptography/cryptography.dart';
 import '../../../../core/security/encryption_service.dart';
+import '../../../../core/security/secure_storage_service.dart';
 
 import '../../../../core/extension/extension_helper.dart';
 
-// In-memory cache for the derived key to avoid re-calculating it unnecessarily
 List<int>? _cachedDerivedKey;
 
 class MasterPasswordState {
@@ -17,8 +17,8 @@ class MasterPasswordState {
   final bool hasMasterPassword;
   final bool isAuthenticated;
   final int autoLockMinutes;
-  final String? userPublicKey; // Base64 encoded public key
-  final String? encryptedUserPrivateKey; // Base64 encoded, encrypted by master key
+  final String? userPublicKey;
+  final String? encryptedUserPrivateKey;
 
   MasterPasswordState({
     this.password,
@@ -68,13 +68,19 @@ class MasterPasswordNotifier extends StateNotifier<MasterPasswordState> {
   static const _userPublicKey = 'user_public_key';
   static const _encryptedUserPrivateKey = 'encrypted_user_private_key';
 
+  final _secureStorage = SecureStorageService();
+
   Future<void> _loadFromPrefs() async {
     final prefs = await SharedPreferences.getInstance();
-    final password = prefs.getString(_passwordKey);
+
+    // Migrate from SharedPreferences to SecureStorage on first run
+    await _migrateToSecureStorage(prefs);
+
+    final password = await _secureStorage.read(_passwordKey);
     final isBiometricEnabled = prefs.getBool(_biometricKey) ?? false;
     final autoLockMinutes = prefs.getInt(_autoLockKey) ?? 10;
-    final userPubKey = prefs.getString(_userPublicKey);
-    final encUserPrivKey = prefs.getString(_encryptedUserPrivateKey);
+    final userPubKey = await _secureStorage.read(_userPublicKey);
+    final encUserPrivKey = await _secureStorage.read(_encryptedUserPrivateKey);
     
     bool isAuthenticated = false;
     if (password != null) {
@@ -83,7 +89,6 @@ class MasterPasswordNotifier extends StateNotifier<MasterPasswordState> {
         final lastAuth = DateTime.tryParse(lastAuthStr);
         if (lastAuth != null && DateTime.now().difference(lastAuth) < Duration(minutes: autoLockMinutes)) {
           isAuthenticated = true;
-          debugPrint('🔓 Auto-authenticated within $autoLockMinutes minutes');
         }
       }
     }
@@ -99,24 +104,66 @@ class MasterPasswordNotifier extends StateNotifier<MasterPasswordState> {
     );
   }
 
+  /// One-time migration: move secrets from SharedPreferences to SecureStorage.
+  /// Skipped on web where SecureStorageService already uses SharedPreferences.
+  Future<void> _migrateToSecureStorage(SharedPreferences prefs) async {
+    if (kIsWeb) return;
+
+    final migrated = prefs.getBool('_secure_storage_migrated') ?? false;
+    if (migrated) return;
+
+    try {
+      final keysToMigrate = [_passwordKey, _cachedMasterKey, _userPublicKey, _encryptedUserPrivateKey];
+      for (final key in keysToMigrate) {
+        final oldValue = prefs.getString(key);
+        if (oldValue != null) {
+          await _secureStorage.write(key, oldValue);
+          final verify = await _secureStorage.read(key);
+          if (verify == oldValue) {
+            await prefs.remove(key);
+          } else {
+            debugPrint('SecureStorage migration: verification failed for $key, keeping SharedPreferences copy');
+          }
+        }
+      }
+      await prefs.setBool('_secure_storage_migrated', true);
+    } catch (e) {
+      debugPrint('SecureStorage migration failed, will retry next launch: $e');
+    }
+  }
+
   Future<void> setPassword(String password) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_passwordKey, password);
+    await _secureStorage.write(_passwordKey, password);
     await prefs.setString(_lastAuthTimeKey, DateTime.now().toIso8601String());
-    await prefs.remove(_cachedMasterKey);
+    await _secureStorage.delete(_cachedMasterKey);
     _cachedDerivedKey = null;
     if (ExtensionHelper.isExtension) {
       await ExtensionHelper.clearCachedMasterKey();
     }
-    
-    // 生成用户密钥对
+
+    // Update state immediately so UI responds right away.
+    // Key pair generation (Argon2id) is deferred to ensureUserKeyPair().
+    state = state.copyWith(
+      password: password,
+      hasMasterPassword: true,
+      isAuthenticated: true,
+    );
+
+    // Generate key pair in background; failures are non-fatal at this stage.
+    try {
+      await _generateAndStoreKeyPair(password, prefs);
+    } catch (e) {
+      debugPrint('Key pair generation deferred: $e');
+    }
+  }
+
+  Future<void> _generateAndStoreKeyPair(String password, SharedPreferences prefs) async {
     final encryptionService = EncryptionService();
     final keyPair = await encryptionService.generateKeyPair();
     final pubKey = await keyPair.extractPublicKey();
     final privKeyBytes = await keyPair.extractPrivateKeyBytes();
-    
-    // 使用主密码派生的密钥加密私钥
-    // 这里需要临时计算主密钥
+
     List<int> salt;
     final saltBase64 = prefs.getString('master_key_salt');
     if (saltBase64 != null) {
@@ -126,20 +173,17 @@ class MasterPasswordNotifier extends StateNotifier<MasterPasswordState> {
       salt = List<int>.generate(16, (i) => random.nextInt(256));
       await prefs.setString('master_key_salt', base64.encode(salt));
     }
-    
+
     final masterKey = await encryptionService.deriveKey(password, salt);
     final encryptedPrivKey = await encryptionService.encrypt(base64.encode(privKeyBytes), masterKey);
-    
+
     final pubKeyBase64 = base64.encode(pubKey.bytes);
     final encPrivKeyBase64 = base64.encode(encryptedPrivKey);
-    
-    await prefs.setString(_userPublicKey, pubKeyBase64);
-    await prefs.setString(_encryptedUserPrivateKey, encPrivKeyBase64);
+
+    await _secureStorage.write(_userPublicKey, pubKeyBase64);
+    await _secureStorage.write(_encryptedUserPrivateKey, encPrivKeyBase64);
 
     state = state.copyWith(
-      password: password,
-      hasMasterPassword: true,
-      isAuthenticated: true,
       userPublicKey: pubKeyBase64,
       encryptedUserPrivateKey: encPrivKeyBase64,
     );
@@ -164,16 +208,18 @@ class MasterPasswordNotifier extends StateNotifier<MasterPasswordState> {
     } else {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove(_lastAuthTimeKey);
-      await prefs.remove(_cachedMasterKey);
+      await _secureStorage.delete(_cachedMasterKey);
     }
     state = state.copyWith(isAuthenticated: authenticated);
   }
 
   Future<void> clear() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_passwordKey);
+    await _secureStorage.delete(_passwordKey);
+    await _secureStorage.delete(_cachedMasterKey);
+    await _secureStorage.delete(_userPublicKey);
+    await _secureStorage.delete(_encryptedUserPrivateKey);
     await prefs.remove(_biometricKey);
-    await prefs.remove(_cachedMasterKey);
     _cachedDerivedKey = null;
     if (ExtensionHelper.isExtension) {
       await ExtensionHelper.clearCachedMasterKey();
@@ -181,7 +227,6 @@ class MasterPasswordNotifier extends StateNotifier<MasterPasswordState> {
     state = MasterPasswordState();
   }
 
-  /// 确保用户密钥对已生成，如果不存在则自动生成
   Future<void> ensureUserKeyPair() async {
     if (state.userPublicKey != null && state.encryptedUserPrivateKey != null) {
       return;
@@ -195,7 +240,6 @@ class MasterPasswordNotifier extends StateNotifier<MasterPasswordState> {
     final encryptionService = EncryptionService();
     final prefs = await SharedPreferences.getInstance();
 
-    // 1. 获取主密钥
     List<int> salt;
     final saltBase64 = prefs.getString('master_key_salt');
     if (saltBase64 != null) {
@@ -208,25 +252,21 @@ class MasterPasswordNotifier extends StateNotifier<MasterPasswordState> {
     
     final masterKey = await encryptionService.deriveKey(password, salt);
 
-    // 2. 生成用户密钥对
     final keyPair = await encryptionService.generateKeyPair();
     final pubKey = await keyPair.extractPublicKey();
     final privKeyBytes = await keyPair.extractPrivateKeyBytes();
     
-    // 3. 加密并存储
     final encryptedPrivKey = await encryptionService.encrypt(base64.encode(privKeyBytes), masterKey);
     final pubKeyBase64 = base64.encode(pubKey.bytes);
     final encPrivKeyBase64 = base64.encode(encryptedPrivKey);
     
-    await prefs.setString(_userPublicKey, pubKeyBase64);
-    await prefs.setString(_encryptedUserPrivateKey, encPrivKeyBase64);
+    await _secureStorage.write(_userPublicKey, pubKeyBase64);
+    await _secureStorage.write(_encryptedUserPrivateKey, encPrivKeyBase64);
 
     state = state.copyWith(
       userPublicKey: pubKeyBase64,
       encryptedUserPrivateKey: encPrivKeyBase64,
     );
-    
-    debugPrint('🔑 User key pair automatically generated');
   }
 }
 
@@ -244,21 +284,19 @@ final masterKeyProvider = FutureProvider<SecretKey?>((ref) async {
   final password = masterState.password;
   if (password == null || !masterState.isAuthenticated) return null;
 
-  // 1. 尝试从内存缓存获取已计算好的密钥
   if (_cachedDerivedKey != null) {
     return SecretKey(_cachedDerivedKey!);
   }
 
-  // 1.1 尝试从插件后台 Service Worker 获取缓存的密钥
   if (ExtensionHelper.isExtension) {
     final cachedBase64 = await ExtensionHelper.getCachedMasterKey();
     if (cachedBase64 != null) {
-      debugPrint('🔑 Retrieved master key from extension background');
       _cachedDerivedKey = base64.decode(cachedBase64);
       return SecretKey(_cachedDerivedKey!);
     }
   }
 
+  final secureStorage = SecureStorageService();
   final encryptionService = EncryptionService();
   final prefs = await SharedPreferences.getInstance();
 
@@ -268,7 +306,7 @@ final masterKeyProvider = FutureProvider<SecretKey?>((ref) async {
     final autoLockMinutes = prefs.getInt(MasterPasswordNotifier._autoLockKey) ?? 10;
     
     if (lastAuth != null && DateTime.now().difference(lastAuth) < Duration(minutes: autoLockMinutes)) {
-      final cachedBase64 = prefs.getString(MasterPasswordNotifier._cachedMasterKey);
+      final cachedBase64 = await secureStorage.read(MasterPasswordNotifier._cachedMasterKey);
       if (cachedBase64 != null) {
         _cachedDerivedKey = base64.decode(cachedBase64);
         return SecretKey(_cachedDerivedKey!);
@@ -287,25 +325,19 @@ final masterKeyProvider = FutureProvider<SecretKey?>((ref) async {
     await prefs.setString('master_key_salt', base64.encode(salt));
   }
 
-  // 2. 计算密钥（耗时操作：Argon2id）
-  debugPrint('⏳ Deriving master key via Argon2id...');
   final key = await encryptionService.deriveKey(password, salt);
   
-  // 3. 存入缓存
   final bytes = await key.extractBytes();
   _cachedDerivedKey = bytes;
-  await prefs.setString(MasterPasswordNotifier._cachedMasterKey, base64.encode(bytes));
+  await secureStorage.write(MasterPasswordNotifier._cachedMasterKey, base64.encode(bytes));
 
-  // 3.1 同步到插件后台，以便下次秒开
   if (ExtensionHelper.isExtension) {
     await ExtensionHelper.cacheMasterKey(base64.encode(bytes));
-    debugPrint('🔑 Master key synced to extension background');
   }
 
   return key;
 });
 
-/// 提供所有可能的备选密钥，用于解密不同时期或不同方案加密的数据
 final fallbackKeysProvider = FutureProvider<List<SecretKey>>((ref) async {
   final masterState = ref.watch(masterPasswordProvider);
   final password = masterState.password;
@@ -313,10 +345,8 @@ final fallbackKeysProvider = FutureProvider<List<SecretKey>>((ref) async {
 
   final encryptionService = EncryptionService();
   
-  // 方案 1: SHA-256 极简方案 (Version 3.0.0+)
   final simpleKey = await encryptionService.deriveKeySimple(password);
   
-  // 方案 2: 标准固定盐值方案 (Version 2.0.0)
   final standardSalt = utf8.encode('SecurePass_Backup_Standard_Salt_2024');
   final standardBackupKey = await encryptionService.deriveKey(
     password, 

@@ -9,7 +9,7 @@ import '../../../../core/extension/extension_helper.dart';
 import '../../domain/models/vault_item.dart';
 import '../../data/repositories/vault_repository.dart';
 import 'master_key_provider.dart';
-import '../../../../main.dart' show searchQueryProvider;
+import '../../../../core/providers/app_providers.dart';
 
 final databaseProvider = Provider((ref) => AppDatabase());
 final encryptionServiceProvider = Provider((ref) => EncryptionService());
@@ -267,19 +267,21 @@ class VaultNotifier extends StateNotifier<AsyncValue<List<VaultItem>>> {
   }
 
   Future<void> softDeleteItem(String id) async {
-    await _repository.softDeleteItem(id);
+    final userKeyPair = await _ref.read(userKeyPairProvider.future);
+    await _repository.softDeleteItem(id, userKeyPair: userKeyPair);
     await refresh();
     _ref.read(deletedVaultItemsProvider.notifier).refresh();
   }
 
   Future<void> restoreItem(String id) async {
-    await _repository.restoreItem(id);
+    final userKeyPair = await _ref.read(userKeyPairProvider.future);
+    await _repository.restoreItem(id, userKeyPair: userKeyPair);
     await refresh();
     _ref.read(deletedVaultItemsProvider.notifier).refresh();
   }
 
   Future<void> permanentlyDeleteItem(String id) async {
-    await _repository.deleteItem(id);
+    await _repository.permanentlyDeleteItem(id);
     await refresh();
     _ref.read(deletedVaultItemsProvider.notifier).refresh();
   }

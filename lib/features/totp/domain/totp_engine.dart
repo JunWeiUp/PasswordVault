@@ -22,7 +22,7 @@ class TotpEngine {
       }
       return code;
     } catch (e) {
-      return "ERROR";
+      return "--- ---";
     }
   }
 

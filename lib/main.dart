@@ -33,12 +33,10 @@ import 'features/vault/presentation/pages/sharing/add_member_page.dart';
 import 'features/vault/presentation/pages/sharing/shared_vault_details_page.dart';
 import 'features/vault/presentation/pages/sharing/lan_discovery_page.dart';
 
-// --- Providers ---
-// 移除了硬编码的 vaultItemsProvider，改用 vault_provider.dart 中的实现
+import 'core/providers/app_providers.dart';
 
-final selectedTabProvider = StateProvider<int>((ref) => 0);
-final searchQueryProvider = StateProvider<String>((ref) => '');
-final isSearchingProvider = StateProvider<bool>((ref) => false);
+// Re-export for backward compatibility
+export 'core/providers/app_providers.dart' show searchQueryProvider, selectedTabProvider, isSearchingProvider;
 
 // --- Router ---
 final _router = GoRouter(

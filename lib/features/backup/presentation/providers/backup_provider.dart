@@ -1,10 +1,12 @@
 import 'dart:convert';
 import 'dart:typed_data';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:webdav_client/webdav_client.dart' as dav;
 import 'package:path/path.dart' as p;
 import 'package:cryptography/cryptography.dart';
+import '../../../../core/security/secure_storage_service.dart';
 import '../../domain/models/webdav_config.dart';
 import '../../domain/models/backup_history.dart';
 import '../../../vault/presentation/providers/vault_provider.dart';
@@ -21,24 +23,33 @@ class WebDavConfigNotifier extends StateNotifier<WebDavConfig> {
   }
 
   static const _key = 'webdav_config';
+  final _secureStorage = SecureStorageService();
 
   Future<void> loadConfig() async {
-    final prefs = await SharedPreferences.getInstance();
-    final jsonStr = prefs.getString(_key);
+    String? jsonStr = await _secureStorage.read(_key);
+    if (jsonStr == null && !kIsWeb) {
+      final prefs = await SharedPreferences.getInstance();
+      jsonStr = prefs.getString(_key);
+      if (jsonStr != null) {
+        await _secureStorage.write(_key, jsonStr);
+        final verify = await _secureStorage.read(_key);
+        if (verify == jsonStr) {
+          await prefs.remove(_key);
+        }
+      }
+    }
     if (jsonStr != null) {
       state = WebDavConfig.fromJson(json.decode(jsonStr));
     }
   }
 
   Future<void> saveConfig(WebDavConfig config) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_key, json.encode(config.toJson()));
+    await _secureStorage.write(_key, json.encode(config.toJson()));
     state = config;
   }
 
   Future<void> clearConfig() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_key);
+    await _secureStorage.delete(_key);
     state = WebDavConfig(url: '', username: '', password: '');
   }
 }

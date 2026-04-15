@@ -85,8 +85,17 @@ class EncryptionService {
     );
   }
 
-  // 使用 X25519 密钥交换加密对称密钥 (ECIES 风格)
-  // 返回: [EphemeralPublicKey (32 bytes)] + [Nonce (12 bytes)] + [EncryptedData]
+  /// Derive a symmetric AES key from an X25519 shared secret via HKDF-SHA256.
+  Future<SecretKey> _deriveFromSharedSecret(SecretKey sharedSecret) async {
+    final hkdf = Hkdf(hmac: Hmac(Sha256()), outputLength: 32);
+    return await hkdf.deriveKey(
+      secretKey: sharedSecret,
+      nonce: utf8.encode('PasswordVault-ECIES-v1'),
+    );
+  }
+
+  // ECIES-style encryption using X25519 key exchange + HKDF + AES-GCM.
+  // Returns: [EphemeralPublicKey (32 bytes)] + [Nonce + Ciphertext + MAC]
   Future<List<int>> encryptWithPublicKey(List<int> data, List<int> recipientPublicKeyBytes) async {
     final x25519 = X25519();
     final ephemeralKeyPair = await x25519.newKeyPair();
@@ -94,20 +103,18 @@ class EncryptionService {
     
     final recipientPublicKey = SimplePublicKey(recipientPublicKeyBytes, type: KeyPairType.x25519);
     
-    // 密钥交换得到共享密钥
     final sharedSecret = await x25519.sharedSecretKey(
       keyPair: ephemeralKeyPair,
       remotePublicKey: recipientPublicKey,
     );
     
-    // 使用共享密钥加密数据
-    final secretBox = await _cipher.encrypt(data, secretKey: sharedSecret);
+    final derivedKey = await _deriveFromSharedSecret(sharedSecret);
+    final secretBox = await _cipher.encrypt(data, secretKey: derivedKey);
     
-    // 拼接结果: 临时公钥 + SecretBox 拼接结果
     return [...ephemeralPublicKey.bytes, ...secretBox.concatenation()];
   }
 
-  // 使用私钥解密
+  // ECIES-style decryption using X25519 key exchange + HKDF + AES-GCM.
   Future<List<int>> decryptWithPrivateKey(List<int> encryptedData, SimpleKeyPair keyPair) async {
     if (encryptedData.length < 32) throw Exception('Invalid encrypted data');
     
@@ -117,19 +124,19 @@ class EncryptionService {
     
     final ephemeralPublicKey = SimplePublicKey(ephemeralPublicKeyBytes, type: KeyPairType.x25519);
     
-    // 密钥交换得到共享密钥
     final sharedSecret = await x25519.sharedSecretKey(
       keyPair: keyPair,
       remotePublicKey: ephemeralPublicKey,
     );
     
-    // 解密
+    final derivedKey = await _deriveFromSharedSecret(sharedSecret);
+    
     final secretBox = SecretBox.fromConcatenation(
       secretBoxBytes,
       nonceLength: _cipher.nonceLength,
       macLength: _cipher.macAlgorithm.macLength,
     );
     
-    return await _cipher.decrypt(secretBox, secretKey: sharedSecret);
+    return await _cipher.decrypt(secretBox, secretKey: derivedKey);
   }
 }

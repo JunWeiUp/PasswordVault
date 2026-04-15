@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math';
 import 'package:drift/drift.dart';
 import '../../../../core/database/app_database.dart';
 import '../../../../core/security/encryption_service.dart';
@@ -307,6 +308,74 @@ class VaultRepository {
     onItemChanged?.call(item.sharedVaultId);
   }
 
+  /// Encrypt all sensitive fields of a VaultItem and return a map of encrypted values.
+  Future<Map<String, String?>> _encryptFields(VaultItem item, SecretKey key) async {
+    Future<String?> enc(String? value) async {
+      if (value == null) return null;
+      final bytes = await _encryptionService.encrypt(value, key);
+      return base64.encode(bytes);
+    }
+
+    String? encHistory;
+    if (item.passwordHistory != null && item.passwordHistory!.isNotEmpty) {
+      encHistory = await enc(jsonEncode(item.passwordHistory!.map((e) => e.toJson()).toList()));
+    }
+    String? encAccounts;
+    if (item.accounts != null && item.accounts!.isNotEmpty) {
+      encAccounts = await enc(jsonEncode(item.accounts!.map((e) => e.toJson()).toList()));
+    }
+    String? encTags;
+    if (item.tags.isNotEmpty) {
+      encTags = await enc(jsonEncode(item.tags));
+    }
+
+    return {
+      'secret': await enc(item.secret),
+      'password': await enc(item.password),
+      'mnemonic': await enc(item.mnemonic),
+      'privateKey': await enc(item.privateKey),
+      'address': await enc(item.address),
+      'note': await enc(item.note),
+      'passwordHistory': encHistory,
+      'accounts': encAccounts,
+      'tags': encTags,
+    };
+  }
+
+  /// Build a VaultItemsCompanion for writing from pre-encrypted field map.
+  VaultItemsCompanion _buildCompanionFromEncrypted(
+    VaultItem item,
+    Map<String, String?> enc, {
+    DateTime? updatedAt,
+    DateTime? passwordLastChanged,
+  }) {
+    return VaultItemsCompanion(
+      title: Value(item.title),
+      username: Value(item.username),
+      secret: Value(enc['secret']),
+      password: Value(enc['password']),
+      mnemonic: Value(enc['mnemonic']),
+      privateKey: Value(enc['privateKey']),
+      address: Value(enc['address']),
+      network: Value(item.network),
+      period: Value(item.period),
+      isFavorite: Value(item.isFavorite),
+      url: Value(item.url),
+      note: Value(enc['note']),
+      category: Value(item.category),
+      email: Value(item.email),
+      passwordHistory: Value(enc['passwordHistory']),
+      accounts: Value(enc['accounts']),
+      tags: Value(enc['tags']),
+      passwordLastChanged: Value(passwordLastChanged ?? item.passwordLastChanged),
+      passwordDuration: Value(item.passwordDuration),
+      updatedAt: Value(updatedAt ?? DateTime.now()),
+      isDeleted: Value(item.isDeleted),
+      deletedAt: Value(item.deletedAt),
+      sharedVaultId: Value(item.sharedVaultId),
+    );
+  }
+
   Future<void> updateItemFromBackup(
     VaultItem item,
     SecretKey masterKey, {
@@ -318,83 +387,10 @@ class VaultRepository {
       if (key != null) encryptionKey = key;
     }
 
-    String? encryptedSecret;
-    String? encryptedPassword;
-    String? encryptedMnemonic;
-    String? encryptedPrivateKey;
-    String? encryptedAddress;
-    String? encryptedNote;
-    String? encryptedPasswordHistory;
-    String? encryptedAccounts;
-    String? encryptedTags;
+    final enc = await _encryptFields(item, encryptionKey);
+    final companion = _buildCompanionFromEncrypted(item, enc, updatedAt: item.updatedAt ?? DateTime.now());
 
-    if (item.secret != null) {
-      final bytes = await _encryptionService.encrypt(item.secret!, encryptionKey);
-      encryptedSecret = base64.encode(bytes);
-    }
-    if (item.password != null) {
-      final bytes = await _encryptionService.encrypt(item.password!, encryptionKey);
-      encryptedPassword = base64.encode(bytes);
-    }
-    if (item.mnemonic != null) {
-      final bytes = await _encryptionService.encrypt(item.mnemonic!, encryptionKey);
-      encryptedMnemonic = base64.encode(bytes);
-    }
-    if (item.privateKey != null) {
-      final bytes = await _encryptionService.encrypt(item.privateKey!, encryptionKey);
-      encryptedPrivateKey = base64.encode(bytes);
-    }
-    if (item.address != null) {
-      final bytes = await _encryptionService.encrypt(item.address!, encryptionKey);
-      encryptedAddress = base64.encode(bytes);
-    }
-    if (item.note != null) {
-      final bytes = await _encryptionService.encrypt(item.note!, encryptionKey);
-      encryptedNote = base64.encode(bytes);
-    }
-    if (item.passwordHistory != null && item.passwordHistory!.isNotEmpty) {
-      final historyJson = jsonEncode(item.passwordHistory!.map((e) => e.toJson()).toList());
-      final bytes = await _encryptionService.encrypt(historyJson, encryptionKey);
-      encryptedPasswordHistory = base64.encode(bytes);
-    }
-    if (item.accounts != null && item.accounts!.isNotEmpty) {
-      final accountsJson = jsonEncode(item.accounts!.map((e) => e.toJson()).toList());
-      final bytes = await _encryptionService.encrypt(accountsJson, encryptionKey);
-      encryptedAccounts = base64.encode(bytes);
-    }
-    if (item.tags.isNotEmpty) {
-      final tagsJson = jsonEncode(item.tags);
-      final bytes = await _encryptionService.encrypt(tagsJson, encryptionKey);
-      encryptedTags = base64.encode(bytes);
-    }
-
-    await (_db.update(_db.vaultItems)..where((t) => t.id.equals(item.id))).write(
-      VaultItemsCompanion(
-        title: Value(item.title),
-        username: Value(item.username),
-        secret: Value(encryptedSecret),
-        password: Value(encryptedPassword),
-        mnemonic: Value(encryptedMnemonic),
-        privateKey: Value(encryptedPrivateKey),
-        address: Value(encryptedAddress),
-        network: Value(item.network),
-        period: Value(item.period),
-        isFavorite: Value(item.isFavorite),
-        url: Value(item.url),
-        note: Value(encryptedNote),
-        category: Value(item.category),
-        email: Value(item.email),
-        passwordHistory: Value(encryptedPasswordHistory),
-        accounts: Value(encryptedAccounts),
-        tags: Value(encryptedTags),
-        passwordLastChanged: Value(item.passwordLastChanged),
-        passwordDuration: Value(item.passwordDuration),
-        updatedAt: Value(item.updatedAt ?? DateTime.now()),
-        isDeleted: Value(item.isDeleted),
-        deletedAt: Value(item.deletedAt),
-        sharedVaultId: Value(item.sharedVaultId),
-      ),
-    );
+    await (_db.update(_db.vaultItems)..where((t) => t.id.equals(item.id))).write(companion);
     onItemChanged?.call(item.sharedVaultId);
   }
 
@@ -584,89 +580,23 @@ class VaultRepository {
       // 如果新项中没有 accounts，但旧项中有，则保留旧的（防止意外抹除）
     }
 
-    String? encryptedSecret;
-    String? encryptedPassword;
-    String? encryptedMnemonic;
-    String? encryptedPrivateKey;
-    String? encryptedAddress;
-    String? encryptedNote;
-    String? encryptedPasswordHistory;
-    String? encryptedAccounts;
-    String? encryptedTags;
-
-    if (item.secret != null) {
-      final bytes = await _encryptionService.encrypt(item.secret!, encryptionKey);
-      encryptedSecret = base64.encode(bytes);
-    }
-
-    if (item.password != null) {
-      final bytes = await _encryptionService.encrypt(item.password!, encryptionKey);
-      encryptedPassword = base64.encode(bytes);
-    }
-
-    if (item.mnemonic != null) {
-      final bytes = await _encryptionService.encrypt(item.mnemonic!, encryptionKey);
-      encryptedMnemonic = base64.encode(bytes);
-    }
-
-    if (item.privateKey != null) {
-      final bytes = await _encryptionService.encrypt(item.privateKey!, encryptionKey);
-      encryptedPrivateKey = base64.encode(bytes);
-    }
-
-    if (item.address != null) {
-      final bytes = await _encryptionService.encrypt(item.address!, encryptionKey);
-      encryptedAddress = base64.encode(bytes);
-    }
-
-    if (item.note != null) {
-      final bytes = await _encryptionService.encrypt(item.note!, encryptionKey);
-      encryptedNote = base64.encode(bytes);
-    }
-
-    if (currentHistory.isNotEmpty) {
-      final historyJson = jsonEncode(currentHistory.map((e) => e.toJson()).toList());
-      final bytes = await _encryptionService.encrypt(historyJson, encryptionKey);
-      encryptedPasswordHistory = base64.encode(bytes);
-    }
-
-    if (updatedAccounts.isNotEmpty) {
-      final accountsJson = jsonEncode(updatedAccounts.map((e) => e.toJson()).toList());
-      final bytes = await _encryptionService.encrypt(accountsJson, encryptionKey);
-      encryptedAccounts = base64.encode(bytes);
-    }
-
-    if (item.tags.isNotEmpty) {
-      final tagsJson = jsonEncode(item.tags);
-      final bytes = await _encryptionService.encrypt(tagsJson, encryptionKey);
-      encryptedTags = base64.encode(bytes);
-    }
-
-    await (_db.update(_db.vaultItems)..where((t) => t.id.equals(item.id))).write(
-      VaultItemsCompanion(
-        title: Value(item.title),
-        username: Value(item.username),
-        secret: Value(encryptedSecret),
-        password: Value(encryptedPassword),
-        mnemonic: Value(encryptedMnemonic),
-        privateKey: Value(encryptedPrivateKey),
-        address: Value(encryptedAddress),
-        network: Value(item.network),
-        period: Value(item.period),
-        isFavorite: Value(item.isFavorite),
-        url: Value(item.url),
-        note: Value(encryptedNote),
-        category: Value(item.category),
-        email: Value(item.email),
-        passwordHistory: Value(encryptedPasswordHistory),
-        accounts: Value(encryptedAccounts),
-        tags: Value(encryptedTags),
-        passwordLastChanged: Value(lastChanged),
-        passwordDuration: Value(item.passwordDuration),
-        updatedAt: Value(DateTime.now()),
-        sharedVaultId: Value(item.sharedVaultId),
-      ),
+    // Build item with merged history/accounts for encryption
+    final itemToEncrypt = VaultItem(
+      id: item.id, type: item.type, title: item.title, username: item.username,
+      secret: item.secret, password: item.password, mnemonic: item.mnemonic,
+      privateKey: item.privateKey, address: item.address, network: item.network,
+      period: item.period, isFavorite: item.isFavorite, url: item.url,
+      note: item.note, category: item.category, email: item.email,
+      passwordHistory: currentHistory.isNotEmpty ? currentHistory : null,
+      accounts: updatedAccounts.isNotEmpty ? updatedAccounts : null,
+      tags: item.tags, sharedVaultId: item.sharedVaultId,
+      passwordLastChanged: lastChanged, passwordDuration: item.passwordDuration,
     );
+
+    final enc = await _encryptFields(itemToEncrypt, encryptionKey);
+    final companion = _buildCompanionFromEncrypted(itemToEncrypt, enc, passwordLastChanged: lastChanged);
+
+    await (_db.update(_db.vaultItems)..where((t) => t.id.equals(item.id))).write(companion);
     onItemChanged?.call(item.sharedVaultId);
   }
 
@@ -724,7 +654,8 @@ class VaultRepository {
     final vaultId = DateTime.now().millisecondsSinceEpoch.toString();
     
     // 1. 生成共享库的对称密钥 (VaultKey)
-    final vaultKeyBytes = List<int>.generate(32, (i) => DateTime.now().microsecond % 256);
+    final _secureRandom = Random.secure();
+    final vaultKeyBytes = List<int>.generate(32, (i) => _secureRandom.nextInt(256));
     final vaultKeyBase64 = base64.encode(vaultKeyBytes);
     
     // 2. 用所有者的公钥加密 VaultKey
@@ -896,7 +827,8 @@ class VaultRepository {
     final oldSecretKey = SecretKey(base64.decode(oldKeyBase64));
 
     // 3. 生成新密钥
-    final newVaultKeyBytes = List<int>.generate(32, (i) => DateTime.now().microsecond % 256);
+    final _secureRandom = Random.secure();
+    final newVaultKeyBytes = List<int>.generate(32, (i) => _secureRandom.nextInt(256));
     final newVaultKeyBase64 = base64.encode(newVaultKeyBytes);
     final newSecretKey = SecretKey(newVaultKeyBytes);
 

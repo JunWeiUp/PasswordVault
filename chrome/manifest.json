@@ -4,7 +4,6 @@
   "version": "1.0.1",
   "description": "Securely manage your passwords and TOTP codes in your browser.",
   "action": {
-    "default_popup": "index.html",
     "default_icon": {
       "16": "icons/icon16.png",
       "192": "icons/icon192.png",

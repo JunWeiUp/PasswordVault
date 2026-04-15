@@ -15,6 +15,7 @@ class _LockPageState extends ConsumerState<LockPage> {
   final _confirmPasswordController = TextEditingController();
   final _localAuth = LocalAuthentication();
   String? _errorText;
+  bool _isLoading = false;
 
   @override
   void initState() {
@@ -48,7 +49,7 @@ class _LockPageState extends ConsumerState<LockPage> {
     }
   }
 
-  void _handleSetPassword() {
+  Future<void> _handleSetPassword() async {
     final password = _passwordController.text;
     final confirmPassword = _confirmPasswordController.text;
 
@@ -62,15 +63,30 @@ class _LockPageState extends ConsumerState<LockPage> {
       return;
     }
 
-    ref.read(masterPasswordProvider.notifier).setPassword(password);
+    setState(() {
+      _isLoading = true;
+      _errorText = null;
+    });
+
+    try {
+      await ref.read(masterPasswordProvider.notifier).setPassword(password);
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _errorText = '设置失败，请重试';
+        });
+      }
+    }
   }
 
-  void _handleLogin() {
+  Future<void> _handleLogin() async {
     final password = _passwordController.text;
     final state = ref.read(masterPasswordProvider);
 
     if (password == state.password) {
-      ref.read(masterPasswordProvider.notifier).setAuthenticated(true);
+      setState(() => _isLoading = true);
+      await ref.read(masterPasswordProvider.notifier).setAuthenticated(true);
     } else {
       setState(() => _errorText = '密码错误');
     }
@@ -127,12 +143,14 @@ class _LockPageState extends ConsumerState<LockPage> {
               ],
               const SizedBox(height: 24),
               ElevatedButton(
-                onPressed: isFirstTime ? _handleSetPassword : _handleLogin,
+                onPressed: _isLoading ? null : (isFirstTime ? _handleSetPassword : _handleLogin),
                 style: ElevatedButton.styleFrom(
                   padding: const EdgeInsets.symmetric(vertical: 16),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                 ),
-                child: Text(isFirstTime ? '开始使用' : '解锁'),
+                child: _isLoading
+                    ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                    : Text(isFirstTime ? '开始使用' : '解锁'),
               ),
               if (!isFirstTime && state.isBiometricEnabled) ...[
                 const SizedBox(height: 16),
