@@ -25,6 +25,23 @@ jobs:
           channel: stable
           cache: true
 
+      # 与 android/app/build.gradle 中 ndkVersion 一致；避免每次 runner 冷启动都重新下载 NDK（常占数分钟）。
+      - name: Cache Android NDK
+        uses: actions/cache@v4
+        with:
+          path: /usr/local/lib/android/sdk/ndk/27.0.12077973
+          key: android-ndk-27.0.12077973-${{ runner.os }}
+
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('android/**/*.gradle*', 'android/gradle/wrapper/gradle-wrapper.properties', 'pubspec.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+
       - name: Install dependencies
         run: flutter pub get
 
