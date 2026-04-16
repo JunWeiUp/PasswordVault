@@ -42,10 +42,8 @@ android {
         targetSdk = 36
         versionCode = flutter.versionCode
         versionName = flutter.versionName
-        // 仅打包 ARM（真机）；去掉 x86_64 可明显减小侧载/未分 ABI 包体积；模拟器需 x86_64 时请注释本段
-        ndk {
-            abiFilters "armeabi-v7a", "arm64-v8a"
-        }
+        // 不在此设置 ndk.abiFilters：`flutter build apk --split-per-abi` 会启用 splits，与手动 abiFilters 冲突。
+        // 需要仅 ARM 的通用包时可用：`flutter build apk --target-platform android-arm,android-arm64`
     }
 
     buildTypes {
