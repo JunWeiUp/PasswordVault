@@ -23,5 +23,11 @@ class ExtensionHelper {
 
   static Future<void> syncKnownAccounts(Map<String, List<Map<String, String>>> accounts) async {}
 
+  static void closeWindow() {}
+
+  static Future<void> setAutoFillEnabled(bool enabled) async {}
+
+  static Future<bool> getAutoFillEnabled() async => false;
+
   static Future<String?> getCurrentTabUrl() async => null;
 }

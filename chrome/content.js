@@ -10,6 +10,9 @@ let currentCreds = {
 };
 
 let lastFocusedField = null;
+let activeDropdownHost = null;
+let autoFillTriggered = false;
+let passwordChangeFields = null;
 
 // Add a small toast feedback
 const showToast = (message) => {
@@ -35,6 +38,272 @@ const showToast = (message) => {
     setTimeout(() => toast.remove(), 300);
   }, 2000);
 };
+
+// --- Inline Autofill Dropdown (Shadow DOM) ---
+
+function hideAutofillDropdown() {
+  if (activeDropdownHost) {
+    activeDropdownHost.remove();
+    activeDropdownHost = null;
+  }
+}
+
+function showAutofillDropdown(field) {
+  hideAutofillDropdown();
+
+  const domain = window.location.hostname;
+  chrome.runtime.sendMessage({ type: 'GET_MATCHING_ACCOUNTS', data: { domain } }, (result) => {
+    if (chrome.runtime.lastError || !result || !result.accounts || result.accounts.length === 0) return;
+    if (document.activeElement !== field) return;
+
+    const host = document.createElement('div');
+    host.className = 'securepass-dropdown-host';
+    host.style.cssText = 'position:absolute;z-index:2147483647;';
+    const shadow = host.attachShadow({ mode: 'closed' });
+
+    const rect = field.getBoundingClientRect();
+    host.style.left = (window.scrollX + rect.left) + 'px';
+    host.style.top = (window.scrollY + rect.bottom + 4) + 'px';
+    host.style.width = Math.max(rect.width, 260) + 'px';
+
+    const iconUrl = chrome.runtime.getURL('icons/icon16.png');
+
+    let itemsHtml = '';
+    result.accounts.forEach((acc, idx) => {
+      const badge = acc.lastUsed ? '<span class="badge">最近使用</span>' : '';
+      itemsHtml += `
+        <div class="item" data-index="${idx}" data-username="${acc.username.replace(/"/g, '&quot;')}">
+          <img src="${iconUrl}" class="icon" />
+          <span class="username">${acc.username}</span>
+          ${badge}
+        </div>`;
+    });
+
+    shadow.innerHTML = `
+      <style>
+        :host { all: initial; }
+        .dropdown {
+          background: #fff; border: 1px solid #ddd; border-radius: 8px;
+          box-shadow: 0 4px 16px rgba(0,0,0,0.12); overflow: hidden;
+          font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+          font-size: 14px; color: #333; animation: fadeIn 0.15s ease-out;
+        }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
+        .header { padding: 8px 12px; font-size: 11px; color: #888; border-bottom: 1px solid #f0f0f0; display: flex; align-items: center; gap: 6px; }
+        .header img { width: 14px; height: 14px; }
+        .item { display: flex; align-items: center; gap: 10px; padding: 10px 12px; cursor: pointer; transition: background 0.1s; }
+        .item:hover { background: #f0f5ff; }
+        .item .icon { width: 18px; height: 18px; flex-shrink: 0; }
+        .item .username { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .badge { font-size: 10px; color: #1a73e8; background: #e8f0fe; padding: 2px 6px; border-radius: 4px; white-space: nowrap; }
+        .footer { border-top: 1px solid #f0f0f0; padding: 8px 12px; display: flex; align-items: center; gap: 6px; cursor: pointer; color: #666; font-size: 12px; transition: background 0.1s; }
+        .footer:hover { background: #f5f5f5; }
+        .footer img { width: 14px; height: 14px; }
+      </style>
+      <div class="dropdown">
+        <div class="header"><img src="${iconUrl}" />SecurePass</div>
+        ${itemsHtml}
+        <div class="footer" id="open-sp"><img src="${iconUrl}" />打开 SecurePass...</div>
+      </div>
+    `;
+
+    document.body.appendChild(host);
+    activeDropdownHost = host;
+
+    shadow.querySelectorAll('.item').forEach(el => {
+      el.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const username = el.dataset.username;
+        hideAutofillDropdown();
+        chrome.runtime.sendMessage({
+          type: 'OPEN_POPUP_FOR_FILL',
+          data: {
+            url: window.location.href,
+            origin: window.location.origin,
+            username: username,
+            fillRequested: true,
+            autoClose: true,
+          }
+        });
+        showToast('正在自动填充...');
+      });
+    });
+
+    shadow.getElementById('open-sp')?.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      hideAutofillDropdown();
+      chrome.runtime.sendMessage({
+        type: 'OPEN_POPUP_FOR_FILL',
+        data: { url: window.location.href, origin: window.location.origin, username: '' }
+      });
+    });
+  });
+}
+
+function bindDropdownEvents(field) {
+  if (field.dataset.securepassDropdown) return;
+  field.dataset.securepassDropdown = 'true';
+
+  field.addEventListener('focus', () => showAutofillDropdown(field));
+  field.addEventListener('click', () => {
+    if (!activeDropdownHost) showAutofillDropdown(field);
+  });
+  field.addEventListener('blur', () => {
+    setTimeout(hideAutofillDropdown, 150);
+  });
+}
+
+function bindDropdownToAllFields() {
+  const fields = document.querySelectorAll(
+    'input[type="password"], input[type="email"], input[type="text"], input:not([type])'
+  );
+  fields.forEach(f => {
+    if (f.offsetWidth > 0 && f.type !== 'hidden') {
+      const form = f.closest('form') || document.body;
+      if (form.querySelector('input[type="password"]')) {
+        bindDropdownEvents(f);
+      }
+    }
+  });
+}
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && activeDropdownHost) {
+    hideAutofillDropdown();
+  }
+}, true);
+
+// --- Password Change Form Detection ---
+
+function detectPasswordChangeForm() {
+  const allPwdFields = Array.from(document.querySelectorAll('input[type="password"]'))
+    .filter(f => f.offsetWidth > 0 && f.offsetHeight > 0);
+  
+  if (allPwdFields.length < 2 || allPwdFields.length > 4) return null;
+
+  const getFieldHint = (field) => {
+    const attrs = [
+      field.name, field.id, field.placeholder,
+      field.getAttribute('aria-label'), field.getAttribute('autocomplete'),
+    ].filter(Boolean).join(' ').toLowerCase();
+
+    const label = field.labels?.[0]?.textContent?.toLowerCase() || '';
+    return attrs + ' ' + label;
+  };
+
+  const currentPatterns = /current|old|旧|原|当前|existing|prev/;
+  const newPatterns = /new|新|create/;
+  const confirmPatterns = /confirm|repeat|retype|再次|重复|确认|verify/;
+
+  let currentField = null, newField = null, confirmField = null;
+
+  for (const f of allPwdFields) {
+    const hint = getFieldHint(f);
+    const ac = f.getAttribute('autocomplete') || '';
+    if (ac === 'current-password' || currentPatterns.test(hint)) {
+      if (!currentField) currentField = f;
+    } else if (confirmPatterns.test(hint)) {
+      confirmField = f;
+    } else if (ac === 'new-password' || newPatterns.test(hint)) {
+      if (!newField) newField = f;
+    }
+  }
+
+  if (!currentField && !newField && allPwdFields.length >= 2) {
+    if (allPwdFields.length === 2) {
+      currentField = allPwdFields[0];
+      newField = allPwdFields[1];
+    } else if (allPwdFields.length >= 3) {
+      currentField = allPwdFields[0];
+      newField = allPwdFields[1];
+      confirmField = allPwdFields[2];
+    }
+  }
+
+  if (currentField && newField) {
+    return { type: 'change_password', currentField, newField, confirmField };
+  }
+  return null;
+}
+
+function showPasswordChangeBanner(pwChangeInfo) {
+  if (document.getElementById('securepass-pwchange-banner')) return;
+
+  passwordChangeFields = pwChangeInfo;
+
+  const iconUrl = chrome.runtime.getURL('icons/icon192.png');
+  const banner = document.createElement('div');
+  banner.id = 'securepass-pwchange-banner';
+
+  if (!document.getElementById('securepass-styles')) {
+    const style = document.createElement('style');
+    style.id = 'securepass-styles';
+    style.textContent = `
+      @keyframes securepass-slide-in { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+      .securepass-btn:active { transform: scale(0.98); }
+    `;
+    document.head.appendChild(style);
+  }
+
+  banner.style.cssText = `
+    position: fixed !important; top: 20px !important; right: 20px !important;
+    width: 350px !important; background: #fff !important;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.15) !important; z-index: 2147483647 !important;
+    display: flex !important; flex-direction: column !important; padding: 16px !important;
+    border-radius: 12px !important;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important;
+    font-size: 14px !important; color: #333 !important; border: 1px solid #e0e0e0 !important;
+    animation: securepass-slide-in 0.3s ease-out !important;
+  `;
+
+  banner.innerHTML = `
+    <div style="display:flex;align-items:center;margin-bottom:12px;">
+      <img src="${iconUrl}" style="width:24px;height:24px;margin-right:10px;">
+      <span style="font-weight:600;font-size:16px;">SecurePass</span>
+      <button id="securepass-pwchange-close" style="margin-left:auto;background:none;border:none;font-size:20px;cursor:pointer;color:#999;">&times;</button>
+    </div>
+    <div style="margin-bottom:16px;line-height:1.4;">
+      检测到修改密码表单，是否需要帮助？
+    </div>
+    <div style="display:flex;gap:8px;">
+      <button id="securepass-fill-current" class="securepass-btn" style="flex:1;background:#1a73e8;color:#fff;border:none;padding:10px;border-radius:6px;cursor:pointer;font-weight:500;font-size:13px;">填充当前密码</button>
+      <button id="securepass-gen-new" class="securepass-btn" style="flex:1;background:#e8f0fe;color:#1a73e8;border:none;padding:10px;border-radius:6px;cursor:pointer;font-weight:500;font-size:13px;">生成新密码</button>
+    </div>
+  `;
+
+  document.body.appendChild(banner);
+
+  document.getElementById('securepass-pwchange-close').onclick = () => banner.remove();
+
+  document.getElementById('securepass-fill-current').onclick = () => {
+    chrome.runtime.sendMessage({
+      type: 'FILL_CURRENT_PASSWORD',
+      data: {
+        url: window.location.href,
+        origin: window.location.origin,
+        username: '',
+      }
+    });
+    showToast('正在从保险箱填充当前密码...');
+  };
+
+  document.getElementById('securepass-gen-new').onclick = () => {
+    chrome.runtime.sendMessage({
+      type: 'OPEN_POPUP_FOR_FILL',
+      data: {
+        url: window.location.href,
+        origin: window.location.origin,
+        username: '',
+        fillTarget: 'new_password',
+      }
+    });
+    showToast('正在打开密码生成器...');
+    banner.remove();
+  };
+
+  setTimeout(() => { if (banner.parentElement) banner.remove(); }, 60000);
+}
 
 const detector = {
   getCredentials: (field) => {
@@ -105,6 +374,40 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     } else {
       sendResponse({ success: false, error: 'No password field found' });
     }
+  }
+  else if (request.type === 'SHOW_AUTOFILL_DROPDOWN') {
+    const pwdField = document.querySelector('input[type="password"]');
+    if (pwdField) {
+      pwdField.focus();
+      showAutofillDropdown(pwdField);
+    }
+    sendResponse({ success: true });
+  }
+  else if (request.type === 'FILL_PASSWORD_CHANGE_FIELDS') {
+    const { currentPassword, newPassword } = request.data || {};
+    if (passwordChangeFields) {
+      if (currentPassword && passwordChangeFields.currentField) {
+        passwordChangeFields.currentField.value = currentPassword;
+        passwordChangeFields.currentField.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+      if (newPassword) {
+        if (passwordChangeFields.newField) {
+          passwordChangeFields.newField.value = newPassword;
+          passwordChangeFields.newField.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+        if (passwordChangeFields.confirmField) {
+          passwordChangeFields.confirmField.value = newPassword;
+          passwordChangeFields.confirmField.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+      }
+      sendResponse({ success: true });
+    } else {
+      sendResponse({ success: false, error: 'No password change fields tracked' });
+    }
+  }
+  else if (request.type === 'SHOW_TOAST') {
+    showToast(request.data?.message || '');
+    sendResponse({ success: true });
   }
 });
 
@@ -223,20 +526,24 @@ function injectIcons() {
 
 // Detection logic for login
 function notifyLogin(creds) {
-  // Check if there are multiple password fields on the page (common in "change password" forms)
   const passwordFields = document.querySelectorAll('input[type="password"]');
-  if (passwordFields.length >= 3) {
-    console.log('ℹ️ Multiple password fields detected, likely a change password form. Skipping auto-save.');
-    return;
+
+  if (passwordFields.length >= 2) {
+    const pwChangeInfo = detectPasswordChangeForm();
+    if (pwChangeInfo) {
+      console.log('🔑 Password change form detected');
+      chrome.runtime.sendMessage({
+        type: 'DETECTED_PASSWORD_CHANGE',
+        data: { url: window.location.href, origin: window.location.origin }
+      });
+      showPasswordChangeBanner(pwChangeInfo);
+      return;
+    }
   }
 
   if (creds.username && creds.password && creds.password.length >= 4) {
     console.log('🚀 Detected login attempt for:', creds.username);
-    
-    // 1. Send to background for system notification
     chrome.runtime.sendMessage({ type: 'DETECTED_LOGIN', data: creds });
-    
-    // 2. Show internal banner (more reliable than system notifications)
     showSaveBanner(creds);
   }
 }
@@ -402,6 +709,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'SHOW_SAVE_BANNER') {
     showSaveBanner(message.data);
   }
+  return false;
 });
 
 // 3. Enter key in password field
@@ -417,18 +725,65 @@ document.addEventListener('keydown', (e) => {
 }, true);
 
 // Watch for DOM changes
-const observer = new MutationObserver(() => injectIcons());
+const observer = new MutationObserver(() => {
+  injectIcons();
+  bindDropdownToAllFields();
+});
 observer.observe(document.body, { childList: true, subtree: true });
 injectIcons();
+bindDropdownToAllFields();
 
 // Check for pending save banner on load (handles page redirects after login)
 chrome.runtime.sendMessage({ type: 'GET_LAST_DETECTED' }, (lastCreds) => {
   if (lastCreds && lastCreds.username && lastCreds.password) {
     const now = Date.now();
-    // If detected within last 15 seconds for this origin, show the banner
     if (now - lastCreds.timestamp < 15000 && lastCreds.origin === window.location.origin) {
       console.log('🔄 Restoring save banner after navigation');
       showSaveBanner(lastCreds);
     }
   }
 });
+
+// --- Auto-fill on page load ---
+function tryAutoFillOnLoad() {
+  if (autoFillTriggered) return;
+  const pwdField = document.querySelector('input[type="password"]');
+  if (!pwdField || pwdField.offsetWidth === 0) return;
+
+  autoFillTriggered = true;
+  const domain = window.location.hostname;
+
+  chrome.runtime.sendMessage({ type: 'AUTO_FILL_CHECK', data: { domain } }, (result) => {
+    if (chrome.runtime.lastError || !result || !result.autoFillEnabled) return;
+
+    if (result.singleMatch && result.accounts.length === 1) {
+      console.log('🚀 Auto-filling single matching account:', result.accounts[0].username);
+      chrome.runtime.sendMessage({
+        type: 'OPEN_POPUP_FOR_FILL',
+        data: {
+          url: window.location.href,
+          origin: window.location.origin,
+          username: result.accounts[0].username,
+          fillRequested: true,
+          autoClose: true,
+        }
+      });
+    } else if (result.accounts.length > 1 && result.lastUsed) {
+      console.log('🚀 Auto-filling last-used account:', result.lastUsed);
+      chrome.runtime.sendMessage({
+        type: 'OPEN_POPUP_FOR_FILL',
+        data: {
+          url: window.location.href,
+          origin: window.location.origin,
+          username: result.lastUsed,
+          fillRequested: true,
+          autoClose: true,
+        }
+      });
+    } else if (result.accounts.length > 1) {
+      showAutofillDropdown(pwdField);
+    }
+  });
+}
+
+setTimeout(tryAutoFillOnLoad, 800);

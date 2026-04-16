@@ -966,6 +966,8 @@ class _MainNavigationScreenState extends ConsumerState<MainNavigationScreen> {
     if (origin == null) return;
 
     final fillRequested = contextData['fillRequested'] == true;
+    final autoClose = contextData['autoClose'] == true;
+    final fillTarget = contextData['fillTarget'] as String?;
 
     // Wait for vault items to be loaded if needed
     var vaultItemsAsync = ref.read(vaultItemsProvider);
@@ -989,22 +991,46 @@ class _MainNavigationScreenState extends ConsumerState<MainNavigationScreen> {
 
     if (!mounted) return;
 
-    // Auto-fill from right-click context menu
+    // Handle fillTarget: 'current_password' — fill only the current password field
+    if (fillTarget == 'current_password' && matches.isNotEmpty) {
+      final match = matches.first;
+      debugPrint('🔑 Filling current password for change-password form');
+      await ExtensionHelper.fillCredentials(match.username, match.password ?? '');
+      await ExtensionHelper.clearActiveContext();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('已填充当前密码'), duration: Duration(seconds: 1)),
+        );
+        if (autoClose) {
+          Future.delayed(const Duration(milliseconds: 500), () {
+            ExtensionHelper.closeWindow();
+          });
+        }
+      }
+      return;
+    }
+
+    // Auto-fill from context menu or inline dropdown
     if (fillRequested && contextData['username'] != null) {
       final targetUsername = contextData['username'] as String;
       final exactMatch = matches.where((m) => m.username == targetUsername).firstOrNull;
       if (exactMatch != null) {
-        debugPrint('🎯 Auto-filling from context menu for: $targetUsername');
+        debugPrint('🎯 Auto-filling for: $targetUsername');
         await ExtensionHelper.fillCredentials(exactMatch.username, exactMatch.password ?? '');
         await ExtensionHelper.clearActiveContext();
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('已自动填充'), duration: Duration(seconds: 1)),
           );
-          // Close the popup window after a brief delay
-          Future.delayed(const Duration(milliseconds: 800), () {
-            if (mounted) Navigator.of(context).maybePop();
-          });
+          if (autoClose) {
+            Future.delayed(const Duration(milliseconds: 500), () {
+              ExtensionHelper.closeWindow();
+            });
+          } else {
+            Future.delayed(const Duration(milliseconds: 800), () {
+              if (mounted) Navigator.of(context).maybePop();
+            });
+          }
         }
         return;
       }
@@ -2118,6 +2144,10 @@ class SettingsContent extends ConsumerWidget {
             },
           ),
         ]),
+        if (ExtensionHelper.isExtension)
+          _buildSection(context, '浏览器扩展', [
+            _AutoFillToggleTile(),
+          ]),
         _buildSection(context, '外观', [
           ListTile(
             leading: const Icon(Icons.palette_outlined),
@@ -2250,6 +2280,45 @@ class SettingsContent extends ConsumerWidget {
         ...children,
         const Divider(),
       ],
+    );
+  }
+}
+
+class _AutoFillToggleTile extends StatefulWidget {
+  @override
+  State<_AutoFillToggleTile> createState() => _AutoFillToggleTileState();
+}
+
+class _AutoFillToggleTileState extends State<_AutoFillToggleTile> {
+  bool _enabled = false;
+  bool _loaded = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final v = await ExtensionHelper.getAutoFillEnabled();
+    if (mounted) setState(() { _enabled = v; _loaded = true; });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ListTile(
+      leading: const Icon(Icons.auto_fix_high),
+      title: const Text('页面自动填充'),
+      subtitle: const Text('加载页面时自动填充匹配的账号'),
+      trailing: _loaded
+          ? Switch(
+              value: _enabled,
+              onChanged: (v) async {
+                setState(() => _enabled = v);
+                await ExtensionHelper.setAutoFillEnabled(v);
+              },
+            )
+          : const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2)),
     );
   }
 }

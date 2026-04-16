@@ -15,6 +15,16 @@
     "192": "icons/icon192.png",
     "512": "icons/icon512.png"
   },
+  "commands": {
+    "_execute_action": {
+      "suggested_key": { "default": "Ctrl+Shift+Y", "mac": "Command+Shift+Y" },
+      "description": "打开 SecurePass"
+    },
+    "fill_credentials": {
+      "suggested_key": { "default": "Ctrl+Shift+L", "mac": "Command+Shift+L" },
+      "description": "自动填充当前页面"
+    }
+  },
   "permissions": [
     "storage",
     "activeTab",

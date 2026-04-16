@@ -124,6 +124,63 @@ let lastNotificationTime = 0;
 let cachedMasterKey = null; // Memory cache for derived key (base64 string)
 let lastActiveContext = null; // Store context of where the icon was clicked
 
+// --- Fill History ---
+
+async function recordFillHistory(domain, username) {
+  if (!domain || !username) return;
+  try {
+    const result = await chrome.storage.local.get(['fill_history']);
+    const history = result.fill_history || {};
+    history[domain] = { username, timestamp: Date.now() };
+
+    const entries = Object.entries(history);
+    if (entries.length > 200) {
+      entries.sort((a, b) => (b[1].timestamp || 0) - (a[1].timestamp || 0));
+      const trimmed = Object.fromEntries(entries.slice(0, 200));
+      await chrome.storage.local.set({ fill_history: trimmed });
+    } else {
+      await chrome.storage.local.set({ fill_history: history });
+    }
+  } catch (e) {
+    console.error('❌ recordFillHistory error:', e);
+  }
+}
+
+async function getMatchingAccountsForDomain(domain) {
+  if (!domain) return { accounts: [], lastUsed: null };
+
+  const [accountsResult, historyResult] = await Promise.all([
+    chrome.storage.local.get(['known_accounts']),
+    chrome.storage.local.get(['fill_history']),
+  ]);
+
+  const knownAccounts = accountsResult.known_accounts || {};
+  const history = historyResult.fill_history || {};
+
+  const matchedKey = Object.keys(knownAccounts).find(
+    d => domain === d || domain.endsWith('.' + d)
+  );
+  if (!matchedKey) return { accounts: [], lastUsed: null };
+
+  const accounts = knownAccounts[matchedKey].map(a => ({ username: a.username }));
+
+  const historyEntry = history[matchedKey] || history[domain];
+  const lastUsedUsername = historyEntry ? historyEntry.username : null;
+
+  if (lastUsedUsername) {
+    const idx = accounts.findIndex(a => a.username === lastUsedUsername);
+    if (idx > 0) {
+      const [item] = accounts.splice(idx, 1);
+      item.lastUsed = true;
+      accounts.unshift(item);
+    } else if (idx === 0) {
+      accounts[0].lastUsed = true;
+    }
+  }
+
+  return { accounts, lastUsed: lastUsedUsername };
+}
+
 async function hashPassword(password) {
   if (!password) return "";
   const encoder = new TextEncoder();
@@ -259,9 +316,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
   else if (message.type === 'OPEN_POPUP_FOR_FILL') {
     console.log('🔔 Opening popup window with context:', message.data);
-    lastActiveContext = message.data;
+    lastActiveContext = {
+      ...message.data,
+      autoClose: message.data.autoClose === true,
+    };
     
-    // Open a small standalone window that acts as a popup
     chrome.windows.create({
       url: chrome.runtime.getURL('index.html'),
       type: 'popup',
@@ -345,6 +404,89 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       if (tabs[0]) {
         chrome.tabs.sendMessage(tabs[0].id, {
           type: 'FILL_CREDENTIALS',
+          data: message.data
+        }, (response) => {
+          if (response && response.success && tabs[0].url) {
+            const domain = getDomain(tabs[0].url);
+            recordFillHistory(domain, message.data.username);
+          }
+          sendResponse(response);
+        });
+      }
+    });
+    return true;
+  }
+  else if (message.type === 'GET_MATCHING_ACCOUNTS') {
+    (async () => {
+      const domain = message.data?.domain || '';
+      const result = await getMatchingAccountsForDomain(domain);
+      sendResponse(result);
+    })();
+    return true;
+  }
+  else if (message.type === 'GET_FILL_HISTORY') {
+    (async () => {
+      const result = await chrome.storage.local.get(['fill_history']);
+      sendResponse(result.fill_history || {});
+    })();
+    return true;
+  }
+  else if (message.type === 'AUTO_FILL_CHECK') {
+    (async () => {
+      const domain = message.data?.domain || '';
+      const settingsResult = await chrome.storage.local.get(['autofill_enabled']);
+      const autoFillEnabled = settingsResult.autofill_enabled === true;
+      const { accounts, lastUsed } = await getMatchingAccountsForDomain(domain);
+      sendResponse({
+        accounts,
+        autoFillEnabled,
+        singleMatch: accounts.length === 1,
+        lastUsed,
+      });
+    })();
+    return true;
+  }
+  else if (message.type === 'SET_AUTOFILL_ENABLED') {
+    chrome.storage.local.set({ autofill_enabled: !!message.data?.enabled });
+    sendResponse({ success: true });
+  }
+  else if (message.type === 'GET_AUTOFILL_ENABLED') {
+    (async () => {
+      const result = await chrome.storage.local.get(['autofill_enabled']);
+      sendResponse({ enabled: result.autofill_enabled === true });
+    })();
+    return true;
+  }
+  else if (message.type === 'DETECTED_PASSWORD_CHANGE') {
+    console.log('🔑 Password change form detected on:', message.data?.url);
+    lastDetectedCredentials = {
+      ...message.data,
+      tabId: sender.tab?.id,
+      timestamp: Date.now(),
+      type: 'password_change',
+    };
+    sendResponse({ success: true });
+  }
+  else if (message.type === 'FILL_CURRENT_PASSWORD') {
+    lastActiveContext = {
+      url: message.data?.url,
+      origin: message.data?.origin,
+      username: message.data?.username || '',
+      fillRequested: true,
+      fillTarget: 'current_password',
+      autoClose: true,
+    };
+    chrome.windows.create({
+      url: chrome.runtime.getURL('index.html'),
+      type: 'popup', width: 400, height: 600, focused: true
+    });
+    sendResponse({ success: true });
+  }
+  else if (message.type === 'FILL_PASSWORD_CHANGE') {
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      if (tabs[0]) {
+        chrome.tabs.sendMessage(tabs[0].id, {
+          type: 'FILL_PASSWORD_CHANGE_FIELDS',
           data: message.data
         }, (response) => {
           sendResponse(response);
@@ -512,6 +654,40 @@ chrome.action.onClicked.addListener(async (tab) => {
     height: 600,
     focused: true
   });
+});
+
+// --- Keyboard Shortcuts ---
+chrome.commands.onCommand.addListener(async (command) => {
+  if (command === 'fill_credentials') {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!tab || !tab.url) return;
+    const domain = getDomain(tab.url);
+    if (!domain) return;
+
+    const { accounts } = await getMatchingAccountsForDomain(domain);
+
+    if (accounts.length === 0) {
+      try {
+        await chrome.tabs.sendMessage(tab.id, { type: 'SHOW_TOAST', data: { message: '当前网站没有匹配的账号' } });
+      } catch (_) {}
+    } else if (accounts.length === 1) {
+      lastActiveContext = {
+        url: tab.url,
+        origin: new URL(tab.url).origin,
+        username: accounts[0].username,
+        fillRequested: true,
+        autoClose: true,
+      };
+      chrome.windows.create({
+        url: chrome.runtime.getURL('index.html'),
+        type: 'popup', width: 400, height: 600, focused: true
+      });
+    } else {
+      try {
+        await chrome.tabs.sendMessage(tab.id, { type: 'SHOW_AUTOFILL_DROPDOWN', data: { accounts } });
+      } catch (_) {}
+    }
+  }
 });
 
 // Listen for tab updates (URL changes)
