@@ -587,6 +587,7 @@ class VaultRepository {
     }
 
     // Build item with merged history/accounts for encryption
+    // 必须带上 isPinned / colorLabel 等元数据，否则会用 VaultItem 默认值写入并覆盖数据库
     final itemToEncrypt = VaultItem(
       id: item.id, type: item.type, title: item.title, username: item.username,
       secret: item.secret, password: item.password, mnemonic: item.mnemonic,
@@ -597,6 +598,10 @@ class VaultRepository {
       accounts: updatedAccounts.isNotEmpty ? updatedAccounts : null,
       tags: item.tags, sharedVaultId: item.sharedVaultId,
       passwordLastChanged: lastChanged, passwordDuration: item.passwordDuration,
+      isDeleted: item.isDeleted,
+      deletedAt: item.deletedAt,
+      isPinned: item.isPinned,
+      colorLabel: item.colorLabel,
     );
 
     final enc = await _encryptFields(itemToEncrypt, encryptionKey);

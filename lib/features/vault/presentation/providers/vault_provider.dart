@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:cryptography/cryptography.dart';
 import 'package:flutter/foundation.dart';
@@ -10,6 +11,7 @@ import '../../domain/models/vault_item.dart';
 import '../../data/repositories/vault_repository.dart';
 import 'master_key_provider.dart';
 import '../../../../core/providers/app_providers.dart';
+import '../../../../core/utils/favicon_cache_service.dart';
 
 final databaseProvider = Provider((ref) => AppDatabase());
 final encryptionServiceProvider = Provider((ref) => EncryptionService());
@@ -171,6 +173,8 @@ class VaultNotifier extends StateNotifier<AsyncValue<List<VaultItem>>> {
 
       await ExtensionHelper.syncKnownDomains(domains.toList());
       await ExtensionHelper.syncKnownAccounts(accountsMetadata);
+
+      unawaited(FaviconCacheService.instance.prefetchDomains(domains));
     } catch (e) {
       debugPrint('Error in _syncDomainsToExtension: $e');
     }

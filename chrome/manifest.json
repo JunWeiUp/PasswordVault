@@ -46,6 +46,9 @@
   "content_scripts": [
     {
       "matches": ["*://*/*"],
+      "exclude_matches": [
+        "*://dav.jianguoyun.com/*"
+      ],
       "js": ["content.js"],
       "run_at": "document_end",
       "all_frames": true

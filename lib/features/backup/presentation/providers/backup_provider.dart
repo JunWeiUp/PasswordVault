@@ -13,6 +13,26 @@ import '../../../vault/presentation/providers/vault_provider.dart';
 import '../../../vault/presentation/providers/master_key_provider.dart';
 import '../../../vault/domain/models/vault_item.dart';
 
+/// Web 端（含浏览器扩展）若首次请求不带 Authorization，服务器返回 401 时 Chrome 会弹出系统级 HTTP Basic 登录框，
+/// 早于 webdav_client 内部的二次协商。因此在 [kIsWeb] 且已填写账号密码时，从首包即发送 Basic 认证。
+dav.Client _webDavClient(WebDavConfig config) {
+  final url = config.url.trim();
+  final user = config.username;
+  final password = config.password;
+
+  if (kIsWeb && user.isNotEmpty && password.isNotEmpty) {
+    final uri = url.endsWith('/') ? url : '$url/';
+    return dav.Client(
+      uri: uri,
+      c: dav.WdDio(),
+      auth: dav.BasicAuth(user: user, pwd: password),
+      debug: false,
+    );
+  }
+
+  return dav.newClient(url, user: user, password: password);
+}
+
 final webDavConfigProvider = StateNotifierProvider<WebDavConfigNotifier, WebDavConfig>((ref) {
   return WebDavConfigNotifier();
 });
@@ -58,11 +78,7 @@ final backupHistoryProvider = FutureProvider<List<BackupHistory>>((ref) async {
   final config = ref.watch(webDavConfigProvider);
   if (!config.isValid) return [];
 
-  final client = dav.newClient(
-    config.url,
-    user: config.username,
-    password: config.password,
-  );
+  final client = _webDavClient(config);
 
   try {
     // Ensure directory exists
@@ -94,11 +110,7 @@ class BackupService {
   BackupService(this._ref);
 
   Future<bool> testConnection(WebDavConfig config) async {
-    final client = dav.newClient(
-      config.url,
-      user: config.username,
-      password: config.password,
-    );
+    final client = _webDavClient(config);
     try {
       await client.ping();
       return true;
@@ -121,11 +133,7 @@ class BackupService {
 
     if (items.isEmpty && sharedVaults.isEmpty) throw Exception('No data to backup');
 
-    final client = dav.newClient(
-      config.url,
-      user: config.username,
-      password: config.password,
-    );
+    final client = _webDavClient(config);
 
     try {
       await client.mkdir(config.backupDirectory);
@@ -176,11 +184,7 @@ class BackupService {
 
   Future<ImportMergeResult> restoreBackup(BackupHistory history) async {
     final config = _ref.read(webDavConfigProvider);
-    final client = dav.newClient(
-      config.url,
-      user: config.username,
-      password: config.password,
-    );
+    final client = _webDavClient(config);
 
     final remotePath = p.join(config.backupDirectory, history.fileName);
     final bytes = await client.read(remotePath);

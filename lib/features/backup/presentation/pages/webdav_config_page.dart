@@ -113,6 +113,11 @@ class _WebDavConfigPageState extends ConsumerState<WebDavConfigPage> {
                             '配置 WebDAV 服务可以将您的密码数据备份到自己的云存储中，支持 NextCloud、Seafile、坚果云等服务。',
                             style: TextStyle(color: Colors.grey[600], fontSize: 14),
                           ),
+                          const SizedBox(height: 12),
+                          Text(
+                            '请在下方填写凭据并由本应用发起备份；不要在浏览器地址栏直接打开 WebDAV 地址（例如坚果云 dav.jianguoyun.com），否则浏览器可能弹出系统登录框，这是站点认证方式所致。',
+                            style: TextStyle(color: Colors.grey[700], fontSize: 13, height: 1.35),
+                          ),
                         ],
                       ),
                     ),
