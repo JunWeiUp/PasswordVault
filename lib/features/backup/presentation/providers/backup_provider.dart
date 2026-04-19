@@ -123,11 +123,19 @@ class BackupService {
     final config = _ref.read(webDavConfigProvider);
     if (!config.isValid) throw Exception('WebDAV not configured');
 
-    final itemsAsync = _ref.read(vaultItemsProvider);
-    final items = itemsAsync.valueOrNull ?? [];
-    
     final repository = _ref.read(vaultRepositoryProvider);
+    final masterKey = await _ref.read(masterKeyProvider.future);
+    if (masterKey == null) throw Exception('主密钥尚未就绪');
+
+    final fallbacks = await _ref.read(fallbackKeysProvider.future);
     final userKeyPair = await _ref.read(userKeyPairProvider.future);
+    final items = await repository.getAllItems(
+      masterKey,
+      includeDeleted: true,
+      fallbacks: fallbacks,
+      userKeyPair: userKeyPair,
+    );
+
     final sharedVaults = userKeyPair != null ? await repository.getSharedVaults(userKeyPair) : <SharedVault>[];
     final sharedMembers = await repository.getAllSharedMembers();
 
@@ -141,7 +149,8 @@ class BackupService {
 
     final Map<String, dynamic> backupData = {
       'metadata': {
-        'version': encrypt ? '1.2.0' : '1.1.0', // Bump version for shared vaults support
+        // 1.3.0 / 1.2.0：items 含回收站条目（isDeleted/deletedAt）
+        'version': encrypt ? '1.3.0' : '1.2.0',
         'createdAt': DateTime.now().toIso8601String(),
         'encrypted': encrypt,
       },
@@ -154,11 +163,10 @@ class BackupService {
     };
 
     if (encrypt) {
-      final masterKey = await _ref.read(masterKeyProvider.future);
       final salt = await _ref.read(masterKeySaltProvider.future);
       final encryptionService = _ref.read(encryptionServiceProvider);
       
-      if (masterKey == null || salt == null) throw Exception('主密钥尚未就绪');
+      if (salt == null) throw Exception('主密钥尚未就绪');
 
       final jsonString = json.encode(itemsData);
       final encryptedBytes = await encryptionService.encrypt(jsonString, masterKey);

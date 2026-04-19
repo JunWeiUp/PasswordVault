@@ -257,6 +257,7 @@ class VaultNotifier extends StateNotifier<AsyncValue<List<VaultItem>>> {
     }
 
     await refresh();
+    await _ref.read(deletedVaultItemsProvider.notifier).refresh();
     return ImportMergeResult(added: added, updated: updated, skipped: skipped);
   }
 
