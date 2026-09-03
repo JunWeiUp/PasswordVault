@@ -6,6 +6,11 @@ on:
   pull_request:
     branches: [main, master]
   workflow_call:
+    inputs:
+      checks_only:
+        description: Run quality and security gates when the caller builds its own artifacts
+        type: boolean
+        default: false
   workflow_dispatch:
 
 permissions:
@@ -29,7 +34,7 @@ jobs:
       - run: dart run build_runner build --delete-conflicting-outputs
       - name: Verify generated database code
         run: git diff --exit-code -- lib/core/database/app_database.g.dart
-      - run: dart format --output=none --set-exit-if-changed lib test
+      - run: dart format --output=none --set-exit-if-changed lib test tool
       - run: flutter analyze --no-pub --no-fatal-infos
       - run: flutter test --no-pub --coverage
       - run: python3 tool/check_repository.py
@@ -65,6 +70,7 @@ jobs:
 
   web-extension:
     name: Build Web and Chromium extension
+    if: ${{ !inputs.checks_only }}
     runs-on: ubuntu-latest
     needs: quality
     timeout-minutes: 20
@@ -81,6 +87,7 @@ jobs:
 
   android:
     name: Build Android development APK
+    if: ${{ !inputs.checks_only }}
     runs-on: ubuntu-latest
     needs: quality
     timeout-minutes: 30

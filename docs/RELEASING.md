@@ -2,7 +2,7 @@
 
 CI runs analysis, tests, localization/repository validation, secret scanning, and Android/Web/extension builds. It uses the Flutter version in `.flutter-version` and the committed dependency lockfile. Pull requests do not receive Android release credentials.
 
-Tag pushes run CI again, create signed release APKs and an AAB, package Web and the Chromium extension, calculate SHA-256 checksums, and create a **draft prerelease**. A maintainer reviews it before publication. No store deployment is configured.
+Tag pushes reuse CI's quality and security gates, then create signed release APKs and an AAB, package Web and the Chromium extension, calculate SHA-256 checksums, and create a **draft prerelease**. The release job builds its own artifacts, so the reusable checks skip duplicate debug/Web builds. Normal branch and pull-request CI still builds Android and Web. A maintainer reviews the draft before publication. No store deployment is configured.
 
 ## One-time setup
 
