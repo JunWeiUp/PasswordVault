@@ -79,7 +79,9 @@ class BackupPage extends ConsumerWidget {
                           children: [
                             Text(
                               tr.encryptWithMasterPassword,
-                              style: const TextStyle(fontWeight: FontWeight.w500),
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w500,
+                              ),
                             ),
                             Text(
                               tr.recommendedToProtectTheBackupContents,
@@ -164,7 +166,10 @@ class BackupPage extends ConsumerWidget {
                 const SizedBox(width: 8),
                 Text(
                   tr.webdavBackupFiles,
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                  ),
                 ),
               ],
             ),

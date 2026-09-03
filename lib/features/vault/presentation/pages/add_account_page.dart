@@ -1403,7 +1403,10 @@ class _AddAccountPageState extends ConsumerState<AddAccountPage> {
               padding: const EdgeInsets.all(16.0),
               child: Text(
                 tr.chooseBlockchainNetwork,
-                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
             ),
             const Divider(),
@@ -1523,7 +1526,10 @@ class _AddAccountPageState extends ConsumerState<AddAccountPage> {
                 padding: const EdgeInsets.all(16),
                 child: Text(
                   tr.chooseSaveLocation,
-                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ),
               const Divider(height: 1),

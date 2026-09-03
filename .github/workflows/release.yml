@@ -45,6 +45,10 @@ jobs:
       - run: flutter pub get --enforce-lockfile
       - run: flutter build apk --release --split-per-abi --no-pub
       - run: flutter build appbundle --release --no-pub
+      - name: Verify Android signing identity
+        env:
+          ANDROID_CERT_SHA256: ${{ secrets.ANDROID_CERT_SHA256 }}
+        run: python3 tool/verify_android_signatures.py
       - run: ./build_extension.sh
       - name: Stage packages and checksums
         env:

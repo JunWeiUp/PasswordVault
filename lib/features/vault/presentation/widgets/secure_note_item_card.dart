@@ -136,7 +136,10 @@ class SecureNoteItemCard extends ConsumerWidget {
                 context,
               ).showSnackBar(SnackBar(content: Text(tr.movedToTrash)));
             },
-            child: Text(tr.moveToTrash, style: const TextStyle(color: Colors.red)),
+            child: Text(
+              tr.moveToTrash,
+              style: const TextStyle(color: Colors.red),
+            ),
           ),
         ],
       ),

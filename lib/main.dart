@@ -219,7 +219,10 @@ void _showImportExport(BuildContext context, WidgetRef ref) {
                 children: [
                   Text(
                     tr.importExport,
-                    style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                    style: const TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                   IconButton(
                     icon: const Icon(Icons.close),
@@ -604,7 +607,10 @@ void _showBulkImportDialog(BuildContext context, WidgetRef ref) {
       content: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(tr.pasteOtpauthLinksOnePerLine, style: const TextStyle(fontSize: 12)),
+          Text(
+            tr.pasteOtpauthLinksOnePerLine,
+            style: const TextStyle(fontSize: 12),
+          ),
           const SizedBox(height: 8),
           TextField(
             controller: controller,
@@ -1533,7 +1539,10 @@ class _MainNavigationScreenState extends ConsumerState<MainNavigationScreen> {
               padding: const EdgeInsets.all(16),
               child: Text(
                 tr.sortBy,
-                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
             ),
             RadioGroup<SortMode>(
@@ -2668,7 +2677,10 @@ class SettingsContent extends ConsumerWidget {
               Icons.delete_forever_outlined,
               color: Colors.red,
             ),
-            title: Text(tr.deleteAllData, style: const TextStyle(color: Colors.red)),
+            title: Text(
+              tr.deleteAllData,
+              style: const TextStyle(color: Colors.red),
+            ),
             onTap: () => _showClearDataDialog(context, ref),
           ),
         ]),

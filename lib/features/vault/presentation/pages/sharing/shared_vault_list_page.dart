@@ -97,7 +97,10 @@ class SharedVaultListPage extends ConsumerWidget {
                         const SizedBox(height: 8),
                         Text(
                           tr.openTheRelevantSharedVaultToReview,
-                          style: const TextStyle(fontSize: 12, color: Colors.orange),
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: Colors.orange,
+                          ),
                         ),
                         const SizedBox(height: 12),
                         ...requests.map(
