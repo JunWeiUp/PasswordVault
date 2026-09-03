@@ -10,7 +10,7 @@
   </p>
 </div>
 
-**Developer preview.** PasswordVault is being prepared for its first public release. It has not received an independent security audit. Use disposable test credentials while the [security release blockers](docs/SECURITY_MODEL.md) are being resolved. Existing private development tags do not establish production readiness.
+**Developer preview.** PasswordVault is an early open-source project and has not received an independent security audit. Use disposable test credentials while the [security release blockers](docs/SECURITY_MODEL.md) are being resolved. Existing private development tags do not establish production readiness.
 
 ## What you can do
 
@@ -28,13 +28,13 @@ The source currently uses `SecurePass` for some internal identifiers and legacy 
 
 | Platform | Status | How to try it |
 | --- | --- | --- |
-| Android | Primary native target; CI builds a debug APK | Build locally or download a CI artifact |
-| Chrome / Edge extension | Experimental; unpacked installation | Build with `./build_extension.sh` |
-| Web | Experimental; browser storage and CORS limitations apply | `flutter run -d chrome` |
+| Android | Signed developer-preview APKs; Android 7.0+ | Download the APK for your architecture |
+| Chrome / Edge extension | Experimental; unpacked installation | Download the extension ZIP or run `./build_extension.sh` |
+| Web | Experimental; browser storage and CORS limitations apply | Self-host the Web ZIP or run `flutter run -d chrome` |
 | iOS | Project scaffold exists; release/device validation pending | Requires macOS, Xcode, and signing |
 | Windows / macOS / Linux desktop | No desktop runner is included | Contributions welcome |
 
-There is no Chrome Web Store, Google Play, or App Store listing yet. Published release assets will appear on the [Releases page](https://github.com/JunWeiUp/PasswordVault/releases).
+Download the [developer preview and checksums](https://github.com/JunWeiUp/PasswordVault/releases/tag/v1.1.0-preview.3). Most recent Android devices use `arm64-v8a`. For Chrome/Edge, extract the extension ZIP and load its directory in developer mode. There is no Chrome Web Store, Google Play, or App Store listing yet.
 
 ## Run from source
 
