@@ -11,6 +11,12 @@ import '../../../../core/extension/extension_helper.dart';
 
 List<int>? _cachedDerivedKey;
 
+Future<void> _cacheExtensionMasterKey(List<int> bytes) async {
+  if (ExtensionHelper.isExtension) {
+    await ExtensionHelper.cacheMasterKey(base64.encode(bytes));
+  }
+}
+
 class MasterPasswordState {
   final String? password;
   final bool isBiometricEnabled;
@@ -285,6 +291,7 @@ final masterKeyProvider = FutureProvider<SecretKey?>((ref) async {
   if (password == null || !masterState.isAuthenticated) return null;
 
   if (_cachedDerivedKey != null) {
+    await _cacheExtensionMasterKey(_cachedDerivedKey!);
     return SecretKey(_cachedDerivedKey!);
   }
 
@@ -309,6 +316,7 @@ final masterKeyProvider = FutureProvider<SecretKey?>((ref) async {
       final cachedBase64 = await secureStorage.read(MasterPasswordNotifier._cachedMasterKey);
       if (cachedBase64 != null) {
         _cachedDerivedKey = base64.decode(cachedBase64);
+        await _cacheExtensionMasterKey(_cachedDerivedKey!);
         return SecretKey(_cachedDerivedKey!);
       }
     }
@@ -331,9 +339,7 @@ final masterKeyProvider = FutureProvider<SecretKey?>((ref) async {
   _cachedDerivedKey = bytes;
   await secureStorage.write(MasterPasswordNotifier._cachedMasterKey, base64.encode(bytes));
 
-  if (ExtensionHelper.isExtension) {
-    await ExtensionHelper.cacheMasterKey(base64.encode(bytes));
-  }
+  await _cacheExtensionMasterKey(bytes);
 
   return key;
 });

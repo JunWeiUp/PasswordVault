@@ -5,6 +5,8 @@ class ExtensionHelper {
 
   static Future<void> clearPendingSaves() async {}
 
+  static Future<void> removePendingSave(Map<String, dynamic> target) async {}
+
   static Future<Map<String, dynamic>?> getActiveContext() async => null;
 
   static Future<void> clearActiveContext() async {}

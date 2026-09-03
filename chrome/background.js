@@ -86,10 +86,7 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
       origin: new URL(tab.url).origin,
       username: '',
     } : null;
-    chrome.windows.create({
-      url: chrome.runtime.getURL('index.html'),
-      type: 'popup', width: 400, height: 600, focused: true
-    });
+    await openSecurePassPopup();
     return;
   }
 
@@ -103,18 +100,7 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
     const account = knownAccounts[matchedKey][index];
     if (!account) return;
 
-    // We can't fill the password directly from context menu because we only
-    // store the hash. Open popup with this account's username pre-selected.
-    lastActiveContext = {
-      url: tab.url,
-      origin: new URL(tab.url).origin,
-      username: account.username,
-      fillRequested: true,
-    };
-    chrome.windows.create({
-      url: chrome.runtime.getURL('index.html'),
-      type: 'popup', width: 400, height: 600, focused: true
-    });
+    await fillAccountInTab(tab, domain, account.username);
   }
 });
 
@@ -123,6 +109,45 @@ let lastDetectedCredentials = null;
 let lastNotificationTime = 0;
 let cachedMasterKey = null; // Memory cache for derived key (base64 string)
 let lastActiveContext = null; // Store context of where the icon was clicked
+
+// Reuse the existing extension popup instead of opening duplicates.
+async function openSecurePassPopup(callback) {
+  const popupUrl = chrome.runtime.getURL('index.html');
+
+  try {
+    const windows = await chrome.windows.getAll({ populate: true });
+    const existingWindow = windows.find((window) =>
+      window.tabs?.some((tab) => tab.url?.startsWith(popupUrl))
+    );
+
+    if (existingWindow?.id) {
+      const existingTab = existingWindow.tabs?.find((tab) => tab.url?.startsWith(popupUrl));
+      if (existingTab?.id) {
+        await chrome.tabs.update(existingTab.id, { active: true });
+      }
+      await chrome.windows.update(existingWindow.id, {
+        focused: true,
+        state: 'normal',
+      });
+      console.log('♻️ Reusing existing popup window:', existingWindow.id);
+      if (callback) callback(existingWindow);
+      return existingWindow;
+    }
+  } catch (e) {
+    console.error('❌ Failed to find existing popup window:', e);
+  }
+
+  return chrome.windows.create({
+    url: popupUrl,
+    type: 'popup',
+    width: 400,
+    height: 600,
+    focused: true,
+  }, (window) => {
+    console.log('✅ Popup window created:', window?.id);
+    if (callback) callback(window);
+  });
+}
 
 // --- Fill History ---
 
@@ -162,7 +187,9 @@ async function getMatchingAccountsForDomain(domain) {
   );
   if (!matchedKey) return { accounts: [], lastUsed: null };
 
-  const accounts = knownAccounts[matchedKey].map(a => ({ username: a.username }));
+  const accounts = knownAccounts[matchedKey].map(a => ({
+    username: a.username,
+  }));
 
   const historyEntry = history[matchedKey] || history[domain];
   const lastUsedUsername = historyEntry ? historyEntry.username : null;
@@ -179,6 +206,108 @@ async function getMatchingAccountsForDomain(domain) {
   }
 
   return { accounts, lastUsed: lastUsedUsername };
+}
+
+function sendMessageToTabFrame(tabId, message, frameId) {
+  if (typeof frameId === 'number') {
+    return chrome.tabs.sendMessage(tabId, message, { frameId });
+  }
+  return chrome.tabs.sendMessage(tabId, message);
+}
+
+function base64ToBytes(base64) {
+  const binary = atob(base64);
+  return Uint8Array.from(binary, char => char.charCodeAt(0));
+}
+
+async function decryptExtensionPassword(encryptedPassword) {
+  if (!cachedMasterKey) {
+    try {
+      const result = await chrome.storage.session.get(['cached_master_key']);
+      cachedMasterKey = result.cached_master_key || null;
+    } catch (e) {
+      console.warn('⚠️ Failed to read session master key:', e);
+    }
+  }
+
+  if (!cachedMasterKey) {
+    console.warn('⚠️ Master key is not cached in background');
+    return null;
+  }
+
+  try {
+    const keyBytes = base64ToBytes(cachedMasterKey);
+    const encryptedBytes = base64ToBytes(encryptedPassword);
+    const nonce = encryptedBytes.slice(0, 12);
+    const cipherTextWithTag = encryptedBytes.slice(12);
+    const key = await crypto.subtle.importKey(
+      'raw',
+      keyBytes,
+      { name: 'AES-GCM' },
+      false,
+      ['decrypt']
+    );
+    const clearBytes = await crypto.subtle.decrypt(
+      { name: 'AES-GCM', iv: nonce, tagLength: 128 },
+      key,
+      cipherTextWithTag
+    );
+    return new TextDecoder().decode(clearBytes);
+  } catch (e) {
+    console.warn('⚠️ Failed to decrypt extension password:', e);
+    return null;
+  }
+}
+
+async function getEncryptedAccountForDomain(domain, username) {
+  if (!domain) return null;
+
+  const result = await chrome.storage.local.get(['known_accounts']);
+  const knownAccounts = result.known_accounts || {};
+  const matchedKey = Object.keys(knownAccounts).find(
+    d => domain === d || domain.endsWith('.' + d)
+  );
+  if (!matchedKey) return null;
+
+  const accounts = knownAccounts[matchedKey] || [];
+  const account = username
+    ? accounts.find(a => a.username === username)
+    : accounts[0];
+  if (!account || !account.encryptedPassword) return null;
+
+  return account;
+}
+
+async function fillAccountInTab(tab, domain, username, frameId, options = {}) {
+  if (!tab?.id) return { success: false, error: 'No active tab' };
+
+  const account = await getEncryptedAccountForDomain(domain, username);
+  const password = account ? await decryptExtensionPassword(account.encryptedPassword) : null;
+  if (!account || !password) {
+    if (options.showFailureToast !== false) {
+      try {
+        await sendMessageToTabFrame(tab.id, {
+          type: 'SHOW_TOAST',
+          data: { message: '请先打开并解锁 SecurePass 后再填充' }
+        }, frameId);
+      } catch (_) {}
+    }
+    return { success: false, error: 'No resolved credentials' };
+  }
+
+  const response = await sendMessageToTabFrame(tab.id, {
+    type: 'FILL_CREDENTIALS',
+    data: {
+      username: account.username,
+      password,
+    }
+  }, frameId);
+
+  if (response?.success) {
+    await recordFillHistory(domain, account.username);
+  }
+
+  return response || { success: false, error: 'No response from content script' };
 }
 
 async function hashPassword(password) {
@@ -214,7 +343,7 @@ async function checkCredentialsMismatch(creds) {
 // Handle messages
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   console.log('📩 Background received message:', message.type);
-  
+
   if (message.type === 'DETECTED_LOGIN') {
     (async () => {
       // Throttling to prevent duplicate notifications (e.g., both click and submit)
@@ -243,20 +372,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       if (checkResult.mismatch) {
         updateBadgeForTab(sender.tab?.id);
       }
-
-      // Create notification to save
-      const notificationId = 'save_password_' + now;
-      chrome.notifications.create(notificationId, {
-        type: 'basic',
-        iconUrl: chrome.runtime.getURL('icons/icon192.png'),
-        title: checkResult.mismatch ? 'SecurePass: 检测到账号变动' : 'SecurePass: 是否保存此账号?',
-        message: checkResult.reason === 'wrong_password' 
-          ? `检测到 ${message.data.username} 的密码与保险箱中不一致，是否更新？`
-          : `检测到 ${message.data.username} 的登录，是否保存到保险箱？`,
-        buttons: [{ title: '一键保存' }, { title: '暂不处理' }],
-        priority: 2,
-        requireInteraction: true
-      });
     })();
     return true;
   } 
@@ -267,13 +382,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     lastDetectedCredentials = null;
 
     if (message.openPopup !== false) {
-      chrome.windows.create({
-        url: chrome.runtime.getURL('index.html'),
-        type: 'popup',
-        width: 400,
-        height: 600,
-        focused: true
-      });
+      openSecurePassPopup();
     }
 
     if (sendResponse) sendResponse({ success: true });
@@ -303,16 +412,34 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   else if (message.type === 'SET_MASTER_KEY') {
     console.log('🔑 Master key cached in background');
     cachedMasterKey = message.data.key;
-    sendResponse({ success: true });
+    chrome.storage.session.set({ cached_master_key: cachedMasterKey }, () => {
+      sendResponse({ success: true });
+    });
+    return true;
   }
   else if (message.type === 'GET_MASTER_KEY') {
-    console.log('🔑 Retrieving master key from background:', cachedMasterKey ? 'found' : 'not found');
-    sendResponse({ key: cachedMasterKey });
+    (async () => {
+      if (!cachedMasterKey) {
+        try {
+          const result = await chrome.storage.session.get(['cached_master_key']);
+          cachedMasterKey = result.cached_master_key || null;
+        } catch (e) {
+          console.warn('⚠️ Failed to read session master key:', e);
+        }
+      }
+
+      console.log('🔑 Retrieving master key from background:', cachedMasterKey ? 'found' : 'not found');
+      sendResponse({ key: cachedMasterKey });
+    })();
+    return true;
   }
   else if (message.type === 'CLEAR_MASTER_KEY') {
     console.log('🔒 Master key cleared from background');
     cachedMasterKey = null;
-    sendResponse({ success: true });
+    chrome.storage.session.remove(['cached_master_key'], () => {
+      sendResponse({ success: true });
+    });
+    return true;
   }
   else if (message.type === 'OPEN_POPUP_FOR_FILL') {
     console.log('🔔 Opening popup window with context:', message.data);
@@ -321,15 +448,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       autoClose: message.data.autoClose === true,
     };
     
-    chrome.windows.create({
-      url: chrome.runtime.getURL('index.html'),
-      type: 'popup',
-      width: 400,
-      height: 600,
-      focused: true
-    }, (window) => {
-      console.log('✅ Popup window created:', window.id);
-    });
+    openSecurePassPopup();
   }
   else if (message.type === 'GET_ACTIVE_CONTEXT') {
     (async () => {
@@ -416,6 +535,21 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     });
     return true;
   }
+  else if (message.type === 'FILL_MATCHING_ACCOUNT') {
+    (async () => {
+      const tab = sender.tab || (await chrome.tabs.query({ active: true, currentWindow: true }))[0];
+      if (!tab || !tab.url) {
+        sendResponse({ success: false, error: 'No active tab' });
+        return;
+      }
+
+      const domain = message.data?.domain || getDomain(tab.url);
+      const username = message.data?.username || '';
+      const response = await fillAccountInTab(tab, domain, username, sender.frameId, { showFailureToast: false });
+      sendResponse(response);
+    })();
+    return true;
+  }
   else if (message.type === 'GET_MATCHING_ACCOUNTS') {
     (async () => {
       const domain = message.data?.domain || '';
@@ -435,7 +569,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     (async () => {
       const domain = message.data?.domain || '';
       const settingsResult = await chrome.storage.local.get(['autofill_enabled']);
-      const autoFillEnabled = settingsResult.autofill_enabled === true;
+      const autoFillEnabled = settingsResult.autofill_enabled !== false;
       const { accounts, lastUsed } = await getMatchingAccountsForDomain(domain);
       sendResponse({
         accounts,
@@ -453,7 +587,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   else if (message.type === 'GET_AUTOFILL_ENABLED') {
     (async () => {
       const result = await chrome.storage.local.get(['autofill_enabled']);
-      sendResponse({ enabled: result.autofill_enabled === true });
+      sendResponse({ enabled: result.autofill_enabled !== false });
     })();
     return true;
   }
@@ -476,10 +610,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       fillTarget: 'current_password',
       autoClose: true,
     };
-    chrome.windows.create({
-      url: chrome.runtime.getURL('index.html'),
-      type: 'popup', width: 400, height: 600, focused: true
-    });
+    openSecurePassPopup();
     sendResponse({ success: true });
   }
   else if (message.type === 'FILL_PASSWORD_CHANGE') {
@@ -542,13 +673,7 @@ chrome.notifications.onClicked.addListener((notificationId) => {
       data: lastDetectedCredentials
     };
 
-    chrome.windows.create({
-      url: chrome.runtime.getURL('index.html'),
-      type: 'popup',
-      width: 400,
-      height: 600,
-      focused: true
-    });
+    openSecurePassPopup();
     
     chrome.notifications.clear(notificationId);
   } else if (notificationId.startsWith('fill_hint_')) {
@@ -621,13 +746,7 @@ chrome.action.onClicked.addListener(async (tab) => {
       data: lastDetectedCredentials
     };
 
-    chrome.windows.create({
-      url: chrome.runtime.getURL('index.html'),
-      type: 'popup',
-      width: 400,
-      height: 600,
-      focused: true
-    });
+    openSecurePassPopup();
     return;
   }
 
@@ -647,13 +766,7 @@ chrome.action.onClicked.addListener(async (tab) => {
   }
 
   // Open the popup
-  chrome.windows.create({
-    url: chrome.runtime.getURL('index.html'),
-    type: 'popup',
-    width: 400,
-    height: 600,
-    focused: true
-  });
+  openSecurePassPopup();
 });
 
 // --- Keyboard Shortcuts ---
@@ -671,17 +784,7 @@ chrome.commands.onCommand.addListener(async (command) => {
         await chrome.tabs.sendMessage(tab.id, { type: 'SHOW_TOAST', data: { message: '当前网站没有匹配的账号' } });
       } catch (_) {}
     } else if (accounts.length === 1) {
-      lastActiveContext = {
-        url: tab.url,
-        origin: new URL(tab.url).origin,
-        username: accounts[0].username,
-        fillRequested: true,
-        autoClose: true,
-      };
-      chrome.windows.create({
-        url: chrome.runtime.getURL('index.html'),
-        type: 'popup', width: 400, height: 600, focused: true
-      });
+      await fillAccountInTab(tab, domain, accounts[0].username);
     } else {
       try {
         await chrome.tabs.sendMessage(tab.id, { type: 'SHOW_AUTOFILL_DROPDOWN', data: { accounts } });

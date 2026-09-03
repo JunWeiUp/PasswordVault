@@ -13,6 +13,9 @@ let lastFocusedField = null;
 let activeDropdownHost = null;
 let autoFillTriggered = false;
 let passwordChangeFields = null;
+let suppressAutofillDropdownUntil = 0;
+let dropdownRenderToken = 0;
+const passwordFieldSelector = 'input[type="password"], input[data-securepass-password-field="true"], input[autocomplete="current-password"], input[autocomplete="new-password"]';
 
 // Add a small toast feedback
 const showToast = (message) => {
@@ -39,20 +42,49 @@ const showToast = (message) => {
   }, 2000);
 };
 
+function isVisibleInput(field) {
+  return field &&
+    field.tagName === 'INPUT' &&
+    field.type !== 'hidden' &&
+    field.offsetWidth > 0 &&
+    field.offsetHeight > 0;
+}
+
+function isSecurePassPasswordField(field) {
+  return isVisibleInput(field) &&
+    (field.type === 'password' ||
+      field.dataset.securepassPasswordField === 'true' ||
+      field.getAttribute('autocomplete') === 'current-password' ||
+      field.getAttribute('autocomplete') === 'new-password');
+}
+
+function findPasswordField(scope = document) {
+  const fields = Array.from(scope.querySelectorAll(passwordFieldSelector));
+  return fields.find(isSecurePassPasswordField) || null;
+}
+
+function findPasswordFields(scope = document) {
+  return Array.from(scope.querySelectorAll(passwordFieldSelector))
+    .filter(isSecurePassPasswordField);
+}
+
 // --- Inline Autofill Dropdown (Shadow DOM) ---
 
-function hideAutofillDropdown() {
-  if (activeDropdownHost) {
-    activeDropdownHost.remove();
-    activeDropdownHost = null;
-  }
+function hideAutofillDropdown({ invalidatePending = true } = {}) {
+  if (invalidatePending) dropdownRenderToken += 1;
+  document.querySelectorAll('.securepass-dropdown-host').forEach(host => host.remove());
+  activeDropdownHost = null;
 }
 
 function showAutofillDropdown(field) {
-  hideAutofillDropdown();
+  if (Date.now() < suppressAutofillDropdownUntil) return;
+  hideAutofillDropdown({ invalidatePending: false });
+  const renderToken = ++dropdownRenderToken;
 
   const domain = window.location.hostname;
   chrome.runtime.sendMessage({ type: 'GET_MATCHING_ACCOUNTS', data: { domain } }, (result) => {
+    if (renderToken !== dropdownRenderToken) return;
+    if (Date.now() < suppressAutofillDropdownUntil) return;
     if (chrome.runtime.lastError || !result || !result.accounts || result.accounts.length === 0) return;
     if (document.activeElement !== field) return;
 
@@ -89,8 +121,15 @@ function showAutofillDropdown(field) {
           font-size: 14px; color: #333; animation: fadeIn 0.15s ease-out;
         }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
-        .header { padding: 8px 12px; font-size: 11px; color: #888; border-bottom: 1px solid #f0f0f0; display: flex; align-items: center; gap: 6px; }
+        .header { padding: 8px 8px 8px 12px; font-size: 11px; color: #888; border-bottom: 1px solid #f0f0f0; display: flex; align-items: center; gap: 6px; }
         .header img { width: 14px; height: 14px; }
+        .header-title { flex: 1; }
+        .close-btn {
+          width: 22px; height: 22px; border: none; border-radius: 50%;
+          background: transparent; color: #888; cursor: pointer; font-size: 18px;
+          line-height: 20px; display: flex; align-items: center; justify-content: center;
+        }
+        .close-btn:hover { background: #f1f3f4; color: #333; }
         .item { display: flex; align-items: center; gap: 10px; padding: 10px 12px; cursor: pointer; transition: background 0.1s; }
         .item:hover { background: #f0f5ff; }
         .item .icon { width: 18px; height: 18px; flex-shrink: 0; }
@@ -101,7 +140,11 @@ function showAutofillDropdown(field) {
         .footer img { width: 14px; height: 14px; }
       </style>
       <div class="dropdown">
-        <div class="header"><img src="${iconUrl}" />SecurePass</div>
+        <div class="header">
+          <img src="${iconUrl}" />
+          <span class="header-title">SecurePass</span>
+          <button class="close-btn" id="close-dropdown" title="关闭" aria-label="关闭">&times;</button>
+        </div>
         ${itemsHtml}
         <div class="footer" id="open-sp"><img src="${iconUrl}" />打开 SecurePass...</div>
       </div>
@@ -110,34 +153,63 @@ function showAutofillDropdown(field) {
     document.body.appendChild(host);
     activeDropdownHost = host;
 
+    const closeDropdown = (e, suppressMs = 1000) => {
+      e.preventDefault();
+      e.stopPropagation();
+      suppressAutofillDropdownUntil = Date.now() + suppressMs;
+      hideAutofillDropdown();
+    };
+
+    const closeButton = shadow.getElementById('close-dropdown');
+    closeButton?.addEventListener('pointerdown', closeDropdown, true);
+    closeButton?.addEventListener('mousedown', closeDropdown, true);
+    closeButton?.addEventListener('click', closeDropdown, true);
+
     shadow.querySelectorAll('.item').forEach(el => {
-      el.addEventListener('mousedown', (e) => {
+      let selected = false;
+      const selectAccount = (e) => {
         e.preventDefault();
         e.stopPropagation();
+        if (selected) return;
+        selected = true;
         const username = el.dataset.username;
+        suppressAutofillDropdownUntil = Date.now() + 1000;
         hideAutofillDropdown();
         chrome.runtime.sendMessage({
-          type: 'OPEN_POPUP_FOR_FILL',
+          type: 'FILL_MATCHING_ACCOUNT',
           data: {
-            url: window.location.href,
-            origin: window.location.origin,
+            domain: window.location.hostname,
             username: username,
-            fillRequested: true,
-            autoClose: true,
+          }
+        }, (response) => {
+          if (chrome.runtime.lastError || !response?.success) {
+            showToast('请先打开并解锁 SecurePass 后再填充');
+          } else {
+            showToast('已自动填充');
           }
         });
-        showToast('正在自动填充...');
-      });
+      };
+      el.addEventListener('pointerdown', selectAccount, true);
+      el.addEventListener('mousedown', selectAccount, true);
+      el.addEventListener('click', selectAccount, true);
     });
 
-    shadow.getElementById('open-sp')?.addEventListener('mousedown', (e) => {
+    let openingSecurePass = false;
+    const openSecurePass = (e) => {
       e.preventDefault();
+      e.stopPropagation();
+      if (openingSecurePass) return;
+      openingSecurePass = true;
+      suppressAutofillDropdownUntil = Date.now() + 1000;
       hideAutofillDropdown();
       chrome.runtime.sendMessage({
         type: 'OPEN_POPUP_FOR_FILL',
         data: { url: window.location.href, origin: window.location.origin, username: '' }
       });
-    });
+    };
+    shadow.getElementById('open-sp')?.addEventListener('pointerdown', openSecurePass, true);
+    shadow.getElementById('open-sp')?.addEventListener('mousedown', openSecurePass, true);
+    shadow.getElementById('open-sp')?.addEventListener('click', openSecurePass, true);
   });
 }
 
@@ -161,7 +233,7 @@ function bindDropdownToAllFields() {
   fields.forEach(f => {
     if (f.offsetWidth > 0 && f.type !== 'hidden') {
       const form = f.closest('form') || document.body;
-      if (form.querySelector('input[type="password"]')) {
+      if (findPasswordField(form)) {
         bindDropdownEvents(f);
       }
     }
@@ -177,8 +249,7 @@ document.addEventListener('keydown', (e) => {
 // --- Password Change Form Detection ---
 
 function detectPasswordChangeForm() {
-  const allPwdFields = Array.from(document.querySelectorAll('input[type="password"]'))
-    .filter(f => f.offsetWidth > 0 && f.offsetHeight > 0);
+  const allPwdFields = findPasswordFields(document);
   
   if (allPwdFields.length < 2 || allPwdFields.length > 4) return null;
 
@@ -311,7 +382,7 @@ const detector = {
     const form = field.closest('form') || document.body;
     
     // Find password field
-    const passwordField = field.type === 'password' ? field : form.querySelector('input[type="password"]');
+    const passwordField = isSecurePassPasswordField(field) ? field : findPasswordField(form);
     
     // Find username field - look for common patterns
     let usernameField = null;
@@ -359,10 +430,11 @@ const detector = {
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.type === 'FILL_CREDENTIALS') {
     const { username, password } = request.data;
-    const passwordField = document.querySelector('input[type="password"]');
+    const passwordField = findPasswordField(document);
     if (passwordField) {
       const form = passwordField.closest('form') || document.body;
-      const usernameField = form.querySelector('input[type="email"], input[type="text"], input:not([type])');
+      const usernameField = Array.from(form.querySelectorAll('input[type="email"], input[type="text"], input:not([type])'))
+        .find(field => field !== passwordField && !isSecurePassPasswordField(field));
       
       if (usernameField) {
         usernameField.value = username;
@@ -376,7 +448,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     }
   }
   else if (request.type === 'SHOW_AUTOFILL_DROPDOWN') {
-    const pwdField = document.querySelector('input[type="password"]');
+    const pwdField = findPasswordField(document);
     if (pwdField) {
       pwdField.focus();
       showAutofillDropdown(pwdField);
@@ -479,18 +551,16 @@ function injectIcons() {
         console.log('📦 Context captured:', creds.username, window.location.origin);
 
         chrome.runtime.sendMessage({ 
-          type: 'OPEN_POPUP_FOR_FILL',
+          type: 'FILL_MATCHING_ACCOUNT',
           data: {
-            url: window.location.href,
-            origin: window.location.origin,
+            domain: window.location.hostname,
             username: creds.username
           }
         }, (response) => {
-          if (chrome.runtime.lastError) {
-            console.error('❌ SendMessage error:', chrome.runtime.lastError);
-            showToast('⚠️ 插件通信失败，请刷新页面重试');
+          if (chrome.runtime.lastError || !response?.success) {
+            showToast('请先打开并解锁 SecurePass 后再填充');
           } else {
-            showToast('🚀 正在为您打开 SecurePass...');
+            showToast('已自动填充');
           }
         });
       } catch (err) {
@@ -506,6 +576,7 @@ function injectIcons() {
     field.addEventListener('focus', updatePosition);
 
     field.dataset.securepassInjected = "true";
+    field.dataset.securepassPasswordField = "true";
     
     // Clean up if field is removed
     const removeObserver = new MutationObserver(() => {
@@ -526,7 +597,7 @@ function injectIcons() {
 
 // Detection logic for login
 function notifyLogin(creds) {
-  const passwordFields = document.querySelectorAll('input[type="password"]');
+  const passwordFields = findPasswordFields(document);
 
   if (passwordFields.length >= 2) {
     const pwChangeInfo = detectPasswordChangeForm();
@@ -536,7 +607,7 @@ function notifyLogin(creds) {
         type: 'DETECTED_PASSWORD_CHANGE',
         data: { url: window.location.href, origin: window.location.origin }
       });
-      showPasswordChangeBanner(pwChangeInfo);
+      passwordChangeFields = pwChangeInfo;
       return;
     }
   }
@@ -544,7 +615,6 @@ function notifyLogin(creds) {
   if (creds.username && creds.password && creds.password.length >= 4) {
     console.log('🚀 Detected login attempt for:', creds.username);
     chrome.runtime.sendMessage({ type: 'DETECTED_LOGIN', data: creds });
-    showSaveBanner(creds);
   }
 }
 
@@ -648,7 +718,7 @@ function showSaveBanner(creds) {
 
 // Standard form submission - track more scenarios
 document.addEventListener('submit', (e) => {
-  const pwd = e.target.querySelector('input[type="password"]');
+  const pwd = findPasswordField(e.target);
   if (pwd && pwd.value && pwd.value.length >= 4) {
     console.log('📝 Form submitted with password field');
     notifyLogin(detector.getCredentials(pwd));
@@ -659,7 +729,7 @@ document.addEventListener('submit', (e) => {
 document.addEventListener('input', (e) => {
   if (e.target.tagName === 'INPUT' && (e.target.type === 'password' || e.target.type === 'text' || e.target.type === 'email')) {
     const form = e.target.closest('form') || document.body;
-    const pwdField = form.querySelector('input[type="password"]');
+    const pwdField = findPasswordField(form);
     if (pwdField) {
       currentCreds = detector.getCredentials(pwdField);
     }
@@ -689,12 +759,12 @@ document.addEventListener('click', (e) => {
     let pwd = null;
     
     if (form) {
-      pwd = form.querySelector('input[type="password"]');
+      pwd = findPasswordField(form);
     }
     
     // Fallback: look for ANY password field on the page if the button looks very much like a login button
     if (!pwd) {
-      pwd = document.querySelector('input[type="password"]');
+      pwd = findPasswordField(document);
     }
 
     if (pwd && pwd.value && pwd.value.length >= 4) {
@@ -707,7 +777,7 @@ document.addEventListener('click', (e) => {
 // 4. Listen for messages from background (e.g., if background detected something)
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'SHOW_SAVE_BANNER') {
-    showSaveBanner(message.data);
+    console.log('ℹ️ Save banner suppressed by direct-fill mode');
   }
   return false;
 });
@@ -716,7 +786,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') {
     const target = e.target;
-    if (target.tagName === 'INPUT' && target.type === 'password') {
+    if (target.tagName === 'INPUT' && isSecurePassPasswordField(target)) {
       if (target.value) {
         notifyLogin(detector.getCredentials(target));
       }
@@ -739,7 +809,6 @@ chrome.runtime.sendMessage({ type: 'GET_LAST_DETECTED' }, (lastCreds) => {
     const now = Date.now();
     if (now - lastCreds.timestamp < 15000 && lastCreds.origin === window.location.origin) {
       console.log('🔄 Restoring save banner after navigation');
-      showSaveBanner(lastCreds);
     }
   }
 });
@@ -747,7 +816,7 @@ chrome.runtime.sendMessage({ type: 'GET_LAST_DETECTED' }, (lastCreds) => {
 // --- Auto-fill on page load ---
 function tryAutoFillOnLoad() {
   if (autoFillTriggered) return;
-  const pwdField = document.querySelector('input[type="password"]');
+  const pwdField = findPasswordField(document);
   if (!pwdField || pwdField.offsetWidth === 0) return;
 
   autoFillTriggered = true;
@@ -759,25 +828,19 @@ function tryAutoFillOnLoad() {
     if (result.singleMatch && result.accounts.length === 1) {
       console.log('🚀 Auto-filling single matching account:', result.accounts[0].username);
       chrome.runtime.sendMessage({
-        type: 'OPEN_POPUP_FOR_FILL',
+        type: 'FILL_MATCHING_ACCOUNT',
         data: {
-          url: window.location.href,
-          origin: window.location.origin,
+          domain: window.location.hostname,
           username: result.accounts[0].username,
-          fillRequested: true,
-          autoClose: true,
         }
       });
     } else if (result.accounts.length > 1 && result.lastUsed) {
       console.log('🚀 Auto-filling last-used account:', result.lastUsed);
       chrome.runtime.sendMessage({
-        type: 'OPEN_POPUP_FOR_FILL',
+        type: 'FILL_MATCHING_ACCOUNT',
         data: {
-          url: window.location.href,
-          origin: window.location.origin,
+          domain: window.location.hostname,
           username: result.lastUsed,
-          fillRequested: true,
-          autoClose: true,
         }
       });
     } else if (result.accounts.length > 1) {

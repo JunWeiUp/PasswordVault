@@ -82,7 +82,7 @@ class VaultNotifier extends StateNotifier<AsyncValue<List<VaultItem>>> {
       
       // 同步域名列表到扩展
       try {
-        _syncDomainsToExtension(items);
+        _syncDomainsToExtension(items, masterKey);
       } catch (e) {
         debugPrint('Failed to sync domains to extension: $e');
       }
@@ -107,13 +107,14 @@ class VaultNotifier extends StateNotifier<AsyncValue<List<VaultItem>>> {
     }
   }
 
-  Future<void> _syncDomainsToExtension(List<VaultItem> items) async {
+  Future<void> _syncDomainsToExtension(List<VaultItem> items, SecretKey masterKey) async {
     if (!ExtensionHelper.isExtension) return;
 
     try {
       final domains = <String>{};
       final Map<String, List<Map<String, String>>> accountsMetadata = {};
       final sha256 = Sha256();
+      final encryptionService = _ref.read(encryptionServiceProvider);
 
       for (final item in items) {
         if (item.type != VaultItemType.password || item.url == null || item.url!.isEmpty) continue;
@@ -143,9 +144,11 @@ class VaultNotifier extends StateNotifier<AsyncValue<List<VaultItem>>> {
           if (item.username.isNotEmpty) {
             final pwd = item.password ?? '';
             final hash = await sha256.hash(utf8.encode(pwd));
+            final encryptedPassword = await encryptionService.encrypt(pwd, masterKey);
             final newAccount = {
               'username': item.username,
               'passwordHash': base64Encode(hash.bytes),
+              'encryptedPassword': base64Encode(encryptedPassword),
             };
             
             // 避免在同一个域名下重复添加相同的用户名
@@ -158,9 +161,11 @@ class VaultNotifier extends StateNotifier<AsyncValue<List<VaultItem>>> {
           if (item.accounts != null) {
             for (final acc in item.accounts!) {
               final hash = await sha256.hash(utf8.encode(acc.password));
+              final encryptedPassword = await encryptionService.encrypt(acc.password, masterKey);
               final newAccount = {
                 'username': acc.username,
                 'passwordHash': base64Encode(hash.bytes),
+                'encryptedPassword': base64Encode(encryptedPassword),
               };
               
               if (!accounts.any((a) => a['username'] == acc.username)) {

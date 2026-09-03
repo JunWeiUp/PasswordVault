@@ -770,6 +770,7 @@ class _MainNavigationScreenState extends ConsumerState<MainNavigationScreen> {
   final TextEditingController _searchController = TextEditingController();
   bool _pendingCheckCurrentTab = false;
   bool _pendingHandleActiveContext = false;
+  bool _skipPendingSavePromptForActiveContext = false;
 
   @override
   void initState() {
@@ -945,10 +946,12 @@ class _MainNavigationScreenState extends ConsumerState<MainNavigationScreen> {
         ref.read(selectedTabProvider.notifier).state = 1;
         // Create updated item with the new password
         final updatedItem = exactMatch.copyWith(password: password);
+        _skipPendingSavePromptForActiveContext = true;
         context.push('/add-account', extra: updatedItem);
       } else {
         debugPrint('➕ No exact match for mismatch, navigating to add...');
         ref.read(selectedTabProvider.notifier).state = 1;
+        _skipPendingSavePromptForActiveContext = true;
         context.push('/add-account', extra: VaultItem(
           id: '',
           type: VaultItemType.password,
@@ -1060,6 +1063,7 @@ class _MainNavigationScreenState extends ConsumerState<MainNavigationScreen> {
       ref.read(selectedTabProvider.notifier).state = 1;
       await Future.delayed(const Duration(milliseconds: 100));
       if (mounted) {
+        _skipPendingSavePromptForActiveContext = true;
         context.push('/add-account', extra: VaultItem(
           id: '',
           type: VaultItemType.password,
@@ -1076,27 +1080,54 @@ class _MainNavigationScreenState extends ConsumerState<MainNavigationScreen> {
 
   Future<void> _checkPendingSaves() async {
     final pending = await ExtensionHelper.getPendingSaves();
-    if (pending.isNotEmpty && mounted) {
-      final first = pending.first;
-      
-      // Delay to ensure UI is ready
-      Future.delayed(const Duration(milliseconds: 500), () {
-        if (!mounted) return;
-        
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('检测到待保存账号: ${first['username']}'),
-            duration: const Duration(seconds: 10),
-            action: SnackBarAction(
-              label: '立即保存',
-              onPressed: () {
-                _showPendingSaveDialog(first);
-              },
-            ),
-          ),
-        );
-      });
+    if (pending.isEmpty || !mounted) return;
+
+    final contextData = await ExtensionHelper.getActiveContext();
+    final mismatchData = contextData?['data'] as Map<Object?, Object?>?;
+    final activeUrl = (mismatchData?['url'] ??
+            contextData?['url'] ??
+            contextData?['origin'] ??
+            await ExtensionHelper.getCurrentTabUrl())
+        ?.toString();
+
+    if (activeUrl == null || _extractHost(activeUrl).isEmpty) {
+      debugPrint('ℹ️ Skipping pending save prompt because active URL is unavailable');
+      return;
     }
+
+    final relatedPending = pending.where((item) {
+      final pendingUrl = item['url']?.toString();
+      return pendingUrl != null && _hostMatches(pendingUrl, activeUrl);
+    }).toList();
+
+    if (relatedPending.isEmpty) {
+      debugPrint('ℹ️ No pending saves related to current domain: ${_extractHost(activeUrl)}');
+      return;
+    }
+
+    final first = relatedPending.first;
+    
+    // Delay to ensure UI is ready
+    Future.delayed(const Duration(milliseconds: 500), () {
+      if (!mounted) return;
+      if (_skipPendingSavePromptForActiveContext) {
+        debugPrint('ℹ️ Skipping pending save prompt because active context opened account form');
+        return;
+      }
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('检测到待保存账号: ${first['username']}'),
+          duration: const Duration(seconds: 10),
+          action: SnackBarAction(
+            label: '立即保存',
+            onPressed: () {
+              _showPendingSaveDialog(first);
+            },
+          ),
+        ),
+      );
+    });
   }
 
   void _showPendingSaveDialog(Map<String, dynamic> data) {
@@ -1149,7 +1180,10 @@ class _MainNavigationScreenState extends ConsumerState<MainNavigationScreen> {
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: () async {
+              await ExtensionHelper.removePendingSave(data);
+              if (context.mounted) Navigator.pop(context);
+            },
             child: const Text('忽略'),
           ),
           ElevatedButton(
@@ -1175,7 +1209,7 @@ class _MainNavigationScreenState extends ConsumerState<MainNavigationScreen> {
                   );
                   await ref.read(vaultItemsProvider.notifier).addItem(newItem);
                 }
-                await ExtensionHelper.clearPendingSaves();
+                await ExtensionHelper.removePendingSave(data);
                 if (context.mounted) {
                   Navigator.pop(context);
                   ScaffoldMessenger.of(context).showSnackBar(
@@ -1210,7 +1244,7 @@ class _MainNavigationScreenState extends ConsumerState<MainNavigationScreen> {
       final exact = matches.where((item) => item.username == username).firstOrNull;
       if (exact != null) return exact;
     }
-    return matches.first;
+    return null;
   }
 
   VaultItem _mergePendingIntoItem(

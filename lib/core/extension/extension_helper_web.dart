@@ -100,6 +100,29 @@ class ExtensionHelper {
     }
   }
 
+  static Future<void> removePendingSave(Map<String, dynamic> target) async {
+    if (!isExtension) return;
+
+    try {
+      final pending = await getPendingSaves();
+      final targetUsername = target['username']?.toString() ?? '';
+      final targetPassword = target['password']?.toString() ?? '';
+      final targetUrl = target['url']?.toString() ?? '';
+
+      final filtered = pending.where((item) {
+        return item['username'] != targetUsername ||
+            item['password'] != targetPassword ||
+            item['url'] != targetUrl;
+      }).toList();
+
+      if (filtered.length == pending.length) return;
+
+      await _chromeStorageSet('pending_saves'.toJS, filtered.jsify()).toDart;
+    } catch (e) {
+      debugPrint('❌ ExtensionHelper.removePendingSave error: $e');
+    }
+  }
+
   static Future<Map<String, dynamic>?> getActiveContext() async {
     if (!isExtension) return null;
 
