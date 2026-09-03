@@ -7,6 +7,7 @@ User-facing changes are recorded in English. Versions follow Semantic Versioning
 - English-first README, Chinese README, contributor guidance, and documented platform status.
 - English and Simplified Chinese application catalogs with a persistent language selector.
 - Internationalized browser extension messages and consistent PasswordVault branding.
+- Original P-shaped vault icon across README, Android, iOS, Web, and Chromium, with reproducible platform exports.
 - Pinned Flutter toolchain, repository validation, extension checks, and separated CI/release workflows.
 - Signed release builds, checksum generation, and draft prerelease publication.
 - Explicit security, privacy, licensing, and release-readiness documentation.
