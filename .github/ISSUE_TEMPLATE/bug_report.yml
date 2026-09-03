@@ -1,0 +1,32 @@
+name: Bug report / 缺陷反馈
+description: Report a reproducible problem using synthetic data.
+title: 'fix: '
+body:
+  - type: markdown
+    attributes:
+      value: 'For security vulnerabilities, follow SECURITY.md. Never attach real credentials or vault exports.'
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+    validations:
+      required: true
+  - type: input
+    id: platform
+    attributes:
+      label: Platform and version
+      placeholder: Android 15, Chrome 140, Flutter 3.41.7…
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Use disposable test accounts and include expected and actual behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Redacted logs or screenshots
+      description: Remove usernames, domains, tokens, passwords, and personal information.

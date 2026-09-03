@@ -11,7 +11,7 @@ Future<bool> saveJsonFileImpl(String jsonString, String fileName) async {
       ..href = url
       ..style.display = 'none'
       ..download = fileName;
-    
+
     html.document.body!.children.add(anchor);
     anchor.click();
     html.document.body!.children.remove(anchor);

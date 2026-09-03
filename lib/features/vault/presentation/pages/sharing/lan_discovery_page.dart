@@ -1,3 +1,4 @@
+import 'package:password/core/l10n/l10n.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../sync/presentation/providers/sync_provider.dart';
@@ -35,11 +36,12 @@ class _LanDiscoveryPageState extends ConsumerState<LanDiscoveryPage> {
 
   @override
   Widget build(BuildContext context) {
+    AppLocalizations.of(context);
     final vaultsAsync = ref.watch(discoverableVaultsProvider);
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('发现局域网共享库'),
+        title: Text(tr.discoverLocalSharedVaults),
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
@@ -49,8 +51,7 @@ class _LanDiscoveryPageState extends ConsumerState<LanDiscoveryPage> {
       ),
       body: Column(
         children: [
-          if (_isSearching)
-            const LinearProgressIndicator(),
+          if (_isSearching) const LinearProgressIndicator(),
           Expanded(
             child: vaultsAsync.when(
               data: (vaults) {
@@ -59,11 +60,18 @@ class _LanDiscoveryPageState extends ConsumerState<LanDiscoveryPage> {
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(Icons.search_off_outlined, size: 64, color: Colors.grey[400]),
+                        Icon(
+                          Icons.search_off_outlined,
+                          size: 64,
+                          color: Colors.grey[400],
+                        ),
                         const SizedBox(height: 16),
-                        const Text('未发现可用共享库'),
+                        Text(tr.noAvailableSharedVaultsFound),
                         const SizedBox(height: 8),
-                        const Text('请确保对方已开启“局域网发现”', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                        Text(
+                          tr.askTheOtherPersonToEnableLocal,
+                          style: const TextStyle(color: Colors.grey, fontSize: 12),
+                        ),
                       ],
                     ),
                   );
@@ -74,7 +82,9 @@ class _LanDiscoveryPageState extends ConsumerState<LanDiscoveryPage> {
                   padding: const EdgeInsets.all(16),
                   itemBuilder: (context, index) {
                     final vault = vaults[index];
-                    final isRequested = _requestedDeviceIds.contains('${vault.device.id}_${vault.id}');
+                    final isRequested = _requestedDeviceIds.contains(
+                      '${vault.device.id}_${vault.id}',
+                    );
 
                     return Card(
                       child: ListTile(
@@ -82,10 +92,16 @@ class _LanDiscoveryPageState extends ConsumerState<LanDiscoveryPage> {
                           child: Icon(Icons.folder_shared),
                         ),
                         title: Text(vault.name),
-                        subtitle: Text('来自: ${vault.device.name} (${vault.device.host})'),
+                        subtitle: Text(
+                          tr.from(vault.device.name, vault.device.host),
+                        ),
                         trailing: ElevatedButton(
-                          onPressed: isRequested ? null : () => _handleJoin(vault),
-                          child: Text(isRequested ? '已申请' : '申请加入'),
+                          onPressed: isRequested
+                              ? null
+                              : () => _handleJoin(vault),
+                          child: Text(
+                            isRequested ? tr.requested : tr.requestToJoin226,
+                          ),
                         ),
                       ),
                     );
@@ -93,7 +109,7 @@ class _LanDiscoveryPageState extends ConsumerState<LanDiscoveryPage> {
                 );
               },
               loading: () => const Center(child: CircularProgressIndicator()),
-              error: (err, stack) => Center(child: Text('搜索失败: $err')),
+              error: (err, stack) => Center(child: Text(tr.searchFailed(err))),
             ),
           ),
         ],
@@ -103,23 +119,32 @@ class _LanDiscoveryPageState extends ConsumerState<LanDiscoveryPage> {
 
   Future<void> _handleJoin(DiscoverableVault vault) async {
     try {
-      await ref.read(localSyncServiceProvider).sendJoinRequest(
-        vault.device,
-        vaultId: vault.id,
-        vaultName: vault.name,
-      );
+      await ref
+          .read(localSyncServiceProvider)
+          .sendJoinRequest(
+            vault.device,
+            vaultId: vault.id,
+            vaultName: vault.name,
+          );
       setState(() {
         _requestedDeviceIds.add('${vault.device.id}_${vault.id}');
       });
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('已向 ${vault.device.name} 发送加入 ${vault.name} 的申请')),
+          SnackBar(
+            content: Text(
+              tr.sentARequestToToJoin(vault.device.name, vault.name),
+            ),
+          ),
         );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('发送申请失败: $e'), backgroundColor: Colors.red),
+          SnackBar(
+            content: Text(tr.couldNotSendRequest(e)),
+            backgroundColor: Colors.red,
+          ),
         );
       }
     }

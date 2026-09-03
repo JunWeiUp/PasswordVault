@@ -1,3 +1,4 @@
+import 'package:password/core/l10n/l10n.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
@@ -11,11 +12,14 @@ class CryptoItemCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    AppLocalizations.of(context);
     return Card(
       elevation: 0,
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       shape: RoundedRectangleBorder(
-        side: BorderSide(color: Theme.of(context).dividerColor.withValues(alpha: 0.1)),
+        side: BorderSide(
+          color: Theme.of(context).dividerColor.withValues(alpha: 0.1),
+        ),
         borderRadius: BorderRadius.circular(16),
       ),
       child: InkWell(
@@ -37,10 +41,7 @@ class CryptoItemCard extends ConsumerWidget {
                   color: Colors.orange.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: const Icon(
-                  Icons.currency_bitcoin,
-                  color: Colors.orange,
-                ),
+                child: const Icon(Icons.currency_bitcoin, color: Colors.orange),
               ),
               const SizedBox(width: 16),
               Expanded(
@@ -57,7 +58,10 @@ class CryptoItemCard extends ConsumerWidget {
                       Padding(
                         padding: const EdgeInsets.only(top: 2.0),
                         child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 2,
+                          ),
                           decoration: BoxDecoration(
                             color: Colors.blue.withValues(alpha: 0.1),
                             borderRadius: BorderRadius.circular(4),
@@ -86,21 +90,31 @@ class CryptoItemCard extends ConsumerWidget {
                         padding: const EdgeInsets.only(top: 4),
                         child: Wrap(
                           spacing: 4,
-                          children: item.tags.map((tag) => Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-                            decoration: BoxDecoration(
-                              color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: Text(
-                              tag,
-                              style: TextStyle(
-                                fontSize: 10,
-                                color: Theme.of(context).colorScheme.primary,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          )).toList(),
+                          children: item.tags
+                              .map(
+                                (tag) => Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 6,
+                                    vertical: 1,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: Theme.of(context).colorScheme.primary
+                                        .withValues(alpha: 0.1),
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: Text(
+                                    tag,
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      color: Theme.of(
+                                        context,
+                                      ).colorScheme.primary,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                              )
+                              .toList(),
                         ),
                       ),
                     if (item.note != null && item.note!.isNotEmpty)
@@ -108,60 +122,65 @@ class CryptoItemCard extends ConsumerWidget {
                         item.note!,
                         style: Theme.of(context).textTheme.bodySmall,
                         maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                  ],
+                ),
               ),
-            ),
-            IconButton(
-              icon: const Icon(Icons.copy),
-              onPressed: () {
-                if (item.address != null) {
-                  Clipboard.setData(ClipboardData(text: item.address!));
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('地址已复制'), duration: Duration(seconds: 2)),
+              IconButton(
+                icon: const Icon(Icons.copy),
+                onPressed: () {
+                  if (item.address != null) {
+                    Clipboard.setData(ClipboardData(text: item.address!));
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(tr.addressCopied),
+                        duration: const Duration(seconds: 2),
+                      ),
+                    );
+                  }
+                },
+                tooltip: tr.copyAddress,
+              ),
+              IconButton(
+                icon: Icon(
+                  item.isFavorite ? Icons.star : Icons.star_border,
+                  color: item.isFavorite ? Colors.amber : Colors.grey,
+                ),
+                onPressed: () {
+                  final updatedItem = item.copyWith(
+                    isFavorite: !item.isFavorite,
                   );
-                }
-              },
-              tooltip: '复制地址',
-            ),
-            IconButton(
-              icon: Icon(
-                item.isFavorite ? Icons.star : Icons.star_border,
-                color: item.isFavorite ? Colors.amber : Colors.grey,
-              ),
-              onPressed: () {
-                  final updatedItem = item.copyWith(isFavorite: !item.isFavorite);
                   ref.read(vaultItemsProvider.notifier).updateItem(updatedItem);
                 },
-            ),
-          ],
+              ),
+            ],
+          ),
         ),
       ),
-    ),
-  );
-}
+    );
+  }
 
   void _showDeleteConfirm(BuildContext context, WidgetRef ref) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('删除确认'),
-        content: Text('确定要删除 ${item.title} 吗？'),
+        title: Text(tr.confirmDeletion),
+        content: Text(tr.delete(item.title)),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('取消'),
+            child: Text(tr.cancel),
           ),
           TextButton(
             onPressed: () {
               ref.read(vaultItemsProvider.notifier).softDeleteItem(item.id);
               Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('已移至回收站')),
-              );
+              ScaffoldMessenger.of(
+                context,
+              ).showSnackBar(SnackBar(content: Text(tr.movedToTrash)));
             },
-            child: const Text('移至回收站', style: TextStyle(color: Colors.red)),
+            child: Text(tr.moveToTrash, style: const TextStyle(color: Colors.red)),
           ),
         ],
       ),

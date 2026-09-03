@@ -11,6 +11,16 @@ if (keystorePropertiesFile.exists()) {
     keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
 }
 
+// Release builds fail explicitly instead of producing a debug-signed artifact.
+gradle.taskGraph.whenReady { graph ->
+    if (graph.allTasks.any { it.project == project && it.name.toLowerCase().contains('release') }) {
+        def required = ['storeFile', 'storePassword', 'keyAlias', 'keyPassword']
+        if (required.any { !keystoreProperties[it] }) {
+            throw new GradleException('Release signing is missing. Follow docs/RELEASING.md to configure android/key.properties.')
+        }
+    }
+}
+
 android {
     namespace = "com.securepass.vault"
     compileSdk = 36

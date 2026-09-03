@@ -59,7 +59,10 @@ class FaviconCacheService {
     }
   }
 
-  Future<Uint8List?> _downloadAndStore(String domain, String? originalUrl) async {
+  Future<Uint8List?> _downloadAndStore(
+    String domain,
+    String? originalUrl,
+  ) async {
     final faviconUrl = FaviconUtils.getFaviconUrl(originalUrl);
     if (faviconUrl.isEmpty) return null;
 

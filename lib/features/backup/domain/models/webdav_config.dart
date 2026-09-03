@@ -43,5 +43,6 @@ class WebDavConfig {
     );
   }
 
-  bool get isValid => url.isNotEmpty && username.isNotEmpty && password.isNotEmpty;
+  bool get isValid =>
+      url.isNotEmpty && username.isNotEmpty && password.isNotEmpty;
 }

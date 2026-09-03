@@ -10,10 +10,6 @@ class BackupHistory {
   });
 
   factory BackupHistory.fromWebDav(String name, DateTime date, int size) {
-    return BackupHistory(
-      fileName: name,
-      createdAt: date,
-      size: size,
-    );
+    return BackupHistory(fileName: name, createdAt: date, size: size);
   }
 }

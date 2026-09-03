@@ -55,10 +55,7 @@ void main() {
         final wrongKey = await service.deriveKeySimple('wrong');
         const plaintext = 'secret';
         final encrypted = await service.encrypt(plaintext, correctKey);
-        expect(
-          () => service.decrypt(encrypted, wrongKey),
-          throwsA(anything),
-        );
+        expect(() => service.decrypt(encrypted, wrongKey), throwsA(anything));
       });
 
       test('decrypt with fallback key succeeds', () async {
@@ -68,7 +65,9 @@ void main() {
         const plaintext = 'secret data';
         final encrypted = await service.encrypt(plaintext, originalKey);
         final decrypted = await service.decrypt(
-          encrypted, wrongPrimaryKey, fallbacks: [fallbackKey],
+          encrypted,
+          wrongPrimaryKey,
+          fallbacks: [fallbackKey],
         );
         expect(decrypted, plaintext);
       });
@@ -80,11 +79,17 @@ void main() {
         final publicKey = await keyPair.extractPublicKey();
 
         final plainBytes = utf8.encode('ECIES test payload');
-        final encrypted = await service.encryptWithPublicKey(plainBytes, publicKey.bytes);
+        final encrypted = await service.encryptWithPublicKey(
+          plainBytes,
+          publicKey.bytes,
+        );
 
         expect(encrypted.length, greaterThan(32));
 
-        final decrypted = await service.decryptWithPrivateKey(encrypted, keyPair);
+        final decrypted = await service.decryptWithPrivateKey(
+          encrypted,
+          keyPair,
+        );
         expect(utf8.decode(decrypted), 'ECIES test payload');
       });
 
@@ -95,7 +100,8 @@ void main() {
 
         final recipientPub = await recipientKp.extractPublicKey();
         final encrypted = await service.encryptWithPublicKey(
-          utf8.encode('data'), recipientPub.bytes,
+          utf8.encode('data'),
+          recipientPub.bytes,
         );
 
         expect(

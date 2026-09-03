@@ -12,56 +12,91 @@ class $SharedVaultsTable extends SharedVaults
   static const VerificationMeta _idMeta = const VerificationMeta('id');
   @override
   late final GeneratedColumn<String> id = GeneratedColumn<String>(
-      'id', aliasedName, false,
-      type: DriftSqlType.string, requiredDuringInsert: true);
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
   static const VerificationMeta _nameMeta = const VerificationMeta('name');
   @override
   late final GeneratedColumn<String> name = GeneratedColumn<String>(
-      'name', aliasedName, false,
-      type: DriftSqlType.string, requiredDuringInsert: true);
-  static const VerificationMeta _encryptedVaultKeyMeta =
-      const VerificationMeta('encryptedVaultKey');
+    'name',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _encryptedVaultKeyMeta = const VerificationMeta(
+    'encryptedVaultKey',
+  );
   @override
   late final GeneratedColumn<String> encryptedVaultKey =
-      GeneratedColumn<String>('encrypted_vault_key', aliasedName, false,
-          type: DriftSqlType.string, requiredDuringInsert: true);
-  static const VerificationMeta _createdAtMeta =
-      const VerificationMeta('createdAt');
+      GeneratedColumn<String>(
+        'encrypted_vault_key',
+        aliasedName,
+        false,
+        type: DriftSqlType.string,
+        requiredDuringInsert: true,
+      );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
   @override
   late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
-      'created_at', aliasedName, false,
-      type: DriftSqlType.dateTime,
-      requiredDuringInsert: false,
-      defaultValue: currentDateAndTime);
-  static const VerificationMeta _updatedAtMeta =
-      const VerificationMeta('updatedAt');
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
   @override
   late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
-      'updated_at', aliasedName, false,
-      type: DriftSqlType.dateTime,
-      requiredDuringInsert: false,
-      defaultValue: currentDateAndTime);
-  static const VerificationMeta _isDiscoverableMeta =
-      const VerificationMeta('isDiscoverable');
+    'updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
+  static const VerificationMeta _isDiscoverableMeta = const VerificationMeta(
+    'isDiscoverable',
+  );
   @override
   late final GeneratedColumn<bool> isDiscoverable = GeneratedColumn<bool>(
-      'is_discoverable', aliasedName, false,
-      type: DriftSqlType.bool,
-      requiredDuringInsert: false,
-      defaultConstraints: GeneratedColumn.constraintIsAlways(
-          'CHECK ("is_discoverable" IN (0, 1))'),
-      defaultValue: const Constant(false));
+    'is_discoverable',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("is_discoverable" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
   @override
-  List<GeneratedColumn> get $columns =>
-      [id, name, encryptedVaultKey, createdAt, updatedAt, isDiscoverable];
+  List<GeneratedColumn> get $columns => [
+    id,
+    name,
+    encryptedVaultKey,
+    createdAt,
+    updatedAt,
+    isDiscoverable,
+  ];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
   String get actualTableName => $name;
   static const String $name = 'shared_vaults';
   @override
-  VerificationContext validateIntegrity(Insertable<SharedVaultEntity> instance,
-      {bool isInserting = false}) {
+  VerificationContext validateIntegrity(
+    Insertable<SharedVaultEntity> instance, {
+    bool isInserting = false,
+  }) {
     final context = VerificationContext();
     final data = instance.toColumns(true);
     if (data.containsKey('id')) {
@@ -71,31 +106,43 @@ class $SharedVaultsTable extends SharedVaults
     }
     if (data.containsKey('name')) {
       context.handle(
-          _nameMeta, name.isAcceptableOrUnknown(data['name']!, _nameMeta));
+        _nameMeta,
+        name.isAcceptableOrUnknown(data['name']!, _nameMeta),
+      );
     } else if (isInserting) {
       context.missing(_nameMeta);
     }
     if (data.containsKey('encrypted_vault_key')) {
       context.handle(
+        _encryptedVaultKeyMeta,
+        encryptedVaultKey.isAcceptableOrUnknown(
+          data['encrypted_vault_key']!,
           _encryptedVaultKeyMeta,
-          encryptedVaultKey.isAcceptableOrUnknown(
-              data['encrypted_vault_key']!, _encryptedVaultKeyMeta));
+        ),
+      );
     } else if (isInserting) {
       context.missing(_encryptedVaultKeyMeta);
     }
     if (data.containsKey('created_at')) {
-      context.handle(_createdAtMeta,
-          createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta));
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
     }
     if (data.containsKey('updated_at')) {
-      context.handle(_updatedAtMeta,
-          updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta));
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
     }
     if (data.containsKey('is_discoverable')) {
       context.handle(
+        _isDiscoverableMeta,
+        isDiscoverable.isAcceptableOrUnknown(
+          data['is_discoverable']!,
           _isDiscoverableMeta,
-          isDiscoverable.isAcceptableOrUnknown(
-              data['is_discoverable']!, _isDiscoverableMeta));
+        ),
+      );
     }
     return context;
   }
@@ -106,18 +153,30 @@ class $SharedVaultsTable extends SharedVaults
   SharedVaultEntity map(Map<String, dynamic> data, {String? tablePrefix}) {
     final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
     return SharedVaultEntity(
-      id: attachedDatabase.typeMapping
-          .read(DriftSqlType.string, data['${effectivePrefix}id'])!,
-      name: attachedDatabase.typeMapping
-          .read(DriftSqlType.string, data['${effectivePrefix}name'])!,
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      name: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}name'],
+      )!,
       encryptedVaultKey: attachedDatabase.typeMapping.read(
-          DriftSqlType.string, data['${effectivePrefix}encrypted_vault_key'])!,
-      createdAt: attachedDatabase.typeMapping
-          .read(DriftSqlType.dateTime, data['${effectivePrefix}created_at'])!,
-      updatedAt: attachedDatabase.typeMapping
-          .read(DriftSqlType.dateTime, data['${effectivePrefix}updated_at'])!,
-      isDiscoverable: attachedDatabase.typeMapping
-          .read(DriftSqlType.bool, data['${effectivePrefix}is_discoverable'])!,
+        DriftSqlType.string,
+        data['${effectivePrefix}encrypted_vault_key'],
+      )!,
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      )!,
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}updated_at'],
+      )!,
+      isDiscoverable: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}is_discoverable'],
+      )!,
     );
   }
 
@@ -135,13 +194,14 @@ class SharedVaultEntity extends DataClass
   final DateTime createdAt;
   final DateTime updatedAt;
   final bool isDiscoverable;
-  const SharedVaultEntity(
-      {required this.id,
-      required this.name,
-      required this.encryptedVaultKey,
-      required this.createdAt,
-      required this.updatedAt,
-      required this.isDiscoverable});
+  const SharedVaultEntity({
+    required this.id,
+    required this.name,
+    required this.encryptedVaultKey,
+    required this.createdAt,
+    required this.updatedAt,
+    required this.isDiscoverable,
+  });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
@@ -165,8 +225,10 @@ class SharedVaultEntity extends DataClass
     );
   }
 
-  factory SharedVaultEntity.fromJson(Map<String, dynamic> json,
-      {ValueSerializer? serializer}) {
+  factory SharedVaultEntity.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return SharedVaultEntity(
       id: serializer.fromJson<String>(json['id']),
@@ -190,21 +252,21 @@ class SharedVaultEntity extends DataClass
     };
   }
 
-  SharedVaultEntity copyWith(
-          {String? id,
-          String? name,
-          String? encryptedVaultKey,
-          DateTime? createdAt,
-          DateTime? updatedAt,
-          bool? isDiscoverable}) =>
-      SharedVaultEntity(
-        id: id ?? this.id,
-        name: name ?? this.name,
-        encryptedVaultKey: encryptedVaultKey ?? this.encryptedVaultKey,
-        createdAt: createdAt ?? this.createdAt,
-        updatedAt: updatedAt ?? this.updatedAt,
-        isDiscoverable: isDiscoverable ?? this.isDiscoverable,
-      );
+  SharedVaultEntity copyWith({
+    String? id,
+    String? name,
+    String? encryptedVaultKey,
+    DateTime? createdAt,
+    DateTime? updatedAt,
+    bool? isDiscoverable,
+  }) => SharedVaultEntity(
+    id: id ?? this.id,
+    name: name ?? this.name,
+    encryptedVaultKey: encryptedVaultKey ?? this.encryptedVaultKey,
+    createdAt: createdAt ?? this.createdAt,
+    updatedAt: updatedAt ?? this.updatedAt,
+    isDiscoverable: isDiscoverable ?? this.isDiscoverable,
+  );
   SharedVaultEntity copyWithCompanion(SharedVaultsCompanion data) {
     return SharedVaultEntity(
       id: data.id.present ? data.id.value : this.id,
@@ -235,7 +297,13 @@ class SharedVaultEntity extends DataClass
 
   @override
   int get hashCode => Object.hash(
-      id, name, encryptedVaultKey, createdAt, updatedAt, isDiscoverable);
+    id,
+    name,
+    encryptedVaultKey,
+    createdAt,
+    updatedAt,
+    isDiscoverable,
+  );
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -273,9 +341,9 @@ class SharedVaultsCompanion extends UpdateCompanion<SharedVaultEntity> {
     this.updatedAt = const Value.absent(),
     this.isDiscoverable = const Value.absent(),
     this.rowid = const Value.absent(),
-  })  : id = Value(id),
-        name = Value(name),
-        encryptedVaultKey = Value(encryptedVaultKey);
+  }) : id = Value(id),
+       name = Value(name),
+       encryptedVaultKey = Value(encryptedVaultKey);
   static Insertable<SharedVaultEntity> custom({
     Expression<String>? id,
     Expression<String>? name,
@@ -296,14 +364,15 @@ class SharedVaultsCompanion extends UpdateCompanion<SharedVaultEntity> {
     });
   }
 
-  SharedVaultsCompanion copyWith(
-      {Value<String>? id,
-      Value<String>? name,
-      Value<String>? encryptedVaultKey,
-      Value<DateTime>? createdAt,
-      Value<DateTime>? updatedAt,
-      Value<bool>? isDiscoverable,
-      Value<int>? rowid}) {
+  SharedVaultsCompanion copyWith({
+    Value<String>? id,
+    Value<String>? name,
+    Value<String>? encryptedVaultKey,
+    Value<DateTime>? createdAt,
+    Value<DateTime>? updatedAt,
+    Value<bool>? isDiscoverable,
+    Value<int>? rowid,
+  }) {
     return SharedVaultsCompanion(
       id: id ?? this.id,
       name: name ?? this.name,
@@ -366,213 +435,339 @@ class $VaultItemsTable extends VaultItems
   static const VerificationMeta _idMeta = const VerificationMeta('id');
   @override
   late final GeneratedColumn<String> id = GeneratedColumn<String>(
-      'id', aliasedName, false,
-      type: DriftSqlType.string, requiredDuringInsert: true);
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
   static const VerificationMeta _typeMeta = const VerificationMeta('type');
   @override
   late final GeneratedColumn<int> type = GeneratedColumn<int>(
-      'type', aliasedName, false,
-      type: DriftSqlType.int, requiredDuringInsert: true);
+    'type',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
   static const VerificationMeta _titleMeta = const VerificationMeta('title');
   @override
   late final GeneratedColumn<String> title = GeneratedColumn<String>(
-      'title', aliasedName, false,
-      type: DriftSqlType.string, requiredDuringInsert: true);
-  static const VerificationMeta _usernameMeta =
-      const VerificationMeta('username');
+    'title',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _usernameMeta = const VerificationMeta(
+    'username',
+  );
   @override
   late final GeneratedColumn<String> username = GeneratedColumn<String>(
-      'username', aliasedName, false,
-      type: DriftSqlType.string, requiredDuringInsert: true);
+    'username',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
   static const VerificationMeta _secretMeta = const VerificationMeta('secret');
   @override
   late final GeneratedColumn<String> secret = GeneratedColumn<String>(
-      'secret', aliasedName, true,
-      type: DriftSqlType.string, requiredDuringInsert: false);
-  static const VerificationMeta _passwordMeta =
-      const VerificationMeta('password');
+    'secret',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _passwordMeta = const VerificationMeta(
+    'password',
+  );
   @override
   late final GeneratedColumn<String> password = GeneratedColumn<String>(
-      'password', aliasedName, true,
-      type: DriftSqlType.string, requiredDuringInsert: false);
-  static const VerificationMeta _mnemonicMeta =
-      const VerificationMeta('mnemonic');
+    'password',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _mnemonicMeta = const VerificationMeta(
+    'mnemonic',
+  );
   @override
   late final GeneratedColumn<String> mnemonic = GeneratedColumn<String>(
-      'mnemonic', aliasedName, true,
-      type: DriftSqlType.string, requiredDuringInsert: false);
-  static const VerificationMeta _privateKeyMeta =
-      const VerificationMeta('privateKey');
+    'mnemonic',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _privateKeyMeta = const VerificationMeta(
+    'privateKey',
+  );
   @override
   late final GeneratedColumn<String> privateKey = GeneratedColumn<String>(
-      'private_key', aliasedName, true,
-      type: DriftSqlType.string, requiredDuringInsert: false);
-  static const VerificationMeta _addressMeta =
-      const VerificationMeta('address');
+    'private_key',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _addressMeta = const VerificationMeta(
+    'address',
+  );
   @override
   late final GeneratedColumn<String> address = GeneratedColumn<String>(
-      'address', aliasedName, true,
-      type: DriftSqlType.string, requiredDuringInsert: false);
-  static const VerificationMeta _networkMeta =
-      const VerificationMeta('network');
+    'address',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _networkMeta = const VerificationMeta(
+    'network',
+  );
   @override
   late final GeneratedColumn<String> network = GeneratedColumn<String>(
-      'network', aliasedName, true,
-      type: DriftSqlType.string, requiredDuringInsert: false);
+    'network',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _periodMeta = const VerificationMeta('period');
   @override
   late final GeneratedColumn<int> period = GeneratedColumn<int>(
-      'period', aliasedName, false,
-      type: DriftSqlType.int,
-      requiredDuringInsert: false,
-      defaultValue: const Constant(30));
-  static const VerificationMeta _isFavoriteMeta =
-      const VerificationMeta('isFavorite');
+    'period',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(30),
+  );
+  static const VerificationMeta _isFavoriteMeta = const VerificationMeta(
+    'isFavorite',
+  );
   @override
   late final GeneratedColumn<bool> isFavorite = GeneratedColumn<bool>(
-      'is_favorite', aliasedName, false,
-      type: DriftSqlType.bool,
-      requiredDuringInsert: false,
-      defaultConstraints:
-          GeneratedColumn.constraintIsAlways('CHECK ("is_favorite" IN (0, 1))'),
-      defaultValue: const Constant(false));
+    'is_favorite',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("is_favorite" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
   static const VerificationMeta _urlMeta = const VerificationMeta('url');
   @override
   late final GeneratedColumn<String> url = GeneratedColumn<String>(
-      'url', aliasedName, true,
-      type: DriftSqlType.string, requiredDuringInsert: false);
+    'url',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _noteMeta = const VerificationMeta('note');
   @override
   late final GeneratedColumn<String> note = GeneratedColumn<String>(
-      'note', aliasedName, true,
-      type: DriftSqlType.string, requiredDuringInsert: false);
-  static const VerificationMeta _categoryMeta =
-      const VerificationMeta('category');
+    'note',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _categoryMeta = const VerificationMeta(
+    'category',
+  );
   @override
   late final GeneratedColumn<String> category = GeneratedColumn<String>(
-      'category', aliasedName, true,
-      type: DriftSqlType.string, requiredDuringInsert: false);
+    'category',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _emailMeta = const VerificationMeta('email');
   @override
   late final GeneratedColumn<String> email = GeneratedColumn<String>(
-      'email', aliasedName, true,
-      type: DriftSqlType.string, requiredDuringInsert: false);
-  static const VerificationMeta _updatedAtMeta =
-      const VerificationMeta('updatedAt');
+    'email',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
   @override
   late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
-      'updated_at', aliasedName, false,
-      type: DriftSqlType.dateTime,
-      requiredDuringInsert: false,
-      defaultValue: currentDateAndTime);
-  static const VerificationMeta _passwordHistoryMeta =
-      const VerificationMeta('passwordHistory');
+    'updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
+  static const VerificationMeta _passwordHistoryMeta = const VerificationMeta(
+    'passwordHistory',
+  );
   @override
   late final GeneratedColumn<String> passwordHistory = GeneratedColumn<String>(
-      'password_history', aliasedName, true,
-      type: DriftSqlType.string, requiredDuringInsert: false);
+    'password_history',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _passwordLastChangedMeta =
       const VerificationMeta('passwordLastChanged');
   @override
   late final GeneratedColumn<DateTime> passwordLastChanged =
-      GeneratedColumn<DateTime>('password_last_changed', aliasedName, true,
-          type: DriftSqlType.dateTime, requiredDuringInsert: false);
-  static const VerificationMeta _passwordDurationMeta =
-      const VerificationMeta('passwordDuration');
+      GeneratedColumn<DateTime>(
+        'password_last_changed',
+        aliasedName,
+        true,
+        type: DriftSqlType.dateTime,
+        requiredDuringInsert: false,
+      );
+  static const VerificationMeta _passwordDurationMeta = const VerificationMeta(
+    'passwordDuration',
+  );
   @override
   late final GeneratedColumn<int> passwordDuration = GeneratedColumn<int>(
-      'password_duration', aliasedName, true,
-      type: DriftSqlType.int, requiredDuringInsert: false);
-  static const VerificationMeta _accountsMeta =
-      const VerificationMeta('accounts');
+    'password_duration',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _accountsMeta = const VerificationMeta(
+    'accounts',
+  );
   @override
   late final GeneratedColumn<String> accounts = GeneratedColumn<String>(
-      'accounts', aliasedName, true,
-      type: DriftSqlType.string, requiredDuringInsert: false);
-  static const VerificationMeta _isDeletedMeta =
-      const VerificationMeta('isDeleted');
+    'accounts',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _isDeletedMeta = const VerificationMeta(
+    'isDeleted',
+  );
   @override
   late final GeneratedColumn<bool> isDeleted = GeneratedColumn<bool>(
-      'is_deleted', aliasedName, false,
-      type: DriftSqlType.bool,
-      requiredDuringInsert: false,
-      defaultConstraints:
-          GeneratedColumn.constraintIsAlways('CHECK ("is_deleted" IN (0, 1))'),
-      defaultValue: const Constant(false));
-  static const VerificationMeta _deletedAtMeta =
-      const VerificationMeta('deletedAt');
+    'is_deleted',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("is_deleted" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  static const VerificationMeta _deletedAtMeta = const VerificationMeta(
+    'deletedAt',
+  );
   @override
   late final GeneratedColumn<DateTime> deletedAt = GeneratedColumn<DateTime>(
-      'deleted_at', aliasedName, true,
-      type: DriftSqlType.dateTime, requiredDuringInsert: false);
+    'deleted_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _tagsMeta = const VerificationMeta('tags');
   @override
   late final GeneratedColumn<String> tags = GeneratedColumn<String>(
-      'tags', aliasedName, true,
-      type: DriftSqlType.string, requiredDuringInsert: false);
-  static const VerificationMeta _sharedVaultIdMeta =
-      const VerificationMeta('sharedVaultId');
+    'tags',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _sharedVaultIdMeta = const VerificationMeta(
+    'sharedVaultId',
+  );
   @override
   late final GeneratedColumn<String> sharedVaultId = GeneratedColumn<String>(
-      'shared_vault_id', aliasedName, true,
-      type: DriftSqlType.string,
-      requiredDuringInsert: false,
-      defaultConstraints:
-          GeneratedColumn.constraintIsAlways('REFERENCES shared_vaults (id)'));
-  static const VerificationMeta _isPinnedMeta =
-      const VerificationMeta('isPinned');
+    'shared_vault_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES shared_vaults (id)',
+    ),
+  );
+  static const VerificationMeta _isPinnedMeta = const VerificationMeta(
+    'isPinned',
+  );
   @override
   late final GeneratedColumn<bool> isPinned = GeneratedColumn<bool>(
-      'is_pinned', aliasedName, false,
-      type: DriftSqlType.bool,
-      requiredDuringInsert: false,
-      defaultConstraints:
-          GeneratedColumn.constraintIsAlways('CHECK ("is_pinned" IN (0, 1))'),
-      defaultValue: const Constant(false));
-  static const VerificationMeta _colorLabelMeta =
-      const VerificationMeta('colorLabel');
+    'is_pinned',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("is_pinned" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  static const VerificationMeta _colorLabelMeta = const VerificationMeta(
+    'colorLabel',
+  );
   @override
   late final GeneratedColumn<String> colorLabel = GeneratedColumn<String>(
-      'color_label', aliasedName, true,
-      type: DriftSqlType.string, requiredDuringInsert: false);
+    'color_label',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
-        id,
-        type,
-        title,
-        username,
-        secret,
-        password,
-        mnemonic,
-        privateKey,
-        address,
-        network,
-        period,
-        isFavorite,
-        url,
-        note,
-        category,
-        email,
-        updatedAt,
-        passwordHistory,
-        passwordLastChanged,
-        passwordDuration,
-        accounts,
-        isDeleted,
-        deletedAt,
-        tags,
-        sharedVaultId,
-        isPinned,
-        colorLabel
-      ];
+    id,
+    type,
+    title,
+    username,
+    secret,
+    password,
+    mnemonic,
+    privateKey,
+    address,
+    network,
+    period,
+    isFavorite,
+    url,
+    note,
+    category,
+    email,
+    updatedAt,
+    passwordHistory,
+    passwordLastChanged,
+    passwordDuration,
+    accounts,
+    isDeleted,
+    deletedAt,
+    tags,
+    sharedVaultId,
+    isPinned,
+    colorLabel,
+  ];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
   String get actualTableName => $name;
   static const String $name = 'vault_items';
   @override
-  VerificationContext validateIntegrity(Insertable<VaultItemEntity> instance,
-      {bool isInserting = false}) {
+  VerificationContext validateIntegrity(
+    Insertable<VaultItemEntity> instance, {
+    bool isInserting = false,
+  }) {
     final context = VerificationContext();
     final data = instance.toColumns(true);
     if (data.containsKey('id')) {
@@ -582,127 +777,177 @@ class $VaultItemsTable extends VaultItems
     }
     if (data.containsKey('type')) {
       context.handle(
-          _typeMeta, type.isAcceptableOrUnknown(data['type']!, _typeMeta));
+        _typeMeta,
+        type.isAcceptableOrUnknown(data['type']!, _typeMeta),
+      );
     } else if (isInserting) {
       context.missing(_typeMeta);
     }
     if (data.containsKey('title')) {
       context.handle(
-          _titleMeta, title.isAcceptableOrUnknown(data['title']!, _titleMeta));
+        _titleMeta,
+        title.isAcceptableOrUnknown(data['title']!, _titleMeta),
+      );
     } else if (isInserting) {
       context.missing(_titleMeta);
     }
     if (data.containsKey('username')) {
-      context.handle(_usernameMeta,
-          username.isAcceptableOrUnknown(data['username']!, _usernameMeta));
+      context.handle(
+        _usernameMeta,
+        username.isAcceptableOrUnknown(data['username']!, _usernameMeta),
+      );
     } else if (isInserting) {
       context.missing(_usernameMeta);
     }
     if (data.containsKey('secret')) {
-      context.handle(_secretMeta,
-          secret.isAcceptableOrUnknown(data['secret']!, _secretMeta));
+      context.handle(
+        _secretMeta,
+        secret.isAcceptableOrUnknown(data['secret']!, _secretMeta),
+      );
     }
     if (data.containsKey('password')) {
-      context.handle(_passwordMeta,
-          password.isAcceptableOrUnknown(data['password']!, _passwordMeta));
+      context.handle(
+        _passwordMeta,
+        password.isAcceptableOrUnknown(data['password']!, _passwordMeta),
+      );
     }
     if (data.containsKey('mnemonic')) {
-      context.handle(_mnemonicMeta,
-          mnemonic.isAcceptableOrUnknown(data['mnemonic']!, _mnemonicMeta));
+      context.handle(
+        _mnemonicMeta,
+        mnemonic.isAcceptableOrUnknown(data['mnemonic']!, _mnemonicMeta),
+      );
     }
     if (data.containsKey('private_key')) {
       context.handle(
-          _privateKeyMeta,
-          privateKey.isAcceptableOrUnknown(
-              data['private_key']!, _privateKeyMeta));
+        _privateKeyMeta,
+        privateKey.isAcceptableOrUnknown(data['private_key']!, _privateKeyMeta),
+      );
     }
     if (data.containsKey('address')) {
-      context.handle(_addressMeta,
-          address.isAcceptableOrUnknown(data['address']!, _addressMeta));
+      context.handle(
+        _addressMeta,
+        address.isAcceptableOrUnknown(data['address']!, _addressMeta),
+      );
     }
     if (data.containsKey('network')) {
-      context.handle(_networkMeta,
-          network.isAcceptableOrUnknown(data['network']!, _networkMeta));
+      context.handle(
+        _networkMeta,
+        network.isAcceptableOrUnknown(data['network']!, _networkMeta),
+      );
     }
     if (data.containsKey('period')) {
-      context.handle(_periodMeta,
-          period.isAcceptableOrUnknown(data['period']!, _periodMeta));
+      context.handle(
+        _periodMeta,
+        period.isAcceptableOrUnknown(data['period']!, _periodMeta),
+      );
     }
     if (data.containsKey('is_favorite')) {
       context.handle(
-          _isFavoriteMeta,
-          isFavorite.isAcceptableOrUnknown(
-              data['is_favorite']!, _isFavoriteMeta));
+        _isFavoriteMeta,
+        isFavorite.isAcceptableOrUnknown(data['is_favorite']!, _isFavoriteMeta),
+      );
     }
     if (data.containsKey('url')) {
       context.handle(
-          _urlMeta, url.isAcceptableOrUnknown(data['url']!, _urlMeta));
+        _urlMeta,
+        url.isAcceptableOrUnknown(data['url']!, _urlMeta),
+      );
     }
     if (data.containsKey('note')) {
       context.handle(
-          _noteMeta, note.isAcceptableOrUnknown(data['note']!, _noteMeta));
+        _noteMeta,
+        note.isAcceptableOrUnknown(data['note']!, _noteMeta),
+      );
     }
     if (data.containsKey('category')) {
-      context.handle(_categoryMeta,
-          category.isAcceptableOrUnknown(data['category']!, _categoryMeta));
+      context.handle(
+        _categoryMeta,
+        category.isAcceptableOrUnknown(data['category']!, _categoryMeta),
+      );
     }
     if (data.containsKey('email')) {
       context.handle(
-          _emailMeta, email.isAcceptableOrUnknown(data['email']!, _emailMeta));
+        _emailMeta,
+        email.isAcceptableOrUnknown(data['email']!, _emailMeta),
+      );
     }
     if (data.containsKey('updated_at')) {
-      context.handle(_updatedAtMeta,
-          updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta));
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
     }
     if (data.containsKey('password_history')) {
       context.handle(
+        _passwordHistoryMeta,
+        passwordHistory.isAcceptableOrUnknown(
+          data['password_history']!,
           _passwordHistoryMeta,
-          passwordHistory.isAcceptableOrUnknown(
-              data['password_history']!, _passwordHistoryMeta));
+        ),
+      );
     }
     if (data.containsKey('password_last_changed')) {
       context.handle(
+        _passwordLastChangedMeta,
+        passwordLastChanged.isAcceptableOrUnknown(
+          data['password_last_changed']!,
           _passwordLastChangedMeta,
-          passwordLastChanged.isAcceptableOrUnknown(
-              data['password_last_changed']!, _passwordLastChangedMeta));
+        ),
+      );
     }
     if (data.containsKey('password_duration')) {
       context.handle(
+        _passwordDurationMeta,
+        passwordDuration.isAcceptableOrUnknown(
+          data['password_duration']!,
           _passwordDurationMeta,
-          passwordDuration.isAcceptableOrUnknown(
-              data['password_duration']!, _passwordDurationMeta));
+        ),
+      );
     }
     if (data.containsKey('accounts')) {
-      context.handle(_accountsMeta,
-          accounts.isAcceptableOrUnknown(data['accounts']!, _accountsMeta));
+      context.handle(
+        _accountsMeta,
+        accounts.isAcceptableOrUnknown(data['accounts']!, _accountsMeta),
+      );
     }
     if (data.containsKey('is_deleted')) {
-      context.handle(_isDeletedMeta,
-          isDeleted.isAcceptableOrUnknown(data['is_deleted']!, _isDeletedMeta));
+      context.handle(
+        _isDeletedMeta,
+        isDeleted.isAcceptableOrUnknown(data['is_deleted']!, _isDeletedMeta),
+      );
     }
     if (data.containsKey('deleted_at')) {
-      context.handle(_deletedAtMeta,
-          deletedAt.isAcceptableOrUnknown(data['deleted_at']!, _deletedAtMeta));
+      context.handle(
+        _deletedAtMeta,
+        deletedAt.isAcceptableOrUnknown(data['deleted_at']!, _deletedAtMeta),
+      );
     }
     if (data.containsKey('tags')) {
       context.handle(
-          _tagsMeta, tags.isAcceptableOrUnknown(data['tags']!, _tagsMeta));
+        _tagsMeta,
+        tags.isAcceptableOrUnknown(data['tags']!, _tagsMeta),
+      );
     }
     if (data.containsKey('shared_vault_id')) {
       context.handle(
+        _sharedVaultIdMeta,
+        sharedVaultId.isAcceptableOrUnknown(
+          data['shared_vault_id']!,
           _sharedVaultIdMeta,
-          sharedVaultId.isAcceptableOrUnknown(
-              data['shared_vault_id']!, _sharedVaultIdMeta));
+        ),
+      );
     }
     if (data.containsKey('is_pinned')) {
-      context.handle(_isPinnedMeta,
-          isPinned.isAcceptableOrUnknown(data['is_pinned']!, _isPinnedMeta));
+      context.handle(
+        _isPinnedMeta,
+        isPinned.isAcceptableOrUnknown(data['is_pinned']!, _isPinnedMeta),
+      );
     }
     if (data.containsKey('color_label')) {
       context.handle(
-          _colorLabelMeta,
-          colorLabel.isAcceptableOrUnknown(
-              data['color_label']!, _colorLabelMeta));
+        _colorLabelMeta,
+        colorLabel.isAcceptableOrUnknown(data['color_label']!, _colorLabelMeta),
+      );
     }
     return context;
   }
@@ -713,61 +958,114 @@ class $VaultItemsTable extends VaultItems
   VaultItemEntity map(Map<String, dynamic> data, {String? tablePrefix}) {
     final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
     return VaultItemEntity(
-      id: attachedDatabase.typeMapping
-          .read(DriftSqlType.string, data['${effectivePrefix}id'])!,
-      type: attachedDatabase.typeMapping
-          .read(DriftSqlType.int, data['${effectivePrefix}type'])!,
-      title: attachedDatabase.typeMapping
-          .read(DriftSqlType.string, data['${effectivePrefix}title'])!,
-      username: attachedDatabase.typeMapping
-          .read(DriftSqlType.string, data['${effectivePrefix}username'])!,
-      secret: attachedDatabase.typeMapping
-          .read(DriftSqlType.string, data['${effectivePrefix}secret']),
-      password: attachedDatabase.typeMapping
-          .read(DriftSqlType.string, data['${effectivePrefix}password']),
-      mnemonic: attachedDatabase.typeMapping
-          .read(DriftSqlType.string, data['${effectivePrefix}mnemonic']),
-      privateKey: attachedDatabase.typeMapping
-          .read(DriftSqlType.string, data['${effectivePrefix}private_key']),
-      address: attachedDatabase.typeMapping
-          .read(DriftSqlType.string, data['${effectivePrefix}address']),
-      network: attachedDatabase.typeMapping
-          .read(DriftSqlType.string, data['${effectivePrefix}network']),
-      period: attachedDatabase.typeMapping
-          .read(DriftSqlType.int, data['${effectivePrefix}period'])!,
-      isFavorite: attachedDatabase.typeMapping
-          .read(DriftSqlType.bool, data['${effectivePrefix}is_favorite'])!,
-      url: attachedDatabase.typeMapping
-          .read(DriftSqlType.string, data['${effectivePrefix}url']),
-      note: attachedDatabase.typeMapping
-          .read(DriftSqlType.string, data['${effectivePrefix}note']),
-      category: attachedDatabase.typeMapping
-          .read(DriftSqlType.string, data['${effectivePrefix}category']),
-      email: attachedDatabase.typeMapping
-          .read(DriftSqlType.string, data['${effectivePrefix}email']),
-      updatedAt: attachedDatabase.typeMapping
-          .read(DriftSqlType.dateTime, data['${effectivePrefix}updated_at'])!,
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      type: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}type'],
+      )!,
+      title: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}title'],
+      )!,
+      username: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}username'],
+      )!,
+      secret: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}secret'],
+      ),
+      password: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}password'],
+      ),
+      mnemonic: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}mnemonic'],
+      ),
+      privateKey: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}private_key'],
+      ),
+      address: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}address'],
+      ),
+      network: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}network'],
+      ),
+      period: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}period'],
+      )!,
+      isFavorite: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}is_favorite'],
+      )!,
+      url: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}url'],
+      ),
+      note: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}note'],
+      ),
+      category: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}category'],
+      ),
+      email: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}email'],
+      ),
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}updated_at'],
+      )!,
       passwordHistory: attachedDatabase.typeMapping.read(
-          DriftSqlType.string, data['${effectivePrefix}password_history']),
+        DriftSqlType.string,
+        data['${effectivePrefix}password_history'],
+      ),
       passwordLastChanged: attachedDatabase.typeMapping.read(
-          DriftSqlType.dateTime,
-          data['${effectivePrefix}password_last_changed']),
-      passwordDuration: attachedDatabase.typeMapping
-          .read(DriftSqlType.int, data['${effectivePrefix}password_duration']),
-      accounts: attachedDatabase.typeMapping
-          .read(DriftSqlType.string, data['${effectivePrefix}accounts']),
-      isDeleted: attachedDatabase.typeMapping
-          .read(DriftSqlType.bool, data['${effectivePrefix}is_deleted'])!,
-      deletedAt: attachedDatabase.typeMapping
-          .read(DriftSqlType.dateTime, data['${effectivePrefix}deleted_at']),
-      tags: attachedDatabase.typeMapping
-          .read(DriftSqlType.string, data['${effectivePrefix}tags']),
-      sharedVaultId: attachedDatabase.typeMapping
-          .read(DriftSqlType.string, data['${effectivePrefix}shared_vault_id']),
-      isPinned: attachedDatabase.typeMapping
-          .read(DriftSqlType.bool, data['${effectivePrefix}is_pinned'])!,
-      colorLabel: attachedDatabase.typeMapping
-          .read(DriftSqlType.string, data['${effectivePrefix}color_label']),
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}password_last_changed'],
+      ),
+      passwordDuration: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}password_duration'],
+      ),
+      accounts: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}accounts'],
+      ),
+      isDeleted: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}is_deleted'],
+      )!,
+      deletedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}deleted_at'],
+      ),
+      tags: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}tags'],
+      ),
+      sharedVaultId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}shared_vault_id'],
+      ),
+      isPinned: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}is_pinned'],
+      )!,
+      colorLabel: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}color_label'],
+      ),
     );
   }
 
@@ -805,34 +1103,35 @@ class VaultItemEntity extends DataClass implements Insertable<VaultItemEntity> {
   final String? sharedVaultId;
   final bool isPinned;
   final String? colorLabel;
-  const VaultItemEntity(
-      {required this.id,
-      required this.type,
-      required this.title,
-      required this.username,
-      this.secret,
-      this.password,
-      this.mnemonic,
-      this.privateKey,
-      this.address,
-      this.network,
-      required this.period,
-      required this.isFavorite,
-      this.url,
-      this.note,
-      this.category,
-      this.email,
-      required this.updatedAt,
-      this.passwordHistory,
-      this.passwordLastChanged,
-      this.passwordDuration,
-      this.accounts,
-      required this.isDeleted,
-      this.deletedAt,
-      this.tags,
-      this.sharedVaultId,
-      required this.isPinned,
-      this.colorLabel});
+  const VaultItemEntity({
+    required this.id,
+    required this.type,
+    required this.title,
+    required this.username,
+    this.secret,
+    this.password,
+    this.mnemonic,
+    this.privateKey,
+    this.address,
+    this.network,
+    required this.period,
+    required this.isFavorite,
+    this.url,
+    this.note,
+    this.category,
+    this.email,
+    required this.updatedAt,
+    this.passwordHistory,
+    this.passwordLastChanged,
+    this.passwordDuration,
+    this.accounts,
+    required this.isDeleted,
+    this.deletedAt,
+    this.tags,
+    this.sharedVaultId,
+    required this.isPinned,
+    this.colorLabel,
+  });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
@@ -908,8 +1207,9 @@ class VaultItemEntity extends DataClass implements Insertable<VaultItemEntity> {
       type: Value(type),
       title: Value(title),
       username: Value(username),
-      secret:
-          secret == null && nullToAbsent ? const Value.absent() : Value(secret),
+      secret: secret == null && nullToAbsent
+          ? const Value.absent()
+          : Value(secret),
       password: password == null && nullToAbsent
           ? const Value.absent()
           : Value(password),
@@ -932,8 +1232,9 @@ class VaultItemEntity extends DataClass implements Insertable<VaultItemEntity> {
       category: category == null && nullToAbsent
           ? const Value.absent()
           : Value(category),
-      email:
-          email == null && nullToAbsent ? const Value.absent() : Value(email),
+      email: email == null && nullToAbsent
+          ? const Value.absent()
+          : Value(email),
       updatedAt: Value(updatedAt),
       passwordHistory: passwordHistory == null && nullToAbsent
           ? const Value.absent()
@@ -962,8 +1263,10 @@ class VaultItemEntity extends DataClass implements Insertable<VaultItemEntity> {
     );
   }
 
-  factory VaultItemEntity.fromJson(Map<String, dynamic> json,
-      {ValueSerializer? serializer}) {
+  factory VaultItemEntity.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return VaultItemEntity(
       id: serializer.fromJson<String>(json['id']),
@@ -984,8 +1287,9 @@ class VaultItemEntity extends DataClass implements Insertable<VaultItemEntity> {
       email: serializer.fromJson<String?>(json['email']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
       passwordHistory: serializer.fromJson<String?>(json['passwordHistory']),
-      passwordLastChanged:
-          serializer.fromJson<DateTime?>(json['passwordLastChanged']),
+      passwordLastChanged: serializer.fromJson<DateTime?>(
+        json['passwordLastChanged'],
+      ),
       passwordDuration: serializer.fromJson<int?>(json['passwordDuration']),
       accounts: serializer.fromJson<String?>(json['accounts']),
       isDeleted: serializer.fromJson<bool>(json['isDeleted']),
@@ -1030,70 +1334,71 @@ class VaultItemEntity extends DataClass implements Insertable<VaultItemEntity> {
     };
   }
 
-  VaultItemEntity copyWith(
-          {String? id,
-          int? type,
-          String? title,
-          String? username,
-          Value<String?> secret = const Value.absent(),
-          Value<String?> password = const Value.absent(),
-          Value<String?> mnemonic = const Value.absent(),
-          Value<String?> privateKey = const Value.absent(),
-          Value<String?> address = const Value.absent(),
-          Value<String?> network = const Value.absent(),
-          int? period,
-          bool? isFavorite,
-          Value<String?> url = const Value.absent(),
-          Value<String?> note = const Value.absent(),
-          Value<String?> category = const Value.absent(),
-          Value<String?> email = const Value.absent(),
-          DateTime? updatedAt,
-          Value<String?> passwordHistory = const Value.absent(),
-          Value<DateTime?> passwordLastChanged = const Value.absent(),
-          Value<int?> passwordDuration = const Value.absent(),
-          Value<String?> accounts = const Value.absent(),
-          bool? isDeleted,
-          Value<DateTime?> deletedAt = const Value.absent(),
-          Value<String?> tags = const Value.absent(),
-          Value<String?> sharedVaultId = const Value.absent(),
-          bool? isPinned,
-          Value<String?> colorLabel = const Value.absent()}) =>
-      VaultItemEntity(
-        id: id ?? this.id,
-        type: type ?? this.type,
-        title: title ?? this.title,
-        username: username ?? this.username,
-        secret: secret.present ? secret.value : this.secret,
-        password: password.present ? password.value : this.password,
-        mnemonic: mnemonic.present ? mnemonic.value : this.mnemonic,
-        privateKey: privateKey.present ? privateKey.value : this.privateKey,
-        address: address.present ? address.value : this.address,
-        network: network.present ? network.value : this.network,
-        period: period ?? this.period,
-        isFavorite: isFavorite ?? this.isFavorite,
-        url: url.present ? url.value : this.url,
-        note: note.present ? note.value : this.note,
-        category: category.present ? category.value : this.category,
-        email: email.present ? email.value : this.email,
-        updatedAt: updatedAt ?? this.updatedAt,
-        passwordHistory: passwordHistory.present
-            ? passwordHistory.value
-            : this.passwordHistory,
-        passwordLastChanged: passwordLastChanged.present
-            ? passwordLastChanged.value
-            : this.passwordLastChanged,
-        passwordDuration: passwordDuration.present
-            ? passwordDuration.value
-            : this.passwordDuration,
-        accounts: accounts.present ? accounts.value : this.accounts,
-        isDeleted: isDeleted ?? this.isDeleted,
-        deletedAt: deletedAt.present ? deletedAt.value : this.deletedAt,
-        tags: tags.present ? tags.value : this.tags,
-        sharedVaultId:
-            sharedVaultId.present ? sharedVaultId.value : this.sharedVaultId,
-        isPinned: isPinned ?? this.isPinned,
-        colorLabel: colorLabel.present ? colorLabel.value : this.colorLabel,
-      );
+  VaultItemEntity copyWith({
+    String? id,
+    int? type,
+    String? title,
+    String? username,
+    Value<String?> secret = const Value.absent(),
+    Value<String?> password = const Value.absent(),
+    Value<String?> mnemonic = const Value.absent(),
+    Value<String?> privateKey = const Value.absent(),
+    Value<String?> address = const Value.absent(),
+    Value<String?> network = const Value.absent(),
+    int? period,
+    bool? isFavorite,
+    Value<String?> url = const Value.absent(),
+    Value<String?> note = const Value.absent(),
+    Value<String?> category = const Value.absent(),
+    Value<String?> email = const Value.absent(),
+    DateTime? updatedAt,
+    Value<String?> passwordHistory = const Value.absent(),
+    Value<DateTime?> passwordLastChanged = const Value.absent(),
+    Value<int?> passwordDuration = const Value.absent(),
+    Value<String?> accounts = const Value.absent(),
+    bool? isDeleted,
+    Value<DateTime?> deletedAt = const Value.absent(),
+    Value<String?> tags = const Value.absent(),
+    Value<String?> sharedVaultId = const Value.absent(),
+    bool? isPinned,
+    Value<String?> colorLabel = const Value.absent(),
+  }) => VaultItemEntity(
+    id: id ?? this.id,
+    type: type ?? this.type,
+    title: title ?? this.title,
+    username: username ?? this.username,
+    secret: secret.present ? secret.value : this.secret,
+    password: password.present ? password.value : this.password,
+    mnemonic: mnemonic.present ? mnemonic.value : this.mnemonic,
+    privateKey: privateKey.present ? privateKey.value : this.privateKey,
+    address: address.present ? address.value : this.address,
+    network: network.present ? network.value : this.network,
+    period: period ?? this.period,
+    isFavorite: isFavorite ?? this.isFavorite,
+    url: url.present ? url.value : this.url,
+    note: note.present ? note.value : this.note,
+    category: category.present ? category.value : this.category,
+    email: email.present ? email.value : this.email,
+    updatedAt: updatedAt ?? this.updatedAt,
+    passwordHistory: passwordHistory.present
+        ? passwordHistory.value
+        : this.passwordHistory,
+    passwordLastChanged: passwordLastChanged.present
+        ? passwordLastChanged.value
+        : this.passwordLastChanged,
+    passwordDuration: passwordDuration.present
+        ? passwordDuration.value
+        : this.passwordDuration,
+    accounts: accounts.present ? accounts.value : this.accounts,
+    isDeleted: isDeleted ?? this.isDeleted,
+    deletedAt: deletedAt.present ? deletedAt.value : this.deletedAt,
+    tags: tags.present ? tags.value : this.tags,
+    sharedVaultId: sharedVaultId.present
+        ? sharedVaultId.value
+        : this.sharedVaultId,
+    isPinned: isPinned ?? this.isPinned,
+    colorLabel: colorLabel.present ? colorLabel.value : this.colorLabel,
+  );
   VaultItemEntity copyWithCompanion(VaultItemsCompanion data) {
     return VaultItemEntity(
       id: data.id.present ? data.id.value : this.id,
@@ -1103,13 +1408,15 @@ class VaultItemEntity extends DataClass implements Insertable<VaultItemEntity> {
       secret: data.secret.present ? data.secret.value : this.secret,
       password: data.password.present ? data.password.value : this.password,
       mnemonic: data.mnemonic.present ? data.mnemonic.value : this.mnemonic,
-      privateKey:
-          data.privateKey.present ? data.privateKey.value : this.privateKey,
+      privateKey: data.privateKey.present
+          ? data.privateKey.value
+          : this.privateKey,
       address: data.address.present ? data.address.value : this.address,
       network: data.network.present ? data.network.value : this.network,
       period: data.period.present ? data.period.value : this.period,
-      isFavorite:
-          data.isFavorite.present ? data.isFavorite.value : this.isFavorite,
+      isFavorite: data.isFavorite.present
+          ? data.isFavorite.value
+          : this.isFavorite,
       url: data.url.present ? data.url.value : this.url,
       note: data.note.present ? data.note.value : this.note,
       category: data.category.present ? data.category.value : this.category,
@@ -1132,8 +1439,9 @@ class VaultItemEntity extends DataClass implements Insertable<VaultItemEntity> {
           ? data.sharedVaultId.value
           : this.sharedVaultId,
       isPinned: data.isPinned.present ? data.isPinned.value : this.isPinned,
-      colorLabel:
-          data.colorLabel.present ? data.colorLabel.value : this.colorLabel,
+      colorLabel: data.colorLabel.present
+          ? data.colorLabel.value
+          : this.colorLabel,
     );
   }
 
@@ -1173,34 +1481,34 @@ class VaultItemEntity extends DataClass implements Insertable<VaultItemEntity> {
 
   @override
   int get hashCode => Object.hashAll([
-        id,
-        type,
-        title,
-        username,
-        secret,
-        password,
-        mnemonic,
-        privateKey,
-        address,
-        network,
-        period,
-        isFavorite,
-        url,
-        note,
-        category,
-        email,
-        updatedAt,
-        passwordHistory,
-        passwordLastChanged,
-        passwordDuration,
-        accounts,
-        isDeleted,
-        deletedAt,
-        tags,
-        sharedVaultId,
-        isPinned,
-        colorLabel
-      ]);
+    id,
+    type,
+    title,
+    username,
+    secret,
+    password,
+    mnemonic,
+    privateKey,
+    address,
+    network,
+    period,
+    isFavorite,
+    url,
+    note,
+    category,
+    email,
+    updatedAt,
+    passwordHistory,
+    passwordLastChanged,
+    passwordDuration,
+    accounts,
+    isDeleted,
+    deletedAt,
+    tags,
+    sharedVaultId,
+    isPinned,
+    colorLabel,
+  ]);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -1322,10 +1630,10 @@ class VaultItemsCompanion extends UpdateCompanion<VaultItemEntity> {
     this.isPinned = const Value.absent(),
     this.colorLabel = const Value.absent(),
     this.rowid = const Value.absent(),
-  })  : id = Value(id),
-        type = Value(type),
-        title = Value(title),
-        username = Value(username);
+  }) : id = Value(id),
+       type = Value(type),
+       title = Value(title),
+       username = Value(username);
   static Insertable<VaultItemEntity> custom({
     Expression<String>? id,
     Expression<int>? type,
@@ -1389,35 +1697,36 @@ class VaultItemsCompanion extends UpdateCompanion<VaultItemEntity> {
     });
   }
 
-  VaultItemsCompanion copyWith(
-      {Value<String>? id,
-      Value<int>? type,
-      Value<String>? title,
-      Value<String>? username,
-      Value<String?>? secret,
-      Value<String?>? password,
-      Value<String?>? mnemonic,
-      Value<String?>? privateKey,
-      Value<String?>? address,
-      Value<String?>? network,
-      Value<int>? period,
-      Value<bool>? isFavorite,
-      Value<String?>? url,
-      Value<String?>? note,
-      Value<String?>? category,
-      Value<String?>? email,
-      Value<DateTime>? updatedAt,
-      Value<String?>? passwordHistory,
-      Value<DateTime?>? passwordLastChanged,
-      Value<int?>? passwordDuration,
-      Value<String?>? accounts,
-      Value<bool>? isDeleted,
-      Value<DateTime?>? deletedAt,
-      Value<String?>? tags,
-      Value<String?>? sharedVaultId,
-      Value<bool>? isPinned,
-      Value<String?>? colorLabel,
-      Value<int>? rowid}) {
+  VaultItemsCompanion copyWith({
+    Value<String>? id,
+    Value<int>? type,
+    Value<String>? title,
+    Value<String>? username,
+    Value<String?>? secret,
+    Value<String?>? password,
+    Value<String?>? mnemonic,
+    Value<String?>? privateKey,
+    Value<String?>? address,
+    Value<String?>? network,
+    Value<int>? period,
+    Value<bool>? isFavorite,
+    Value<String?>? url,
+    Value<String?>? note,
+    Value<String?>? category,
+    Value<String?>? email,
+    Value<DateTime>? updatedAt,
+    Value<String?>? passwordHistory,
+    Value<DateTime?>? passwordLastChanged,
+    Value<int?>? passwordDuration,
+    Value<String?>? accounts,
+    Value<bool>? isDeleted,
+    Value<DateTime?>? deletedAt,
+    Value<String?>? tags,
+    Value<String?>? sharedVaultId,
+    Value<bool>? isPinned,
+    Value<String?>? colorLabel,
+    Value<int>? rowid,
+  }) {
     return VaultItemsCompanion(
       id: id ?? this.id,
       type: type ?? this.type,
@@ -1508,8 +1817,9 @@ class VaultItemsCompanion extends UpdateCompanion<VaultItemEntity> {
       map['password_history'] = Variable<String>(passwordHistory.value);
     }
     if (passwordLastChanged.present) {
-      map['password_last_changed'] =
-          Variable<DateTime>(passwordLastChanged.value);
+      map['password_last_changed'] = Variable<DateTime>(
+        passwordLastChanged.value,
+      );
     }
     if (passwordDuration.present) {
       map['password_duration'] = Variable<int>(passwordDuration.value);
@@ -1586,50 +1896,86 @@ class $SharedMembersTable extends SharedMembers
   static const VerificationMeta _idMeta = const VerificationMeta('id');
   @override
   late final GeneratedColumn<String> id = GeneratedColumn<String>(
-      'id', aliasedName, false,
-      type: DriftSqlType.string, requiredDuringInsert: true);
-  static const VerificationMeta _vaultIdMeta =
-      const VerificationMeta('vaultId');
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _vaultIdMeta = const VerificationMeta(
+    'vaultId',
+  );
   @override
   late final GeneratedColumn<String> vaultId = GeneratedColumn<String>(
-      'vault_id', aliasedName, false,
-      type: DriftSqlType.string,
-      requiredDuringInsert: true,
-      defaultConstraints: GeneratedColumn.constraintIsAlways(
-          'REFERENCES shared_vaults (id) ON DELETE CASCADE'));
-  static const VerificationMeta _userPublicKeyMeta =
-      const VerificationMeta('userPublicKey');
+    'vault_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES shared_vaults (id) ON DELETE CASCADE',
+    ),
+  );
+  static const VerificationMeta _userPublicKeyMeta = const VerificationMeta(
+    'userPublicKey',
+  );
   @override
   late final GeneratedColumn<String> userPublicKey = GeneratedColumn<String>(
-      'user_public_key', aliasedName, false,
-      type: DriftSqlType.string, requiredDuringInsert: true);
-  static const VerificationMeta _encryptedVaultKeyMeta =
-      const VerificationMeta('encryptedVaultKey');
+    'user_public_key',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _encryptedVaultKeyMeta = const VerificationMeta(
+    'encryptedVaultKey',
+  );
   @override
   late final GeneratedColumn<String> encryptedVaultKey =
-      GeneratedColumn<String>('encrypted_vault_key', aliasedName, false,
-          type: DriftSqlType.string, requiredDuringInsert: true);
+      GeneratedColumn<String>(
+        'encrypted_vault_key',
+        aliasedName,
+        false,
+        type: DriftSqlType.string,
+        requiredDuringInsert: true,
+      );
   static const VerificationMeta _roleMeta = const VerificationMeta('role');
   @override
   late final GeneratedColumn<int> role = GeneratedColumn<int>(
-      'role', aliasedName, false,
-      type: DriftSqlType.int, requiredDuringInsert: true);
+    'role',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
   static const VerificationMeta _nameMeta = const VerificationMeta('name');
   @override
   late final GeneratedColumn<String> name = GeneratedColumn<String>(
-      'name', aliasedName, true,
-      type: DriftSqlType.string, requiredDuringInsert: false);
+    'name',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   @override
-  List<GeneratedColumn> get $columns =>
-      [id, vaultId, userPublicKey, encryptedVaultKey, role, name];
+  List<GeneratedColumn> get $columns => [
+    id,
+    vaultId,
+    userPublicKey,
+    encryptedVaultKey,
+    role,
+    name,
+  ];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
   String get actualTableName => $name;
   static const String $name = 'shared_members';
   @override
-  VerificationContext validateIntegrity(Insertable<SharedMemberEntity> instance,
-      {bool isInserting = false}) {
+  VerificationContext validateIntegrity(
+    Insertable<SharedMemberEntity> instance, {
+    bool isInserting = false,
+  }) {
     final context = VerificationContext();
     final data = instance.toColumns(true);
     if (data.containsKey('id')) {
@@ -1638,36 +1984,48 @@ class $SharedMembersTable extends SharedMembers
       context.missing(_idMeta);
     }
     if (data.containsKey('vault_id')) {
-      context.handle(_vaultIdMeta,
-          vaultId.isAcceptableOrUnknown(data['vault_id']!, _vaultIdMeta));
+      context.handle(
+        _vaultIdMeta,
+        vaultId.isAcceptableOrUnknown(data['vault_id']!, _vaultIdMeta),
+      );
     } else if (isInserting) {
       context.missing(_vaultIdMeta);
     }
     if (data.containsKey('user_public_key')) {
       context.handle(
+        _userPublicKeyMeta,
+        userPublicKey.isAcceptableOrUnknown(
+          data['user_public_key']!,
           _userPublicKeyMeta,
-          userPublicKey.isAcceptableOrUnknown(
-              data['user_public_key']!, _userPublicKeyMeta));
+        ),
+      );
     } else if (isInserting) {
       context.missing(_userPublicKeyMeta);
     }
     if (data.containsKey('encrypted_vault_key')) {
       context.handle(
+        _encryptedVaultKeyMeta,
+        encryptedVaultKey.isAcceptableOrUnknown(
+          data['encrypted_vault_key']!,
           _encryptedVaultKeyMeta,
-          encryptedVaultKey.isAcceptableOrUnknown(
-              data['encrypted_vault_key']!, _encryptedVaultKeyMeta));
+        ),
+      );
     } else if (isInserting) {
       context.missing(_encryptedVaultKeyMeta);
     }
     if (data.containsKey('role')) {
       context.handle(
-          _roleMeta, role.isAcceptableOrUnknown(data['role']!, _roleMeta));
+        _roleMeta,
+        role.isAcceptableOrUnknown(data['role']!, _roleMeta),
+      );
     } else if (isInserting) {
       context.missing(_roleMeta);
     }
     if (data.containsKey('name')) {
       context.handle(
-          _nameMeta, name.isAcceptableOrUnknown(data['name']!, _nameMeta));
+        _nameMeta,
+        name.isAcceptableOrUnknown(data['name']!, _nameMeta),
+      );
     }
     return context;
   }
@@ -1678,18 +2036,30 @@ class $SharedMembersTable extends SharedMembers
   SharedMemberEntity map(Map<String, dynamic> data, {String? tablePrefix}) {
     final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
     return SharedMemberEntity(
-      id: attachedDatabase.typeMapping
-          .read(DriftSqlType.string, data['${effectivePrefix}id'])!,
-      vaultId: attachedDatabase.typeMapping
-          .read(DriftSqlType.string, data['${effectivePrefix}vault_id'])!,
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      vaultId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}vault_id'],
+      )!,
       userPublicKey: attachedDatabase.typeMapping.read(
-          DriftSqlType.string, data['${effectivePrefix}user_public_key'])!,
+        DriftSqlType.string,
+        data['${effectivePrefix}user_public_key'],
+      )!,
       encryptedVaultKey: attachedDatabase.typeMapping.read(
-          DriftSqlType.string, data['${effectivePrefix}encrypted_vault_key'])!,
-      role: attachedDatabase.typeMapping
-          .read(DriftSqlType.int, data['${effectivePrefix}role'])!,
-      name: attachedDatabase.typeMapping
-          .read(DriftSqlType.string, data['${effectivePrefix}name']),
+        DriftSqlType.string,
+        data['${effectivePrefix}encrypted_vault_key'],
+      )!,
+      role: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}role'],
+      )!,
+      name: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}name'],
+      ),
     );
   }
 
@@ -1707,13 +2077,14 @@ class SharedMemberEntity extends DataClass
   final String encryptedVaultKey;
   final int role;
   final String? name;
-  const SharedMemberEntity(
-      {required this.id,
-      required this.vaultId,
-      required this.userPublicKey,
-      required this.encryptedVaultKey,
-      required this.role,
-      this.name});
+  const SharedMemberEntity({
+    required this.id,
+    required this.vaultId,
+    required this.userPublicKey,
+    required this.encryptedVaultKey,
+    required this.role,
+    this.name,
+  });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
@@ -1739,8 +2110,10 @@ class SharedMemberEntity extends DataClass
     );
   }
 
-  factory SharedMemberEntity.fromJson(Map<String, dynamic> json,
-      {ValueSerializer? serializer}) {
+  factory SharedMemberEntity.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return SharedMemberEntity(
       id: serializer.fromJson<String>(json['id']),
@@ -1764,21 +2137,21 @@ class SharedMemberEntity extends DataClass
     };
   }
 
-  SharedMemberEntity copyWith(
-          {String? id,
-          String? vaultId,
-          String? userPublicKey,
-          String? encryptedVaultKey,
-          int? role,
-          Value<String?> name = const Value.absent()}) =>
-      SharedMemberEntity(
-        id: id ?? this.id,
-        vaultId: vaultId ?? this.vaultId,
-        userPublicKey: userPublicKey ?? this.userPublicKey,
-        encryptedVaultKey: encryptedVaultKey ?? this.encryptedVaultKey,
-        role: role ?? this.role,
-        name: name.present ? name.value : this.name,
-      );
+  SharedMemberEntity copyWith({
+    String? id,
+    String? vaultId,
+    String? userPublicKey,
+    String? encryptedVaultKey,
+    int? role,
+    Value<String?> name = const Value.absent(),
+  }) => SharedMemberEntity(
+    id: id ?? this.id,
+    vaultId: vaultId ?? this.vaultId,
+    userPublicKey: userPublicKey ?? this.userPublicKey,
+    encryptedVaultKey: encryptedVaultKey ?? this.encryptedVaultKey,
+    role: role ?? this.role,
+    name: name.present ? name.value : this.name,
+  );
   SharedMemberEntity copyWithCompanion(SharedMembersCompanion data) {
     return SharedMemberEntity(
       id: data.id.present ? data.id.value : this.id,
@@ -1847,11 +2220,11 @@ class SharedMembersCompanion extends UpdateCompanion<SharedMemberEntity> {
     required int role,
     this.name = const Value.absent(),
     this.rowid = const Value.absent(),
-  })  : id = Value(id),
-        vaultId = Value(vaultId),
-        userPublicKey = Value(userPublicKey),
-        encryptedVaultKey = Value(encryptedVaultKey),
-        role = Value(role);
+  }) : id = Value(id),
+       vaultId = Value(vaultId),
+       userPublicKey = Value(userPublicKey),
+       encryptedVaultKey = Value(encryptedVaultKey),
+       role = Value(role);
   static Insertable<SharedMemberEntity> custom({
     Expression<String>? id,
     Expression<String>? vaultId,
@@ -1872,14 +2245,15 @@ class SharedMembersCompanion extends UpdateCompanion<SharedMemberEntity> {
     });
   }
 
-  SharedMembersCompanion copyWith(
-      {Value<String>? id,
-      Value<String>? vaultId,
-      Value<String>? userPublicKey,
-      Value<String>? encryptedVaultKey,
-      Value<int>? role,
-      Value<String?>? name,
-      Value<int>? rowid}) {
+  SharedMembersCompanion copyWith({
+    Value<String>? id,
+    Value<String>? vaultId,
+    Value<String>? userPublicKey,
+    Value<String>? encryptedVaultKey,
+    Value<int>? role,
+    Value<String?>? name,
+    Value<int>? rowid,
+  }) {
     return SharedMembersCompanion(
       id: id ?? this.id,
       vaultId: vaultId ?? this.vaultId,
@@ -1943,75 +2317,89 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
   @override
-  List<DatabaseSchemaEntity> get allSchemaEntities =>
-      [sharedVaults, vaultItems, sharedMembers];
+  List<DatabaseSchemaEntity> get allSchemaEntities => [
+    sharedVaults,
+    vaultItems,
+    sharedMembers,
+  ];
   @override
-  StreamQueryUpdateRules get streamUpdateRules => const StreamQueryUpdateRules(
-        [
-          WritePropagation(
-            on: TableUpdateQuery.onTableName('shared_vaults',
-                limitUpdateKind: UpdateKind.delete),
-            result: [
-              TableUpdate('shared_members', kind: UpdateKind.delete),
-            ],
-          ),
-        ],
-      );
+  StreamQueryUpdateRules get streamUpdateRules => const StreamQueryUpdateRules([
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'shared_vaults',
+        limitUpdateKind: UpdateKind.delete,
+      ),
+      result: [TableUpdate('shared_members', kind: UpdateKind.delete)],
+    ),
+  ]);
 }
 
-typedef $$SharedVaultsTableCreateCompanionBuilder = SharedVaultsCompanion
-    Function({
-  required String id,
-  required String name,
-  required String encryptedVaultKey,
-  Value<DateTime> createdAt,
-  Value<DateTime> updatedAt,
-  Value<bool> isDiscoverable,
-  Value<int> rowid,
-});
-typedef $$SharedVaultsTableUpdateCompanionBuilder = SharedVaultsCompanion
-    Function({
-  Value<String> id,
-  Value<String> name,
-  Value<String> encryptedVaultKey,
-  Value<DateTime> createdAt,
-  Value<DateTime> updatedAt,
-  Value<bool> isDiscoverable,
-  Value<int> rowid,
-});
+typedef $$SharedVaultsTableCreateCompanionBuilder =
+    SharedVaultsCompanion Function({
+      required String id,
+      required String name,
+      required String encryptedVaultKey,
+      Value<DateTime> createdAt,
+      Value<DateTime> updatedAt,
+      Value<bool> isDiscoverable,
+      Value<int> rowid,
+    });
+typedef $$SharedVaultsTableUpdateCompanionBuilder =
+    SharedVaultsCompanion Function({
+      Value<String> id,
+      Value<String> name,
+      Value<String> encryptedVaultKey,
+      Value<DateTime> createdAt,
+      Value<DateTime> updatedAt,
+      Value<bool> isDiscoverable,
+      Value<int> rowid,
+    });
 
-final class $$SharedVaultsTableReferences extends BaseReferences<_$AppDatabase,
-    $SharedVaultsTable, SharedVaultEntity> {
+final class $$SharedVaultsTableReferences
+    extends
+        BaseReferences<_$AppDatabase, $SharedVaultsTable, SharedVaultEntity> {
   $$SharedVaultsTableReferences(super.$_db, super.$_table, super.$_typedResult);
 
   static MultiTypedResultKey<$VaultItemsTable, List<VaultItemEntity>>
-      _vaultItemsRefsTable(_$AppDatabase db) =>
-          MultiTypedResultKey.fromTable(db.vaultItems,
-              aliasName: $_aliasNameGenerator(
-                  db.sharedVaults.id, db.vaultItems.sharedVaultId));
+  _vaultItemsRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
+    db.vaultItems,
+    aliasName: $_aliasNameGenerator(
+      db.sharedVaults.id,
+      db.vaultItems.sharedVaultId,
+    ),
+  );
 
   $$VaultItemsTableProcessedTableManager get vaultItemsRefs {
-    final manager = $$VaultItemsTableTableManager($_db, $_db.vaultItems).filter(
-        (f) => f.sharedVaultId.id.sqlEquals($_itemColumn<String>('id')!));
+    final manager = $$VaultItemsTableTableManager(
+      $_db,
+      $_db.vaultItems,
+    ).filter((f) => f.sharedVaultId.id.sqlEquals($_itemColumn<String>('id')!));
 
     final cache = $_typedResult.readTableOrNull(_vaultItemsRefsTable($_db));
     return ProcessedTableManager(
-        manager.$state.copyWith(prefetchedData: cache));
+      manager.$state.copyWith(prefetchedData: cache),
+    );
   }
 
   static MultiTypedResultKey<$SharedMembersTable, List<SharedMemberEntity>>
-      _sharedMembersRefsTable(_$AppDatabase db) =>
-          MultiTypedResultKey.fromTable(db.sharedMembers,
-              aliasName: $_aliasNameGenerator(
-                  db.sharedVaults.id, db.sharedMembers.vaultId));
+  _sharedMembersRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
+    db.sharedMembers,
+    aliasName: $_aliasNameGenerator(
+      db.sharedVaults.id,
+      db.sharedMembers.vaultId,
+    ),
+  );
 
   $$SharedMembersTableProcessedTableManager get sharedMembersRefs {
-    final manager = $$SharedMembersTableTableManager($_db, $_db.sharedMembers)
-        .filter((f) => f.vaultId.id.sqlEquals($_itemColumn<String>('id')!));
+    final manager = $$SharedMembersTableTableManager(
+      $_db,
+      $_db.sharedMembers,
+    ).filter((f) => f.vaultId.id.sqlEquals($_itemColumn<String>('id')!));
 
     final cache = $_typedResult.readTableOrNull(_sharedMembersRefsTable($_db));
     return ProcessedTableManager(
-        manager.$state.copyWith(prefetchedData: cache));
+      manager.$state.copyWith(prefetchedData: cache),
+    );
   }
 }
 
@@ -2025,64 +2413,82 @@ class $$SharedVaultsTableFilterComposer
     super.$removeJoinBuilderFromRootComposer,
   });
   ColumnFilters<String> get id => $composableBuilder(
-      column: $table.id, builder: (column) => ColumnFilters(column));
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
 
   ColumnFilters<String> get name => $composableBuilder(
-      column: $table.name, builder: (column) => ColumnFilters(column));
+    column: $table.name,
+    builder: (column) => ColumnFilters(column),
+  );
 
   ColumnFilters<String> get encryptedVaultKey => $composableBuilder(
-      column: $table.encryptedVaultKey,
-      builder: (column) => ColumnFilters(column));
+    column: $table.encryptedVaultKey,
+    builder: (column) => ColumnFilters(column),
+  );
 
   ColumnFilters<DateTime> get createdAt => $composableBuilder(
-      column: $table.createdAt, builder: (column) => ColumnFilters(column));
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
 
   ColumnFilters<DateTime> get updatedAt => $composableBuilder(
-      column: $table.updatedAt, builder: (column) => ColumnFilters(column));
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
 
   ColumnFilters<bool> get isDiscoverable => $composableBuilder(
-      column: $table.isDiscoverable,
-      builder: (column) => ColumnFilters(column));
+    column: $table.isDiscoverable,
+    builder: (column) => ColumnFilters(column),
+  );
 
   Expression<bool> vaultItemsRefs(
-      Expression<bool> Function($$VaultItemsTableFilterComposer f) f) {
+    Expression<bool> Function($$VaultItemsTableFilterComposer f) f,
+  ) {
     final $$VaultItemsTableFilterComposer composer = $composerBuilder(
-        composer: this,
-        getCurrentColumn: (t) => t.id,
-        referencedTable: $db.vaultItems,
-        getReferencedColumn: (t) => t.sharedVaultId,
-        builder: (joinBuilder,
-                {$addJoinBuilderToRootComposer,
-                $removeJoinBuilderFromRootComposer}) =>
-            $$VaultItemsTableFilterComposer(
-              $db: $db,
-              $table: $db.vaultItems,
-              $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
-              joinBuilder: joinBuilder,
-              $removeJoinBuilderFromRootComposer:
-                  $removeJoinBuilderFromRootComposer,
-            ));
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.vaultItems,
+      getReferencedColumn: (t) => t.sharedVaultId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$VaultItemsTableFilterComposer(
+            $db: $db,
+            $table: $db.vaultItems,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
     return f(composer);
   }
 
   Expression<bool> sharedMembersRefs(
-      Expression<bool> Function($$SharedMembersTableFilterComposer f) f) {
+    Expression<bool> Function($$SharedMembersTableFilterComposer f) f,
+  ) {
     final $$SharedMembersTableFilterComposer composer = $composerBuilder(
-        composer: this,
-        getCurrentColumn: (t) => t.id,
-        referencedTable: $db.sharedMembers,
-        getReferencedColumn: (t) => t.vaultId,
-        builder: (joinBuilder,
-                {$addJoinBuilderToRootComposer,
-                $removeJoinBuilderFromRootComposer}) =>
-            $$SharedMembersTableFilterComposer(
-              $db: $db,
-              $table: $db.sharedMembers,
-              $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
-              joinBuilder: joinBuilder,
-              $removeJoinBuilderFromRootComposer:
-                  $removeJoinBuilderFromRootComposer,
-            ));
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.sharedMembers,
+      getReferencedColumn: (t) => t.vaultId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$SharedMembersTableFilterComposer(
+            $db: $db,
+            $table: $db.sharedMembers,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
     return f(composer);
   }
 }
@@ -2097,24 +2503,34 @@ class $$SharedVaultsTableOrderingComposer
     super.$removeJoinBuilderFromRootComposer,
   });
   ColumnOrderings<String> get id => $composableBuilder(
-      column: $table.id, builder: (column) => ColumnOrderings(column));
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
 
   ColumnOrderings<String> get name => $composableBuilder(
-      column: $table.name, builder: (column) => ColumnOrderings(column));
+    column: $table.name,
+    builder: (column) => ColumnOrderings(column),
+  );
 
   ColumnOrderings<String> get encryptedVaultKey => $composableBuilder(
-      column: $table.encryptedVaultKey,
-      builder: (column) => ColumnOrderings(column));
+    column: $table.encryptedVaultKey,
+    builder: (column) => ColumnOrderings(column),
+  );
 
   ColumnOrderings<DateTime> get createdAt => $composableBuilder(
-      column: $table.createdAt, builder: (column) => ColumnOrderings(column));
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
 
   ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
-      column: $table.updatedAt, builder: (column) => ColumnOrderings(column));
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
 
   ColumnOrderings<bool> get isDiscoverable => $composableBuilder(
-      column: $table.isDiscoverable,
-      builder: (column) => ColumnOrderings(column));
+    column: $table.isDiscoverable,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$SharedVaultsTableAnnotationComposer
@@ -2133,7 +2549,9 @@ class $$SharedVaultsTableAnnotationComposer
       $composableBuilder(column: $table.name, builder: (column) => column);
 
   GeneratedColumn<String> get encryptedVaultKey => $composableBuilder(
-      column: $table.encryptedVaultKey, builder: (column) => column);
+    column: $table.encryptedVaultKey,
+    builder: (column) => column,
+  );
 
   GeneratedColumn<DateTime> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
@@ -2142,65 +2560,79 @@ class $$SharedVaultsTableAnnotationComposer
       $composableBuilder(column: $table.updatedAt, builder: (column) => column);
 
   GeneratedColumn<bool> get isDiscoverable => $composableBuilder(
-      column: $table.isDiscoverable, builder: (column) => column);
+    column: $table.isDiscoverable,
+    builder: (column) => column,
+  );
 
   Expression<T> vaultItemsRefs<T extends Object>(
-      Expression<T> Function($$VaultItemsTableAnnotationComposer a) f) {
+    Expression<T> Function($$VaultItemsTableAnnotationComposer a) f,
+  ) {
     final $$VaultItemsTableAnnotationComposer composer = $composerBuilder(
-        composer: this,
-        getCurrentColumn: (t) => t.id,
-        referencedTable: $db.vaultItems,
-        getReferencedColumn: (t) => t.sharedVaultId,
-        builder: (joinBuilder,
-                {$addJoinBuilderToRootComposer,
-                $removeJoinBuilderFromRootComposer}) =>
-            $$VaultItemsTableAnnotationComposer(
-              $db: $db,
-              $table: $db.vaultItems,
-              $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
-              joinBuilder: joinBuilder,
-              $removeJoinBuilderFromRootComposer:
-                  $removeJoinBuilderFromRootComposer,
-            ));
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.vaultItems,
+      getReferencedColumn: (t) => t.sharedVaultId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$VaultItemsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.vaultItems,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
     return f(composer);
   }
 
   Expression<T> sharedMembersRefs<T extends Object>(
-      Expression<T> Function($$SharedMembersTableAnnotationComposer a) f) {
+    Expression<T> Function($$SharedMembersTableAnnotationComposer a) f,
+  ) {
     final $$SharedMembersTableAnnotationComposer composer = $composerBuilder(
-        composer: this,
-        getCurrentColumn: (t) => t.id,
-        referencedTable: $db.sharedMembers,
-        getReferencedColumn: (t) => t.vaultId,
-        builder: (joinBuilder,
-                {$addJoinBuilderToRootComposer,
-                $removeJoinBuilderFromRootComposer}) =>
-            $$SharedMembersTableAnnotationComposer(
-              $db: $db,
-              $table: $db.sharedMembers,
-              $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
-              joinBuilder: joinBuilder,
-              $removeJoinBuilderFromRootComposer:
-                  $removeJoinBuilderFromRootComposer,
-            ));
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.sharedMembers,
+      getReferencedColumn: (t) => t.vaultId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$SharedMembersTableAnnotationComposer(
+            $db: $db,
+            $table: $db.sharedMembers,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
     return f(composer);
   }
 }
 
-class $$SharedVaultsTableTableManager extends RootTableManager<
-    _$AppDatabase,
-    $SharedVaultsTable,
-    SharedVaultEntity,
-    $$SharedVaultsTableFilterComposer,
-    $$SharedVaultsTableOrderingComposer,
-    $$SharedVaultsTableAnnotationComposer,
-    $$SharedVaultsTableCreateCompanionBuilder,
-    $$SharedVaultsTableUpdateCompanionBuilder,
-    (SharedVaultEntity, $$SharedVaultsTableReferences),
-    SharedVaultEntity,
-    PrefetchHooks Function({bool vaultItemsRefs, bool sharedMembersRefs})> {
+class $$SharedVaultsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $SharedVaultsTable,
+          SharedVaultEntity,
+          $$SharedVaultsTableFilterComposer,
+          $$SharedVaultsTableOrderingComposer,
+          $$SharedVaultsTableAnnotationComposer,
+          $$SharedVaultsTableCreateCompanionBuilder,
+          $$SharedVaultsTableUpdateCompanionBuilder,
+          (SharedVaultEntity, $$SharedVaultsTableReferences),
+          SharedVaultEntity,
+          PrefetchHooks Function({bool vaultItemsRefs, bool sharedMembersRefs})
+        > {
   $$SharedVaultsTableTableManager(_$AppDatabase db, $SharedVaultsTable table)
-      : super(TableManagerState(
+    : super(
+        TableManagerState(
           db: db,
           table: table,
           createFilteringComposer: () =>
@@ -2209,182 +2641,209 @@ class $$SharedVaultsTableTableManager extends RootTableManager<
               $$SharedVaultsTableOrderingComposer($db: db, $table: table),
           createComputedFieldComposer: () =>
               $$SharedVaultsTableAnnotationComposer($db: db, $table: table),
-          updateCompanionCallback: ({
-            Value<String> id = const Value.absent(),
-            Value<String> name = const Value.absent(),
-            Value<String> encryptedVaultKey = const Value.absent(),
-            Value<DateTime> createdAt = const Value.absent(),
-            Value<DateTime> updatedAt = const Value.absent(),
-            Value<bool> isDiscoverable = const Value.absent(),
-            Value<int> rowid = const Value.absent(),
-          }) =>
-              SharedVaultsCompanion(
-            id: id,
-            name: name,
-            encryptedVaultKey: encryptedVaultKey,
-            createdAt: createdAt,
-            updatedAt: updatedAt,
-            isDiscoverable: isDiscoverable,
-            rowid: rowid,
-          ),
-          createCompanionCallback: ({
-            required String id,
-            required String name,
-            required String encryptedVaultKey,
-            Value<DateTime> createdAt = const Value.absent(),
-            Value<DateTime> updatedAt = const Value.absent(),
-            Value<bool> isDiscoverable = const Value.absent(),
-            Value<int> rowid = const Value.absent(),
-          }) =>
-              SharedVaultsCompanion.insert(
-            id: id,
-            name: name,
-            encryptedVaultKey: encryptedVaultKey,
-            createdAt: createdAt,
-            updatedAt: updatedAt,
-            isDiscoverable: isDiscoverable,
-            rowid: rowid,
-          ),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> name = const Value.absent(),
+                Value<String> encryptedVaultKey = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
+                Value<bool> isDiscoverable = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => SharedVaultsCompanion(
+                id: id,
+                name: name,
+                encryptedVaultKey: encryptedVaultKey,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+                isDiscoverable: isDiscoverable,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String name,
+                required String encryptedVaultKey,
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
+                Value<bool> isDiscoverable = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => SharedVaultsCompanion.insert(
+                id: id,
+                name: name,
+                encryptedVaultKey: encryptedVaultKey,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+                isDiscoverable: isDiscoverable,
+                rowid: rowid,
+              ),
           withReferenceMapper: (p0) => p0
-              .map((e) => (
-                    e.readTable(table),
-                    $$SharedVaultsTableReferences(db, table, e)
-                  ))
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$SharedVaultsTableReferences(db, table, e),
+                ),
+              )
               .toList(),
-          prefetchHooksCallback: (
-              {vaultItemsRefs = false, sharedMembersRefs = false}) {
-            return PrefetchHooks(
-              db: db,
-              explicitlyWatchedTables: [
-                if (vaultItemsRefs) db.vaultItems,
-                if (sharedMembersRefs) db.sharedMembers
-              ],
-              addJoins: null,
-              getPrefetchedDataCallback: (items) async {
-                return [
-                  if (vaultItemsRefs)
-                    await $_getPrefetchedData<SharedVaultEntity,
-                            $SharedVaultsTable, VaultItemEntity>(
-                        currentTable: table,
-                        referencedTable: $$SharedVaultsTableReferences
-                            ._vaultItemsRefsTable(db),
-                        managerFromTypedResult: (p0) =>
-                            $$SharedVaultsTableReferences(db, table, p0)
-                                .vaultItemsRefs,
-                        referencedItemsForCurrentItem:
-                            (item, referencedItems) => referencedItems
-                                .where((e) => e.sharedVaultId == item.id),
-                        typedResults: items),
-                  if (sharedMembersRefs)
-                    await $_getPrefetchedData<SharedVaultEntity,
-                            $SharedVaultsTable, SharedMemberEntity>(
-                        currentTable: table,
-                        referencedTable: $$SharedVaultsTableReferences
-                            ._sharedMembersRefsTable(db),
-                        managerFromTypedResult: (p0) =>
-                            $$SharedVaultsTableReferences(db, table, p0)
-                                .sharedMembersRefs,
-                        referencedItemsForCurrentItem: (item,
-                                referencedItems) =>
-                            referencedItems.where((e) => e.vaultId == item.id),
-                        typedResults: items)
-                ];
+          prefetchHooksCallback:
+              ({vaultItemsRefs = false, sharedMembersRefs = false}) {
+                return PrefetchHooks(
+                  db: db,
+                  explicitlyWatchedTables: [
+                    if (vaultItemsRefs) db.vaultItems,
+                    if (sharedMembersRefs) db.sharedMembers,
+                  ],
+                  addJoins: null,
+                  getPrefetchedDataCallback: (items) async {
+                    return [
+                      if (vaultItemsRefs)
+                        await $_getPrefetchedData<
+                          SharedVaultEntity,
+                          $SharedVaultsTable,
+                          VaultItemEntity
+                        >(
+                          currentTable: table,
+                          referencedTable: $$SharedVaultsTableReferences
+                              ._vaultItemsRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$SharedVaultsTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).vaultItemsRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.sharedVaultId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
+                      if (sharedMembersRefs)
+                        await $_getPrefetchedData<
+                          SharedVaultEntity,
+                          $SharedVaultsTable,
+                          SharedMemberEntity
+                        >(
+                          currentTable: table,
+                          referencedTable: $$SharedVaultsTableReferences
+                              ._sharedMembersRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$SharedVaultsTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).sharedMembersRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.vaultId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
+                    ];
+                  },
+                );
               },
-            );
-          },
-        ));
+        ),
+      );
 }
 
-typedef $$SharedVaultsTableProcessedTableManager = ProcessedTableManager<
-    _$AppDatabase,
-    $SharedVaultsTable,
-    SharedVaultEntity,
-    $$SharedVaultsTableFilterComposer,
-    $$SharedVaultsTableOrderingComposer,
-    $$SharedVaultsTableAnnotationComposer,
-    $$SharedVaultsTableCreateCompanionBuilder,
-    $$SharedVaultsTableUpdateCompanionBuilder,
-    (SharedVaultEntity, $$SharedVaultsTableReferences),
-    SharedVaultEntity,
-    PrefetchHooks Function({bool vaultItemsRefs, bool sharedMembersRefs})>;
-typedef $$VaultItemsTableCreateCompanionBuilder = VaultItemsCompanion Function({
-  required String id,
-  required int type,
-  required String title,
-  required String username,
-  Value<String?> secret,
-  Value<String?> password,
-  Value<String?> mnemonic,
-  Value<String?> privateKey,
-  Value<String?> address,
-  Value<String?> network,
-  Value<int> period,
-  Value<bool> isFavorite,
-  Value<String?> url,
-  Value<String?> note,
-  Value<String?> category,
-  Value<String?> email,
-  Value<DateTime> updatedAt,
-  Value<String?> passwordHistory,
-  Value<DateTime?> passwordLastChanged,
-  Value<int?> passwordDuration,
-  Value<String?> accounts,
-  Value<bool> isDeleted,
-  Value<DateTime?> deletedAt,
-  Value<String?> tags,
-  Value<String?> sharedVaultId,
-  Value<bool> isPinned,
-  Value<String?> colorLabel,
-  Value<int> rowid,
-});
-typedef $$VaultItemsTableUpdateCompanionBuilder = VaultItemsCompanion Function({
-  Value<String> id,
-  Value<int> type,
-  Value<String> title,
-  Value<String> username,
-  Value<String?> secret,
-  Value<String?> password,
-  Value<String?> mnemonic,
-  Value<String?> privateKey,
-  Value<String?> address,
-  Value<String?> network,
-  Value<int> period,
-  Value<bool> isFavorite,
-  Value<String?> url,
-  Value<String?> note,
-  Value<String?> category,
-  Value<String?> email,
-  Value<DateTime> updatedAt,
-  Value<String?> passwordHistory,
-  Value<DateTime?> passwordLastChanged,
-  Value<int?> passwordDuration,
-  Value<String?> accounts,
-  Value<bool> isDeleted,
-  Value<DateTime?> deletedAt,
-  Value<String?> tags,
-  Value<String?> sharedVaultId,
-  Value<bool> isPinned,
-  Value<String?> colorLabel,
-  Value<int> rowid,
-});
+typedef $$SharedVaultsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $SharedVaultsTable,
+      SharedVaultEntity,
+      $$SharedVaultsTableFilterComposer,
+      $$SharedVaultsTableOrderingComposer,
+      $$SharedVaultsTableAnnotationComposer,
+      $$SharedVaultsTableCreateCompanionBuilder,
+      $$SharedVaultsTableUpdateCompanionBuilder,
+      (SharedVaultEntity, $$SharedVaultsTableReferences),
+      SharedVaultEntity,
+      PrefetchHooks Function({bool vaultItemsRefs, bool sharedMembersRefs})
+    >;
+typedef $$VaultItemsTableCreateCompanionBuilder =
+    VaultItemsCompanion Function({
+      required String id,
+      required int type,
+      required String title,
+      required String username,
+      Value<String?> secret,
+      Value<String?> password,
+      Value<String?> mnemonic,
+      Value<String?> privateKey,
+      Value<String?> address,
+      Value<String?> network,
+      Value<int> period,
+      Value<bool> isFavorite,
+      Value<String?> url,
+      Value<String?> note,
+      Value<String?> category,
+      Value<String?> email,
+      Value<DateTime> updatedAt,
+      Value<String?> passwordHistory,
+      Value<DateTime?> passwordLastChanged,
+      Value<int?> passwordDuration,
+      Value<String?> accounts,
+      Value<bool> isDeleted,
+      Value<DateTime?> deletedAt,
+      Value<String?> tags,
+      Value<String?> sharedVaultId,
+      Value<bool> isPinned,
+      Value<String?> colorLabel,
+      Value<int> rowid,
+    });
+typedef $$VaultItemsTableUpdateCompanionBuilder =
+    VaultItemsCompanion Function({
+      Value<String> id,
+      Value<int> type,
+      Value<String> title,
+      Value<String> username,
+      Value<String?> secret,
+      Value<String?> password,
+      Value<String?> mnemonic,
+      Value<String?> privateKey,
+      Value<String?> address,
+      Value<String?> network,
+      Value<int> period,
+      Value<bool> isFavorite,
+      Value<String?> url,
+      Value<String?> note,
+      Value<String?> category,
+      Value<String?> email,
+      Value<DateTime> updatedAt,
+      Value<String?> passwordHistory,
+      Value<DateTime?> passwordLastChanged,
+      Value<int?> passwordDuration,
+      Value<String?> accounts,
+      Value<bool> isDeleted,
+      Value<DateTime?> deletedAt,
+      Value<String?> tags,
+      Value<String?> sharedVaultId,
+      Value<bool> isPinned,
+      Value<String?> colorLabel,
+      Value<int> rowid,
+    });
 
 final class $$VaultItemsTableReferences
     extends BaseReferences<_$AppDatabase, $VaultItemsTable, VaultItemEntity> {
   $$VaultItemsTableReferences(super.$_db, super.$_table, super.$_typedResult);
 
   static $SharedVaultsTable _sharedVaultIdTable(_$AppDatabase db) =>
-      db.sharedVaults.createAlias($_aliasNameGenerator(
-          db.vaultItems.sharedVaultId, db.sharedVaults.id));
+      db.sharedVaults.createAlias(
+        $_aliasNameGenerator(db.vaultItems.sharedVaultId, db.sharedVaults.id),
+      );
 
   $$SharedVaultsTableProcessedTableManager? get sharedVaultId {
     final $_column = $_itemColumn<String>('shared_vault_id');
     if ($_column == null) return null;
-    final manager = $$SharedVaultsTableTableManager($_db, $_db.sharedVaults)
-        .filter((f) => f.id.sqlEquals($_column));
+    final manager = $$SharedVaultsTableTableManager(
+      $_db,
+      $_db.sharedVaults,
+    ).filter((f) => f.id.sqlEquals($_column));
     final item = $_typedResult.readTableOrNull(_sharedVaultIdTable($_db));
     if (item == null) return manager;
     return ProcessedTableManager(
-        manager.$state.copyWith(prefetchedData: [item]));
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
   }
 }
 
@@ -2398,103 +2857,155 @@ class $$VaultItemsTableFilterComposer
     super.$removeJoinBuilderFromRootComposer,
   });
   ColumnFilters<String> get id => $composableBuilder(
-      column: $table.id, builder: (column) => ColumnFilters(column));
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
 
   ColumnFilters<int> get type => $composableBuilder(
-      column: $table.type, builder: (column) => ColumnFilters(column));
+    column: $table.type,
+    builder: (column) => ColumnFilters(column),
+  );
 
   ColumnFilters<String> get title => $composableBuilder(
-      column: $table.title, builder: (column) => ColumnFilters(column));
+    column: $table.title,
+    builder: (column) => ColumnFilters(column),
+  );
 
   ColumnFilters<String> get username => $composableBuilder(
-      column: $table.username, builder: (column) => ColumnFilters(column));
+    column: $table.username,
+    builder: (column) => ColumnFilters(column),
+  );
 
   ColumnFilters<String> get secret => $composableBuilder(
-      column: $table.secret, builder: (column) => ColumnFilters(column));
+    column: $table.secret,
+    builder: (column) => ColumnFilters(column),
+  );
 
   ColumnFilters<String> get password => $composableBuilder(
-      column: $table.password, builder: (column) => ColumnFilters(column));
+    column: $table.password,
+    builder: (column) => ColumnFilters(column),
+  );
 
   ColumnFilters<String> get mnemonic => $composableBuilder(
-      column: $table.mnemonic, builder: (column) => ColumnFilters(column));
+    column: $table.mnemonic,
+    builder: (column) => ColumnFilters(column),
+  );
 
   ColumnFilters<String> get privateKey => $composableBuilder(
-      column: $table.privateKey, builder: (column) => ColumnFilters(column));
+    column: $table.privateKey,
+    builder: (column) => ColumnFilters(column),
+  );
 
   ColumnFilters<String> get address => $composableBuilder(
-      column: $table.address, builder: (column) => ColumnFilters(column));
+    column: $table.address,
+    builder: (column) => ColumnFilters(column),
+  );
 
   ColumnFilters<String> get network => $composableBuilder(
-      column: $table.network, builder: (column) => ColumnFilters(column));
+    column: $table.network,
+    builder: (column) => ColumnFilters(column),
+  );
 
   ColumnFilters<int> get period => $composableBuilder(
-      column: $table.period, builder: (column) => ColumnFilters(column));
+    column: $table.period,
+    builder: (column) => ColumnFilters(column),
+  );
 
   ColumnFilters<bool> get isFavorite => $composableBuilder(
-      column: $table.isFavorite, builder: (column) => ColumnFilters(column));
+    column: $table.isFavorite,
+    builder: (column) => ColumnFilters(column),
+  );
 
   ColumnFilters<String> get url => $composableBuilder(
-      column: $table.url, builder: (column) => ColumnFilters(column));
+    column: $table.url,
+    builder: (column) => ColumnFilters(column),
+  );
 
   ColumnFilters<String> get note => $composableBuilder(
-      column: $table.note, builder: (column) => ColumnFilters(column));
+    column: $table.note,
+    builder: (column) => ColumnFilters(column),
+  );
 
   ColumnFilters<String> get category => $composableBuilder(
-      column: $table.category, builder: (column) => ColumnFilters(column));
+    column: $table.category,
+    builder: (column) => ColumnFilters(column),
+  );
 
   ColumnFilters<String> get email => $composableBuilder(
-      column: $table.email, builder: (column) => ColumnFilters(column));
+    column: $table.email,
+    builder: (column) => ColumnFilters(column),
+  );
 
   ColumnFilters<DateTime> get updatedAt => $composableBuilder(
-      column: $table.updatedAt, builder: (column) => ColumnFilters(column));
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
 
   ColumnFilters<String> get passwordHistory => $composableBuilder(
-      column: $table.passwordHistory,
-      builder: (column) => ColumnFilters(column));
+    column: $table.passwordHistory,
+    builder: (column) => ColumnFilters(column),
+  );
 
   ColumnFilters<DateTime> get passwordLastChanged => $composableBuilder(
-      column: $table.passwordLastChanged,
-      builder: (column) => ColumnFilters(column));
+    column: $table.passwordLastChanged,
+    builder: (column) => ColumnFilters(column),
+  );
 
   ColumnFilters<int> get passwordDuration => $composableBuilder(
-      column: $table.passwordDuration,
-      builder: (column) => ColumnFilters(column));
+    column: $table.passwordDuration,
+    builder: (column) => ColumnFilters(column),
+  );
 
   ColumnFilters<String> get accounts => $composableBuilder(
-      column: $table.accounts, builder: (column) => ColumnFilters(column));
+    column: $table.accounts,
+    builder: (column) => ColumnFilters(column),
+  );
 
   ColumnFilters<bool> get isDeleted => $composableBuilder(
-      column: $table.isDeleted, builder: (column) => ColumnFilters(column));
+    column: $table.isDeleted,
+    builder: (column) => ColumnFilters(column),
+  );
 
   ColumnFilters<DateTime> get deletedAt => $composableBuilder(
-      column: $table.deletedAt, builder: (column) => ColumnFilters(column));
+    column: $table.deletedAt,
+    builder: (column) => ColumnFilters(column),
+  );
 
   ColumnFilters<String> get tags => $composableBuilder(
-      column: $table.tags, builder: (column) => ColumnFilters(column));
+    column: $table.tags,
+    builder: (column) => ColumnFilters(column),
+  );
 
   ColumnFilters<bool> get isPinned => $composableBuilder(
-      column: $table.isPinned, builder: (column) => ColumnFilters(column));
+    column: $table.isPinned,
+    builder: (column) => ColumnFilters(column),
+  );
 
   ColumnFilters<String> get colorLabel => $composableBuilder(
-      column: $table.colorLabel, builder: (column) => ColumnFilters(column));
+    column: $table.colorLabel,
+    builder: (column) => ColumnFilters(column),
+  );
 
   $$SharedVaultsTableFilterComposer get sharedVaultId {
     final $$SharedVaultsTableFilterComposer composer = $composerBuilder(
-        composer: this,
-        getCurrentColumn: (t) => t.sharedVaultId,
-        referencedTable: $db.sharedVaults,
-        getReferencedColumn: (t) => t.id,
-        builder: (joinBuilder,
-                {$addJoinBuilderToRootComposer,
-                $removeJoinBuilderFromRootComposer}) =>
-            $$SharedVaultsTableFilterComposer(
-              $db: $db,
-              $table: $db.sharedVaults,
-              $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
-              joinBuilder: joinBuilder,
-              $removeJoinBuilderFromRootComposer:
-                  $removeJoinBuilderFromRootComposer,
-            ));
+      composer: this,
+      getCurrentColumn: (t) => t.sharedVaultId,
+      referencedTable: $db.sharedVaults,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$SharedVaultsTableFilterComposer(
+            $db: $db,
+            $table: $db.sharedVaults,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
     return composer;
   }
 }
@@ -2509,103 +3020,155 @@ class $$VaultItemsTableOrderingComposer
     super.$removeJoinBuilderFromRootComposer,
   });
   ColumnOrderings<String> get id => $composableBuilder(
-      column: $table.id, builder: (column) => ColumnOrderings(column));
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
 
   ColumnOrderings<int> get type => $composableBuilder(
-      column: $table.type, builder: (column) => ColumnOrderings(column));
+    column: $table.type,
+    builder: (column) => ColumnOrderings(column),
+  );
 
   ColumnOrderings<String> get title => $composableBuilder(
-      column: $table.title, builder: (column) => ColumnOrderings(column));
+    column: $table.title,
+    builder: (column) => ColumnOrderings(column),
+  );
 
   ColumnOrderings<String> get username => $composableBuilder(
-      column: $table.username, builder: (column) => ColumnOrderings(column));
+    column: $table.username,
+    builder: (column) => ColumnOrderings(column),
+  );
 
   ColumnOrderings<String> get secret => $composableBuilder(
-      column: $table.secret, builder: (column) => ColumnOrderings(column));
+    column: $table.secret,
+    builder: (column) => ColumnOrderings(column),
+  );
 
   ColumnOrderings<String> get password => $composableBuilder(
-      column: $table.password, builder: (column) => ColumnOrderings(column));
+    column: $table.password,
+    builder: (column) => ColumnOrderings(column),
+  );
 
   ColumnOrderings<String> get mnemonic => $composableBuilder(
-      column: $table.mnemonic, builder: (column) => ColumnOrderings(column));
+    column: $table.mnemonic,
+    builder: (column) => ColumnOrderings(column),
+  );
 
   ColumnOrderings<String> get privateKey => $composableBuilder(
-      column: $table.privateKey, builder: (column) => ColumnOrderings(column));
+    column: $table.privateKey,
+    builder: (column) => ColumnOrderings(column),
+  );
 
   ColumnOrderings<String> get address => $composableBuilder(
-      column: $table.address, builder: (column) => ColumnOrderings(column));
+    column: $table.address,
+    builder: (column) => ColumnOrderings(column),
+  );
 
   ColumnOrderings<String> get network => $composableBuilder(
-      column: $table.network, builder: (column) => ColumnOrderings(column));
+    column: $table.network,
+    builder: (column) => ColumnOrderings(column),
+  );
 
   ColumnOrderings<int> get period => $composableBuilder(
-      column: $table.period, builder: (column) => ColumnOrderings(column));
+    column: $table.period,
+    builder: (column) => ColumnOrderings(column),
+  );
 
   ColumnOrderings<bool> get isFavorite => $composableBuilder(
-      column: $table.isFavorite, builder: (column) => ColumnOrderings(column));
+    column: $table.isFavorite,
+    builder: (column) => ColumnOrderings(column),
+  );
 
   ColumnOrderings<String> get url => $composableBuilder(
-      column: $table.url, builder: (column) => ColumnOrderings(column));
+    column: $table.url,
+    builder: (column) => ColumnOrderings(column),
+  );
 
   ColumnOrderings<String> get note => $composableBuilder(
-      column: $table.note, builder: (column) => ColumnOrderings(column));
+    column: $table.note,
+    builder: (column) => ColumnOrderings(column),
+  );
 
   ColumnOrderings<String> get category => $composableBuilder(
-      column: $table.category, builder: (column) => ColumnOrderings(column));
+    column: $table.category,
+    builder: (column) => ColumnOrderings(column),
+  );
 
   ColumnOrderings<String> get email => $composableBuilder(
-      column: $table.email, builder: (column) => ColumnOrderings(column));
+    column: $table.email,
+    builder: (column) => ColumnOrderings(column),
+  );
 
   ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
-      column: $table.updatedAt, builder: (column) => ColumnOrderings(column));
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
 
   ColumnOrderings<String> get passwordHistory => $composableBuilder(
-      column: $table.passwordHistory,
-      builder: (column) => ColumnOrderings(column));
+    column: $table.passwordHistory,
+    builder: (column) => ColumnOrderings(column),
+  );
 
   ColumnOrderings<DateTime> get passwordLastChanged => $composableBuilder(
-      column: $table.passwordLastChanged,
-      builder: (column) => ColumnOrderings(column));
+    column: $table.passwordLastChanged,
+    builder: (column) => ColumnOrderings(column),
+  );
 
   ColumnOrderings<int> get passwordDuration => $composableBuilder(
-      column: $table.passwordDuration,
-      builder: (column) => ColumnOrderings(column));
+    column: $table.passwordDuration,
+    builder: (column) => ColumnOrderings(column),
+  );
 
   ColumnOrderings<String> get accounts => $composableBuilder(
-      column: $table.accounts, builder: (column) => ColumnOrderings(column));
+    column: $table.accounts,
+    builder: (column) => ColumnOrderings(column),
+  );
 
   ColumnOrderings<bool> get isDeleted => $composableBuilder(
-      column: $table.isDeleted, builder: (column) => ColumnOrderings(column));
+    column: $table.isDeleted,
+    builder: (column) => ColumnOrderings(column),
+  );
 
   ColumnOrderings<DateTime> get deletedAt => $composableBuilder(
-      column: $table.deletedAt, builder: (column) => ColumnOrderings(column));
+    column: $table.deletedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
 
   ColumnOrderings<String> get tags => $composableBuilder(
-      column: $table.tags, builder: (column) => ColumnOrderings(column));
+    column: $table.tags,
+    builder: (column) => ColumnOrderings(column),
+  );
 
   ColumnOrderings<bool> get isPinned => $composableBuilder(
-      column: $table.isPinned, builder: (column) => ColumnOrderings(column));
+    column: $table.isPinned,
+    builder: (column) => ColumnOrderings(column),
+  );
 
   ColumnOrderings<String> get colorLabel => $composableBuilder(
-      column: $table.colorLabel, builder: (column) => ColumnOrderings(column));
+    column: $table.colorLabel,
+    builder: (column) => ColumnOrderings(column),
+  );
 
   $$SharedVaultsTableOrderingComposer get sharedVaultId {
     final $$SharedVaultsTableOrderingComposer composer = $composerBuilder(
-        composer: this,
-        getCurrentColumn: (t) => t.sharedVaultId,
-        referencedTable: $db.sharedVaults,
-        getReferencedColumn: (t) => t.id,
-        builder: (joinBuilder,
-                {$addJoinBuilderToRootComposer,
-                $removeJoinBuilderFromRootComposer}) =>
-            $$SharedVaultsTableOrderingComposer(
-              $db: $db,
-              $table: $db.sharedVaults,
-              $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
-              joinBuilder: joinBuilder,
-              $removeJoinBuilderFromRootComposer:
-                  $removeJoinBuilderFromRootComposer,
-            ));
+      composer: this,
+      getCurrentColumn: (t) => t.sharedVaultId,
+      referencedTable: $db.sharedVaults,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$SharedVaultsTableOrderingComposer(
+            $db: $db,
+            $table: $db.sharedVaults,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
     return composer;
   }
 }
@@ -2641,7 +3204,9 @@ class $$VaultItemsTableAnnotationComposer
       $composableBuilder(column: $table.mnemonic, builder: (column) => column);
 
   GeneratedColumn<String> get privateKey => $composableBuilder(
-      column: $table.privateKey, builder: (column) => column);
+    column: $table.privateKey,
+    builder: (column) => column,
+  );
 
   GeneratedColumn<String> get address =>
       $composableBuilder(column: $table.address, builder: (column) => column);
@@ -2653,7 +3218,9 @@ class $$VaultItemsTableAnnotationComposer
       $composableBuilder(column: $table.period, builder: (column) => column);
 
   GeneratedColumn<bool> get isFavorite => $composableBuilder(
-      column: $table.isFavorite, builder: (column) => column);
+    column: $table.isFavorite,
+    builder: (column) => column,
+  );
 
   GeneratedColumn<String> get url =>
       $composableBuilder(column: $table.url, builder: (column) => column);
@@ -2671,13 +3238,19 @@ class $$VaultItemsTableAnnotationComposer
       $composableBuilder(column: $table.updatedAt, builder: (column) => column);
 
   GeneratedColumn<String> get passwordHistory => $composableBuilder(
-      column: $table.passwordHistory, builder: (column) => column);
+    column: $table.passwordHistory,
+    builder: (column) => column,
+  );
 
   GeneratedColumn<DateTime> get passwordLastChanged => $composableBuilder(
-      column: $table.passwordLastChanged, builder: (column) => column);
+    column: $table.passwordLastChanged,
+    builder: (column) => column,
+  );
 
   GeneratedColumn<int> get passwordDuration => $composableBuilder(
-      column: $table.passwordDuration, builder: (column) => column);
+    column: $table.passwordDuration,
+    builder: (column) => column,
+  );
 
   GeneratedColumn<String> get accounts =>
       $composableBuilder(column: $table.accounts, builder: (column) => column);
@@ -2695,43 +3268,52 @@ class $$VaultItemsTableAnnotationComposer
       $composableBuilder(column: $table.isPinned, builder: (column) => column);
 
   GeneratedColumn<String> get colorLabel => $composableBuilder(
-      column: $table.colorLabel, builder: (column) => column);
+    column: $table.colorLabel,
+    builder: (column) => column,
+  );
 
   $$SharedVaultsTableAnnotationComposer get sharedVaultId {
     final $$SharedVaultsTableAnnotationComposer composer = $composerBuilder(
-        composer: this,
-        getCurrentColumn: (t) => t.sharedVaultId,
-        referencedTable: $db.sharedVaults,
-        getReferencedColumn: (t) => t.id,
-        builder: (joinBuilder,
-                {$addJoinBuilderToRootComposer,
-                $removeJoinBuilderFromRootComposer}) =>
-            $$SharedVaultsTableAnnotationComposer(
-              $db: $db,
-              $table: $db.sharedVaults,
-              $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
-              joinBuilder: joinBuilder,
-              $removeJoinBuilderFromRootComposer:
-                  $removeJoinBuilderFromRootComposer,
-            ));
+      composer: this,
+      getCurrentColumn: (t) => t.sharedVaultId,
+      referencedTable: $db.sharedVaults,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$SharedVaultsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.sharedVaults,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
     return composer;
   }
 }
 
-class $$VaultItemsTableTableManager extends RootTableManager<
-    _$AppDatabase,
-    $VaultItemsTable,
-    VaultItemEntity,
-    $$VaultItemsTableFilterComposer,
-    $$VaultItemsTableOrderingComposer,
-    $$VaultItemsTableAnnotationComposer,
-    $$VaultItemsTableCreateCompanionBuilder,
-    $$VaultItemsTableUpdateCompanionBuilder,
-    (VaultItemEntity, $$VaultItemsTableReferences),
-    VaultItemEntity,
-    PrefetchHooks Function({bool sharedVaultId})> {
+class $$VaultItemsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $VaultItemsTable,
+          VaultItemEntity,
+          $$VaultItemsTableFilterComposer,
+          $$VaultItemsTableOrderingComposer,
+          $$VaultItemsTableAnnotationComposer,
+          $$VaultItemsTableCreateCompanionBuilder,
+          $$VaultItemsTableUpdateCompanionBuilder,
+          (VaultItemEntity, $$VaultItemsTableReferences),
+          VaultItemEntity,
+          PrefetchHooks Function({bool sharedVaultId})
+        > {
   $$VaultItemsTableTableManager(_$AppDatabase db, $VaultItemsTable table)
-      : super(TableManagerState(
+    : super(
+        TableManagerState(
           db: db,
           table: table,
           createFilteringComposer: () =>
@@ -2740,138 +3322,141 @@ class $$VaultItemsTableTableManager extends RootTableManager<
               $$VaultItemsTableOrderingComposer($db: db, $table: table),
           createComputedFieldComposer: () =>
               $$VaultItemsTableAnnotationComposer($db: db, $table: table),
-          updateCompanionCallback: ({
-            Value<String> id = const Value.absent(),
-            Value<int> type = const Value.absent(),
-            Value<String> title = const Value.absent(),
-            Value<String> username = const Value.absent(),
-            Value<String?> secret = const Value.absent(),
-            Value<String?> password = const Value.absent(),
-            Value<String?> mnemonic = const Value.absent(),
-            Value<String?> privateKey = const Value.absent(),
-            Value<String?> address = const Value.absent(),
-            Value<String?> network = const Value.absent(),
-            Value<int> period = const Value.absent(),
-            Value<bool> isFavorite = const Value.absent(),
-            Value<String?> url = const Value.absent(),
-            Value<String?> note = const Value.absent(),
-            Value<String?> category = const Value.absent(),
-            Value<String?> email = const Value.absent(),
-            Value<DateTime> updatedAt = const Value.absent(),
-            Value<String?> passwordHistory = const Value.absent(),
-            Value<DateTime?> passwordLastChanged = const Value.absent(),
-            Value<int?> passwordDuration = const Value.absent(),
-            Value<String?> accounts = const Value.absent(),
-            Value<bool> isDeleted = const Value.absent(),
-            Value<DateTime?> deletedAt = const Value.absent(),
-            Value<String?> tags = const Value.absent(),
-            Value<String?> sharedVaultId = const Value.absent(),
-            Value<bool> isPinned = const Value.absent(),
-            Value<String?> colorLabel = const Value.absent(),
-            Value<int> rowid = const Value.absent(),
-          }) =>
-              VaultItemsCompanion(
-            id: id,
-            type: type,
-            title: title,
-            username: username,
-            secret: secret,
-            password: password,
-            mnemonic: mnemonic,
-            privateKey: privateKey,
-            address: address,
-            network: network,
-            period: period,
-            isFavorite: isFavorite,
-            url: url,
-            note: note,
-            category: category,
-            email: email,
-            updatedAt: updatedAt,
-            passwordHistory: passwordHistory,
-            passwordLastChanged: passwordLastChanged,
-            passwordDuration: passwordDuration,
-            accounts: accounts,
-            isDeleted: isDeleted,
-            deletedAt: deletedAt,
-            tags: tags,
-            sharedVaultId: sharedVaultId,
-            isPinned: isPinned,
-            colorLabel: colorLabel,
-            rowid: rowid,
-          ),
-          createCompanionCallback: ({
-            required String id,
-            required int type,
-            required String title,
-            required String username,
-            Value<String?> secret = const Value.absent(),
-            Value<String?> password = const Value.absent(),
-            Value<String?> mnemonic = const Value.absent(),
-            Value<String?> privateKey = const Value.absent(),
-            Value<String?> address = const Value.absent(),
-            Value<String?> network = const Value.absent(),
-            Value<int> period = const Value.absent(),
-            Value<bool> isFavorite = const Value.absent(),
-            Value<String?> url = const Value.absent(),
-            Value<String?> note = const Value.absent(),
-            Value<String?> category = const Value.absent(),
-            Value<String?> email = const Value.absent(),
-            Value<DateTime> updatedAt = const Value.absent(),
-            Value<String?> passwordHistory = const Value.absent(),
-            Value<DateTime?> passwordLastChanged = const Value.absent(),
-            Value<int?> passwordDuration = const Value.absent(),
-            Value<String?> accounts = const Value.absent(),
-            Value<bool> isDeleted = const Value.absent(),
-            Value<DateTime?> deletedAt = const Value.absent(),
-            Value<String?> tags = const Value.absent(),
-            Value<String?> sharedVaultId = const Value.absent(),
-            Value<bool> isPinned = const Value.absent(),
-            Value<String?> colorLabel = const Value.absent(),
-            Value<int> rowid = const Value.absent(),
-          }) =>
-              VaultItemsCompanion.insert(
-            id: id,
-            type: type,
-            title: title,
-            username: username,
-            secret: secret,
-            password: password,
-            mnemonic: mnemonic,
-            privateKey: privateKey,
-            address: address,
-            network: network,
-            period: period,
-            isFavorite: isFavorite,
-            url: url,
-            note: note,
-            category: category,
-            email: email,
-            updatedAt: updatedAt,
-            passwordHistory: passwordHistory,
-            passwordLastChanged: passwordLastChanged,
-            passwordDuration: passwordDuration,
-            accounts: accounts,
-            isDeleted: isDeleted,
-            deletedAt: deletedAt,
-            tags: tags,
-            sharedVaultId: sharedVaultId,
-            isPinned: isPinned,
-            colorLabel: colorLabel,
-            rowid: rowid,
-          ),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<int> type = const Value.absent(),
+                Value<String> title = const Value.absent(),
+                Value<String> username = const Value.absent(),
+                Value<String?> secret = const Value.absent(),
+                Value<String?> password = const Value.absent(),
+                Value<String?> mnemonic = const Value.absent(),
+                Value<String?> privateKey = const Value.absent(),
+                Value<String?> address = const Value.absent(),
+                Value<String?> network = const Value.absent(),
+                Value<int> period = const Value.absent(),
+                Value<bool> isFavorite = const Value.absent(),
+                Value<String?> url = const Value.absent(),
+                Value<String?> note = const Value.absent(),
+                Value<String?> category = const Value.absent(),
+                Value<String?> email = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
+                Value<String?> passwordHistory = const Value.absent(),
+                Value<DateTime?> passwordLastChanged = const Value.absent(),
+                Value<int?> passwordDuration = const Value.absent(),
+                Value<String?> accounts = const Value.absent(),
+                Value<bool> isDeleted = const Value.absent(),
+                Value<DateTime?> deletedAt = const Value.absent(),
+                Value<String?> tags = const Value.absent(),
+                Value<String?> sharedVaultId = const Value.absent(),
+                Value<bool> isPinned = const Value.absent(),
+                Value<String?> colorLabel = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => VaultItemsCompanion(
+                id: id,
+                type: type,
+                title: title,
+                username: username,
+                secret: secret,
+                password: password,
+                mnemonic: mnemonic,
+                privateKey: privateKey,
+                address: address,
+                network: network,
+                period: period,
+                isFavorite: isFavorite,
+                url: url,
+                note: note,
+                category: category,
+                email: email,
+                updatedAt: updatedAt,
+                passwordHistory: passwordHistory,
+                passwordLastChanged: passwordLastChanged,
+                passwordDuration: passwordDuration,
+                accounts: accounts,
+                isDeleted: isDeleted,
+                deletedAt: deletedAt,
+                tags: tags,
+                sharedVaultId: sharedVaultId,
+                isPinned: isPinned,
+                colorLabel: colorLabel,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required int type,
+                required String title,
+                required String username,
+                Value<String?> secret = const Value.absent(),
+                Value<String?> password = const Value.absent(),
+                Value<String?> mnemonic = const Value.absent(),
+                Value<String?> privateKey = const Value.absent(),
+                Value<String?> address = const Value.absent(),
+                Value<String?> network = const Value.absent(),
+                Value<int> period = const Value.absent(),
+                Value<bool> isFavorite = const Value.absent(),
+                Value<String?> url = const Value.absent(),
+                Value<String?> note = const Value.absent(),
+                Value<String?> category = const Value.absent(),
+                Value<String?> email = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
+                Value<String?> passwordHistory = const Value.absent(),
+                Value<DateTime?> passwordLastChanged = const Value.absent(),
+                Value<int?> passwordDuration = const Value.absent(),
+                Value<String?> accounts = const Value.absent(),
+                Value<bool> isDeleted = const Value.absent(),
+                Value<DateTime?> deletedAt = const Value.absent(),
+                Value<String?> tags = const Value.absent(),
+                Value<String?> sharedVaultId = const Value.absent(),
+                Value<bool> isPinned = const Value.absent(),
+                Value<String?> colorLabel = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => VaultItemsCompanion.insert(
+                id: id,
+                type: type,
+                title: title,
+                username: username,
+                secret: secret,
+                password: password,
+                mnemonic: mnemonic,
+                privateKey: privateKey,
+                address: address,
+                network: network,
+                period: period,
+                isFavorite: isFavorite,
+                url: url,
+                note: note,
+                category: category,
+                email: email,
+                updatedAt: updatedAt,
+                passwordHistory: passwordHistory,
+                passwordLastChanged: passwordLastChanged,
+                passwordDuration: passwordDuration,
+                accounts: accounts,
+                isDeleted: isDeleted,
+                deletedAt: deletedAt,
+                tags: tags,
+                sharedVaultId: sharedVaultId,
+                isPinned: isPinned,
+                colorLabel: colorLabel,
+                rowid: rowid,
+              ),
           withReferenceMapper: (p0) => p0
-              .map((e) => (
-                    e.readTable(table),
-                    $$VaultItemsTableReferences(db, table, e)
-                  ))
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$VaultItemsTableReferences(db, table, e),
+                ),
+              )
               .toList(),
           prefetchHooksCallback: ({sharedVaultId = false}) {
             return PrefetchHooks(
               db: db,
               explicitlyWatchedTables: [],
-              addJoins: <
-                  T extends TableManagerState<
+              addJoins:
+                  <
+                    T extends TableManagerState<
                       dynamic,
                       dynamic,
                       dynamic,
@@ -2882,79 +3467,95 @@ class $$VaultItemsTableTableManager extends RootTableManager<
                       dynamic,
                       dynamic,
                       dynamic,
-                      dynamic>>(state) {
-                if (sharedVaultId) {
-                  state = state.withJoin(
-                    currentTable: table,
-                    currentColumn: table.sharedVaultId,
-                    referencedTable:
-                        $$VaultItemsTableReferences._sharedVaultIdTable(db),
-                    referencedColumn:
-                        $$VaultItemsTableReferences._sharedVaultIdTable(db).id,
-                  ) as T;
-                }
+                      dynamic
+                    >
+                  >(state) {
+                    if (sharedVaultId) {
+                      state =
+                          state.withJoin(
+                                currentTable: table,
+                                currentColumn: table.sharedVaultId,
+                                referencedTable: $$VaultItemsTableReferences
+                                    ._sharedVaultIdTable(db),
+                                referencedColumn: $$VaultItemsTableReferences
+                                    ._sharedVaultIdTable(db)
+                                    .id,
+                              )
+                              as T;
+                    }
 
-                return state;
-              },
+                    return state;
+                  },
               getPrefetchedDataCallback: (items) async {
                 return [];
               },
             );
           },
-        ));
+        ),
+      );
 }
 
-typedef $$VaultItemsTableProcessedTableManager = ProcessedTableManager<
-    _$AppDatabase,
-    $VaultItemsTable,
-    VaultItemEntity,
-    $$VaultItemsTableFilterComposer,
-    $$VaultItemsTableOrderingComposer,
-    $$VaultItemsTableAnnotationComposer,
-    $$VaultItemsTableCreateCompanionBuilder,
-    $$VaultItemsTableUpdateCompanionBuilder,
-    (VaultItemEntity, $$VaultItemsTableReferences),
-    VaultItemEntity,
-    PrefetchHooks Function({bool sharedVaultId})>;
-typedef $$SharedMembersTableCreateCompanionBuilder = SharedMembersCompanion
-    Function({
-  required String id,
-  required String vaultId,
-  required String userPublicKey,
-  required String encryptedVaultKey,
-  required int role,
-  Value<String?> name,
-  Value<int> rowid,
-});
-typedef $$SharedMembersTableUpdateCompanionBuilder = SharedMembersCompanion
-    Function({
-  Value<String> id,
-  Value<String> vaultId,
-  Value<String> userPublicKey,
-  Value<String> encryptedVaultKey,
-  Value<int> role,
-  Value<String?> name,
-  Value<int> rowid,
-});
+typedef $$VaultItemsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $VaultItemsTable,
+      VaultItemEntity,
+      $$VaultItemsTableFilterComposer,
+      $$VaultItemsTableOrderingComposer,
+      $$VaultItemsTableAnnotationComposer,
+      $$VaultItemsTableCreateCompanionBuilder,
+      $$VaultItemsTableUpdateCompanionBuilder,
+      (VaultItemEntity, $$VaultItemsTableReferences),
+      VaultItemEntity,
+      PrefetchHooks Function({bool sharedVaultId})
+    >;
+typedef $$SharedMembersTableCreateCompanionBuilder =
+    SharedMembersCompanion Function({
+      required String id,
+      required String vaultId,
+      required String userPublicKey,
+      required String encryptedVaultKey,
+      required int role,
+      Value<String?> name,
+      Value<int> rowid,
+    });
+typedef $$SharedMembersTableUpdateCompanionBuilder =
+    SharedMembersCompanion Function({
+      Value<String> id,
+      Value<String> vaultId,
+      Value<String> userPublicKey,
+      Value<String> encryptedVaultKey,
+      Value<int> role,
+      Value<String?> name,
+      Value<int> rowid,
+    });
 
-final class $$SharedMembersTableReferences extends BaseReferences<_$AppDatabase,
-    $SharedMembersTable, SharedMemberEntity> {
+final class $$SharedMembersTableReferences
+    extends
+        BaseReferences<_$AppDatabase, $SharedMembersTable, SharedMemberEntity> {
   $$SharedMembersTableReferences(
-      super.$_db, super.$_table, super.$_typedResult);
+    super.$_db,
+    super.$_table,
+    super.$_typedResult,
+  );
 
   static $SharedVaultsTable _vaultIdTable(_$AppDatabase db) =>
       db.sharedVaults.createAlias(
-          $_aliasNameGenerator(db.sharedMembers.vaultId, db.sharedVaults.id));
+        $_aliasNameGenerator(db.sharedMembers.vaultId, db.sharedVaults.id),
+      );
 
   $$SharedVaultsTableProcessedTableManager get vaultId {
     final $_column = $_itemColumn<String>('vault_id')!;
 
-    final manager = $$SharedVaultsTableTableManager($_db, $_db.sharedVaults)
-        .filter((f) => f.id.sqlEquals($_column));
+    final manager = $$SharedVaultsTableTableManager(
+      $_db,
+      $_db.sharedVaults,
+    ).filter((f) => f.id.sqlEquals($_column));
     final item = $_typedResult.readTableOrNull(_vaultIdTable($_db));
     if (item == null) return manager;
     return ProcessedTableManager(
-        manager.$state.copyWith(prefetchedData: [item]));
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
   }
 }
 
@@ -2968,38 +3569,50 @@ class $$SharedMembersTableFilterComposer
     super.$removeJoinBuilderFromRootComposer,
   });
   ColumnFilters<String> get id => $composableBuilder(
-      column: $table.id, builder: (column) => ColumnFilters(column));
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
 
   ColumnFilters<String> get userPublicKey => $composableBuilder(
-      column: $table.userPublicKey, builder: (column) => ColumnFilters(column));
+    column: $table.userPublicKey,
+    builder: (column) => ColumnFilters(column),
+  );
 
   ColumnFilters<String> get encryptedVaultKey => $composableBuilder(
-      column: $table.encryptedVaultKey,
-      builder: (column) => ColumnFilters(column));
+    column: $table.encryptedVaultKey,
+    builder: (column) => ColumnFilters(column),
+  );
 
   ColumnFilters<int> get role => $composableBuilder(
-      column: $table.role, builder: (column) => ColumnFilters(column));
+    column: $table.role,
+    builder: (column) => ColumnFilters(column),
+  );
 
   ColumnFilters<String> get name => $composableBuilder(
-      column: $table.name, builder: (column) => ColumnFilters(column));
+    column: $table.name,
+    builder: (column) => ColumnFilters(column),
+  );
 
   $$SharedVaultsTableFilterComposer get vaultId {
     final $$SharedVaultsTableFilterComposer composer = $composerBuilder(
-        composer: this,
-        getCurrentColumn: (t) => t.vaultId,
-        referencedTable: $db.sharedVaults,
-        getReferencedColumn: (t) => t.id,
-        builder: (joinBuilder,
-                {$addJoinBuilderToRootComposer,
-                $removeJoinBuilderFromRootComposer}) =>
-            $$SharedVaultsTableFilterComposer(
-              $db: $db,
-              $table: $db.sharedVaults,
-              $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
-              joinBuilder: joinBuilder,
-              $removeJoinBuilderFromRootComposer:
-                  $removeJoinBuilderFromRootComposer,
-            ));
+      composer: this,
+      getCurrentColumn: (t) => t.vaultId,
+      referencedTable: $db.sharedVaults,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$SharedVaultsTableFilterComposer(
+            $db: $db,
+            $table: $db.sharedVaults,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
     return composer;
   }
 }
@@ -3014,39 +3627,50 @@ class $$SharedMembersTableOrderingComposer
     super.$removeJoinBuilderFromRootComposer,
   });
   ColumnOrderings<String> get id => $composableBuilder(
-      column: $table.id, builder: (column) => ColumnOrderings(column));
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
 
   ColumnOrderings<String> get userPublicKey => $composableBuilder(
-      column: $table.userPublicKey,
-      builder: (column) => ColumnOrderings(column));
+    column: $table.userPublicKey,
+    builder: (column) => ColumnOrderings(column),
+  );
 
   ColumnOrderings<String> get encryptedVaultKey => $composableBuilder(
-      column: $table.encryptedVaultKey,
-      builder: (column) => ColumnOrderings(column));
+    column: $table.encryptedVaultKey,
+    builder: (column) => ColumnOrderings(column),
+  );
 
   ColumnOrderings<int> get role => $composableBuilder(
-      column: $table.role, builder: (column) => ColumnOrderings(column));
+    column: $table.role,
+    builder: (column) => ColumnOrderings(column),
+  );
 
   ColumnOrderings<String> get name => $composableBuilder(
-      column: $table.name, builder: (column) => ColumnOrderings(column));
+    column: $table.name,
+    builder: (column) => ColumnOrderings(column),
+  );
 
   $$SharedVaultsTableOrderingComposer get vaultId {
     final $$SharedVaultsTableOrderingComposer composer = $composerBuilder(
-        composer: this,
-        getCurrentColumn: (t) => t.vaultId,
-        referencedTable: $db.sharedVaults,
-        getReferencedColumn: (t) => t.id,
-        builder: (joinBuilder,
-                {$addJoinBuilderToRootComposer,
-                $removeJoinBuilderFromRootComposer}) =>
-            $$SharedVaultsTableOrderingComposer(
-              $db: $db,
-              $table: $db.sharedVaults,
-              $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
-              joinBuilder: joinBuilder,
-              $removeJoinBuilderFromRootComposer:
-                  $removeJoinBuilderFromRootComposer,
-            ));
+      composer: this,
+      getCurrentColumn: (t) => t.vaultId,
+      referencedTable: $db.sharedVaults,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$SharedVaultsTableOrderingComposer(
+            $db: $db,
+            $table: $db.sharedVaults,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
     return composer;
   }
 }
@@ -3064,10 +3688,14 @@ class $$SharedMembersTableAnnotationComposer
       $composableBuilder(column: $table.id, builder: (column) => column);
 
   GeneratedColumn<String> get userPublicKey => $composableBuilder(
-      column: $table.userPublicKey, builder: (column) => column);
+    column: $table.userPublicKey,
+    builder: (column) => column,
+  );
 
   GeneratedColumn<String> get encryptedVaultKey => $composableBuilder(
-      column: $table.encryptedVaultKey, builder: (column) => column);
+    column: $table.encryptedVaultKey,
+    builder: (column) => column,
+  );
 
   GeneratedColumn<int> get role =>
       $composableBuilder(column: $table.role, builder: (column) => column);
@@ -3077,39 +3705,46 @@ class $$SharedMembersTableAnnotationComposer
 
   $$SharedVaultsTableAnnotationComposer get vaultId {
     final $$SharedVaultsTableAnnotationComposer composer = $composerBuilder(
-        composer: this,
-        getCurrentColumn: (t) => t.vaultId,
-        referencedTable: $db.sharedVaults,
-        getReferencedColumn: (t) => t.id,
-        builder: (joinBuilder,
-                {$addJoinBuilderToRootComposer,
-                $removeJoinBuilderFromRootComposer}) =>
-            $$SharedVaultsTableAnnotationComposer(
-              $db: $db,
-              $table: $db.sharedVaults,
-              $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
-              joinBuilder: joinBuilder,
-              $removeJoinBuilderFromRootComposer:
-                  $removeJoinBuilderFromRootComposer,
-            ));
+      composer: this,
+      getCurrentColumn: (t) => t.vaultId,
+      referencedTable: $db.sharedVaults,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$SharedVaultsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.sharedVaults,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
     return composer;
   }
 }
 
-class $$SharedMembersTableTableManager extends RootTableManager<
-    _$AppDatabase,
-    $SharedMembersTable,
-    SharedMemberEntity,
-    $$SharedMembersTableFilterComposer,
-    $$SharedMembersTableOrderingComposer,
-    $$SharedMembersTableAnnotationComposer,
-    $$SharedMembersTableCreateCompanionBuilder,
-    $$SharedMembersTableUpdateCompanionBuilder,
-    (SharedMemberEntity, $$SharedMembersTableReferences),
-    SharedMemberEntity,
-    PrefetchHooks Function({bool vaultId})> {
+class $$SharedMembersTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $SharedMembersTable,
+          SharedMemberEntity,
+          $$SharedMembersTableFilterComposer,
+          $$SharedMembersTableOrderingComposer,
+          $$SharedMembersTableAnnotationComposer,
+          $$SharedMembersTableCreateCompanionBuilder,
+          $$SharedMembersTableUpdateCompanionBuilder,
+          (SharedMemberEntity, $$SharedMembersTableReferences),
+          SharedMemberEntity,
+          PrefetchHooks Function({bool vaultId})
+        > {
   $$SharedMembersTableTableManager(_$AppDatabase db, $SharedMembersTable table)
-      : super(TableManagerState(
+    : super(
+        TableManagerState(
           db: db,
           table: table,
           createFilteringComposer: () =>
@@ -3118,54 +3753,57 @@ class $$SharedMembersTableTableManager extends RootTableManager<
               $$SharedMembersTableOrderingComposer($db: db, $table: table),
           createComputedFieldComposer: () =>
               $$SharedMembersTableAnnotationComposer($db: db, $table: table),
-          updateCompanionCallback: ({
-            Value<String> id = const Value.absent(),
-            Value<String> vaultId = const Value.absent(),
-            Value<String> userPublicKey = const Value.absent(),
-            Value<String> encryptedVaultKey = const Value.absent(),
-            Value<int> role = const Value.absent(),
-            Value<String?> name = const Value.absent(),
-            Value<int> rowid = const Value.absent(),
-          }) =>
-              SharedMembersCompanion(
-            id: id,
-            vaultId: vaultId,
-            userPublicKey: userPublicKey,
-            encryptedVaultKey: encryptedVaultKey,
-            role: role,
-            name: name,
-            rowid: rowid,
-          ),
-          createCompanionCallback: ({
-            required String id,
-            required String vaultId,
-            required String userPublicKey,
-            required String encryptedVaultKey,
-            required int role,
-            Value<String?> name = const Value.absent(),
-            Value<int> rowid = const Value.absent(),
-          }) =>
-              SharedMembersCompanion.insert(
-            id: id,
-            vaultId: vaultId,
-            userPublicKey: userPublicKey,
-            encryptedVaultKey: encryptedVaultKey,
-            role: role,
-            name: name,
-            rowid: rowid,
-          ),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> vaultId = const Value.absent(),
+                Value<String> userPublicKey = const Value.absent(),
+                Value<String> encryptedVaultKey = const Value.absent(),
+                Value<int> role = const Value.absent(),
+                Value<String?> name = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => SharedMembersCompanion(
+                id: id,
+                vaultId: vaultId,
+                userPublicKey: userPublicKey,
+                encryptedVaultKey: encryptedVaultKey,
+                role: role,
+                name: name,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String vaultId,
+                required String userPublicKey,
+                required String encryptedVaultKey,
+                required int role,
+                Value<String?> name = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => SharedMembersCompanion.insert(
+                id: id,
+                vaultId: vaultId,
+                userPublicKey: userPublicKey,
+                encryptedVaultKey: encryptedVaultKey,
+                role: role,
+                name: name,
+                rowid: rowid,
+              ),
           withReferenceMapper: (p0) => p0
-              .map((e) => (
-                    e.readTable(table),
-                    $$SharedMembersTableReferences(db, table, e)
-                  ))
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$SharedMembersTableReferences(db, table, e),
+                ),
+              )
               .toList(),
           prefetchHooksCallback: ({vaultId = false}) {
             return PrefetchHooks(
               db: db,
               explicitlyWatchedTables: [],
-              addJoins: <
-                  T extends TableManagerState<
+              addJoins:
+                  <
+                    T extends TableManagerState<
                       dynamic,
                       dynamic,
                       dynamic,
@@ -3176,40 +3814,48 @@ class $$SharedMembersTableTableManager extends RootTableManager<
                       dynamic,
                       dynamic,
                       dynamic,
-                      dynamic>>(state) {
-                if (vaultId) {
-                  state = state.withJoin(
-                    currentTable: table,
-                    currentColumn: table.vaultId,
-                    referencedTable:
-                        $$SharedMembersTableReferences._vaultIdTable(db),
-                    referencedColumn:
-                        $$SharedMembersTableReferences._vaultIdTable(db).id,
-                  ) as T;
-                }
+                      dynamic
+                    >
+                  >(state) {
+                    if (vaultId) {
+                      state =
+                          state.withJoin(
+                                currentTable: table,
+                                currentColumn: table.vaultId,
+                                referencedTable: $$SharedMembersTableReferences
+                                    ._vaultIdTable(db),
+                                referencedColumn: $$SharedMembersTableReferences
+                                    ._vaultIdTable(db)
+                                    .id,
+                              )
+                              as T;
+                    }
 
-                return state;
-              },
+                    return state;
+                  },
               getPrefetchedDataCallback: (items) async {
                 return [];
               },
             );
           },
-        ));
+        ),
+      );
 }
 
-typedef $$SharedMembersTableProcessedTableManager = ProcessedTableManager<
-    _$AppDatabase,
-    $SharedMembersTable,
-    SharedMemberEntity,
-    $$SharedMembersTableFilterComposer,
-    $$SharedMembersTableOrderingComposer,
-    $$SharedMembersTableAnnotationComposer,
-    $$SharedMembersTableCreateCompanionBuilder,
-    $$SharedMembersTableUpdateCompanionBuilder,
-    (SharedMemberEntity, $$SharedMembersTableReferences),
-    SharedMemberEntity,
-    PrefetchHooks Function({bool vaultId})>;
+typedef $$SharedMembersTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $SharedMembersTable,
+      SharedMemberEntity,
+      $$SharedMembersTableFilterComposer,
+      $$SharedMembersTableOrderingComposer,
+      $$SharedMembersTableAnnotationComposer,
+      $$SharedMembersTableCreateCompanionBuilder,
+      $$SharedMembersTableUpdateCompanionBuilder,
+      (SharedMemberEntity, $$SharedMembersTableReferences),
+      SharedMemberEntity,
+      PrefetchHooks Function({bool vaultId})
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;

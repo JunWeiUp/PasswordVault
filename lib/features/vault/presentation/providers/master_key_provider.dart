@@ -1,3 +1,4 @@
+import 'package:password/core/l10n/l10n.dart';
 import 'dart:convert';
 import 'dart:math';
 import 'package:flutter/foundation.dart';
@@ -52,14 +53,16 @@ class MasterPasswordState {
       isAuthenticated: isAuthenticated ?? this.isAuthenticated,
       autoLockMinutes: autoLockMinutes ?? this.autoLockMinutes,
       userPublicKey: userPublicKey ?? this.userPublicKey,
-      encryptedUserPrivateKey: encryptedUserPrivateKey ?? this.encryptedUserPrivateKey,
+      encryptedUserPrivateKey:
+          encryptedUserPrivateKey ?? this.encryptedUserPrivateKey,
     );
   }
 }
 
-final masterPasswordProvider = StateNotifierProvider<MasterPasswordNotifier, MasterPasswordState>((ref) {
-  return MasterPasswordNotifier();
-});
+final masterPasswordProvider =
+    StateNotifierProvider<MasterPasswordNotifier, MasterPasswordState>((ref) {
+      return MasterPasswordNotifier();
+    });
 
 class MasterPasswordNotifier extends StateNotifier<MasterPasswordState> {
   MasterPasswordNotifier() : super(MasterPasswordState()) {
@@ -87,13 +90,15 @@ class MasterPasswordNotifier extends StateNotifier<MasterPasswordState> {
     final autoLockMinutes = prefs.getInt(_autoLockKey) ?? 10;
     final userPubKey = await _secureStorage.read(_userPublicKey);
     final encUserPrivKey = await _secureStorage.read(_encryptedUserPrivateKey);
-    
+
     bool isAuthenticated = false;
     if (password != null) {
       final lastAuthStr = prefs.getString(_lastAuthTimeKey);
       if (lastAuthStr != null) {
         final lastAuth = DateTime.tryParse(lastAuthStr);
-        if (lastAuth != null && DateTime.now().difference(lastAuth) < Duration(minutes: autoLockMinutes)) {
+        if (lastAuth != null &&
+            DateTime.now().difference(lastAuth) <
+                Duration(minutes: autoLockMinutes)) {
           isAuthenticated = true;
         }
       }
@@ -119,7 +124,12 @@ class MasterPasswordNotifier extends StateNotifier<MasterPasswordState> {
     if (migrated) return;
 
     try {
-      final keysToMigrate = [_passwordKey, _cachedMasterKey, _userPublicKey, _encryptedUserPrivateKey];
+      final keysToMigrate = [
+        _passwordKey,
+        _cachedMasterKey,
+        _userPublicKey,
+        _encryptedUserPrivateKey,
+      ];
       for (final key in keysToMigrate) {
         final oldValue = prefs.getString(key);
         if (oldValue != null) {
@@ -128,7 +138,9 @@ class MasterPasswordNotifier extends StateNotifier<MasterPasswordState> {
           if (verify == oldValue) {
             await prefs.remove(key);
           } else {
-            debugPrint('SecureStorage migration: verification failed for $key, keeping SharedPreferences copy');
+            debugPrint(
+              'SecureStorage migration: verification failed for $key, keeping SharedPreferences copy',
+            );
           }
         }
       }
@@ -164,7 +176,10 @@ class MasterPasswordNotifier extends StateNotifier<MasterPasswordState> {
     }
   }
 
-  Future<void> _generateAndStoreKeyPair(String password, SharedPreferences prefs) async {
+  Future<void> _generateAndStoreKeyPair(
+    String password,
+    SharedPreferences prefs,
+  ) async {
     final encryptionService = EncryptionService();
     final keyPair = await encryptionService.generateKeyPair();
     final pubKey = await keyPair.extractPublicKey();
@@ -181,7 +196,10 @@ class MasterPasswordNotifier extends StateNotifier<MasterPasswordState> {
     }
 
     final masterKey = await encryptionService.deriveKey(password, salt);
-    final encryptedPrivKey = await encryptionService.encrypt(base64.encode(privKeyBytes), masterKey);
+    final encryptedPrivKey = await encryptionService.encrypt(
+      base64.encode(privKeyBytes),
+      masterKey,
+    );
 
     final pubKeyBase64 = base64.encode(pubKey.bytes);
     final encPrivKeyBase64 = base64.encode(encryptedPrivKey);
@@ -240,7 +258,7 @@ class MasterPasswordNotifier extends StateNotifier<MasterPasswordState> {
 
     final password = state.password;
     if (password == null || !state.isAuthenticated) {
-      throw Exception('用户尚未认证，无法生成密钥对');
+      throw Exception(tr.unlockYourVaultBeforeGeneratingAKey);
     }
 
     final encryptionService = EncryptionService();
@@ -255,17 +273,20 @@ class MasterPasswordNotifier extends StateNotifier<MasterPasswordState> {
       salt = List<int>.generate(16, (i) => random.nextInt(256));
       await prefs.setString('master_key_salt', base64.encode(salt));
     }
-    
+
     final masterKey = await encryptionService.deriveKey(password, salt);
 
     final keyPair = await encryptionService.generateKeyPair();
     final pubKey = await keyPair.extractPublicKey();
     final privKeyBytes = await keyPair.extractPrivateKeyBytes();
-    
-    final encryptedPrivKey = await encryptionService.encrypt(base64.encode(privKeyBytes), masterKey);
+
+    final encryptedPrivKey = await encryptionService.encrypt(
+      base64.encode(privKeyBytes),
+      masterKey,
+    );
     final pubKeyBase64 = base64.encode(pubKey.bytes);
     final encPrivKeyBase64 = base64.encode(encryptedPrivKey);
-    
+
     await _secureStorage.write(_userPublicKey, pubKeyBase64);
     await _secureStorage.write(_encryptedUserPrivateKey, encPrivKeyBase64);
 
@@ -310,10 +331,15 @@ final masterKeyProvider = FutureProvider<SecretKey?>((ref) async {
   final lastAuthStr = prefs.getString(MasterPasswordNotifier._lastAuthTimeKey);
   if (lastAuthStr != null) {
     final lastAuth = DateTime.tryParse(lastAuthStr);
-    final autoLockMinutes = prefs.getInt(MasterPasswordNotifier._autoLockKey) ?? 10;
-    
-    if (lastAuth != null && DateTime.now().difference(lastAuth) < Duration(minutes: autoLockMinutes)) {
-      final cachedBase64 = await secureStorage.read(MasterPasswordNotifier._cachedMasterKey);
+    final autoLockMinutes =
+        prefs.getInt(MasterPasswordNotifier._autoLockKey) ?? 10;
+
+    if (lastAuth != null &&
+        DateTime.now().difference(lastAuth) <
+            Duration(minutes: autoLockMinutes)) {
+      final cachedBase64 = await secureStorage.read(
+        MasterPasswordNotifier._cachedMasterKey,
+      );
       if (cachedBase64 != null) {
         _cachedDerivedKey = base64.decode(cachedBase64);
         await _cacheExtensionMasterKey(_cachedDerivedKey!);
@@ -334,10 +360,13 @@ final masterKeyProvider = FutureProvider<SecretKey?>((ref) async {
   }
 
   final key = await encryptionService.deriveKey(password, salt);
-  
+
   final bytes = await key.extractBytes();
   _cachedDerivedKey = bytes;
-  await secureStorage.write(MasterPasswordNotifier._cachedMasterKey, base64.encode(bytes));
+  await secureStorage.write(
+    MasterPasswordNotifier._cachedMasterKey,
+    base64.encode(bytes),
+  );
 
   await _cacheExtensionMasterKey(bytes);
 
@@ -350,12 +379,12 @@ final fallbackKeysProvider = FutureProvider<List<SecretKey>>((ref) async {
   if (password == null || !masterState.isAuthenticated) return [];
 
   final encryptionService = EncryptionService();
-  
+
   final simpleKey = await encryptionService.deriveKeySimple(password);
-  
+
   final standardSalt = utf8.encode('SecurePass_Backup_Standard_Salt_2024');
   final standardBackupKey = await encryptionService.deriveKey(
-    password, 
+    password,
     standardSalt,
     iterations: 2,
     memory: 32 * 1024,
@@ -368,15 +397,21 @@ final fallbackKeysProvider = FutureProvider<List<SecretKey>>((ref) async {
 final userKeyPairProvider = FutureProvider<SimpleKeyPair?>((ref) async {
   final masterState = ref.watch(masterPasswordProvider);
   final masterKey = await ref.watch(masterKeyProvider.future);
-  
-  if (masterKey == null || masterState.encryptedUserPrivateKey == null) return null;
-  
+
+  if (masterKey == null || masterState.encryptedUserPrivateKey == null)
+    return null;
+
   final encryptionService = EncryptionService();
   try {
-    final encryptedPrivKey = base64.decode(masterState.encryptedUserPrivateKey!);
-    final decryptedPrivKeyBase64 = await encryptionService.decrypt(encryptedPrivKey, masterKey);
+    final encryptedPrivKey = base64.decode(
+      masterState.encryptedUserPrivateKey!,
+    );
+    final decryptedPrivKeyBase64 = await encryptionService.decrypt(
+      encryptedPrivKey,
+      masterKey,
+    );
     final privKeyBytes = base64.decode(decryptedPrivKeyBase64);
-    
+
     return await encryptionService.keyPairFromPrivateKey(privKeyBytes);
   } catch (e) {
     debugPrint('Failed to decrypt user key pair: $e');

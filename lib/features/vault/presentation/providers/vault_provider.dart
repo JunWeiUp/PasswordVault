@@ -1,3 +1,4 @@
+import 'package:password/core/l10n/l10n.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'package:cryptography/cryptography.dart';
@@ -25,13 +26,16 @@ final vaultRepositoryProvider = Provider((ref) {
 final sharedVaultsProvider = FutureProvider<List<SharedVault>>((ref) async {
   final repository = ref.watch(vaultRepositoryProvider);
   final userKeyPair = await ref.watch(userKeyPairProvider.future);
-  
+
   if (userKeyPair == null) return [];
-  
+
   return repository.getSharedVaults(userKeyPair);
 });
 
-final sharedVaultByIdProvider = FutureProvider.family<SharedVault?, String>((ref, vaultId) async {
+final sharedVaultByIdProvider = FutureProvider.family<SharedVault?, String>((
+  ref,
+  vaultId,
+) async {
   final vaults = await ref.watch(sharedVaultsProvider.future);
   try {
     return vaults.firstWhere((v) => v.id == vaultId);
@@ -40,7 +44,10 @@ final sharedVaultByIdProvider = FutureProvider.family<SharedVault?, String>((ref
   }
 });
 
-final vaultMembersProvider = FutureProvider.family<List<SharedMember>, String>((ref, vaultId) async {
+final vaultMembersProvider = FutureProvider.family<List<SharedMember>, String>((
+  ref,
+  vaultId,
+) async {
   final repository = ref.watch(vaultRepositoryProvider);
   return repository.getVaultMembers(vaultId);
 });
@@ -49,7 +56,8 @@ class VaultNotifier extends StateNotifier<AsyncValue<List<VaultItem>>> {
   final VaultRepository _repository;
   final Ref _ref;
 
-  VaultNotifier(this._repository, this._ref) : super(const AsyncValue.loading()) {
+  VaultNotifier(this._repository, this._ref)
+    : super(const AsyncValue.loading()) {
     // 监听主密钥状态，当密钥可用或变化时自动刷新
     _ref.listen(masterKeyProvider, (previous, next) {
       if (next is AsyncData && next.value != null) {
@@ -62,24 +70,28 @@ class VaultNotifier extends StateNotifier<AsyncValue<List<VaultItem>>> {
     // 如果已经在加载，不要重复设置 loading 状态，除非是初始加载
     if (state is! AsyncLoading) {
       // 保持旧数据，显示进度条
-      state = AsyncLoading<List<VaultItem>>().copyWithPrevious(state);
+      state = const AsyncLoading<List<VaultItem>>().copyWithPrevious(state);
     }
 
     final masterKeyAsync = _ref.read(masterKeyProvider);
     final masterKey = masterKeyAsync.valueOrNull;
     final userKeyPair = await _ref.read(userKeyPairProvider.future);
-    
+
     final fallbacks = _ref.read(fallbackKeysProvider).valueOrNull;
-    
+
     if (masterKey == null) {
       state = const AsyncValue.data([]);
       return;
     }
 
     try {
-      final items = await _repository.getAllItems(masterKey, fallbacks: fallbacks, userKeyPair: userKeyPair);
+      final items = await _repository.getAllItems(
+        masterKey,
+        fallbacks: fallbacks,
+        userKeyPair: userKeyPair,
+      );
       state = AsyncValue.data(items);
-      
+
       // 同步域名列表到扩展
       try {
         _syncDomainsToExtension(items, masterKey);
@@ -97,17 +109,19 @@ class VaultNotifier extends StateNotifier<AsyncValue<List<VaultItem>>> {
     try {
       await _repository.deleteAllData();
       state = const AsyncValue.data([]);
-      
+
       // 显式使其他相关 provider 失效，强制刷新
       _ref.invalidate(sharedVaultsProvider);
       _ref.invalidate(deletedVaultItemsProvider);
-      
     } catch (e, st) {
       state = AsyncValue.error(e, st);
     }
   }
 
-  Future<void> _syncDomainsToExtension(List<VaultItem> items, SecretKey masterKey) async {
+  Future<void> _syncDomainsToExtension(
+    List<VaultItem> items,
+    SecretKey masterKey,
+  ) async {
     if (!ExtensionHelper.isExtension) return;
 
     try {
@@ -117,10 +131,16 @@ class VaultNotifier extends StateNotifier<AsyncValue<List<VaultItem>>> {
       final encryptionService = _ref.read(encryptionServiceProvider);
 
       for (final item in items) {
-        if (item.type != VaultItemType.password || item.url == null || item.url!.isEmpty) continue;
+        if (item.type != VaultItemType.password ||
+            item.url == null ||
+            item.url!.isEmpty)
+          continue;
 
         // 支持逗号或分号分隔的多个域名/URL
-        final rawUrls = item.url!.split(RegExp(r'[,\n;]')).map((u) => u.trim()).where((u) => u.isNotEmpty);
+        final rawUrls = item.url!
+            .split(RegExp(r'[,\n;]'))
+            .map((u) => u.trim())
+            .where((u) => u.isNotEmpty);
 
         for (final rawUrl in rawUrls) {
           String domain;
@@ -139,35 +159,41 @@ class VaultNotifier extends StateNotifier<AsyncValue<List<VaultItem>>> {
           domains.add(domain);
 
           final accounts = accountsMetadata.putIfAbsent(domain, () => []);
-          
+
           // 添加主账号 (如果尚未添加)
           if (item.username.isNotEmpty) {
             final pwd = item.password ?? '';
             final hash = await sha256.hash(utf8.encode(pwd));
-            final encryptedPassword = await encryptionService.encrypt(pwd, masterKey);
+            final encryptedPassword = await encryptionService.encrypt(
+              pwd,
+              masterKey,
+            );
             final newAccount = {
               'username': item.username,
               'passwordHash': base64Encode(hash.bytes),
               'encryptedPassword': base64Encode(encryptedPassword),
             };
-            
+
             // 避免在同一个域名下重复添加相同的用户名
             if (!accounts.any((a) => a['username'] == item.username)) {
               accounts.add(newAccount);
             }
           }
-          
+
           // 添加额外账号
           if (item.accounts != null) {
             for (final acc in item.accounts!) {
               final hash = await sha256.hash(utf8.encode(acc.password));
-              final encryptedPassword = await encryptionService.encrypt(acc.password, masterKey);
+              final encryptedPassword = await encryptionService.encrypt(
+                acc.password,
+                masterKey,
+              );
               final newAccount = {
                 'username': acc.username,
                 'passwordHash': base64Encode(hash.bytes),
                 'encryptedPassword': base64Encode(encryptedPassword),
               };
-              
+
               if (!accounts.any((a) => a['username'] == acc.username)) {
                 accounts.add(newAccount);
               }
@@ -188,7 +214,7 @@ class VaultNotifier extends StateNotifier<AsyncValue<List<VaultItem>>> {
   Future<void> addItem(VaultItem item) async {
     try {
       final masterKey = await _ref.read(masterKeyProvider.future);
-      if (masterKey == null) throw Exception('主密钥尚未就绪');
+      if (masterKey == null) throw Exception(tr.theMasterKeyIsNotReady);
 
       final userKeyPair = await _ref.read(userKeyPairProvider.future);
 
@@ -204,8 +230,8 @@ class VaultNotifier extends StateNotifier<AsyncValue<List<VaultItem>>> {
     if (items.isEmpty) return;
     try {
       final masterKey = await _ref.read(masterKeyProvider.future);
-      if (masterKey == null) throw Exception('主密钥尚未就绪');
-      
+      if (masterKey == null) throw Exception(tr.theMasterKeyIsNotReady);
+
       final userKeyPair = await _ref.read(userKeyPairProvider.future);
 
       await _repository.addItems(items, masterKey, userKeyPair: userKeyPair);
@@ -216,18 +242,23 @@ class VaultNotifier extends StateNotifier<AsyncValue<List<VaultItem>>> {
     }
   }
 
-  Future<ImportMergeResult> mergeBackupItems(List<VaultItem> backupItems) async {
+  Future<ImportMergeResult> mergeBackupItems(
+    List<VaultItem> backupItems,
+  ) async {
     if (backupItems.isEmpty) {
       return const ImportMergeResult(added: 0, updated: 0, skipped: 0);
     }
 
     final masterKey = await _ref.read(masterKeyProvider.future);
-    if (masterKey == null) throw Exception('主密钥尚未就绪');
+    if (masterKey == null) throw Exception(tr.theMasterKeyIsNotReady);
 
     final fallbacks = await _ref.read(fallbackKeysProvider.future);
     final userKeyPair = await _ref.read(userKeyPairProvider.future);
     final existingItems = await _repository.getAllItems(
-      masterKey, includeDeleted: true, fallbacks: fallbacks, userKeyPair: userKeyPair,
+      masterKey,
+      includeDeleted: true,
+      fallbacks: fallbacks,
+      userKeyPair: userKeyPair,
     );
     final existingIndex = <String, VaultItem>{};
     for (final item in existingItems) {
@@ -235,8 +266,11 @@ class VaultNotifier extends StateNotifier<AsyncValue<List<VaultItem>>> {
     }
 
     final sortedBackup = List<VaultItem>.from(backupItems);
-    sortedBackup.sort((a, b) =>
-      (a.updatedAt ?? DateTime(2000)).compareTo(b.updatedAt ?? DateTime(2000)));
+    sortedBackup.sort(
+      (a, b) => (a.updatedAt ?? DateTime(2000)).compareTo(
+        b.updatedAt ?? DateTime(2000),
+      ),
+    );
 
     int added = 0, updated = 0, skipped = 0;
 
@@ -244,7 +278,9 @@ class VaultNotifier extends StateNotifier<AsyncValue<List<VaultItem>>> {
       final existing = existingIndex[backupItem.id];
       if (existing == null) {
         await _repository.addItemPreservingTimestamp(
-          backupItem, masterKey, userKeyPair: userKeyPair,
+          backupItem,
+          masterKey,
+          userKeyPair: userKeyPair,
         );
         added++;
       } else {
@@ -252,7 +288,9 @@ class VaultNotifier extends StateNotifier<AsyncValue<List<VaultItem>>> {
         final localTime = existing.updatedAt ?? DateTime(2000);
         if (backupTime.isAfter(localTime)) {
           await _repository.updateItemFromBackup(
-            backupItem, masterKey, userKeyPair: userKeyPair,
+            backupItem,
+            masterKey,
+            userKeyPair: userKeyPair,
           );
           updated++;
         } else {
@@ -296,19 +334,27 @@ class VaultNotifier extends StateNotifier<AsyncValue<List<VaultItem>>> {
     _ref.read(deletedVaultItemsProvider.notifier).refresh();
   }
 
-  Future<ImportMergeResult> mergeImportedItems(List<VaultItem> importedItems) async {
+  Future<ImportMergeResult> mergeImportedItems(
+    List<VaultItem> importedItems,
+  ) async {
     if (importedItems.isEmpty) {
       return const ImportMergeResult(added: 0, updated: 0, skipped: 0);
     }
 
     final masterKey = await _ref.read(masterKeyProvider.future);
     if (masterKey == null) {
-      throw Exception('主密钥尚未就绪');
+      throw Exception(tr.theMasterKeyIsNotReady);
     }
 
     final fallbacks = await _ref.read(fallbackKeysProvider.future);
     final userKeyPair = await _ref.read(userKeyPairProvider.future);
-    final existingItems = state.valueOrNull ?? await _repository.getAllItems(masterKey, fallbacks: fallbacks, userKeyPair: userKeyPair);
+    final existingItems =
+        state.valueOrNull ??
+        await _repository.getAllItems(
+          masterKey,
+          fallbacks: fallbacks,
+          userKeyPair: userKeyPair,
+        );
     final existingIndex = <String, VaultItem>{};
     for (final item in existingItems) {
       final key = _buildMergeKey(item);
@@ -346,17 +392,29 @@ class VaultNotifier extends StateNotifier<AsyncValue<List<VaultItem>>> {
       if (_isSameItem(existing, merged)) {
         skipped++;
       } else {
-        await _repository.updateItem(merged, masterKey, userKeyPair: userKeyPair);
+        await _repository.updateItem(
+          merged,
+          masterKey,
+          userKeyPair: userKeyPair,
+        );
         updated++;
       }
     }
 
     if (itemsToAdd.isNotEmpty) {
-      await _repository.addItems(itemsToAdd, masterKey, userKeyPair: userKeyPair);
+      await _repository.addItems(
+        itemsToAdd,
+        masterKey,
+        userKeyPair: userKeyPair,
+      );
     }
 
     await refresh();
-    return ImportMergeResult(added: itemsToAdd.length, updated: updated, skipped: skipped);
+    return ImportMergeResult(
+      added: itemsToAdd.length,
+      updated: updated,
+      skipped: skipped,
+    );
   }
 
   VaultItem _withNewId(VaultItem item) {
@@ -390,12 +448,14 @@ class VaultNotifier extends StateNotifier<AsyncValue<List<VaultItem>>> {
   }
 
   VaultItem _normalizeImportedItem(VaultItem item) {
-    final title = item.title.trim().isNotEmpty ? item.title.trim() : _deriveTitle(item);
+    final title = item.title.trim().isNotEmpty
+        ? item.title.trim()
+        : _deriveTitle(item);
     final username = item.username.trim();
     return VaultItem(
       id: item.id,
       type: item.type,
-      title: title.isNotEmpty ? title : '未命名导入',
+      title: title.isNotEmpty ? title : tr.untitledImport,
       username: username,
       secret: _cleanValue(item.secret),
       password: _cleanValue(item.password),
@@ -441,11 +501,11 @@ class VaultNotifier extends StateNotifier<AsyncValue<List<VaultItem>>> {
 
   String _extractHost(String? url) {
     if (url == null || url.trim().isEmpty) return '';
-    
+
     // 如果包含多个 URL/域名，取第一个作为主域名（用于标题生成或分类）
     final firstUrl = url.split(RegExp(r'[,\n;]')).first.trim();
     if (firstUrl.isEmpty) return '';
-    
+
     try {
       final uri = Uri.parse(firstUrl);
       final host = uri.host.toLowerCase();
@@ -461,7 +521,9 @@ class VaultNotifier extends StateNotifier<AsyncValue<List<VaultItem>>> {
       id: existing.id,
       type: existing.type,
       title: existing.title.trim().isNotEmpty ? existing.title : incoming.title,
-      username: existing.username.trim().isNotEmpty ? existing.username : incoming.username,
+      username: existing.username.trim().isNotEmpty
+          ? existing.username
+          : incoming.username,
       secret: _preferExisting(existing.secret, incoming.secret),
       password: _preferIncoming(existing.password, incoming.password),
       mnemonic: _preferExisting(existing.mnemonic, incoming.mnemonic),
@@ -541,7 +603,8 @@ class DeletedVaultNotifier extends StateNotifier<AsyncValue<List<VaultItem>>> {
   final VaultRepository _repository;
   final Ref _ref;
 
-  DeletedVaultNotifier(this._repository, this._ref) : super(const AsyncValue.loading()) {
+  DeletedVaultNotifier(this._repository, this._ref)
+    : super(const AsyncValue.loading()) {
     _ref.listen(masterKeyProvider, (previous, next) {
       if (next is AsyncData && next.value != null) {
         refresh();
@@ -551,7 +614,7 @@ class DeletedVaultNotifier extends StateNotifier<AsyncValue<List<VaultItem>>> {
 
   Future<void> refresh() async {
     if (state is! AsyncLoading) {
-      state = AsyncLoading<List<VaultItem>>().copyWithPrevious(state);
+      state = const AsyncLoading<List<VaultItem>>().copyWithPrevious(state);
     }
 
     final masterKey = _ref.read(masterKeyProvider).valueOrNull;
@@ -563,7 +626,12 @@ class DeletedVaultNotifier extends StateNotifier<AsyncValue<List<VaultItem>>> {
 
     try {
       final userKeyPair = await _ref.read(userKeyPairProvider.future);
-      final items = await _repository.getAllItems(masterKey, includeDeleted: true, fallbacks: fallbacks, userKeyPair: userKeyPair);
+      final items = await _repository.getAllItems(
+        masterKey,
+        includeDeleted: true,
+        fallbacks: fallbacks,
+        userKeyPair: userKeyPair,
+      );
       state = AsyncValue.data(items.where((item) => item.isDeleted).toList());
     } catch (e, st) {
       state = AsyncValue.error(e, st);
@@ -571,15 +639,19 @@ class DeletedVaultNotifier extends StateNotifier<AsyncValue<List<VaultItem>>> {
   }
 }
 
-final vaultItemsProvider = StateNotifierProvider<VaultNotifier, AsyncValue<List<VaultItem>>>((ref) {
-  final repository = ref.watch(vaultRepositoryProvider);
-  return VaultNotifier(repository, ref);
-});
+final vaultItemsProvider =
+    StateNotifierProvider<VaultNotifier, AsyncValue<List<VaultItem>>>((ref) {
+      final repository = ref.watch(vaultRepositoryProvider);
+      return VaultNotifier(repository, ref);
+    });
 
-final deletedVaultItemsProvider = StateNotifierProvider<DeletedVaultNotifier, AsyncValue<List<VaultItem>>>((ref) {
-  final repository = ref.watch(vaultRepositoryProvider);
-  return DeletedVaultNotifier(repository, ref);
-});
+final deletedVaultItemsProvider =
+    StateNotifierProvider<DeletedVaultNotifier, AsyncValue<List<VaultItem>>>((
+      ref,
+    ) {
+      final repository = ref.watch(vaultRepositoryProvider);
+      return DeletedVaultNotifier(repository, ref);
+    });
 
 // --- Category & Network Providers ---
 
@@ -588,13 +660,25 @@ final networksProvider = StateProvider<List<String>>((ref) {
   return vaultAsync.maybeWhen(
     data: (items) {
       final networks = items
-          .where((item) => item.type == VaultItemType.crypto && item.network != null)
+          .where(
+            (item) => item.type == VaultItemType.crypto && item.network != null,
+          )
           .map((item) => item.network!)
           .toSet()
           .toList();
-      
+
       // 默认网络
-      const defaultNetworks = ['ETH', 'BTC', 'BSC', 'Polygon', 'Solana', 'TRON', 'AVAX', 'Arbitrum', 'Optimism'];
+      const defaultNetworks = [
+        'ETH',
+        'BTC',
+        'BSC',
+        'Polygon',
+        'Solana',
+        'TRON',
+        'AVAX',
+        'Arbitrum',
+        'Optimism',
+      ];
       for (var net in defaultNetworks) {
         if (!networks.contains(net)) {
           networks.add(net);
@@ -602,7 +686,17 @@ final networksProvider = StateProvider<List<String>>((ref) {
       }
       return networks;
     },
-    orElse: () => ['ETH', 'BTC', 'BSC', 'Polygon', 'Solana', 'TRON', 'AVAX', 'Arbitrum', 'Optimism'],
+    orElse: () => [
+      'ETH',
+      'BTC',
+      'BSC',
+      'Polygon',
+      'Solana',
+      'TRON',
+      'AVAX',
+      'Arbitrum',
+      'Optimism',
+    ],
   );
 });
 
@@ -623,13 +717,14 @@ class PasswordHealthReport {
     required this.expiredCount,
   });
 
-  bool hasIssues(String id) => itemIssues.containsKey(id) && itemIssues[id]!.isNotEmpty;
+  bool hasIssues(String id) =>
+      itemIssues.containsKey(id) && itemIssues[id]!.isNotEmpty;
   List<PasswordHealthIssue> getIssues(String id) => itemIssues[id] ?? [];
 }
 
 final passwordHealthProvider = Provider<PasswordHealthReport>((ref) {
   final vaultAsync = ref.watch(vaultItemsProvider);
-  
+
   return vaultAsync.maybeWhen(
     data: (items) {
       final itemIssues = <String, List<PasswordHealthIssue>>{};
@@ -640,11 +735,14 @@ final passwordHealthProvider = Provider<PasswordHealthReport>((ref) {
 
       // 1. 统计密码使用频率并检查弱密码和过期
       for (final item in items) {
-        if (item.type != VaultItemType.password || item.password == null || item.password!.isEmpty) continue;
-        
+        if (item.type != VaultItemType.password ||
+            item.password == null ||
+            item.password!.isEmpty)
+          continue;
+
         final issues = <PasswordHealthIssue>[];
         final password = item.password!;
-        
+
         // 检查频率
         passwordCounts[password] = (passwordCounts[password] ?? 0) + 1;
 
@@ -666,7 +764,9 @@ final passwordHealthProvider = Provider<PasswordHealthReport>((ref) {
 
         // 检查过期
         if (item.passwordDuration != null && item.passwordLastChanged != null) {
-          final expiryDate = item.passwordLastChanged!.add(Duration(days: item.passwordDuration!));
+          final expiryDate = item.passwordLastChanged!.add(
+            Duration(days: item.passwordDuration!),
+          );
           if (DateTime.now().isAfter(expiryDate)) {
             issues.add(PasswordHealthIssue.expired);
             expiredCount++;
@@ -680,8 +780,9 @@ final passwordHealthProvider = Provider<PasswordHealthReport>((ref) {
 
       // 2. 检查重复密码
       for (final item in items) {
-        if (item.type != VaultItemType.password || item.password == null) continue;
-        
+        if (item.type != VaultItemType.password || item.password == null)
+          continue;
+
         if ((passwordCounts[item.password!] ?? 0) > 1) {
           final issues = itemIssues[item.id] ?? [];
           if (!issues.contains(PasswordHealthIssue.reused)) {
@@ -716,7 +817,7 @@ final categoriesProvider = StateProvider<List<String>>((ref) {
           .map((item) => item.category ?? '未分类')
           .toSet()
           .toList();
-      
+
       // 默认分类
       const defaultCategories = ['社交媒体', '财务', '工作', '购物', '娱乐', '加密资产', '笔记'];
       for (var cat in defaultCategories) {
@@ -749,59 +850,78 @@ final allTagsProvider = Provider<List<String>>((ref) {
   );
 });
 
-final vaultItemsBySharedVaultProvider = Provider.family<List<VaultItem>, String>((ref, vaultId) {
-  final vaultAsync = ref.watch(vaultItemsProvider);
-  return vaultAsync.maybeWhen(
-    data: (items) => items.where((item) => item.sharedVaultId == vaultId).toList(),
-    orElse: () => [],
-  );
-});
+final vaultItemsBySharedVaultProvider =
+    Provider.family<List<VaultItem>, String>((ref, vaultId) {
+      final vaultAsync = ref.watch(vaultItemsProvider);
+      return vaultAsync.maybeWhen(
+        data: (items) =>
+            items.where((item) => item.sharedVaultId == vaultId).toList(),
+        orElse: () => [],
+      );
+    });
 
-final filteredVaultItemsProvider = Provider.family<List<VaultItem>, VaultItemType>((ref, type) {
-  final vaultAsync = ref.watch(vaultItemsProvider);
-  final selectedCategory = ref.watch(selectedCategoryProvider);
-  final selectedTag = ref.watch(selectedTagProvider);
-  final selectedSharedVaultId = ref.watch(selectedSharedVaultIdProvider);
-  final showFavoritesOnly = ref.watch(showFavoritesOnlyProvider);
-  final searchQuery = ref.watch(searchQueryProvider).toLowerCase();
-  final sortMode = ref.watch(sortModeProvider);
-  
-  return vaultAsync.maybeWhen(
-    data: (items) {
-      final filtered = items.where((item) {
-        final matchesType = item.type == type;
-        final matchesCategory = selectedCategory == null || item.category == selectedCategory;
-        final matchesTag = selectedTag == null || item.tags.contains(selectedTag);
-        final matchesSharedVault = selectedSharedVaultId == null || item.sharedVaultId == selectedSharedVaultId;
-        final matchesFavorite = !showFavoritesOnly || item.isFavorite;
-        
-        final matchesSearch = searchQuery.isEmpty || 
-            (item.title.toLowerCase().contains(searchQuery)) ||
-            (item.username.toLowerCase().contains(searchQuery)) ||
-            (item.url?.toLowerCase().contains(searchQuery) ?? false) ||
-            (item.note?.toLowerCase().contains(searchQuery) ?? false) ||
-            (item.email?.toLowerCase().contains(searchQuery) ?? false) ||
-            (item.tags.any((tag) => tag.toLowerCase().contains(searchQuery)));
+final filteredVaultItemsProvider =
+    Provider.family<List<VaultItem>, VaultItemType>((ref, type) {
+      final vaultAsync = ref.watch(vaultItemsProvider);
+      final selectedCategory = ref.watch(selectedCategoryProvider);
+      final selectedTag = ref.watch(selectedTagProvider);
+      final selectedSharedVaultId = ref.watch(selectedSharedVaultIdProvider);
+      final showFavoritesOnly = ref.watch(showFavoritesOnlyProvider);
+      final searchQuery = ref.watch(searchQueryProvider).toLowerCase();
+      final sortMode = ref.watch(sortModeProvider);
 
-        return matchesType && matchesCategory && matchesTag && matchesSharedVault && matchesFavorite && matchesSearch;
-      }).toList();
+      return vaultAsync.maybeWhen(
+        data: (items) {
+          final filtered = items.where((item) {
+            final matchesType = item.type == type;
+            final matchesCategory =
+                selectedCategory == null || item.category == selectedCategory;
+            final matchesTag =
+                selectedTag == null || item.tags.contains(selectedTag);
+            final matchesSharedVault =
+                selectedSharedVaultId == null ||
+                item.sharedVaultId == selectedSharedVaultId;
+            final matchesFavorite = !showFavoritesOnly || item.isFavorite;
 
-      filtered.sort((a, b) {
-        if (a.isPinned != b.isPinned) return a.isPinned ? -1 : 1;
-        switch (sortMode) {
-          case SortMode.nameAsc:
-            return a.title.toLowerCase().compareTo(b.title.toLowerCase());
-          case SortMode.nameDesc:
-            return b.title.toLowerCase().compareTo(a.title.toLowerCase());
-          case SortMode.updatedDesc:
-            return (b.updatedAt ?? DateTime(2000)).compareTo(a.updatedAt ?? DateTime(2000));
-          case SortMode.updatedAsc:
-            return (a.updatedAt ?? DateTime(2000)).compareTo(b.updatedAt ?? DateTime(2000));
-        }
-      });
+            final matchesSearch =
+                searchQuery.isEmpty ||
+                (item.title.toLowerCase().contains(searchQuery)) ||
+                (item.username.toLowerCase().contains(searchQuery)) ||
+                (item.url?.toLowerCase().contains(searchQuery) ?? false) ||
+                (item.note?.toLowerCase().contains(searchQuery) ?? false) ||
+                (item.email?.toLowerCase().contains(searchQuery) ?? false) ||
+                (item.tags.any(
+                  (tag) => tag.toLowerCase().contains(searchQuery),
+                ));
 
-      return filtered;
-    },
-    orElse: () => [],
-  );
-});
+            return matchesType &&
+                matchesCategory &&
+                matchesTag &&
+                matchesSharedVault &&
+                matchesFavorite &&
+                matchesSearch;
+          }).toList();
+
+          filtered.sort((a, b) {
+            if (a.isPinned != b.isPinned) return a.isPinned ? -1 : 1;
+            switch (sortMode) {
+              case SortMode.nameAsc:
+                return a.title.toLowerCase().compareTo(b.title.toLowerCase());
+              case SortMode.nameDesc:
+                return b.title.toLowerCase().compareTo(a.title.toLowerCase());
+              case SortMode.updatedDesc:
+                return (b.updatedAt ?? DateTime(2000)).compareTo(
+                  a.updatedAt ?? DateTime(2000),
+                );
+              case SortMode.updatedAsc:
+                return (a.updatedAt ?? DateTime(2000)).compareTo(
+                  b.updatedAt ?? DateTime(2000),
+                );
+            }
+          });
+
+          return filtered;
+        },
+        orElse: () => [],
+      );
+    });

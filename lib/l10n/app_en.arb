@@ -1,0 +1,2445 @@
+{
+  "@@locale": "en",
+  "decryptionFailedAuthenticationMismatchCheckTheMaster": "Decryption failed: authentication mismatch. Check the master password and data format.",
+  "@decryptionFailedAuthenticationMismatchCheckTheMaster": {
+    "description": "UI message: Decryption failed: authentication mismatch. Check the master password and data format."
+  },
+  "theEncryptedBackupHasNoPayload": "The encrypted backup has no payload.",
+  "@theEncryptedBackupHasNoPayload": {
+    "description": "UI message: The encrypted backup has no payload."
+  },
+  "enterTheMasterPasswordToImportThis": "Enter the master password to import this encrypted backup.",
+  "@enterTheMasterPasswordToImportThis": {
+    "description": "UI message: Enter the master password to import this encrypted backup."
+  },
+  "decryptionFailedIncorrectMasterPasswordOrDamaged": "Decryption failed: incorrect master password or damaged backup.",
+  "@decryptionFailedIncorrectMasterPasswordOrDamaged": {
+    "description": "UI message: Decryption failed: incorrect master password or damaged backup."
+  },
+  "aMasterPasswordIsRequiredForEncrypted": "A master password is required for encrypted export.",
+  "@aMasterPasswordIsRequiredForEncrypted": {
+    "description": "UI message: A master password is required for encrypted export."
+  },
+  "untitledImport": "Untitled import",
+  "@untitledImport": {
+    "description": "UI message: Untitled import"
+  },
+  "lastpassImport": "LastPass import",
+  "@lastpassImport": {
+    "description": "UI message: LastPass import"
+  },
+  "bitwardenImport": "Bitwarden import",
+  "@bitwardenImport": {
+    "description": "UI message: Bitwarden import"
+  },
+  "passwordImport": "1Password import",
+  "@passwordImport": {
+    "description": "UI message: 1Password import"
+  },
+  "chromeImport": "Chrome import",
+  "@chromeImport": {
+    "description": "UI message: Chrome import"
+  },
+  "passwordvaultImport": "PasswordVault import",
+  "@passwordvaultImport": {
+    "description": "UI message: PasswordVault import"
+  },
+  "passwordvaultBackup": "PasswordVault backup",
+  "@passwordvaultBackup": {
+    "description": "UI message: PasswordVault backup"
+  },
+  "chooseExportLocation": "Choose export location",
+  "@chooseExportLocation": {
+    "description": "UI message: Choose export location"
+  },
+  "passwordvaultCsvBackup": "PasswordVault CSV backup",
+  "@passwordvaultCsvBackup": {
+    "description": "UI message: PasswordVault CSV backup"
+  },
+  "setAMasterPasswordToGenerateYour": "Set a master password to generate your key pair.",
+  "@setAMasterPasswordToGenerateYour": {
+    "description": "UI message: Set a master password to generate your key pair."
+  },
+  "couldNotSendJoinRequest": "Could not send join request: {arg0}",
+  "@couldNotSendJoinRequest": {
+    "description": "UI message: Could not send join request: {arg0}",
+    "placeholders": {
+      "arg0": {
+        "type": "Object"
+      }
+    }
+  },
+  "couldNotLoadYourKeyPair": "Could not load your key pair.",
+  "@couldNotLoadYourKeyPair": {
+    "description": "UI message: Could not load your key pair."
+  },
+  "couldNotLoadTheSharedVaultKey": "Could not load the shared vault key.",
+  "@couldNotLoadTheSharedVaultKey": {
+    "description": "UI message: Could not load the shared vault key."
+  },
+  "noMasterPasswordIsSet": "No master password is set.",
+  "@noMasterPasswordIsSet": {
+    "description": "UI message: No master password is set."
+  },
+  "syncFailedTheDevicesUseDifferentMaster": "Sync failed: the devices use different master passwords.",
+  "@syncFailedTheDevicesUseDifferentMaster": {
+    "description": "UI message: Sync failed: the devices use different master passwords."
+  },
+  "invalidResponseExpectedAnObject": "Invalid response: expected an object.",
+  "@invalidResponseExpectedAnObject": {
+    "description": "UI message: Invalid response: expected an object."
+  },
+  "invalidResponseEmptyPayload": "Invalid response: empty payload.",
+  "@invalidResponseEmptyPayload": {
+    "description": "UI message: Invalid response: empty payload."
+  },
+  "couldNotPullRemoteData": "Could not pull remote data: {arg0}",
+  "@couldNotPullRemoteData": {
+    "description": "UI message: Could not pull remote data: {arg0}",
+    "placeholders": {
+      "arg0": {
+        "type": "Object"
+      }
+    }
+  },
+  "theMasterKeyIsNotReady": "The master key is not ready.",
+  "@theMasterKeyIsNotReady": {
+    "description": "UI message: The master key is not ready."
+  },
+  "couldNotPushRemoteData": "Could not push remote data: {arg0}",
+  "@couldNotPushRemoteData": {
+    "description": "UI message: Could not push remote data: {arg0}",
+    "placeholders": {
+      "arg0": {
+        "type": "Object"
+      }
+    }
+  },
+  "invalidResponseFormat": "Invalid response format.",
+  "@invalidResponseFormat": {
+    "description": "UI message: Invalid response format."
+  },
+  "unknownDevice": "Unknown device",
+  "@unknownDevice": {
+    "description": "UI message: Unknown device"
+  },
+  "couldNotConnectToDeviceHttp": "Could not connect to device: HTTP {arg0}",
+  "@couldNotConnectToDeviceHttp": {
+    "description": "UI message: Could not connect to device: HTTP {arg0}",
+    "placeholders": {
+      "arg0": {
+        "type": "Object"
+      }
+    }
+  },
+  "connectionTimedOutCheckThatBothDevices": "Connection timed out. Check that both devices are on the same network with sync enabled. Your browser may block cross-origin requests (CORS).",
+  "@connectionTimedOutCheckThatBothDevices": {
+    "description": "UI message: Connection timed out. Check that both devices are on the same network with sync enabled. Your browser may block cross-origin requests (CORS)."
+  },
+  "networkOrCorsErrorCheckThatSync": "Network or CORS error. Check that sync is enabled on the other device and requests from this address are allowed.",
+  "@networkOrCorsErrorCheckThatSync": {
+    "description": "UI message: Network or CORS error. Check that sync is enabled on the other device and requests from this address are allowed."
+  },
+  "couldNotReachThisAddressCheckThe": "Could not reach this address. Check the IP address and port.",
+  "@couldNotReachThisAddressCheckThe": {
+    "description": "UI message: Could not reach this address. Check the IP address and port."
+  },
+  "connectionFailed": "Connection failed: {arg0}",
+  "@connectionFailed": {
+    "description": "UI message: Connection failed: {arg0}",
+    "placeholders": {
+      "arg0": {
+        "type": "Object"
+      }
+    }
+  },
+  "localNetworkSync": "Local network sync",
+  "@localNetworkSync": {
+    "description": "UI message: Local network sync"
+  },
+  "refreshDevices": "Refresh devices",
+  "@refreshDevices": {
+    "description": "UI message: Refresh devices"
+  },
+  "searchingForDevices": "Searching for devices…",
+  "@searchingForDevices": {
+    "description": "UI message: Searching for devices…"
+  },
+  "webLimitations": "Web limitations",
+  "@webLimitations": {
+    "description": "UI message: Web limitations"
+  },
+  "browsersCannotActAsSyncServersEnable": "Browsers cannot act as sync servers. Enable sync on a supported native device, then enter its address here.",
+  "@browsersCannotActAsSyncServersEnable": {
+    "description": "UI message: Browsers cannot act as sync servers. Enable sync on a supported native device, then enter its address here."
+  },
+  "syncSettings": "Sync settings",
+  "@syncSettings": {
+    "description": "UI message: Sync settings"
+  },
+  "enableSync": "Enable sync",
+  "@enableSync": {
+    "description": "UI message: Enable sync"
+  },
+  "allowDiscoveryAndSyncWithDevicesOn": "Allow discovery and sync with devices on your local network",
+  "@allowDiscoveryAndSyncWithDevicesOn": {
+    "description": "UI message: Allow discovery and sync with devices on your local network"
+  },
+  "deviceName": "Device name",
+  "@deviceName": {
+    "description": "UI message: Device name"
+  },
+  "localAddress": "Local address",
+  "@localAddress": {
+    "description": "UI message: Local address"
+  },
+  "connectManually": "Connect manually",
+  "@connectManually": {
+    "description": "UI message: Connect manually"
+  },
+  "discoveredDevices": "Discovered devices",
+  "@discoveredDevices": {
+    "description": "UI message: Discovered devices"
+  },
+  "connectToADevice": "Connect to a device",
+  "@connectToADevice": {
+    "description": "UI message: Connect to a device"
+  },
+  "enterADeviceAddressToSync": "Enter a device address to sync",
+  "@enterADeviceAddressToSync": {
+    "description": "UI message: Enter a device address to sync"
+  },
+  "noOtherDevicesFound": "No other devices found",
+  "@noOtherDevicesFound": {
+    "description": "UI message: No other devices found"
+  },
+  "syncNow": "Sync now",
+  "@syncNow": {
+    "description": "UI message: Sync now"
+  },
+  "error": "Error: {arg0}",
+  "@error": {
+    "description": "UI message: Error: {arg0}",
+    "placeholders": {
+      "arg0": {
+        "type": "Object"
+      }
+    }
+  },
+  "vaultContentIsEncryptedForTransferBetween": "Vault content is encrypted for transfer between devices. Local network sync does not use a central cloud server.",
+  "@vaultContentIsEncryptedForTransferBetween": {
+    "description": "UI message: Vault content is encrypted for transfer between devices. Local network sync does not use a central cloud server."
+  },
+  "ipAddress": "IP address",
+  "@ipAddress": {
+    "description": "UI message: IP address"
+  },
+  "eG": "e.g. 192.168.1.5",
+  "@eG": {
+    "description": "UI message: e.g. 192.168.1.5"
+  },
+  "port": "Port",
+  "@port": {
+    "description": "UI message: Port"
+  },
+  "labelDefault": "Default: 8080",
+  "@labelDefault": {
+    "description": "UI message: Default: 8080"
+  },
+  "cancel": "Cancel",
+  "@cancel": {
+    "description": "UI message: Cancel"
+  },
+  "enterAValidAddressAndPort": "Enter a valid address and port.",
+  "@enterAValidAddressAndPort": {
+    "description": "UI message: Enter a valid address and port."
+  },
+  "syncComplete": "Sync complete",
+  "@syncComplete": {
+    "description": "UI message: Sync complete"
+  },
+  "connect": "Connect",
+  "@connect": {
+    "description": "UI message: Connect"
+  },
+  "setDeviceName": "Set device name",
+  "@setDeviceName": {
+    "description": "UI message: Set device name"
+  },
+  "enterDeviceName": "Enter device name",
+  "@enterDeviceName": {
+    "description": "UI message: Enter device name"
+  },
+  "save": "Save",
+  "@save": {
+    "description": "UI message: Save"
+  },
+  "syncFailed": "Sync failed: {arg0}",
+  "@syncFailed": {
+    "description": "UI message: Sync failed: {arg0}",
+    "placeholders": {
+      "arg0": {
+        "type": "Object"
+      }
+    }
+  },
+  "codeCopiedToClipboard": "Code copied to clipboard",
+  "@codeCopiedToClipboard": {
+    "description": "UI message: Code copied to clipboard"
+  },
+  "editItem": "Edit item",
+  "@editItem": {
+    "description": "UI message: Edit item"
+  },
+  "exportOtpauthUri": "Export otpauth URI",
+  "@exportOtpauthUri": {
+    "description": "UI message: Export otpauth URI"
+  },
+  "importIntoAnotherAuthenticatorApp": "Import into another authenticator app",
+  "@importIntoAnotherAuthenticatorApp": {
+    "description": "UI message: Import into another authenticator app"
+  },
+  "deleteItem": "Delete item",
+  "@deleteItem": {
+    "description": "UI message: Delete item"
+  },
+  "otpauthUriCopiedToClipboard": "otpauth URI copied to clipboard",
+  "@otpauthUriCopiedToClipboard": {
+    "description": "UI message: otpauth URI copied to clipboard"
+  },
+  "confirmDeletion": "Confirm deletion",
+  "@confirmDeletion": {
+    "description": "UI message: Confirm deletion"
+  },
+  "delete": "Delete {arg0}?",
+  "@delete": {
+    "description": "UI message: Delete {arg0}?",
+    "placeholders": {
+      "arg0": {
+        "type": "Object"
+      }
+    }
+  },
+  "movedToTrash": "Moved to trash",
+  "@movedToTrash": {
+    "description": "UI message: Moved to trash"
+  },
+  "moveToTrash": "Move to trash",
+  "@moveToTrash": {
+    "description": "UI message: Move to trash"
+  },
+  "setAMasterPasswordBeforeDecrypting": "Set a master password before decrypting.",
+  "@setAMasterPasswordBeforeDecrypting": {
+    "description": "UI message: Set a master password before decrypting."
+  },
+  "decryptionFailedIncorrectMasterPasswordOrDamaged73": "Decryption failed: incorrect master password or damaged backup.",
+  "@decryptionFailedIncorrectMasterPasswordOrDamaged73": {
+    "description": "UI message: Decryption failed: incorrect master password or damaged backup."
+  },
+  "connected": "Connected",
+  "@connected": {
+    "description": "UI message: Connected"
+  },
+  "connectionFailedCheckYourSettings": "Connection failed. Check your settings.",
+  "@connectionFailedCheckYourSettings": {
+    "description": "UI message: Connection failed. Check your settings."
+  },
+  "settingsSaved": "Settings saved",
+  "@settingsSaved": {
+    "description": "UI message: Settings saved"
+  },
+  "webdavConfiguration": "WebDAV configuration",
+  "@webdavConfiguration": {
+    "description": "UI message: WebDAV configuration"
+  },
+  "webdavBackup": "WebDAV backup",
+  "@webdavBackup": {
+    "description": "UI message: WebDAV backup"
+  },
+  "backUpYourVaultToYourOwn": "Back up your vault to your own WebDAV storage, such as Nextcloud, Seafile, or Nutstore.",
+  "@backUpYourVaultToYourOwn": {
+    "description": "UI message: Back up your vault to your own WebDAV storage, such as Nextcloud, Seafile, or Nutstore."
+  },
+  "enterYourCredentialsBelowAndStartBackups": "Enter your credentials below and start backups from this app. Opening a WebDAV address directly in the browser may trigger the server's login dialog.",
+  "@enterYourCredentialsBelowAndStartBackups": {
+    "description": "UI message: Enter your credentials below and start backups from this app. Opening a WebDAV address directly in the browser may trigger the server's login dialog."
+  },
+  "serverSettings": "Server settings",
+  "@serverSettings": {
+    "description": "UI message: Server settings"
+  },
+  "serverUrl": "Server URL",
+  "@serverUrl": {
+    "description": "UI message: Server URL"
+  },
+  "username": "Username",
+  "@username": {
+    "description": "UI message: Username"
+  },
+  "password": "Password",
+  "@password": {
+    "description": "UI message: Password"
+  },
+  "backupDirectory": "Backup directory",
+  "@backupDirectory": {
+    "description": "UI message: Backup directory"
+  },
+  "backupFilesAreSavedInThisDirectory": "Backup files are saved in this directory",
+  "@backupFilesAreSavedInThisDirectory": {
+    "description": "UI message: Backup files are saved in this directory"
+  },
+  "testConnection": "Test connection",
+  "@testConnection": {
+    "description": "UI message: Test connection"
+  },
+  "saveSettings": "Save settings",
+  "@saveSettings": {
+    "description": "UI message: Save settings"
+  },
+  "backups": "Backups",
+  "@backups": {
+    "description": "UI message: Backups"
+  },
+  "manualBackup": "Manual backup",
+  "@manualBackup": {
+    "description": "UI message: Manual backup"
+  },
+  "encryptWithMasterPassword": "Encrypt with master password",
+  "@encryptWithMasterPassword": {
+    "description": "UI message: Encrypt with master password"
+  },
+  "recommendedToProtectTheBackupContents": "Recommended to protect the backup contents",
+  "@recommendedToProtectTheBackupContents": {
+    "description": "UI message: Recommended to protect the backup contents"
+  },
+  "backupComplete": "Backup complete",
+  "@backupComplete": {
+    "description": "UI message: Backup complete"
+  },
+  "backupFailed": "Backup failed: {arg0}",
+  "@backupFailed": {
+    "description": "UI message: Backup failed: {arg0}",
+    "placeholders": {
+      "arg0": {
+        "type": "Object"
+      }
+    }
+  },
+  "backUpNow": "Back up now",
+  "@backUpNow": {
+    "description": "UI message: Back up now"
+  },
+  "configureWebdavFirst": "Configure WebDAV first",
+  "@configureWebdavFirst": {
+    "description": "UI message: Configure WebDAV first"
+  },
+  "webdavBackupFiles": "WebDAV backup files",
+  "@webdavBackupFiles": {
+    "description": "UI message: WebDAV backup files"
+  },
+  "couldNotLoad": "Could not load: {arg0}",
+  "@couldNotLoad": {
+    "description": "UI message: Could not load: {arg0}",
+    "placeholders": {
+      "arg0": {
+        "type": "Object"
+      }
+    }
+  },
+  "noBackupsYet": "No backups yet",
+  "@noBackupsYet": {
+    "description": "UI message: No backups yet"
+  },
+  "restoreBackup": "Restore backup",
+  "@restoreBackup": {
+    "description": "UI message: Restore backup"
+  },
+  "mergeThisBackupByModificationTimeNewer": "Merge this backup by modification time? Newer local items are kept; older items are updated from the backup.",
+  "@mergeThisBackupByModificationTimeNewer": {
+    "description": "UI message: Merge this backup by modification time? Newer local items are kept; older items are updated from the backup."
+  },
+  "confirm": "Confirm",
+  "@confirm": {
+    "description": "UI message: Confirm"
+  },
+  "restoreCompleteAddedUpdatedSkipped": "Restore complete: {arg0} added, {arg1} updated, {arg2} skipped",
+  "@restoreCompleteAddedUpdatedSkipped": {
+    "description": "UI message: Restore complete: {arg0} added, {arg1} updated, {arg2} skipped",
+    "placeholders": {
+      "arg0": {
+        "type": "Object"
+      },
+      "arg1": {
+        "type": "Object"
+      },
+      "arg2": {
+        "type": "Object"
+      }
+    }
+  },
+  "restoreFailed": "Restore failed: {arg0}",
+  "@restoreFailed": {
+    "description": "UI message: Restore failed: {arg0}",
+    "placeholders": {
+      "arg0": {
+        "type": "Object"
+      }
+    }
+  },
+  "restoreThisBackup": "Restore this backup",
+  "@restoreThisBackup": {
+    "description": "UI message: Restore this backup"
+  },
+  "youAreNotAMemberOfThis": "You are not a member of this shared vault.",
+  "@youAreNotAMemberOfThis": {
+    "description": "UI message: You are not a member of this shared vault."
+  },
+  "youDoNotHavePermissionToAdd": "You do not have permission to add items to this vault.",
+  "@youDoNotHavePermissionToAdd": {
+    "description": "UI message: You do not have permission to add items to this vault."
+  },
+  "youDoNotHavePermissionToEdit": "You do not have permission to edit items in this vault.",
+  "@youDoNotHavePermissionToEdit": {
+    "description": "UI message: You do not have permission to edit items in this vault."
+  },
+  "youDoNotHavePermissionToDelete": "You do not have permission to delete items from this vault.",
+  "@youDoNotHavePermissionToDelete": {
+    "description": "UI message: You do not have permission to delete items from this vault."
+  },
+  "youDoNotHavePermissionToRestore": "You do not have permission to restore items in this vault.",
+  "@youDoNotHavePermissionToRestore": {
+    "description": "UI message: You do not have permission to restore items in this vault."
+  },
+  "memberRecordNotFound": "Member record not found.",
+  "@memberRecordNotFound": {
+    "description": "UI message: Member record not found."
+  },
+  "viewersCannotAddMembers": "Viewers cannot add members.",
+  "@viewersCannotAddMembers": {
+    "description": "UI message: Viewers cannot add members."
+  },
+  "onlyTheOwnerCanRemoveMembers": "Only the owner can remove members.",
+  "@onlyTheOwnerCanRemoveMembers": {
+    "description": "UI message: Only the owner can remove members."
+  },
+  "memberNotFound": "Member not found.",
+  "@memberNotFound": {
+    "description": "UI message: Member not found."
+  },
+  "theOwnerCannotBeRemoved": "The owner cannot be removed.",
+  "@theOwnerCannotBeRemoved": {
+    "description": "UI message: The owner cannot be removed."
+  },
+  "onlyTheOwnerCanChangePermissions": "Only the owner can change permissions.",
+  "@onlyTheOwnerCanChangePermissions": {
+    "description": "UI message: Only the owner can change permissions."
+  },
+  "theOwnerSPermissionsCannotBeChanged": "The owner's permissions cannot be changed.",
+  "@theOwnerSPermissionsCannotBeChanged": {
+    "description": "UI message: The owner's permissions cannot be changed."
+  },
+  "onlyTheOwnerCanDeleteThisShared": "Only the owner can delete this shared vault.",
+  "@onlyTheOwnerCanDeleteThisShared": {
+    "description": "UI message: Only the owner can delete this shared vault."
+  },
+  "onlyTheOwnerCanRotateTheKey": "Only the owner can rotate the key.",
+  "@onlyTheOwnerCanRotateTheKey": {
+    "description": "UI message: Only the owner can rotate the key."
+  },
+  "unlockYourVaultBeforeGeneratingAKey": "Unlock your vault before generating a key pair.",
+  "@unlockYourVaultBeforeGeneratingAKey": {
+    "description": "UI message: Unlock your vault before generating a key pair."
+  },
+  "uncategorized": "Uncategorized",
+  "@uncategorized": {
+    "description": "UI message: Uncategorized"
+  },
+  "social": "Social",
+  "@social": {
+    "description": "UI message: Social"
+  },
+  "finance": "Finance",
+  "@finance": {
+    "description": "UI message: Finance"
+  },
+  "work": "Work",
+  "@work": {
+    "description": "UI message: Work"
+  },
+  "shopping": "Shopping",
+  "@shopping": {
+    "description": "UI message: Shopping"
+  },
+  "entertainment": "Entertainment",
+  "@entertainment": {
+    "description": "UI message: Entertainment"
+  },
+  "cryptoAssets": "Crypto assets",
+  "@cryptoAssets": {
+    "description": "UI message: Crypto assets"
+  },
+  "notes": "Notes",
+  "@notes": {
+    "description": "UI message: Notes"
+  },
+  "mySharingPublicKey": "My sharing public key",
+  "@mySharingPublicKey": {
+    "description": "UI message: My sharing public key"
+  },
+  "generatingPublicKey": "Generating public key…",
+  "@generatingPublicKey": {
+    "description": "UI message: Generating public key…"
+  },
+  "scanOrCopyYourPublicKeyTo": "Scan or copy your public key to join a shared vault",
+  "@scanOrCopyYourPublicKeyTo": {
+    "description": "UI message: Scan or copy your public key to join a shared vault"
+  },
+  "youCanShareThisPublicKeyOther": "You can share this public key. Other members use it to encrypt a shared vault's access key for you.",
+  "@youCanShareThisPublicKeyOther": {
+    "description": "UI message: You can share this public key. Other members use it to encrypt a shared vault's access key for you."
+  },
+  "publicKeyBase": "Public key (Base64)",
+  "@publicKeyBase": {
+    "description": "UI message: Public key (Base64)"
+  },
+  "publicKeyCopiedToClipboard": "Public key copied to clipboard",
+  "@publicKeyCopiedToClipboard": {
+    "description": "UI message: Public key copied to clipboard"
+  },
+  "sharedVaults": "Shared vaults",
+  "@sharedVaults": {
+    "description": "UI message: Shared vaults"
+  },
+  "localNetworkSyncEnabled": "Local network sync enabled",
+  "@localNetworkSyncEnabled": {
+    "description": "UI message: Local network sync enabled"
+  },
+  "localNetworkSyncDisabled": "Local network sync disabled",
+  "@localNetworkSyncDisabled": {
+    "description": "UI message: Local network sync disabled"
+  },
+  "joinALocalSharedVault": "Join a local shared vault",
+  "@joinALocalSharedVault": {
+    "description": "UI message: Join a local shared vault"
+  },
+  "myPublicKey": "My public key",
+  "@myPublicKey": {
+    "description": "UI message: My public key"
+  },
+  "joinRequestsReceived": "Join requests received: {arg0}",
+  "@joinRequestsReceived": {
+    "description": "UI message: Join requests received: {arg0}",
+    "placeholders": {
+      "arg0": {
+        "type": "Object"
+      }
+    }
+  },
+  "openTheRelevantSharedVaultToReview": "Open the relevant shared vault to review requests. To join a new vault, select a request below.",
+  "@openTheRelevantSharedVaultToReview": {
+    "description": "UI message: Open the relevant shared vault to review requests. To join a new vault, select a request below."
+  },
+  "requestToJoin": "Request to join: {arg0}",
+  "@requestToJoin": {
+    "description": "UI message: Request to join: {arg0}",
+    "placeholders": {
+      "arg0": {
+        "type": "Object"
+      }
+    }
+  },
+  "generalJoinRequest": "General join request",
+  "@generalJoinRequest": {
+    "description": "UI message: General join request"
+  },
+  "openTheVaultYouWantThisPerson": "Open the vault you want this person to join to approve the request.",
+  "@openTheVaultYouWantThisPerson": {
+    "description": "UI message: Open the vault you want this person to join to approve the request."
+  },
+  "review": "Review",
+  "@review": {
+    "description": "UI message: Review"
+  },
+  "sentRequests": "Sent requests",
+  "@sentRequests": {
+    "description": "UI message: Sent requests"
+  },
+  "clearHistory": "Clear history",
+  "@clearHistory": {
+    "description": "UI message: Clear history"
+  },
+  "generalVault": "General vault",
+  "@generalVault": {
+    "description": "UI message: General vault"
+  },
+  "approved": "Approved",
+  "@approved": {
+    "description": "UI message: Approved"
+  },
+  "pending": "Pending",
+  "@pending": {
+    "description": "UI message: Pending"
+  },
+  "noSharedVaultsYet": "No shared vaults yet",
+  "@noSharedVaultsYet": {
+    "description": "UI message: No shared vaults yet"
+  },
+  "createSharedVault": "Create shared vault",
+  "@createSharedVault": {
+    "description": "UI message: Create shared vault"
+  },
+  "joinLocalVault": "Join local vault",
+  "@joinLocalVault": {
+    "description": "UI message: Join local vault"
+  },
+  "created": "Created {arg0}",
+  "@created": {
+    "description": "UI message: Created {arg0}",
+    "placeholders": {
+      "arg0": {
+        "type": "Object"
+      }
+    }
+  },
+  "sharedVaultDetails": "Shared vault details",
+  "@sharedVaultDetails": {
+    "description": "UI message: Shared vault details"
+  },
+  "items": "Items",
+  "@items": {
+    "description": "UI message: Items"
+  },
+  "members": "Members",
+  "@members": {
+    "description": "UI message: Members"
+  },
+  "noItemsInThisSharedVault": "No items in this shared vault",
+  "@noItemsInThisSharedVault": {
+    "description": "UI message: No items in this shared vault"
+  },
+  "addItem": "Add item",
+  "@addItem": {
+    "description": "UI message: Add item"
+  },
+  "pendingJoinRequests": "Pending join requests ({arg0})",
+  "@pendingJoinRequests": {
+    "description": "UI message: Pending join requests ({arg0})",
+    "placeholders": {
+      "arg0": {
+        "type": "Object"
+      }
+    }
+  },
+  "requestToJoinAnyVault": "Request to join any vault",
+  "@requestToJoinAnyVault": {
+    "description": "UI message: Request to join any vault"
+  },
+  "requestToJoinThisVault": "Request to join this vault",
+  "@requestToJoinThisVault": {
+    "description": "UI message: Request to join this vault"
+  },
+  "members163": "Members ({arg0})",
+  "@members163": {
+    "description": "UI message: Members ({arg0})",
+    "placeholders": {
+      "arg0": {
+        "type": "Object"
+      }
+    }
+  },
+  "unknownUser": "Unknown user",
+  "@unknownUser": {
+    "description": "UI message: Unknown user"
+  },
+  "allowEditing": "Allow editing",
+  "@allowEditing": {
+    "description": "UI message: Allow editing"
+  },
+  "makeViewer": "Make viewer",
+  "@makeViewer": {
+    "description": "UI message: Make viewer"
+  },
+  "removeMember": "Remove member",
+  "@removeMember": {
+    "description": "UI message: Remove member"
+  },
+  "approvedTheJoinRequestFrom": "Approved the join request from {arg0}",
+  "@approvedTheJoinRequestFrom": {
+    "description": "UI message: Approved the join request from {arg0}",
+    "placeholders": {
+      "arg0": {
+        "type": "Object"
+      }
+    }
+  },
+  "couldNotApproveRequest": "Could not approve request: {arg0}",
+  "@couldNotApproveRequest": {
+    "description": "UI message: Could not approve request: {arg0}",
+    "placeholders": {
+      "arg0": {
+        "type": "Object"
+      }
+    }
+  },
+  "confirmRemoval": "Confirm removal",
+  "@confirmRemoval": {
+    "description": "UI message: Confirm removal"
+  },
+  "removeMember171": "Remove member \"{arg0}\"?",
+  "@removeMember171": {
+    "description": "UI message: Remove member \"{arg0}\"?",
+    "placeholders": {
+      "arg0": {
+        "type": "Object"
+      }
+    }
+  },
+  "remove": "Remove",
+  "@remove": {
+    "description": "UI message: Remove"
+  },
+  "memberRemoved": "Member removed",
+  "@memberRemoved": {
+    "description": "UI message: Member removed"
+  },
+  "couldNotRemoveMember": "Could not remove member: {arg0}",
+  "@couldNotRemoveMember": {
+    "description": "UI message: Could not remove member: {arg0}",
+    "placeholders": {
+      "arg0": {
+        "type": "Object"
+      }
+    }
+  },
+  "permissionsUpdated": "Permissions updated",
+  "@permissionsUpdated": {
+    "description": "UI message: Permissions updated"
+  },
+  "updateFailed": "Update failed: {arg0}",
+  "@updateFailed": {
+    "description": "UI message: Update failed: {arg0}",
+    "placeholders": {
+      "arg0": {
+        "type": "Object"
+      }
+    }
+  },
+  "viewItem": "View item",
+  "@viewItem": {
+    "description": "UI message: View item"
+  },
+  "rotateKey": "Rotate key",
+  "@rotateKey": {
+    "description": "UI message: Rotate key"
+  },
+  "delete179": "Delete",
+  "@delete179": {
+    "description": "UI message: Delete"
+  },
+  "rotateSharedVaultKey": "Rotate shared vault key",
+  "@rotateSharedVaultKey": {
+    "description": "UI message: Rotate shared vault key"
+  },
+  "generateANewKeyAndReEncrypt": "Generate a new key and re-encrypt all vault items? Removed members will not receive the new key, but may retain previously downloaded data. This can take time for large vaults.",
+  "@generateANewKeyAndReEncrypt": {
+    "description": "UI message: Generate a new key and re-encrypt all vault items? Removed members will not receive the new key, but may retain previously downloaded data. This can take time for large vaults."
+  },
+  "rotatingKeyAndReEncryptingItems": "Rotating key and re-encrypting items…",
+  "@rotatingKeyAndReEncryptingItems": {
+    "description": "UI message: Rotating key and re-encrypting items…"
+  },
+  "yourKeyPairIsNotReady": "Your key pair is not ready.",
+  "@yourKeyPairIsNotReady": {
+    "description": "UI message: Your key pair is not ready."
+  },
+  "keyRotated": "Key rotated",
+  "@keyRotated": {
+    "description": "UI message: Key rotated"
+  },
+  "keyRotationFailed": "Key rotation failed: {arg0}",
+  "@keyRotationFailed": {
+    "description": "UI message: Key rotation failed: {arg0}",
+    "placeholders": {
+      "arg0": {
+        "type": "Object"
+      }
+    }
+  },
+  "deleteSharedVault": "Delete shared vault",
+  "@deleteSharedVault": {
+    "description": "UI message: Delete shared vault"
+  },
+  "deleteThisSharedVaultThisCannotBe": "Delete this shared vault? This cannot be undone. Members will lose access to the vault.",
+  "@deleteThisSharedVaultThisCannotBe": {
+    "description": "UI message: Delete this shared vault? This cannot be undone. Members will lose access to the vault."
+  },
+  "sharedVaultDeleted": "Shared vault deleted",
+  "@sharedVaultDeleted": {
+    "description": "UI message: Shared vault deleted"
+  },
+  "deletionFailed": "Deletion failed: {arg0}",
+  "@deletionFailed": {
+    "description": "UI message: Deletion failed: {arg0}",
+    "placeholders": {
+      "arg0": {
+        "type": "Object"
+      }
+    }
+  },
+  "owner": "Owner",
+  "@owner": {
+    "description": "UI message: Owner"
+  },
+  "editor": "Editor",
+  "@editor": {
+    "description": "UI message: Editor"
+  },
+  "viewer": "Viewer",
+  "@viewer": {
+    "description": "UI message: Viewer"
+  },
+  "enterASharedVaultName": "Enter a shared vault name.",
+  "@enterASharedVaultName": {
+    "description": "UI message: Enter a shared vault name."
+  },
+  "enterYourDisplayName": "Enter your display name.",
+  "@enterYourDisplayName": {
+    "description": "UI message: Enter your display name."
+  },
+  "couldNotLoadYourKeyPairTry": "Could not load your key pair. Try again.",
+  "@couldNotLoadYourKeyPairTry": {
+    "description": "UI message: Could not load your key pair. Try again."
+  },
+  "sharedVaultCreated": "Shared vault created",
+  "@sharedVaultCreated": {
+    "description": "UI message: Shared vault created"
+  },
+  "couldNotCreateVault": "Could not create vault: {arg0}",
+  "@couldNotCreateVault": {
+    "description": "UI message: Could not create vault: {arg0}",
+    "placeholders": {
+      "arg0": {
+        "type": "Object"
+      }
+    }
+  },
+  "createAnEncryptedSharedVault": "Create an encrypted shared vault",
+  "@createAnEncryptedSharedVault": {
+    "description": "UI message: Create an encrypted shared vault"
+  },
+  "sharedVaultItemsUseASeparateEncryption": "Shared vault items use a separate encryption key distributed to invited members.",
+  "@sharedVaultItemsUseASeparateEncryption": {
+    "description": "UI message: Shared vault items use a separate encryption key distributed to invited members."
+  },
+  "sharedVaultName": "Shared vault name",
+  "@sharedVaultName": {
+    "description": "UI message: Shared vault name"
+  },
+  "eGFamilyPasswordsDevelopmentTeam": "e.g. Family passwords, Development team",
+  "@eGFamilyPasswordsDevelopmentTeam": {
+    "description": "UI message: e.g. Family passwords, Development team"
+  },
+  "yourDisplayName": "Your display name",
+  "@yourDisplayName": {
+    "description": "UI message: Your display name"
+  },
+  "otherMembersWillSeeThisName": "Other members will see this name",
+  "@otherMembersWillSeeThisName": {
+    "description": "UI message: Other members will see this name"
+  },
+  "createVault": "Create vault",
+  "@createVault": {
+    "description": "UI message: Create vault"
+  },
+  "pasteThePublicKeyManuallyInThe": "Paste the public key manually in the web app.",
+  "@pasteThePublicKeyManuallyInThe": {
+    "description": "UI message: Paste the public key manually in the web app."
+  },
+  "noQrCodeFoundChooseAnotherImage": "No QR code found. Choose another image or enter the key manually.",
+  "@noQrCodeFoundChooseAnotherImage": {
+    "description": "UI message: No QR code found. Choose another image or enter the key manually."
+  },
+  "couldNotReadQrCode": "Could not read QR code: {arg0}",
+  "@couldNotReadQrCode": {
+    "description": "UI message: Could not read QR code: {arg0}",
+    "placeholders": {
+      "arg0": {
+        "type": "Object"
+      }
+    }
+  },
+  "enterAPublicKeyOrReadOne": "Enter a public key or read one from an image.",
+  "@enterAPublicKeyOrReadOne": {
+    "description": "UI message: Enter a public key or read one from an image."
+  },
+  "enterAMemberName": "Enter a member name.",
+  "@enterAMemberName": {
+    "description": "UI message: Enter a member name."
+  },
+  "memberAdded": "Member added",
+  "@memberAdded": {
+    "description": "UI message: Member added"
+  },
+  "couldNotAddMember": "Could not add member: {arg0}",
+  "@couldNotAddMember": {
+    "description": "UI message: Could not add member: {arg0}",
+    "placeholders": {
+      "arg0": {
+        "type": "Object"
+      }
+    }
+  },
+  "addMember": "Add member",
+  "@addMember": {
+    "description": "UI message: Add member"
+  },
+  "pasteThePublicKeyInTheField": "Paste the public key in the field below.",
+  "@pasteThePublicKeyInTheField": {
+    "description": "UI message: Paste the public key in the field below."
+  },
+  "readingImage": "Reading image…",
+  "@readingImage": {
+    "description": "UI message: Reading image…"
+  },
+  "chooseAPublicKeyQrImage": "Choose a public key QR image",
+  "@chooseAPublicKeyQrImage": {
+    "description": "UI message: Choose a public key QR image"
+  },
+  "memberDisplayName": "Member display name",
+  "@memberDisplayName": {
+    "description": "UI message: Member display name"
+  },
+  "eGAlexSam": "e.g. Alex, Sam",
+  "@eGAlexSam": {
+    "description": "UI message: e.g. Alex, Sam"
+  },
+  "permissions": "Permissions",
+  "@permissions": {
+    "description": "UI message: Permissions"
+  },
+  "addMemberAndShareKey": "Add member and share key",
+  "@addMemberAndShareKey": {
+    "description": "UI message: Add member and share key"
+  },
+  "theAppDecryptsTheVaultKeyLocally": "The app decrypts the vault key locally with your private key, then encrypts it for the new member's public key.",
+  "@theAppDecryptsTheVaultKeyLocally": {
+    "description": "UI message: The app decrypts the vault key locally with your private key, then encrypts it for the new member's public key."
+  },
+  "discoverLocalSharedVaults": "Discover local shared vaults",
+  "@discoverLocalSharedVaults": {
+    "description": "UI message: Discover local shared vaults"
+  },
+  "noAvailableSharedVaultsFound": "No available shared vaults found",
+  "@noAvailableSharedVaultsFound": {
+    "description": "UI message: No available shared vaults found"
+  },
+  "askTheOtherPersonToEnableLocal": "Ask the other person to enable local network discovery.",
+  "@askTheOtherPersonToEnableLocal": {
+    "description": "UI message: Ask the other person to enable local network discovery."
+  },
+  "from": "From: {arg0} ({arg1})",
+  "@from": {
+    "description": "UI message: From: {arg0} ({arg1})",
+    "placeholders": {
+      "arg0": {
+        "type": "Object"
+      },
+      "arg1": {
+        "type": "Object"
+      }
+    }
+  },
+  "requested": "Requested",
+  "@requested": {
+    "description": "UI message: Requested"
+  },
+  "requestToJoin226": "Request to join",
+  "@requestToJoin226": {
+    "description": "UI message: Request to join"
+  },
+  "searchFailed": "Search failed: {arg0}",
+  "@searchFailed": {
+    "description": "UI message: Search failed: {arg0}",
+    "placeholders": {
+      "arg0": {
+        "type": "Object"
+      }
+    }
+  },
+  "sentARequestToToJoin": "Sent a request to {arg0} to join {arg1}",
+  "@sentARequestToToJoin": {
+    "description": "UI message: Sent a request to {arg0} to join {arg1}",
+    "placeholders": {
+      "arg0": {
+        "type": "Object"
+      },
+      "arg1": {
+        "type": "Object"
+      }
+    }
+  },
+  "couldNotSendRequest": "Could not send request: {arg0}",
+  "@couldNotSendRequest": {
+    "description": "UI message: Could not send request: {arg0}",
+    "placeholders": {
+      "arg0": {
+        "type": "Object"
+      }
+    }
+  },
+  "useYourFingerprintOrFaceToUnlock": "Use your fingerprint or face to unlock PasswordVault",
+  "@useYourFingerprintOrFaceToUnlock": {
+    "description": "UI message: Use your fingerprint or face to unlock PasswordVault"
+  },
+  "passwordCannotBeEmpty": "Password cannot be empty.",
+  "@passwordCannotBeEmpty": {
+    "description": "UI message: Password cannot be empty."
+  },
+  "passwordsDoNotMatch": "Passwords do not match.",
+  "@passwordsDoNotMatch": {
+    "description": "UI message: Passwords do not match."
+  },
+  "setupFailedTryAgain": "Setup failed. Try again.",
+  "@setupFailedTryAgain": {
+    "description": "UI message: Setup failed. Try again."
+  },
+  "incorrectPassword": "Incorrect password",
+  "@incorrectPassword": {
+    "description": "UI message: Incorrect password"
+  },
+  "setMasterPassword": "Set master password",
+  "@setMasterPassword": {
+    "description": "UI message: Set master password"
+  },
+  "unlockVault": "Unlock vault",
+  "@unlockVault": {
+    "description": "UI message: Unlock vault"
+  },
+  "yourMasterPasswordProtectsYourVaultKeep": "Your master password protects your vault. Keep it in a safe place.",
+  "@yourMasterPasswordProtectsYourVaultKeep": {
+    "description": "UI message: Your master password protects your vault. Keep it in a safe place."
+  },
+  "enterYourMasterPasswordToContinue": "Enter your master password to continue",
+  "@enterYourMasterPasswordToContinue": {
+    "description": "UI message: Enter your master password to continue"
+  },
+  "setNewPassword": "Set new password",
+  "@setNewPassword": {
+    "description": "UI message: Set new password"
+  },
+  "enterPassword": "Enter password",
+  "@enterPassword": {
+    "description": "UI message: Enter password"
+  },
+  "confirmNewPassword": "Confirm new password",
+  "@confirmNewPassword": {
+    "description": "UI message: Confirm new password"
+  },
+  "getStarted": "Get started",
+  "@getStarted": {
+    "description": "UI message: Get started"
+  },
+  "unlock": "Unlock",
+  "@unlock": {
+    "description": "UI message: Unlock"
+  },
+  "useBiometrics": "Use biometrics",
+  "@useBiometrics": {
+    "description": "UI message: Use biometrics"
+  },
+  "passwordHealth": "Password health",
+  "@passwordHealth": {
+    "description": "UI message: Password health"
+  },
+  "noWeakReusedOrExpiredPasswordsDetected": "No weak, reused, or expired passwords detected.",
+  "@noWeakReusedOrExpiredPasswordsDetected": {
+    "description": "UI message: No weak, reused, or expired passwords detected."
+  },
+  "weakPasswords": "Weak passwords",
+  "@weakPasswords": {
+    "description": "UI message: Weak passwords"
+  },
+  "reused": "Reused",
+  "@reused": {
+    "description": "UI message: Reused"
+  },
+  "expired": "Expired",
+  "@expired": {
+    "description": "UI message: Expired"
+  },
+  "invalidPrivateKeyEnterHexadecimalCharacters": "Invalid private key. Enter 64 hexadecimal characters.",
+  "@invalidPrivateKeyEnterHexadecimalCharacters": {
+    "description": "UI message: Invalid private key. Enter 64 hexadecimal characters."
+  },
+  "invalidRecoveryPhraseCheckTheSpelling": "Invalid recovery phrase. Check the spelling.",
+  "@invalidRecoveryPhraseCheckTheSpelling": {
+    "description": "UI message: Invalid recovery phrase. Check the spelling."
+  },
+  "enterAllRecoveryWords": "Enter all 12 recovery words.",
+  "@enterAllRecoveryWords": {
+    "description": "UI message: Enter all 12 recovery words."
+  },
+  "completeAllRequiredFields": "Complete all required fields.",
+  "@completeAllRequiredFields": {
+    "description": "UI message: Complete all required fields."
+  },
+  "saved": "Saved",
+  "@saved": {
+    "description": "UI message: Saved"
+  },
+  "couldNotSave": "Could not save: {arg0}",
+  "@couldNotSave": {
+    "description": "UI message: Could not save: {arg0}",
+    "placeholders": {
+      "arg0": {
+        "type": "Object"
+      }
+    }
+  },
+  "addWallet": "Add wallet",
+  "@addWallet": {
+    "description": "UI message: Add wallet"
+  },
+  "addNote": "Add note",
+  "@addNote": {
+    "description": "UI message: Add note"
+  },
+  "addAccount": "Add account",
+  "@addAccount": {
+    "description": "UI message: Add account"
+  },
+  "editWallet": "Edit wallet",
+  "@editWallet": {
+    "description": "UI message: Edit wallet"
+  },
+  "editNote": "Edit note",
+  "@editNote": {
+    "description": "UI message: Edit note"
+  },
+  "editAccount": "Edit account",
+  "@editAccount": {
+    "description": "UI message: Edit account"
+  },
+  "basicInformation": "Basic information",
+  "@basicInformation": {
+    "description": "UI message: Basic information"
+  },
+  "walletName": "Wallet name",
+  "@walletName": {
+    "description": "UI message: Wallet name"
+  },
+  "noteTitle": "Note title",
+  "@noteTitle": {
+    "description": "UI message: Note title"
+  },
+  "accountName": "Account name",
+  "@accountName": {
+    "description": "UI message: Account name"
+  },
+  "eGMetamaskTrustWallet": "e.g. MetaMask, Trust Wallet",
+  "@eGMetamaskTrustWallet": {
+    "description": "UI message: e.g. MetaMask, Trust Wallet"
+  },
+  "eGCardDetailsReminder": "e.g. Card details, Reminder",
+  "@eGCardDetailsReminder": {
+    "description": "UI message: e.g. Card details, Reminder"
+  },
+  "eGGoogleGithub": "e.g. Google, GitHub",
+  "@eGGoogleGithub": {
+    "description": "UI message: e.g. Google, GitHub"
+  },
+  "usernameOrEmail": "Username or email",
+  "@usernameOrEmail": {
+    "description": "UI message: Username or email"
+  },
+  "walletAddress": "Wallet address",
+  "@walletAddress": {
+    "description": "UI message: Wallet address"
+  },
+  "generatedFromThePrivateKeyOrRecovery": "Generated from the private key or recovery phrase",
+  "@generatedFromThePrivateKeyOrRecovery": {
+    "description": "UI message: Generated from the private key or recovery phrase"
+  },
+  "blockchainNetwork": "Blockchain network",
+  "@blockchainNetwork": {
+    "description": "UI message: Blockchain network"
+  },
+  "notSelected": "Not selected",
+  "@notSelected": {
+    "description": "UI message: Not selected"
+  },
+  "accountPassword": "Account password",
+  "@accountPassword": {
+    "description": "UI message: Account password"
+  },
+  "showPassword": "Show password",
+  "@showPassword": {
+    "description": "UI message: Show password"
+  },
+  "hidePassword": "Hide password",
+  "@hidePassword": {
+    "description": "UI message: Hide password"
+  },
+  "copyPassword": "Copy password",
+  "@copyPassword": {
+    "description": "UI message: Copy password"
+  },
+  "passwordCopiedToClipboard": "Password copied to clipboard",
+  "@passwordCopiedToClipboard": {
+    "description": "UI message: Password copied to clipboard"
+  },
+  "generateRandomPassword": "Generate random password",
+  "@generateRandomPassword": {
+    "description": "UI message: Generate random password"
+  },
+  "category": "Category",
+  "@category": {
+    "description": "UI message: Category"
+  },
+  "additionalAccounts": "Additional accounts",
+  "@additionalAccounts": {
+    "description": "UI message: Additional accounts"
+  },
+  "account": "Account {arg0}",
+  "@account": {
+    "description": "UI message: Account {arg0}",
+    "placeholders": {
+      "arg0": {
+        "type": "Object"
+      }
+    }
+  },
+  "note": "Note",
+  "@note": {
+    "description": "UI message: Note"
+  },
+  "accountPurposeEGWorkPersonal": "Account purpose (e.g. work, personal)",
+  "@accountPurposeEGWorkPersonal": {
+    "description": "UI message: Account purpose (e.g. work, personal)"
+  },
+  "lastModified": "Last modified: {arg0}",
+  "@lastModified": {
+    "description": "UI message: Last modified: {arg0}",
+    "placeholders": {
+      "arg0": {
+        "type": "Object"
+      }
+    }
+  },
+  "passwordHistoryFor": "Password history for {arg0}",
+  "@passwordHistoryFor": {
+    "description": "UI message: Password history for {arg0}",
+    "placeholders": {
+      "arg0": {
+        "type": "Object"
+      }
+    }
+  },
+  "history": "History ({arg0})",
+  "@history": {
+    "description": "UI message: History ({arg0})",
+    "placeholders": {
+      "arg0": {
+        "type": "Object"
+      }
+    }
+  },
+  "addAnotherAccount": "Add another account",
+  "@addAnotherAccount": {
+    "description": "UI message: Add another account"
+  },
+  "privateKeyDetails": "Private key details",
+  "@privateKeyDetails": {
+    "description": "UI message: Private key details"
+  },
+  "privateKey": "Private key",
+  "@privateKey": {
+    "description": "UI message: Private key"
+  },
+  "enterWalletPrivateKey": "Enter wallet private key",
+  "@enterWalletPrivateKey": {
+    "description": "UI message: Enter wallet private key"
+  },
+  "showPrivateKey": "Show private key",
+  "@showPrivateKey": {
+    "description": "UI message: Show private key"
+  },
+  "hidePrivateKey": "Hide private key",
+  "@hidePrivateKey": {
+    "description": "UI message: Hide private key"
+  },
+  "copyPrivateKey": "Copy private key",
+  "@copyPrivateKey": {
+    "description": "UI message: Copy private key"
+  },
+  "privateKeyCopiedToClipboard": "Private key copied to clipboard",
+  "@privateKeyCopiedToClipboard": {
+    "description": "UI message: Private key copied to clipboard"
+  },
+  "recoveryPhrase": "Recovery phrase",
+  "@recoveryPhrase": {
+    "description": "UI message: Recovery phrase"
+  },
+  "word": "Word",
+  "@word": {
+    "description": "UI message: Word"
+  },
+  "generating": "Generating…",
+  "@generating": {
+    "description": "UI message: Generating…"
+  },
+  "generateRecoveryPhrase": "Generate recovery phrase",
+  "@generateRecoveryPhrase": {
+    "description": "UI message: Generate recovery phrase"
+  },
+  "show": "Show",
+  "@show": {
+    "description": "UI message: Show"
+  },
+  "hide": "Hide",
+  "@hide": {
+    "description": "UI message: Hide"
+  },
+  "securitySettings": "Security settings",
+  "@securitySettings": {
+    "description": "UI message: Security settings"
+  },
+  "twoFactorAuthenticationFa": "Two-factor authentication (2FA)",
+  "@twoFactorAuthenticationFa": {
+    "description": "UI message: Two-factor authentication (2FA)"
+  },
+  "notConfigured": "Not configured",
+  "@notConfigured": {
+    "description": "UI message: Not configured"
+  },
+  "configuredTapToEdit": "Configured (tap to edit)",
+  "@configuredTapToEdit": {
+    "description": "UI message: Configured (tap to edit)"
+  },
+  "noteContents": "Note contents",
+  "@noteContents": {
+    "description": "UI message: Note contents"
+  },
+  "optionalInformation": "Optional information",
+  "@optionalInformation": {
+    "description": "UI message: Optional information"
+  },
+  "email": "Email",
+  "@email": {
+    "description": "UI message: Email"
+  },
+  "linkedEmail": "Linked email",
+  "@linkedEmail": {
+    "description": "UI message: Linked email"
+  },
+  "websitesDomains": "Websites / domains",
+  "@websitesDomains": {
+    "description": "UI message: Websites / domains"
+  },
+  "separateMultipleDomainsWithCommasOrSemicolons": "Separate multiple domains with commas or semicolons",
+  "@separateMultipleDomainsWithCommasOrSemicolons": {
+    "description": "UI message: Separate multiple domains with commas or semicolons"
+  },
+  "contents": "Contents",
+  "@contents": {
+    "description": "UI message: Contents"
+  },
+  "writeYourNoteHere": "Write your note here…",
+  "@writeYourNoteHere": {
+    "description": "UI message: Write your note here…"
+  },
+  "additionalInformation": "Additional information…",
+  "@additionalInformation": {
+    "description": "UI message: Additional information…"
+  },
+  "passwordExpiryDays": "Password expiry (days)",
+  "@passwordExpiryDays": {
+    "description": "UI message: Password expiry (days)"
+  },
+  "leaveBlankForNoExpiry": "Leave blank for no expiry",
+  "@leaveBlankForNoExpiry": {
+    "description": "UI message: Leave blank for no expiry"
+  },
+  "lastChanged": "Last changed: {arg0}",
+  "@lastChanged": {
+    "description": "UI message: Last changed: {arg0}",
+    "placeholders": {
+      "arg0": {
+        "type": "Object"
+      }
+    }
+  },
+  "viewPasswordHistory": "View password history",
+  "@viewPasswordHistory": {
+    "description": "UI message: View password history"
+  },
+  "records": "Records: {arg0}",
+  "@records": {
+    "description": "UI message: Records: {arg0}",
+    "placeholders": {
+      "arg0": {
+        "type": "Object"
+      }
+    }
+  },
+  "displaySettings": "Display settings",
+  "@displaySettings": {
+    "description": "UI message: Display settings"
+  },
+  "pin": "Pin",
+  "@pin": {
+    "description": "UI message: Pin"
+  },
+  "keepThisItemAtTheTopOf": "Keep this item at the top of the list",
+  "@keepThisItemAtTheTopOf": {
+    "description": "UI message: Keep this item at the top of the list"
+  },
+  "colorLabel": "Color label",
+  "@colorLabel": {
+    "description": "UI message: Color label"
+  },
+  "none": "None",
+  "@none": {
+    "description": "UI message: None"
+  },
+  "red": "Red",
+  "@red": {
+    "description": "UI message: Red"
+  },
+  "orange": "Orange",
+  "@orange": {
+    "description": "UI message: Orange"
+  },
+  "yellow": "Yellow",
+  "@yellow": {
+    "description": "UI message: Yellow"
+  },
+  "green": "Green",
+  "@green": {
+    "description": "UI message: Green"
+  },
+  "blue": "Blue",
+  "@blue": {
+    "description": "UI message: Blue"
+  },
+  "purple": "Purple",
+  "@purple": {
+    "description": "UI message: Purple"
+  },
+  "pink": "Pink",
+  "@pink": {
+    "description": "UI message: Pink"
+  },
+  "cyan": "Cyan",
+  "@cyan": {
+    "description": "UI message: Cyan"
+  },
+  "chooseColorLabel": "Choose color label",
+  "@chooseColorLabel": {
+    "description": "UI message: Choose color label"
+  },
+  "tags": "Tags",
+  "@tags": {
+    "description": "UI message: Tags"
+  },
+  "addTag": "Add tag",
+  "@addTag": {
+    "description": "UI message: Add tag"
+  },
+  "enterTagName": "Enter tag name",
+  "@enterTagName": {
+    "description": "UI message: Enter tag name"
+  },
+  "passwordHistory": "Password history",
+  "@passwordHistory": {
+    "description": "UI message: Password history"
+  },
+  "copiedToClipboard": "Copied to clipboard",
+  "@copiedToClipboard": {
+    "description": "UI message: Copied to clipboard"
+  },
+  "chooseBlockchainNetwork": "Choose blockchain network",
+  "@chooseBlockchainNetwork": {
+    "description": "UI message: Choose blockchain network"
+  },
+  "addNetwork": "Add network",
+  "@addNetwork": {
+    "description": "UI message: Add network"
+  },
+  "enterNetworkNameEGArbitrum": "Enter network name (e.g. Arbitrum)",
+  "@enterNetworkNameEGArbitrum": {
+    "description": "UI message: Enter network name (e.g. Arbitrum)"
+  },
+  "personalVault": "Personal vault",
+  "@personalVault": {
+    "description": "UI message: Personal vault"
+  },
+  "sharedVault": "Shared vault: {arg0}",
+  "@sharedVault": {
+    "description": "UI message: Shared vault: {arg0}",
+    "placeholders": {
+      "arg0": {
+        "type": "Object"
+      }
+    }
+  },
+  "saveLocation": "Save location",
+  "@saveLocation": {
+    "description": "UI message: Save location"
+  },
+  "chooseSaveLocation": "Choose save location",
+  "@chooseSaveLocation": {
+    "description": "UI message: Choose save location"
+  },
+  "personalVaultDefault": "Personal vault (default)",
+  "@personalVaultDefault": {
+    "description": "UI message: Personal vault (default)"
+  },
+  "chooseCategory": "Choose category",
+  "@chooseCategory": {
+    "description": "UI message: Choose category"
+  },
+  "addCategory": "Add category",
+  "@addCategory": {
+    "description": "UI message: Add category"
+  },
+  "enterCategoryName": "Enter category name",
+  "@enterCategoryName": {
+    "description": "UI message: Enter category name"
+  },
+  "configureFa": "Configure 2FA",
+  "@configureFa": {
+    "description": "UI message: Configure 2FA"
+  },
+  "secretKey": "Secret key",
+  "@secretKey": {
+    "description": "UI message: Secret key"
+  },
+  "usuallyOrCharacters": "Usually 16 or 32 characters",
+  "@usuallyOrCharacters": {
+    "description": "UI message: Usually 16 or 32 characters"
+  },
+  "copySecretKey": "Copy secret key",
+  "@copySecretKey": {
+    "description": "UI message: Copy secret key"
+  },
+  "secretKeyCopiedToClipboard": "Secret key copied to clipboard",
+  "@secretKeyCopiedToClipboard": {
+    "description": "UI message: Secret key copied to clipboard"
+  },
+  "clear": "Clear",
+  "@clear": {
+    "description": "UI message: Clear"
+  },
+  "selectAtLeastOneCharacterType": "Select at least one character type.",
+  "@selectAtLeastOneCharacterType": {
+    "description": "UI message: Select at least one character type."
+  },
+  "filledOnTheCurrentPage": "Filled on the current page",
+  "@filledOnTheCurrentPage": {
+    "description": "UI message: Filled on the current page"
+  },
+  "passwordGenerator": "Password generator",
+  "@passwordGenerator": {
+    "description": "UI message: Password generator"
+  },
+  "regenerate": "Regenerate",
+  "@regenerate": {
+    "description": "UI message: Regenerate"
+  },
+  "copy": "Copy",
+  "@copy": {
+    "description": "UI message: Copy"
+  },
+  "fill": "Fill",
+  "@fill": {
+    "description": "UI message: Fill"
+  },
+  "options": "Options",
+  "@options": {
+    "description": "UI message: Options"
+  },
+  "passwordLength": "Password length",
+  "@passwordLength": {
+    "description": "UI message: Password length"
+  },
+  "uppercaseLetters": "Uppercase letters",
+  "@uppercaseLetters": {
+    "description": "UI message: Uppercase letters"
+  },
+  "lowercaseLetters": "Lowercase letters",
+  "@lowercaseLetters": {
+    "description": "UI message: Lowercase letters"
+  },
+  "digits": "Digits",
+  "@digits": {
+    "description": "UI message: Digits"
+  },
+  "symbols": "Symbols",
+  "@symbols": {
+    "description": "UI message: Symbols"
+  },
+  "trash": "Trash",
+  "@trash": {
+    "description": "UI message: Trash"
+  },
+  "emptyTrash": "Empty trash",
+  "@emptyTrash": {
+    "description": "UI message: Empty trash"
+  },
+  "trashIsEmpty": "Trash is empty",
+  "@trashIsEmpty": {
+    "description": "UI message: Trash is empty"
+  },
+  "noDetails": "No details",
+  "@noDetails": {
+    "description": "UI message: No details"
+  },
+  "restore": "Restore",
+  "@restore": {
+    "description": "UI message: Restore"
+  },
+  "deletePermanently": "Delete permanently",
+  "@deletePermanently": {
+    "description": "UI message: Delete permanently"
+  },
+  "restored": "Restored: {arg0}",
+  "@restored": {
+    "description": "UI message: Restored: {arg0}",
+    "placeholders": {
+      "arg0": {
+        "type": "Object"
+      }
+    }
+  },
+  "permanentlyDeleteThisCannotBeUndone": "Permanently delete \"{arg0}\"? This cannot be undone.",
+  "@permanentlyDeleteThisCannotBeUndone": {
+    "description": "UI message: Permanently delete \"{arg0}\"? This cannot be undone.",
+    "placeholders": {
+      "arg0": {
+        "type": "Object"
+      }
+    }
+  },
+  "permanentlyDeleted": "Permanently deleted: {arg0}",
+  "@permanentlyDeleted": {
+    "description": "UI message: Permanently deleted: {arg0}",
+    "placeholders": {
+      "arg0": {
+        "type": "Object"
+      }
+    }
+  },
+  "permanentlyDeleteAllItemsInTheTrash": "Permanently delete all {arg0} items in the trash? This cannot be undone.",
+  "@permanentlyDeleteAllItemsInTheTrash": {
+    "description": "UI message: Permanently delete all {arg0} items in the trash? This cannot be undone.",
+    "placeholders": {
+      "arg0": {
+        "type": "Object"
+      }
+    }
+  },
+  "trashEmptied": "Trash emptied",
+  "@trashEmptied": {
+    "description": "UI message: Trash emptied"
+  },
+  "empty": "Empty",
+  "@empty": {
+    "description": "UI message: Empty"
+  },
+  "expiresInDays": "Expires in {arg0} days",
+  "@expiresInDays": {
+    "description": "UI message: Expires in {arg0} days",
+    "placeholders": {
+      "arg0": {
+        "type": "Object"
+      }
+    }
+  },
+  "fillingCredentials": "Filling credentials…",
+  "@fillingCredentials": {
+    "description": "UI message: Filling credentials…"
+  },
+  "autofill": "Autofill",
+  "@autofill": {
+    "description": "UI message: Autofill"
+  },
+  "passwordCopiedFor": "Password copied for {arg0}",
+  "@passwordCopiedFor": {
+    "description": "UI message: Password copied for {arg0}",
+    "placeholders": {
+      "arg0": {
+        "type": "Object"
+      }
+    }
+  },
+  "defaultAccount": "Default account",
+  "@defaultAccount": {
+    "description": "UI message: Default account"
+  },
+  "labelDefault385": "Default: {arg0}",
+  "@labelDefault385": {
+    "description": "UI message: Default: {arg0}",
+    "placeholders": {
+      "arg0": {
+        "type": "Object"
+      }
+    }
+  },
+  "account386": "Account",
+  "@account386": {
+    "description": "UI message: Account"
+  },
+  "passwordCopied": "Password copied",
+  "@passwordCopied": {
+    "description": "UI message: Password copied"
+  },
+  "addressCopied": "Address copied",
+  "@addressCopied": {
+    "description": "UI message: Address copied"
+  },
+  "copyAddress": "Copy address",
+  "@copyAddress": {
+    "description": "UI message: Copy address"
+  },
+  "importExport": "Import / export",
+  "@importExport": {
+    "description": "UI message: Import / export"
+  },
+  "importMultipleFaEntriesOtpauthUris": "Import multiple 2FA entries (otpauth URIs)",
+  "@importMultipleFaEntriesOtpauthUris": {
+    "description": "UI message: Import multiple 2FA entries (otpauth URIs)"
+  },
+  "oneUriPerLineSupportsGoogleAuthenticator": "One URI per line; supports Google Authenticator format",
+  "@oneUriPerLineSupportsGoogleAuthenticator": {
+    "description": "UI message: One URI per line; supports Google Authenticator format"
+  },
+  "exportAllDataJson": "Export all data (JSON)",
+  "@exportAllDataJson": {
+    "description": "UI message: Export all data (JSON)"
+  },
+  "unencryptedStoreThisFileSecurely": "Unencrypted: store this file securely",
+  "@unencryptedStoreThisFileSecurely": {
+    "description": "UI message: Unencrypted: store this file securely"
+  },
+  "noDataToExport": "No data to export",
+  "@noDataToExport": {
+    "description": "UI message: No data to export"
+  },
+  "exportComplete": "Export complete",
+  "@exportComplete": {
+    "description": "UI message: Export complete"
+  },
+  "exportCsv": "Export CSV",
+  "@exportCsv": {
+    "description": "UI message: Export CSV"
+  },
+  "forMigrationToAnotherPasswordManager": "For migration to another password manager",
+  "@forMigrationToAnotherPasswordManager": {
+    "description": "UI message: For migration to another password manager"
+  },
+  "csvExported": "CSV exported",
+  "@csvExported": {
+    "description": "UI message: CSV exported"
+  },
+  "exportEncryptedDataJson": "Export encrypted data (JSON)",
+  "@exportEncryptedDataJson": {
+    "description": "UI message: Export encrypted data (JSON)"
+  },
+  "encryptWithYourMasterPassword": "Encrypt with your master password",
+  "@encryptWithYourMasterPassword": {
+    "description": "UI message: Encrypt with your master password"
+  },
+  "encryptedDataExported": "Encrypted data exported",
+  "@encryptedDataExported": {
+    "description": "UI message: Encrypted data exported"
+  },
+  "exportEncryptedCsv": "Export encrypted CSV",
+  "@exportEncryptedCsv": {
+    "description": "UI message: Export encrypted CSV"
+  },
+  "encryptedCsvInABaseEnvelope": "Encrypted CSV in a Base64 envelope",
+  "@encryptedCsvInABaseEnvelope": {
+    "description": "UI message: Encrypted CSV in a Base64 envelope"
+  },
+  "encryptedCsvExported": "Encrypted CSV exported",
+  "@encryptedCsvExported": {
+    "description": "UI message: Encrypted CSV exported"
+  },
+  "importDataJson": "Import data (JSON)",
+  "@importDataJson": {
+    "description": "UI message: Import data (JSON)"
+  },
+  "supportsEncryptedAndUnencryptedFiles": "Supports encrypted and unencrypted files",
+  "@supportsEncryptedAndUnencryptedFiles": {
+    "description": "UI message: Supports encrypted and unencrypted files"
+  },
+  "importFailed": "Import failed: {arg0}",
+  "@importFailed": {
+    "description": "UI message: Import failed: {arg0}",
+    "placeholders": {
+      "arg0": {
+        "type": "Object"
+      }
+    }
+  },
+  "importEncryptedCsv": "Import encrypted CSV",
+  "@importEncryptedCsv": {
+    "description": "UI message: Import encrypted CSV"
+  },
+  "readAnEncryptedCsvExport": "Read an encrypted CSV export",
+  "@readAnEncryptedCsvExport": {
+    "description": "UI message: Read an encrypted CSV export"
+  },
+  "unlockYourVaultFirst": "Unlock your vault first.",
+  "@unlockYourVaultFirst": {
+    "description": "UI message: Unlock your vault first."
+  },
+  "encryptedCsv": "Encrypted CSV",
+  "@encryptedCsv": {
+    "description": "UI message: Encrypted CSV"
+  },
+  "importLastpassDataCsv": "Import LastPass data (CSV)",
+  "@importLastpassDataCsv": {
+    "description": "UI message: Import LastPass data (CSV)"
+  },
+  "readACsvExportFromLastpass": "Read a CSV export from LastPass",
+  "@readACsvExportFromLastpass": {
+    "description": "UI message: Read a CSV export from LastPass"
+  },
+  "importBitwardenDataCsv": "Import Bitwarden data (CSV)",
+  "@importBitwardenDataCsv": {
+    "description": "UI message: Import Bitwarden data (CSV)"
+  },
+  "readACsvExportFromBitwarden": "Read a CSV export from Bitwarden",
+  "@readACsvExportFromBitwarden": {
+    "description": "UI message: Read a CSV export from Bitwarden"
+  },
+  "importPasswordDataCsv": "Import 1Password data (CSV)",
+  "@importPasswordDataCsv": {
+    "description": "UI message: Import 1Password data (CSV)"
+  },
+  "readACsvExportFromPassword": "Read a CSV export from 1Password",
+  "@readACsvExportFromPassword": {
+    "description": "UI message: Read a CSV export from 1Password"
+  },
+  "importChromePasswordsCsv": "Import Chrome passwords (CSV)",
+  "@importChromePasswordsCsv": {
+    "description": "UI message: Import Chrome passwords (CSV)"
+  },
+  "readACsvExportFromChrome": "Read a CSV export from Chrome",
+  "@readACsvExportFromChrome": {
+    "description": "UI message: Read a CSV export from Chrome"
+  },
+  "labelImport": "Import",
+  "@labelImport": {
+    "description": "UI message: Import"
+  },
+  "noDataToImport": "No data to import",
+  "@noDataToImport": {
+    "description": "UI message: No data to import"
+  },
+  "importCompleteAddedUpdatedSkipped": "{arg0} import complete: {arg1} added, {arg2} updated, {arg3} skipped",
+  "@importCompleteAddedUpdatedSkipped": {
+    "description": "UI message: {arg0} import complete: {arg1} added, {arg2} updated, {arg3} skipped",
+    "placeholders": {
+      "arg0": {
+        "type": "Object"
+      },
+      "arg1": {
+        "type": "Object"
+      },
+      "arg2": {
+        "type": "Object"
+      },
+      "arg3": {
+        "type": "Object"
+      }
+    }
+  },
+  "importMultipleFaEntries": "Import multiple 2FA entries",
+  "@importMultipleFaEntries": {
+    "description": "UI message: Import multiple 2FA entries"
+  },
+  "pasteOtpauthLinksOnePerLine": "Paste otpauth:// links, one per line:",
+  "@pasteOtpauthLinksOnePerLine": {
+    "description": "UI message: Paste otpauth:// links, one per line:"
+  },
+  "importedFaEntries": "Imported 2FA entries: {arg0}",
+  "@importedFaEntries": {
+    "description": "UI message: Imported 2FA entries: {arg0}",
+    "placeholders": {
+      "arg0": {
+        "type": "Object"
+      }
+    }
+  },
+  "addFaCode": "Add 2FA code",
+  "@addFaCode": {
+    "description": "UI message: Add 2FA code"
+  },
+  "addAccountCredentials": "Add account credentials",
+  "@addAccountCredentials": {
+    "description": "UI message: Add account credentials"
+  },
+  "nameEGGoogleGithub": "Name (e.g. Google, GitHub)",
+  "@nameEGGoogleGithub": {
+    "description": "UI message: Name (e.g. Google, GitHub)"
+  },
+  "usernameEmail": "Username / email",
+  "@usernameEmail": {
+    "description": "UI message: Username / email"
+  },
+  "contentsCopiedToClipboard": "Contents copied to clipboard",
+  "@contentsCopiedToClipboard": {
+    "description": "UI message: Contents copied to clipboard"
+  },
+  "websitesDomainsCommaSeparated": "Websites / domains (comma-separated)",
+  "@websitesDomainsCommaSeparated": {
+    "description": "UI message: Websites / domains (comma-separated)"
+  },
+  "currentPasswordFilled": "Current password filled",
+  "@currentPasswordFilled": {
+    "description": "UI message: Current password filled"
+  },
+  "credentialsFilled": "Credentials filled",
+  "@credentialsFilled": {
+    "description": "UI message: Credentials filled"
+  },
+  "accountReadyToSave": "Account ready to save: {arg0}",
+  "@accountReadyToSave": {
+    "description": "UI message: Account ready to save: {arg0}",
+    "placeholders": {
+      "arg0": {
+        "type": "Object"
+      }
+    }
+  },
+  "saveNow": "Save now",
+  "@saveNow": {
+    "description": "UI message: Save now"
+  },
+  "updateSavedAccount": "Update saved account",
+  "@updateSavedAccount": {
+    "description": "UI message: Update saved account"
+  },
+  "saveNewAccount": "Save new account",
+  "@saveNewAccount": {
+    "description": "UI message: Save new account"
+  },
+  "anAccountAlreadyExistsForThisWebsite": "An account already exists for this website. Updating it will keep the previous password in its history.",
+  "@anAccountAlreadyExistsForThisWebsite": {
+    "description": "UI message: An account already exists for this website. Updating it will keep the previous password in its history."
+  },
+  "name": "Name",
+  "@name": {
+    "description": "UI message: Name"
+  },
+  "ignore": "Ignore",
+  "@ignore": {
+    "description": "UI message: Ignore"
+  },
+  "passwordUpdated": "Password updated",
+  "@passwordUpdated": {
+    "description": "UI message: Password updated"
+  },
+  "savedToVault": "Saved to vault",
+  "@savedToVault": {
+    "description": "UI message: Saved to vault"
+  },
+  "updatePassword": "Update password",
+  "@updatePassword": {
+    "description": "UI message: Update password"
+  },
+  "sortBy": "Sort by",
+  "@sortBy": {
+    "description": "UI message: Sort by"
+  },
+  "nameAZ": "Name A → Z",
+  "@nameAZ": {
+    "description": "UI message: Name A → Z"
+  },
+  "nameZA": "Name Z → A",
+  "@nameZA": {
+    "description": "UI message: Name Z → A"
+  },
+  "recentlyModifiedFirst": "Recently modified first",
+  "@recentlyModifiedFirst": {
+    "description": "UI message: Recently modified first"
+  },
+  "oldestModifiedFirst": "Oldest modified first",
+  "@oldestModifiedFirst": {
+    "description": "UI message: Oldest modified first"
+  },
+  "unpin": "Unpin",
+  "@unpin": {
+    "description": "UI message: Unpin"
+  },
+  "color": "Color",
+  "@color": {
+    "description": "UI message: Color"
+  },
+  "deleteSelected": "Delete selected",
+  "@deleteSelected": {
+    "description": "UI message: Delete selected"
+  },
+  "moveItemsToTheTrash": "Move {arg0} items to the trash?",
+  "@moveItemsToTheTrash": {
+    "description": "UI message: Move {arg0} items to the trash?",
+    "placeholders": {
+      "arg0": {
+        "type": "Object"
+      }
+    }
+  },
+  "movedToTrash454": "Moved to trash: {arg0}",
+  "@movedToTrash454": {
+    "description": "UI message: Moved to trash: {arg0}",
+    "placeholders": {
+      "arg0": {
+        "type": "Object"
+      }
+    }
+  },
+  "pinnedItems": "Pinned items: {arg0}",
+  "@pinnedItems": {
+    "description": "UI message: Pinned items: {arg0}",
+    "placeholders": {
+      "arg0": {
+        "type": "Object"
+      }
+    }
+  },
+  "unpinnedItems": "Unpinned items: {arg0}",
+  "@unpinnedItems": {
+    "description": "UI message: Unpinned items: {arg0}",
+    "placeholders": {
+      "arg0": {
+        "type": "Object"
+      }
+    }
+  },
+  "orEnterANewTag": "Or enter a new tag",
+  "@orEnterANewTag": {
+    "description": "UI message: Or enter a new tag"
+  },
+  "add": "Add",
+  "@add": {
+    "description": "UI message: Add"
+  },
+  "addedTagToItems": "Added tag \"{arg1}\" to {arg0} items",
+  "@addedTagToItems": {
+    "description": "UI message: Added tag \"{arg1}\" to {arg0} items",
+    "placeholders": {
+      "arg0": {
+        "type": "Object"
+      },
+      "arg1": {
+        "type": "Object"
+      }
+    }
+  },
+  "appliedColorToItems": "Applied color to {arg0} items",
+  "@appliedColorToItems": {
+    "description": "UI message: Applied color to {arg0} items",
+    "placeholders": {
+      "arg0": {
+        "type": "Object"
+      }
+    }
+  },
+  "selected": "Selected: {arg0}",
+  "@selected": {
+    "description": "UI message: Selected: {arg0}",
+    "placeholders": {
+      "arg0": {
+        "type": "Object"
+      }
+    }
+  },
+  "searchTitlesUsernamesDomains": "Search titles, usernames, domains…",
+  "@searchTitlesUsernamesDomains": {
+    "description": "UI message: Search titles, usernames, domains…"
+  },
+  "codes": "Codes",
+  "@codes": {
+    "description": "UI message: Codes"
+  },
+  "accounts": "Accounts",
+  "@accounts": {
+    "description": "UI message: Accounts"
+  },
+  "secureNotes": "Secure notes",
+  "@secureNotes": {
+    "description": "UI message: Secure notes"
+  },
+  "settings": "Settings",
+  "@settings": {
+    "description": "UI message: Settings"
+  },
+  "selectAll": "Select all",
+  "@selectAll": {
+    "description": "UI message: Select all"
+  },
+  "bulkImport": "Bulk import",
+  "@bulkImport": {
+    "description": "UI message: Bulk import"
+  },
+  "favoritesOnly": "Favorites only",
+  "@favoritesOnly": {
+    "description": "UI message: Favorites only"
+  },
+  "sort": "Sort",
+  "@sort": {
+    "description": "UI message: Sort"
+  },
+  "selectMultiple": "Select multiple",
+  "@selectMultiple": {
+    "description": "UI message: Select multiple"
+  },
+  "addCode": "Add code",
+  "@addCode": {
+    "description": "UI message: Add code"
+  },
+  "addAccount473": "Add account",
+  "@addAccount473": {
+    "description": "UI message: Add account"
+  },
+  "accounts474": "Accounts",
+  "@accounts474": {
+    "description": "UI message: Accounts"
+  },
+  "viewingSharedVault": "Viewing shared vault: {arg0}",
+  "@viewingSharedVault": {
+    "description": "UI message: Viewing shared vault: {arg0}",
+    "placeholders": {
+      "arg0": {
+        "type": "Object"
+      }
+    }
+  },
+  "noMatchingItems": "No matching items",
+  "@noMatchingItems": {
+    "description": "UI message: No matching items"
+  },
+  "noItemsYet": "No items yet",
+  "@noItemsYet": {
+    "description": "UI message: No items yet"
+  },
+  "resetFilters": "Reset filters",
+  "@resetFilters": {
+    "description": "UI message: Reset filters"
+  },
+  "autoLockTimeout": "Auto-lock timeout",
+  "@autoLockTimeout": {
+    "description": "UI message: Auto-lock timeout"
+  },
+  "minute": "1 minute",
+  "@minute": {
+    "description": "UI message: 1 minute"
+  },
+  "minutes": "5 minutes",
+  "@minutes": {
+    "description": "UI message: 5 minutes"
+  },
+  "minutes482": "10 minutes",
+  "@minutes482": {
+    "description": "UI message: 10 minutes"
+  },
+  "minutes483": "30 minutes",
+  "@minutes483": {
+    "description": "UI message: 30 minutes"
+  },
+  "hour": "1 hour",
+  "@hour": {
+    "description": "UI message: 1 hour"
+  },
+  "hours": "4 hours",
+  "@hours": {
+    "description": "UI message: 4 hours"
+  },
+  "deleteAllData": "Delete all data",
+  "@deleteAllData": {
+    "description": "UI message: Delete all data"
+  },
+  "permanentlyDeleteAllPasswordsSharedVaultsAnd": "Permanently delete all passwords, shared vaults, and sync settings? This cannot be undone.",
+  "@permanentlyDeleteAllPasswordsSharedVaultsAnd": {
+    "description": "UI message: Permanently delete all passwords, shared vaults, and sync settings? This cannot be undone."
+  },
+  "allDataDeleted": "All data deleted",
+  "@allDataDeleted": {
+    "description": "UI message: All data deleted"
+  },
+  "couldNotDeleteData": "Could not delete data: {arg0}",
+  "@couldNotDeleteData": {
+    "description": "UI message: Could not delete data: {arg0}",
+    "placeholders": {
+      "arg0": {
+        "type": "Object"
+      }
+    }
+  },
+  "confirmDeletion490": "Confirm deletion",
+  "@confirmDeletion490": {
+    "description": "UI message: Confirm deletion"
+  },
+  "changeMasterPassword": "Change master password",
+  "@changeMasterPassword": {
+    "description": "UI message: Change master password"
+  },
+  "currentPassword": "Current password",
+  "@currentPassword": {
+    "description": "UI message: Current password"
+  },
+  "newPassword": "New password",
+  "@newPassword": {
+    "description": "UI message: New password"
+  },
+  "incorrectCurrentPassword": "Incorrect current password",
+  "@incorrectCurrentPassword": {
+    "description": "UI message: Incorrect current password"
+  },
+  "newPasswordCannotBeEmpty": "New password cannot be empty.",
+  "@newPasswordCannotBeEmpty": {
+    "description": "UI message: New password cannot be empty."
+  },
+  "newPasswordsDoNotMatch": "New passwords do not match.",
+  "@newPasswordsDoNotMatch": {
+    "description": "UI message: New passwords do not match."
+  },
+  "masterPasswordChanged": "Master password changed",
+  "@masterPasswordChanged": {
+    "description": "UI message: Master password changed"
+  },
+  "security": "Security",
+  "@security": {
+    "description": "UI message: Security"
+  },
+  "checkPasswordHealth": "Check password health",
+  "@checkPasswordHealth": {
+    "description": "UI message: Check password health"
+  },
+  "issuesFound": "Issues found: {arg0}",
+  "@issuesFound": {
+    "description": "UI message: Issues found: {arg0}",
+    "placeholders": {
+      "arg0": {
+        "type": "Object"
+      }
+    }
+  },
+  "noIssuesDetected": "No issues detected",
+  "@noIssuesDetected": {
+    "description": "UI message: No issues detected"
+  },
+  "biometricUnlock": "Biometric unlock",
+  "@biometricUnlock": {
+    "description": "UI message: Biometric unlock"
+  },
+  "autoLock": "Auto-lock",
+  "@autoLock": {
+    "description": "UI message: Auto-lock"
+  },
+  "minutes504": "{arg0} minutes",
+  "@minutes504": {
+    "description": "UI message: {arg0} minutes",
+    "placeholders": {
+      "arg0": {
+        "type": "Object"
+      }
+    }
+  },
+  "lockVault": "Lock vault",
+  "@lockVault": {
+    "description": "UI message: Lock vault"
+  },
+  "browserExtension": "Browser extension",
+  "@browserExtension": {
+    "description": "UI message: Browser extension"
+  },
+  "appearance": "Appearance",
+  "@appearance": {
+    "description": "UI message: Appearance"
+  },
+  "theme": "Theme",
+  "@theme": {
+    "description": "UI message: Theme"
+  },
+  "tools": "Tools",
+  "@tools": {
+    "description": "UI message: Tools"
+  },
+  "collaborationSharing": "Collaboration & sharing",
+  "@collaborationSharing": {
+    "description": "UI message: Collaboration & sharing"
+  },
+  "sharedVaultsFamilyTeam": "Shared vaults (family / team)",
+  "@sharedVaultsFamilyTeam": {
+    "description": "UI message: Shared vaults (family / team)"
+  },
+  "encryptedSharedFolders": "Encrypted shared folders",
+  "@encryptedSharedFolders": {
+    "description": "UI message: Encrypted shared folders"
+  },
+  "dataManagement": "Data management",
+  "@dataManagement": {
+    "description": "UI message: Data management"
+  },
+  "configured": "Configured",
+  "@configured": {
+    "description": "UI message: Configured"
+  },
+  "importAndExport": "Import and export",
+  "@importAndExport": {
+    "description": "UI message: Import and export"
+  },
+  "about": "About",
+  "@about": {
+    "description": "UI message: About"
+  },
+  "version": "Version",
+  "@version": {
+    "description": "UI message: Version"
+  },
+  "systemDefault": "System default",
+  "@systemDefault": {
+    "description": "UI message: System default"
+  },
+  "light": "Light",
+  "@light": {
+    "description": "UI message: Light"
+  },
+  "dark": "Dark",
+  "@dark": {
+    "description": "UI message: Dark"
+  },
+  "lightMode": "Light mode",
+  "@lightMode": {
+    "description": "UI message: Light mode"
+  },
+  "darkMode": "Dark mode",
+  "@darkMode": {
+    "description": "UI message: Dark mode"
+  },
+  "automaticPageFill": "Automatic page fill",
+  "@automaticPageFill": {
+    "description": "UI message: Automatic page fill"
+  },
+  "fillMatchingCredentialsWhenAPageLoads": "Fill matching credentials when a page loads",
+  "@fillMatchingCredentialsWhenAPageLoads": {
+    "description": "UI message: Fill matching credentials when a page loads"
+  },
+  "all": "All",
+  "@all": {
+    "description": "UI message: All"
+  },
+  "allTags": "All tags",
+  "@allTags": {
+    "description": "UI message: All tags"
+  },
+  "language": "Language",
+  "english": "English",
+  "simplifiedChinese": "简体中文",
+  "appName": "PasswordVault",
+  "previewNotice": "Developer preview — review the security notes before using real credentials."
+}

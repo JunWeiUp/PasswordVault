@@ -1,0 +1,6 @@
+# Copy to key.properties and use a NEW private keystore. Never commit either file.
+# Relative paths are resolved from android/app; absolute paths are also accepted.
+storeFile=/absolute/path/to/private-upload-keystore.jks
+storePassword=REPLACE_LOCALLY
+keyAlias=upload
+keyPassword=REPLACE_LOCALLY

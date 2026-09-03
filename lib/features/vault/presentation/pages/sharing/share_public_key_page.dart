@@ -1,3 +1,4 @@
+import 'package:password/core/l10n/l10n.dart';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -24,16 +25,15 @@ class _SharePublicKeyPageState extends ConsumerState<SharePublicKeyPage> {
 
   @override
   Widget build(BuildContext context) {
+    AppLocalizations.of(context);
     final userKeyPairAsync = ref.watch(userKeyPairProvider);
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('我的共享公钥'),
-      ),
+      appBar: AppBar(title: Text(tr.mySharingPublicKey)),
       body: userKeyPairAsync.when(
         data: (keyPair) {
           if (keyPair == null) {
-            return const Center(child: Text('公钥生成中...'));
+            return Center(child: Text(tr.generatingPublicKey));
           }
 
           return FutureBuilder(
@@ -50,16 +50,23 @@ class _SharePublicKeyPageState extends ConsumerState<SharePublicKeyPage> {
                 padding: const EdgeInsets.all(32),
                 child: Column(
                   children: [
-                    const Icon(Icons.share_outlined, size: 64, color: Colors.blue),
+                    const Icon(
+                      Icons.share_outlined,
+                      size: 64,
+                      color: Colors.blue,
+                    ),
                     const SizedBox(height: 24),
-                    const Text(
-                      '扫描或复制公钥以加入共享库',
+                    Text(
+                      tr.scanOrCopyYourPublicKeyTo,
                       textAlign: TextAlign.center,
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                     const SizedBox(height: 12),
                     Text(
-                      '公钥是安全的，可以公开分享。它用于其他成员为您加密共享库的访问密钥。',
+                      tr.youCanShareThisPublicKeyOther,
                       textAlign: TextAlign.center,
                       style: TextStyle(color: Colors.grey[600], fontSize: 14),
                     ),
@@ -85,11 +92,14 @@ class _SharePublicKeyPageState extends ConsumerState<SharePublicKeyPage> {
                       ),
                     ),
                     const SizedBox(height: 40),
-                    const Align(
+                    Align(
                       alignment: Alignment.centerLeft,
                       child: Text(
-                        '公钥 (Base64)',
-                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                        tr.publicKeyBase,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                        ),
                       ),
                     ),
                     const SizedBox(height: 8),
@@ -105,7 +115,10 @@ class _SharePublicKeyPageState extends ConsumerState<SharePublicKeyPage> {
                           Expanded(
                             child: Text(
                               publicKeyBase64,
-                              style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+                              style: const TextStyle(
+                                fontFamily: 'monospace',
+                                fontSize: 12,
+                              ),
                               maxLines: 2,
                               overflow: TextOverflow.ellipsis,
                             ),
@@ -113,9 +126,13 @@ class _SharePublicKeyPageState extends ConsumerState<SharePublicKeyPage> {
                           IconButton(
                             icon: const Icon(Icons.copy),
                             onPressed: () {
-                              Clipboard.setData(ClipboardData(text: publicKeyBase64));
+                              Clipboard.setData(
+                                ClipboardData(text: publicKeyBase64),
+                              );
                               ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('公钥已复制到剪贴板')),
+                                SnackBar(
+                                  content: Text(tr.publicKeyCopiedToClipboard),
+                                ),
                               );
                             },
                           ),
@@ -129,7 +146,7 @@ class _SharePublicKeyPageState extends ConsumerState<SharePublicKeyPage> {
           );
         },
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (err, stack) => Center(child: Text('加载失败: $err')),
+        error: (err, stack) => Center(child: Text(tr.couldNotLoad(err))),
       ),
     );
   }

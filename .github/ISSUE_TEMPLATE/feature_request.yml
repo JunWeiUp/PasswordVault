@@ -1,0 +1,16 @@
+name: Feature request / 功能建议
+description: Explain a use case and the outcome you need.
+title: 'feat: '
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or use case
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Proposed behavior and alternatives
+    validations:
+      required: true

@@ -1,5 +1,7 @@
 name: password
-description: "A new Flutter project."
+description: "A local-first Flutter vault for passwords, TOTP codes, notes, and wallet credentials."
+repository: https://github.com/JunWeiUp/PasswordVault
+issue_tracker: https://github.com/JunWeiUp/PasswordVault/issues
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
@@ -16,17 +18,11 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 1.0.0+1
+version: 1.1.0+5
 
 environment:
-  sdk: ^3.5.4
-
-# sqlite3 3.x 默认在构建时从 GitHub 拉取预编译 .so，国内/弱网易超时。
-# 使用系统自带的 libsqlite3，避免构建期下载；详见 https://pub.dev/documentation/sqlite3/latest/topics/hook-topic.html
-hooks:
-  user_defines:
-    sqlite3:
-      source: system
+  sdk: ^3.11.0
+  flutter: ">=3.41.7"
 
 # Dependencies specify other packages that your package needs in order to work.
 # To automatically upgrade your package dependencies to the latest versions
@@ -36,6 +32,8 @@ hooks:
 # versions available, run `flutter pub outdated`.
 dependencies:
   flutter:
+    sdk: flutter
+  flutter_localizations:
     sdk: flutter
   meta: ^1.12.0
   cupertino_icons: ^1.0.8
@@ -61,7 +59,7 @@ dependencies:
   webdav_client: ^1.2.2
   csv: ^6.0.0
   hex: ^0.2.0
-  intl: ^0.19.0
+  intl: ^0.20.2
   nsd: 4.0.0
   shelf: ^1.4.1
   shelf_router: ^1.1.4
@@ -70,7 +68,6 @@ dependencies:
   image: ^4.3.0
   zxing2: ^0.2.4
   flutter_secure_storage: ^10.0.0
-  sqlite3_flutter_libs: ^0.5.0
 
 dev_dependencies:
   flutter_test:
@@ -85,6 +82,7 @@ dev_dependencies:
 
 # The following section is specific to Flutter packages.
 flutter:
+  generate: true
 
   # The following line ensures that the Material Icons font is
   # included with your application, so that you can use the icons in

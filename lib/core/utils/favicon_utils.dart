@@ -11,14 +11,21 @@ class FaviconUtils {
     if (rawSegment.isEmpty) return '';
 
     try {
-      final normalized =
-          rawSegment.contains('://') ? rawSegment : 'https://$rawSegment';
+      final normalized = rawSegment.contains('://')
+          ? rawSegment
+          : 'https://$rawSegment';
       final uri = Uri.parse(normalized);
       final host = uri.host.toLowerCase();
       if (host.isNotEmpty) return host;
     } catch (_) {}
 
-    final fallback = rawSegment.split('/').first.split(':').first.trim().toLowerCase();
+    final fallback = rawSegment
+        .split('/')
+        .first
+        .split(':')
+        .first
+        .trim()
+        .toLowerCase();
     return fallback;
   }
 

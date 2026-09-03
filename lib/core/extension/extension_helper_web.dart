@@ -68,11 +68,11 @@ class ExtensionHelper {
     try {
       final result = await _chromeStorageGet('pending_saves'.toJS).toDart;
       if (result == null || !result.isA<JSArray>()) return [];
-      
+
       final array = result as JSArray;
       final helper = JSArrayHelper(array);
       final list = <Map<String, dynamic>>[];
-      
+
       for (int i = 0; i < helper.length; i++) {
         final item = (array as JSObject).getProperty(i.toJS);
         if (item != null && item.isA<JSObject>()) {
@@ -138,14 +138,17 @@ class ExtensionHelper {
         final dataObj = data as JSObject;
         dataMap = {
           'url': (dataObj.getProperty('url'.toJS) as JSString?)?.toDart,
-          'username': (dataObj.getProperty('username'.toJS) as JSString?)?.toDart,
-          'password': (dataObj.getProperty('password'.toJS) as JSString?)?.toDart,
+          'username':
+              (dataObj.getProperty('username'.toJS) as JSString?)?.toDart,
+          'password':
+              (dataObj.getProperty('password'.toJS) as JSString?)?.toDart,
           'reason': (dataObj.getProperty('reason'.toJS) as JSString?)?.toDart,
         };
       }
 
       final fillRequestedProp = obj.getProperty('fillRequested'.toJS);
-      final fillRequested = fillRequestedProp != null && fillRequestedProp.isA<JSBoolean>()
+      final fillRequested =
+          fillRequestedProp != null && fillRequestedProp.isA<JSBoolean>()
           ? (fillRequestedProp as JSBoolean).toDart
           : false;
 
@@ -155,7 +158,8 @@ class ExtensionHelper {
           : false;
 
       final fillTargetProp = obj.getProperty('fillTarget'.toJS);
-      final fillTarget = fillTargetProp != null && fillTargetProp.isA<JSString>()
+      final fillTarget =
+          fillTargetProp != null && fillTargetProp.isA<JSString>()
           ? (fillTargetProp as JSString).toDart
           : null;
 
@@ -182,13 +186,12 @@ class ExtensionHelper {
   static Future<void> fillCredentials(String username, String password) async {
     if (!isExtension) return;
 
-    final message = {
-      'type': 'DO_FILL',
-      'data': {
-        'username': username,
-        'password': password,
-      }
-    }.jsify() as JSObject;
+    final message =
+        {
+              'type': 'DO_FILL',
+              'data': {'username': username, 'password': password},
+            }.jsify()
+            as JSObject;
 
     await _sendMessage(message, debugLabel: 'fillCredentials');
   }
@@ -196,9 +199,7 @@ class ExtensionHelper {
   static Future<Map<String, dynamic>?> getLastDetected() async {
     if (!isExtension) return null;
 
-    final message = {
-      'type': 'GET_LAST_DETECTED',
-    }.jsify() as JSObject;
+    final message = {'type': 'GET_LAST_DETECTED'}.jsify() as JSObject;
 
     final response = await _sendMessage(message, debugLabel: 'getLastDetected');
     if (response != null && response.isA<JSObject>()) {
@@ -214,17 +215,22 @@ class ExtensionHelper {
 
   static Future<void> cacheMasterKey(String base64Key) async {
     if (!isExtension) return;
-    final message = {
-      'type': 'SET_MASTER_KEY',
-      'data': {'key': base64Key},
-    }.jsify() as JSObject;
+    final message =
+        {
+              'type': 'SET_MASTER_KEY',
+              'data': {'key': base64Key},
+            }.jsify()
+            as JSObject;
     await _sendMessage(message, debugLabel: 'cacheMasterKey');
   }
 
   static Future<String?> getCachedMasterKey() async {
     if (!isExtension) return null;
     final message = {'type': 'GET_MASTER_KEY'}.jsify() as JSObject;
-    final response = await _sendMessage(message, debugLabel: 'getCachedMasterKey');
+    final response = await _sendMessage(
+      message,
+      debugLabel: 'getCachedMasterKey',
+    );
     if (response != null && response.isA<JSObject>()) {
       final obj = response as JSObject;
       final key = obj.getProperty('key'.toJS);
@@ -244,13 +250,17 @@ class ExtensionHelper {
     try {
       final jsDomains = domains.map((d) => d.toJS).toList().toJS;
       await _chromeStorageSet('known_domains'.toJS, jsDomains).toDart;
-      debugPrint('✅ ExtensionHelper.syncKnownDomains: ${domains.length} domains');
+      debugPrint(
+        '✅ ExtensionHelper.syncKnownDomains: ${domains.length} domains',
+      );
     } catch (e) {
       debugPrint('❌ ExtensionHelper.syncKnownDomains error: $e');
     }
   }
 
-  static Future<void> syncKnownAccounts(Map<String, List<Map<String, String>>> accounts) async {
+  static Future<void> syncKnownAccounts(
+    Map<String, List<Map<String, String>>> accounts,
+  ) async {
     if (!isExtension) return;
     try {
       final jsAccounts = accounts.jsify();
@@ -272,21 +282,28 @@ class ExtensionHelper {
 
   static Future<void> setAutoFillEnabled(bool enabled) async {
     if (!isExtension) return;
-    final message = {
-      'type': 'SET_AUTOFILL_ENABLED',
-      'data': {'enabled': enabled},
-    }.jsify() as JSObject;
+    final message =
+        {
+              'type': 'SET_AUTOFILL_ENABLED',
+              'data': {'enabled': enabled},
+            }.jsify()
+            as JSObject;
     await _sendMessage(message, debugLabel: 'setAutoFillEnabled');
   }
 
   static Future<bool> getAutoFillEnabled() async {
     if (!isExtension) return false;
     final message = {'type': 'GET_AUTOFILL_ENABLED'}.jsify() as JSObject;
-    final response = await _sendMessage(message, debugLabel: 'getAutoFillEnabled');
+    final response = await _sendMessage(
+      message,
+      debugLabel: 'getAutoFillEnabled',
+    );
     if (response != null && response.isA<JSObject>()) {
       final obj = response as JSObject;
       final enabled = obj.getProperty('enabled'.toJS);
-      return enabled != null && enabled.isA<JSBoolean>() && (enabled as JSBoolean).toDart;
+      return enabled != null &&
+          enabled.isA<JSBoolean>() &&
+          (enabled as JSBoolean).toDart;
     }
     return false;
   }
@@ -294,7 +311,10 @@ class ExtensionHelper {
   static Future<String?> getCurrentTabUrl() async {
     if (!isExtension) return null;
     final message = {'type': 'GET_CURRENT_TAB_URL'}.jsify() as JSObject;
-    final response = await _sendMessage(message, debugLabel: 'getCurrentTabUrl');
+    final response = await _sendMessage(
+      message,
+      debugLabel: 'getCurrentTabUrl',
+    );
 
     if (response != null && response.isA<JSObject>()) {
       final obj = response as JSObject;

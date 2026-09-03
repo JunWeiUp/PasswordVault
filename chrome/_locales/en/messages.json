@@ -1,0 +1,68 @@
+{
+  "extensionName": {
+    "message": "PasswordVault — Developer Preview"
+  },
+  "extensionDescription": {
+    "message": "A local-first vault for passwords and TOTP codes. Experimental developer preview."
+  },
+  "openVault": {
+    "message": "Open PasswordVault…"
+  },
+  "fillPage": {
+    "message": "Fill credentials on this page"
+  },
+  "fillAccount": {
+    "message": "Fill: $1"
+  },
+  "noMatch": {
+    "message": "No matching accounts for this website"
+  },
+  "unlockFirst": {
+    "message": "Open and unlock PasswordVault before filling"
+  },
+  "filled": {
+    "message": "Credentials filled"
+  },
+  "recentlyUsed": {
+    "message": "Recent"
+  },
+  "close": {
+    "message": "Close"
+  },
+  "passwordChangeDetected": {
+    "message": "Changing your password? PasswordVault can help."
+  },
+  "fillCurrentPassword": {
+    "message": "Fill current password"
+  },
+  "generateNewPassword": {
+    "message": "Generate new password"
+  },
+  "fillingCurrentPassword": {
+    "message": "Filling your current password…"
+  },
+  "openingGenerator": {
+    "message": "Opening password generator…"
+  },
+  "savePasswordFor": {
+    "message": "Save the password for $1 to your vault?"
+  },
+  "quickSave": {
+    "message": "Save for review"
+  },
+  "editDetails": {
+    "message": "Edit details"
+  },
+  "ignore": {
+    "message": "Ignore"
+  },
+  "savedForReview": {
+    "message": "Saved for review"
+  },
+  "reviewNextOpen": {
+    "message": "Review it the next time you open PasswordVault"
+  },
+  "openingVault": {
+    "message": "Opening PasswordVault…"
+  }
+}

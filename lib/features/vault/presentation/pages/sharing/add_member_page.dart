@@ -1,3 +1,4 @@
+import 'package:password/core/l10n/l10n.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -34,7 +35,7 @@ class _AddMemberPageState extends ConsumerState<AddMemberPage> {
     if (kIsWeb) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('网页版请手动粘贴公钥')),
+          SnackBar(content: Text(tr.pasteThePublicKeyManuallyInThe)),
         );
       }
       return;
@@ -59,7 +60,7 @@ class _AddMemberPageState extends ConsumerState<AddMemberPage> {
 
       if (text == null || text.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('未在图片中识别到二维码，请换一张图或手动输入')),
+          SnackBar(content: Text(tr.noQrCodeFoundChooseAnotherImage)),
         );
         return;
       }
@@ -67,7 +68,10 @@ class _AddMemberPageState extends ConsumerState<AddMemberPage> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('识别失败: $e'), backgroundColor: Colors.red),
+          SnackBar(
+            content: Text(tr.couldNotReadQrCode(e)),
+            backgroundColor: Colors.red,
+          ),
         );
       }
     } finally {
@@ -77,16 +81,16 @@ class _AddMemberPageState extends ConsumerState<AddMemberPage> {
 
   Future<void> _handleAddMember() async {
     if (_publicKeyController.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('请输入或从图片识别公钥')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(tr.enterAPublicKeyOrReadOne)));
       return;
     }
 
     if (_nameController.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('请输入成员名称')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(tr.enterAMemberName)));
       return;
     }
 
@@ -101,7 +105,7 @@ class _AddMemberPageState extends ConsumerState<AddMemberPage> {
       final userKeyPair = await ref.read(userKeyPairProvider.future);
 
       if (userKeyPair == null) {
-        throw Exception('您的密钥对尚未就绪');
+        throw Exception(tr.yourKeyPairIsNotReady);
       }
 
       await repository.addMemberToSharedVault(
@@ -116,15 +120,18 @@ class _AddMemberPageState extends ConsumerState<AddMemberPage> {
       ref.invalidate(vaultMembersProvider(widget.vaultId));
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('成员添加成功')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(tr.memberAdded)));
         context.pop();
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('添加失败: $e'), backgroundColor: Colors.red),
+          SnackBar(
+            content: Text(tr.couldNotAddMember(e)),
+            backgroundColor: Colors.red,
+          ),
         );
       }
     } finally {
@@ -134,21 +141,20 @@ class _AddMemberPageState extends ConsumerState<AddMemberPage> {
 
   @override
   Widget build(BuildContext context) {
+    AppLocalizations.of(context);
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('添加成员'),
-      ),
+      appBar: AppBar(title: Text(tr.addMember)),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(24),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             if (kIsWeb)
-              const Padding(
-                padding: EdgeInsets.only(bottom: 8),
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
                 child: Text(
-                  '网页版请在下方的公钥框中粘贴内容。',
-                  style: TextStyle(fontSize: 13, color: Colors.grey),
+                  tr.pasteThePublicKeyInTheField,
+                  style: const TextStyle(fontSize: 13, color: Colors.grey),
                 ),
               )
             else
@@ -161,7 +167,9 @@ class _AddMemberPageState extends ConsumerState<AddMemberPage> {
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
                     : const Icon(Icons.image_outlined),
-                label: Text(_isDecodingQr ? '正在识别…' : '从相册选择公钥二维码图片'),
+                label: Text(
+                  _isDecodingQr ? tr.readingImage : tr.chooseAPublicKeyQrImage,
+                ),
                 style: ElevatedButton.styleFrom(
                   padding: const EdgeInsets.symmetric(vertical: 16),
                   backgroundColor: Colors.blue.withValues(alpha: 0.1),
@@ -172,34 +180,32 @@ class _AddMemberPageState extends ConsumerState<AddMemberPage> {
             const SizedBox(height: 24),
             TextField(
               controller: _publicKeyController,
-              decoration: const InputDecoration(
-                labelText: '公钥 (Base64)',
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.vpn_key_outlined),
+              decoration: InputDecoration(
+                labelText: tr.publicKeyBase,
+                border: const OutlineInputBorder(),
+                prefixIcon: const Icon(Icons.vpn_key_outlined),
               ),
               maxLines: 2,
             ),
             const SizedBox(height: 16),
             TextField(
               controller: _nameController,
-              decoration: const InputDecoration(
-                labelText: '成员显示名称',
-                hintText: '如：张三、小王',
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.person_outline),
+              decoration: InputDecoration(
+                labelText: tr.memberDisplayName,
+                hintText: tr.eGAlexSam,
+                border: const OutlineInputBorder(),
+                prefixIcon: const Icon(Icons.person_outline),
               ),
             ),
             const SizedBox(height: 24),
-            const Text(
-              '赋予权限',
-              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+            Text(
+              tr.permissions,
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
             ),
             const SizedBox(height: 8),
             DropdownButtonFormField<SharedMemberRole>(
               value: _selectedRole,
-              decoration: const InputDecoration(
-                border: OutlineInputBorder(),
-              ),
+              decoration: const InputDecoration(border: OutlineInputBorder()),
               items: [
                 DropdownMenuItem(
                   value: SharedMemberRole.viewer,
@@ -207,7 +213,7 @@ class _AddMemberPageState extends ConsumerState<AddMemberPage> {
                     children: [
                       Icon(Icons.visibility_outlined, color: Colors.grey[600]),
                       const SizedBox(width: 12),
-                      const Text('仅查看'),
+                      Text(tr.viewer),
                     ],
                   ),
                 ),
@@ -217,7 +223,7 @@ class _AddMemberPageState extends ConsumerState<AddMemberPage> {
                     children: [
                       Icon(Icons.edit_outlined, color: Colors.blue[600]),
                       const SizedBox(width: 12),
-                      const Text('可编辑'),
+                      Text(tr.editor),
                     ],
                   ),
                 ),
@@ -225,9 +231,12 @@ class _AddMemberPageState extends ConsumerState<AddMemberPage> {
                   value: SharedMemberRole.owner,
                   child: Row(
                     children: [
-                      Icon(Icons.admin_panel_settings_outlined, color: Colors.amber[800]),
+                      Icon(
+                        Icons.admin_panel_settings_outlined,
+                        color: Colors.amber[800],
+                      ),
                       const SizedBox(width: 12),
-                      const Text('管理员'),
+                      Text(tr.owner),
                     ],
                   ),
                 ),
@@ -241,16 +250,28 @@ class _AddMemberPageState extends ConsumerState<AddMemberPage> {
               onPressed: _isAdding ? null : _handleAddMember,
               style: ElevatedButton.styleFrom(
                 padding: const EdgeInsets.symmetric(vertical: 16),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
               ),
               child: _isAdding
-                  ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2))
-                  : const Text('添加并分发密钥', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                  ? const SizedBox(
+                      height: 20,
+                      width: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : Text(
+                      tr.addMemberAndShareKey,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
             ),
             const SizedBox(height: 16),
-            const Text(
-              '注意：添加成员时，系统会使用您的私钥解密库密钥，并用新成员的公钥重新加密。这是一个零知识过程。',
-              style: TextStyle(fontSize: 12, color: Colors.grey),
+            Text(
+              tr.theAppDecryptsTheVaultKeyLocally,
+              style: const TextStyle(fontSize: 12, color: Colors.grey),
               textAlign: TextAlign.center,
             ),
           ],

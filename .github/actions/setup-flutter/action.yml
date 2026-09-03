@@ -1,0 +1,16 @@
+name: Set up pinned Flutter
+description: Read the repository toolchain pin and install that exact Flutter version.
+runs:
+  using: composite
+  steps:
+    - id: toolchain
+      shell: bash
+      run: |
+        version=$(cat .flutter-version)
+        [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+        printf 'version=%s\n' "$version" >> "$GITHUB_OUTPUT"
+    - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
+      with:
+        flutter-version: ${{ steps.toolchain.outputs.version }}
+        channel: stable
+        cache: true
