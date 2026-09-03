@@ -1,3 +1,4 @@
+import 'package:password/core/l10n/l10n.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/vault_provider.dart';
@@ -8,18 +9,19 @@ class RecycleBinPage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    AppLocalizations.of(context);
     final deletedItemsAsync = ref.watch(deletedVaultItemsProvider);
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('回收站'),
+        title: Text(tr.trash),
         actions: [
           deletedItemsAsync.when(
             data: (items) => items.isNotEmpty
                 ? IconButton(
                     icon: const Icon(Icons.delete_forever),
                     onPressed: () => _showEmptyBinDialog(context, ref, items),
-                    tooltip: '清空回收站',
+                    tooltip: tr.emptyTrash,
                   )
                 : const SizedBox.shrink(),
             loading: () => const SizedBox.shrink(),
@@ -30,13 +32,13 @@ class RecycleBinPage extends ConsumerWidget {
       body: deletedItemsAsync.when(
         data: (items) {
           if (items.isEmpty) {
-            return const Center(
+            return Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(Icons.delete_outline, size: 64, color: Colors.grey),
-                  SizedBox(height: 16),
-                  Text('回收站是空的', style: TextStyle(color: Colors.grey)),
+                  const Icon(Icons.delete_outline, size: 64, color: Colors.grey),
+                  const SizedBox(height: 16),
+                  Text(tr.trashIsEmpty, style: const TextStyle(color: Colors.grey)),
                 ],
               ),
             );
@@ -52,19 +54,23 @@ class RecycleBinPage extends ConsumerWidget {
           );
         },
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (error, _) => Center(child: Text('加载失败: $error')),
+        error: (error, _) => Center(child: Text(tr.couldNotLoad(error))),
       ),
     );
   }
 
-  Widget _buildDeletedItemCard(BuildContext context, WidgetRef ref, VaultItem item) {
+  Widget _buildDeletedItemCard(
+    BuildContext context,
+    WidgetRef ref,
+    VaultItem item,
+  ) {
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
       child: ListTile(
         leading: _getIconForType(item.type),
         title: Text(item.title),
         subtitle: Text(
-          item.username.isNotEmpty ? item.username : (item.url ?? '无详情'),
+          item.username.isNotEmpty ? item.username : (item.url ?? tr.noDetails),
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
         ),
@@ -74,12 +80,12 @@ class RecycleBinPage extends ConsumerWidget {
             IconButton(
               icon: const Icon(Icons.restore, color: Colors.green),
               onPressed: () => _restoreItem(context, ref, item),
-              tooltip: '恢复',
+              tooltip: tr.restore,
             ),
             IconButton(
               icon: const Icon(Icons.delete_forever, color: Colors.red),
               onPressed: () => _permanentlyDeleteItem(context, ref, item),
-              tooltip: '永久删除',
+              tooltip: tr.deletePermanently,
             ),
           ],
         ),
@@ -102,61 +108,73 @@ class RecycleBinPage extends ConsumerWidget {
 
   void _restoreItem(BuildContext context, WidgetRef ref, VaultItem item) {
     ref.read(vaultItemsProvider.notifier).restoreItem(item.id);
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('已恢复: ${item.title}')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(tr.restored(item.title))));
   }
 
-  void _permanentlyDeleteItem(BuildContext context, WidgetRef ref, VaultItem item) {
+  void _permanentlyDeleteItem(
+    BuildContext context,
+    WidgetRef ref,
+    VaultItem item,
+  ) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('永久删除'),
-        content: Text('确定要永久删除 "${item.title}" 吗？此操作不可撤销。'),
+        title: Text(tr.deletePermanently),
+        content: Text(tr.permanentlyDeleteThisCannotBeUndone(item.title)),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('取消'),
+            child: Text(tr.cancel),
           ),
           TextButton(
             onPressed: () {
-              ref.read(vaultItemsProvider.notifier).permanentlyDeleteItem(item.id);
+              ref
+                  .read(vaultItemsProvider.notifier)
+                  .permanentlyDeleteItem(item.id);
               Navigator.pop(context);
               ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('已永久删除: ${item.title}')),
+                SnackBar(content: Text(tr.permanentlyDeleted(item.title))),
               );
             },
             style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: const Text('永久删除'),
+            child: Text(tr.deletePermanently),
           ),
         ],
       ),
     );
   }
 
-  void _showEmptyBinDialog(BuildContext context, WidgetRef ref, List<VaultItem> items) {
+  void _showEmptyBinDialog(
+    BuildContext context,
+    WidgetRef ref,
+    List<VaultItem> items,
+  ) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('清空回收站'),
-        content: Text('确定要清空回收站中的 ${items.length} 个项目吗？此操作不可撤销。'),
+        title: Text(tr.emptyTrash),
+        content: Text(tr.permanentlyDeleteAllItemsInTheTrash(items.length)),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('取消'),
+            child: Text(tr.cancel),
           ),
           TextButton(
             onPressed: () {
               for (final item in items) {
-                ref.read(vaultItemsProvider.notifier).permanentlyDeleteItem(item.id);
+                ref
+                    .read(vaultItemsProvider.notifier)
+                    .permanentlyDeleteItem(item.id);
               }
               Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('回收站已清空')),
-              );
+              ScaffoldMessenger.of(
+                context,
+              ).showSnackBar(SnackBar(content: Text(tr.trashEmptied)));
             },
             style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: const Text('清空'),
+            child: Text(tr.empty),
           ),
         ],
       ),

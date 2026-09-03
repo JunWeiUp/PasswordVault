@@ -1,3 +1,4 @@
+import 'package:password/core/l10n/l10n.dart';
 import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:path_provider/path_provider.dart';
@@ -9,17 +10,16 @@ Future<bool> saveJsonFileImpl(String jsonString, String fileName) async {
     final tempDir = await getTemporaryDirectory();
     final file = File('${tempDir.path}/$fileName');
     await file.writeAsString(jsonString);
-    
-    final result = await Share.shareXFiles(
-      [XFile(file.path)],
-      subject: 'SecurePass 数据备份',
-    );
-    
+
+    final result = await Share.shareXFiles([
+      XFile(file.path),
+    ], subject: tr.passwordvaultBackup);
+
     return result.status == ShareResultStatus.success;
   } else {
     // Desktop 平台
     String? outputPath = await FilePicker.platform.saveFile(
-      dialogTitle: '选择导出位置',
+      dialogTitle: tr.chooseExportLocation,
       fileName: fileName,
       type: FileType.custom,
       allowedExtensions: ['json'],
@@ -40,15 +40,14 @@ Future<bool> saveCsvFileImpl(String csvString, String fileName) async {
     final file = File('${tempDir.path}/$fileName');
     await file.writeAsString(csvString);
 
-    final result = await Share.shareXFiles(
-      [XFile(file.path)],
-      subject: 'SecurePass CSV 备份',
-    );
+    final result = await Share.shareXFiles([
+      XFile(file.path),
+    ], subject: tr.passwordvaultCsvBackup);
 
     return result.status == ShareResultStatus.success;
   } else {
     String? outputPath = await FilePicker.platform.saveFile(
-      dialogTitle: '选择导出位置',
+      dialogTitle: tr.chooseExportLocation,
       fileName: fileName,
       type: FileType.custom,
       allowedExtensions: ['csv', 'enc'],

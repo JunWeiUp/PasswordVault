@@ -1,147 +1,94 @@
-# Password Vault (密码保险箱)
+<div align="center">
+  <img src="chrome/icons/icon192.png" alt="PasswordVault icon" width="88">
+  <h1>PasswordVault</h1>
+  <p>A local-first vault for passwords, authenticator codes, notes, and wallet credentials.</p>
+  <p><strong>English</strong> · <a href="README.zh-CN.md">简体中文</a></p>
+  <p>
+    <a href="https://github.com/JunWeiUp/PasswordVault/actions/workflows/ci.yml"><img src="https://github.com/JunWeiUp/PasswordVault/actions/workflows/ci.yml/badge.svg" alt="CI status"></a>
+    <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT license"></a>
+    <a href="https://flutter.dev"><img src="https://img.shields.io/badge/built_with-Flutter-02569B?logo=flutter" alt="Built with Flutter"></a>
+  </p>
+</div>
 
-这是一个基于 Flutter 开发的安全、跨平台密码和数字资产管理应用。它旨在提供一个安全、私密且易于使用的环境，用于存储和管理您的各种在线账号密码、双重认证（TOTP）以及加密货币钱包凭证。
+**Developer preview.** PasswordVault is being prepared for its first public release. It has not received an independent security audit. Use disposable test credentials while the [security release blockers](docs/SECURITY_MODEL.md) are being resolved. Existing private development tags do not establish production readiness.
 
-## ✨ 主要功能
+## What you can do
 
-- **🔐 多类型保管库**:
-  - **密码管理**: 存储账号、密码、网站链接和备注，支持分类管理。
-  - **双重认证 (TOTP)**: 内置 2FA 校验码生成器，支持标准 TOTP 协议。
-  - **加密资产**: 安全存储加密货币助记词（Mnemonic）、私钥（Private Key）和钱包地址。
-- **🛡️ 顶级安全保障**:
-  - **强加密算法**: 使用 AES-GCM 256 位加密算法保护您的数据。
-  - **密钥派生**: 采用 Argon2id（目前最先进的密钥派生函数之一）从主密码生成加密密钥，有效防御暴力破解。
-  - **零知识架构**: 数据完全存储在本地设备中，不上传至任何中心化服务器，确保隐私。
-- **🛠️ 便捷工具**:
-  - **密码生成器**: 自定义长度和字符类型，生成高强度随机密码。
-  - **助记词生成**: 支持生成符合 BIP39 标准的助记词。
-  - **生物识别**: 支持指纹或面部识别快速解锁（在支持的设备上）。
-- **☁️ 备份与同步**:
-  - **本地导入导出**: 支持 CSV 格式数据的备份与恢复。
-  - **WebDAV 同步**: 支持通过 WebDAV 协议进行云端备份，方便在不同设备间迁移数据。请在应用内填写服务器与账号；若仅在浏览器地址栏打开坚果云等 WebDAV 地址，可能出现浏览器自带的系统登录提示，属正常现象。
-- **🌍 跨平台支持**:
-  - **移动端**: 支持 Android 和 iOS。
-  - **桌面端/Web**: 支持 Web 平台。
-  - **浏览器扩展**: 支持作为 Chrome/Edge 浏览器扩展运行，方便在网页端自动填充。
+- Keep multiple accounts per website, match multiple domains, organize entries with categories, tags, colors, favorites, and pins.
+- Generate TOTP authenticator codes and passwords; manage secure notes and wallet credential records.
+- Fill website credentials through a Chromium Manifest V3 extension. Android includes an autofill service.
+- Import CSV exports from Chrome, Bitwarden, LastPass, and 1Password; export JSON or CSV, optionally encrypted.
+- Back up to your own WebDAV storage. Experiment with local network sync and encrypted shared vaults.
+- Recover entries from the trash, view password history, and check for weak, reused, or expired passwords.
+- Use **English by default**, or switch to **简体中文** on the lock screen or in **Settings → Appearance**.
 
-## 🛠️ 技术栈
+The source currently uses `SecurePass` for some internal identifiers and legacy storage formats. The public project name is **PasswordVault**; those identifiers remain stable for compatibility.
 
-- **框架**: [Flutter](https://flutter.dev/) (SDK ^3.5.4)
-- **状态管理**: [Riverpod](https://riverpod.dev/)
-- **路由**: [GoRouter](https://pub.dev/packages/go_router)
-- **数据库**: [Drift](https://drift.simonbinder.eu/) (基于 SQLite，支持 Web 端 WASM)
-- **安全逻辑**:
-  - [cryptography](https://pub.dev/packages/cryptography): 核心加密算法 (AES-GCM, Argon2id)
-  - [local_auth](https://pub.dev/packages/local_auth): 生物识别支持
-- **网络与备份**:
-  - [webdav_client](https://pub.dev/packages/webdav_client): WebDAV 协议支持
-- **加密货币相关**:
-  - [web3dart](https://pub.dev/packages/web3dart), [bip39](https://pub.dev/packages/bip39), [bip32](https://pub.dev/packages/bip32)
+## Platform status
 
-## 🚀 快速开始
+| Platform | Status | How to try it |
+| --- | --- | --- |
+| Android | Primary native target; CI builds a debug APK | Build locally or download a CI artifact |
+| Chrome / Edge extension | Experimental; unpacked installation | Build with `./build_extension.sh` |
+| Web | Experimental; browser storage and CORS limitations apply | `flutter run -d chrome` |
+| iOS | Project scaffold exists; release/device validation pending | Requires macOS, Xcode, and signing |
+| Windows / macOS / Linux desktop | No desktop runner is included | Contributions welcome |
 
-### 前置要求
+There is no Chrome Web Store, Google Play, or App Store listing yet. Published release assets will appear on the [Releases page](https://github.com/JunWeiUp/PasswordVault/releases).
 
-- 已安装 [Flutter SDK](https://docs.flutter.dev/get-started/install) (建议版本 ^3.5.4)
-- 配置好相应的开发环境（Android Studio, Xcode 或 VS Code）
+## Run from source
 
-### 安装步骤
-
-1. **克隆仓库**:
-   ```bash
-   git clone <repository-url>
-   cd password
-   ```
-
-2. **获取依赖**:
-   ```bash
-   flutter pub get
-   ```
-
-3. **代码生成**:
-   由于本项目使用了 Drift 和 Riverpod，需要运行 build_runner 生成代码：
-   ```bash
-   flutter pub run build_runner build --delete-conflicting-outputs
-   ```
-
-### 运行应用
+Use **Flutter 3.41.7 / Dart 3.11.5**, the version pinned in [.flutter-version](.flutter-version). Android builds use Java 17, SDK 36, and NDK 27.0.12077973. Install these with Flutter's supported platform tools.
 
 ```bash
-# 运行到已连接的设备或模拟器
-flutter run
-
-# 运行 Web 版
+git clone https://github.com/JunWeiUp/PasswordVault.git
+cd PasswordVault
+flutter pub get
+flutter gen-l10n
+dart run build_runner build --delete-conflicting-outputs
 flutter run -d chrome
 ```
 
-## 🛠️ 常用开发与打包命令
+For a connected Android device, use `flutter run`. See the [development guide](docs/DEVELOPMENT.md) for architecture, testing, and troubleshooting.
 
-### 开发环境配置
-
-```bash
-# 获取依赖
-flutter pub get
-
-# 重新生成数据库和 Riverpod 代码 (Drift/Riverpod)
-flutter pub run build_runner build --delete-conflicting-outputs
-```
-
-### 移动端打包 (Android)
-
-本项目已优化 Android 打包体积（启用 R8 混淆、资源压缩、ABI 分离）。
+## Build and verify
 
 ```bash
-# 生成分架构的 APK (体积更小，推荐)
-# 产物位于 build/app/outputs/flutter-apk/
-flutter build apk --release --split-per-abi
+flutter analyze --no-fatal-infos
+flutter test
+python3 tool/check_repository.py
+node --test test/extension/*.test.cjs
 
-# 生成 App Bundle (用于 Google Play 发布)
-flutter build appbundle
+# Development APK, no private signing credentials required
+flutter build apk --debug
 
-# 分析 APK 体积构成
-flutter build apk --release --analyze-size --target-platform android-arm64
-```
-
-### 浏览器扩展打包
-
-本项目支持编译为 Chrome 扩展，请运行根目录下的脚本：
-
-```bash
-chmod +x build_extension.sh
+# Web and unpacked Chromium extension
 ./build_extension.sh
 ```
 
-编译完成后，产物位于 `build/chrome_extension` 目录下。在 Chrome 中打开 `chrome://extensions/`，开启“开发者模式”，选择“加载解压的扩展程序”并指向该目录即可。
+Load `build/chrome_extension` from `chrome://extensions` or `edge://extensions` with developer mode enabled. Keep this build directory stable: changing an unpacked extension's identity can change its local storage. Back up test data before reinstalling.
 
-## 📂 项目结构
+Release APKs require a private signing key. [Releasing](docs/RELEASING.md) explains signed APK/AAB builds, draft GitHub releases, checksums, and CI secrets.
 
-```text
-lib/
-├── core/               # 核心功能（数据库、安全、主题、工具类）
-│   ├── database/       # Drift 数据库定义、连接与迁移
-│   ├── security/       # AES 加密与 Argon2id 密钥派生
-│   ├── theme/          # 应用主题配置
-│   └── utils/          # 通用工具（BIP39、文件处理、导入导出）
-├── features/           # 业务功能模块
-│   ├── vault/          # 保管库主功能（密码、加密资产管理、共享库）
-│   ├── totp/           # TOTP 2FA 功能
-│   ├── backup/         # WebDAV 备份与恢复
-│   └── sync/           # 局域网设备发现与同步
-└── main.dart           # 应用入口
-chrome/                 # 浏览器扩展相关的配置与脚本
-```
+## Security and privacy
 
-## 🔒 安全声明
+Vault fields use AES-256-GCM; normal vault keys use Argon2id. These primitives alone do **not** guarantee the security of the complete application. The current implementation includes legacy backup derivation, platform-dependent secret storage, and experimental sharing. Read the [security model and limitations](docs/SECURITY_MODEL.md) before evaluating it.
 
-您的所有敏感数据（如密码、私钥）在存储前均经过高强度加密。加密密钥由您设置的**主密码**通过 Argon2id 算法动态派生。
-- **应用不存储主密码**：这意味着如果您忘记主密码，我们将无法为您找回数据。
-- **本地优先**：所有加密操作均在本地完成，数据默认存储在本地数据库中。
-- **备份建议**：请务必定期通过 WebDAV 或导出 CSV 文件备份您的数据，并妥善保管您的主密码。
+Unencrypted CSV/JSON exports contain credentials. WebDAV contacts the server you configure; favicon loading can contact third-party services. Local network discovery and browser extension access have separate privacy implications. Details are in [PRIVACY.md](PRIVACY.md).
 
-## 📄 开源协议
+For vulnerability reports, follow [SECURITY.md](SECURITY.md). Never attach real vault exports, passwords, or private keys to issues.
 
-本项目采用 [MIT License](LICENSE) 协议。
+## Contribute
 
----
+Start with [CONTRIBUTING.md](CONTRIBUTING.md). Useful contributions include security fixes, migration tests, accessibility, translations, and platform validation. Commit messages and pull request titles use English Conventional Commits; discussion in English or Chinese is welcome.
 
-*Made with ❤️ using Flutter*
+- [Architecture and development](docs/DEVELOPMENT.md)
+- [Translation guide](docs/INTERNATIONALIZATION.md)
+- [Roadmap](docs/ROADMAP.md) and [changelog](CHANGELOG.md)
+- [Report a bug](https://github.com/JunWeiUp/PasswordVault/issues/new/choose) or propose a feature
+
+If you find the project useful, star it, share a reproducible example, or help review a release. The [launch kit](docs/LAUNCH.md) contains an accurate project description and announcement drafts.
+
+## License
+
+[MIT](LICENSE). Third-party components retain their own licenses; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

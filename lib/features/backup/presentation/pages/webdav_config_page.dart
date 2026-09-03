@@ -1,3 +1,4 @@
+import 'package:password/core/l10n/l10n.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/backup_provider.dart';
@@ -45,13 +46,17 @@ class _WebDavConfigPageState extends ConsumerState<WebDavConfigPage> {
       password: _passController.text,
       backupDirectory: _dirController.text,
     );
-    final success = await ref.read(backupServiceProvider).testConnection(config);
+    final success = await ref
+        .read(backupServiceProvider)
+        .testConnection(config);
     setState(() => _isTesting = false);
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(success ? '连接成功' : '连接失败，请检查配置'),
+          content: Text(
+            success ? tr.connected : tr.connectionFailedCheckYourSettings,
+          ),
           backgroundColor: success ? Colors.green : Colors.red,
         ),
       );
@@ -67,18 +72,19 @@ class _WebDavConfigPageState extends ConsumerState<WebDavConfigPage> {
     );
     await ref.read(webDavConfigProvider.notifier).saveConfig(config);
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('配置已保存')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(tr.settingsSaved)));
       Navigator.pop(context);
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    AppLocalizations.of(context);
     return Scaffold(
       appBar: AppBar(
-        title: const Text('WebDAV配置'),
+        title: Text(tr.webdavConfiguration),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           onPressed: () => Navigator.pop(context),
@@ -92,7 +98,9 @@ class _WebDavConfigPageState extends ConsumerState<WebDavConfigPage> {
             Card(
               elevation: 0,
               color: Colors.blue.withValues(alpha: 0.05),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
               child: Padding(
                 padding: const EdgeInsets.all(16.0),
                 child: Row(
@@ -104,19 +112,29 @@ class _WebDavConfigPageState extends ConsumerState<WebDavConfigPage> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text(
-                            'WebDAV 同步',
-                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                          Text(
+                            tr.webdavBackup,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                            ),
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            '配置 WebDAV 服务可以将您的密码数据备份到自己的云存储中，支持 NextCloud、Seafile、坚果云等服务。',
-                            style: TextStyle(color: Colors.grey[600], fontSize: 14),
+                            tr.backUpYourVaultToYourOwn,
+                            style: TextStyle(
+                              color: Colors.grey[600],
+                              fontSize: 14,
+                            ),
                           ),
                           const SizedBox(height: 12),
                           Text(
-                            '请在下方填写凭据并由本应用发起备份；不要在浏览器地址栏直接打开 WebDAV 地址（例如坚果云 dav.jianguoyun.com），否则浏览器可能弹出系统登录框，这是站点认证方式所致。',
-                            style: TextStyle(color: Colors.grey[700], fontSize: 13, height: 1.35),
+                            tr.enterYourCredentialsBelowAndStartBackups,
+                            style: TextStyle(
+                              color: Colors.grey[700],
+                              fontSize: 13,
+                              height: 1.35,
+                            ),
                           ),
                         ],
                       ),
@@ -126,39 +144,42 @@ class _WebDavConfigPageState extends ConsumerState<WebDavConfigPage> {
               ),
             ),
             const SizedBox(height: 24),
-            const Text(
-              '服务器配置',
-              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+            Text(
+              tr.serverSettings,
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
             ),
             const SizedBox(height: 16),
             _buildTextField(
               controller: _urlController,
-              label: '服务器地址',
+              label: tr.serverUrl,
               icon: Icons.link,
             ),
             const SizedBox(height: 16),
             _buildTextField(
               controller: _userController,
-              label: '用户名',
+              label: tr.username,
               icon: Icons.person_outline,
             ),
             const SizedBox(height: 16),
             _buildTextField(
               controller: _passController,
-              label: '密码',
+              label: tr.password,
               icon: Icons.lock_outline,
               obscureText: _obscurePassword,
               suffixIcon: IconButton(
-                icon: Icon(_obscurePassword ? Icons.visibility_off : Icons.visibility),
-                onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+                icon: Icon(
+                  _obscurePassword ? Icons.visibility_off : Icons.visibility,
+                ),
+                onPressed: () =>
+                    setState(() => _obscurePassword = !_obscurePassword),
               ),
             ),
             const SizedBox(height: 16),
             _buildTextField(
               controller: _dirController,
-              label: '备份目录',
+              label: tr.backupDirectory,
               icon: Icons.folder_open,
-              helperText: '备份文件将保存在此目录下',
+              helperText: tr.backupFilesAreSavedInThisDirectory,
             ),
             const SizedBox(height: 32),
             SizedBox(
@@ -167,13 +188,22 @@ class _WebDavConfigPageState extends ConsumerState<WebDavConfigPage> {
                 onPressed: _isTesting ? null : _testConnection,
                 style: OutlinedButton.styleFrom(
                   padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(25)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(25),
+                  ),
                   backgroundColor: Colors.grey[100],
                   side: BorderSide.none,
                 ),
                 child: _isTesting
-                    ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2))
-                    : const Text('测试连接', style: TextStyle(color: Colors.black87)),
+                    ? const SizedBox(
+                        height: 20,
+                        width: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : Text(
+                        tr.testConnection,
+                        style: const TextStyle(color: Colors.black87),
+                      ),
               ),
             ),
             const SizedBox(height: 12),
@@ -183,11 +213,13 @@ class _WebDavConfigPageState extends ConsumerState<WebDavConfigPage> {
                 onPressed: _saveConfig,
                 style: ElevatedButton.styleFrom(
                   padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(25)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(25),
+                  ),
                   backgroundColor: Colors.blue,
                   foregroundColor: Colors.white,
                 ),
-                child: const Text('保存配置'),
+                child: Text(tr.saveSettings),
               ),
             ),
           ],
@@ -220,7 +252,10 @@ class _WebDavConfigPageState extends ConsumerState<WebDavConfigPage> {
               prefixIcon: Icon(icon, color: Colors.grey[600]),
               labelText: label,
               border: InputBorder.none,
-              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 12,
+              ),
               suffixIcon: suffixIcon,
             ),
           ),

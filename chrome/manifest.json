@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "SecurePass Extension",
-  "version": "1.0.1",
-  "description": "Securely manage your passwords and TOTP codes in your browser.",
+  "name": "__MSG_extensionName__",
+  "version": "1.1.0",
+  "description": "__MSG_extensionDescription__",
   "action": {
     "default_icon": {
       "16": "icons/icon16.png",
@@ -17,12 +17,18 @@
   },
   "commands": {
     "_execute_action": {
-      "suggested_key": { "default": "Ctrl+Shift+Y", "mac": "Command+Shift+Y" },
-      "description": "打开 SecurePass"
+      "suggested_key": {
+        "default": "Ctrl+Shift+Y",
+        "mac": "Command+Shift+Y"
+      },
+      "description": "__MSG_openVault__"
     },
     "fill_credentials": {
-      "suggested_key": { "default": "Ctrl+Shift+L", "mac": "Command+Shift+L" },
-      "description": "自动填充当前页面"
+      "suggested_key": {
+        "default": "Ctrl+Shift+L",
+        "mac": "Command+Shift+L"
+      },
+      "description": "__MSG_fillPage__"
     }
   },
   "permissions": [
@@ -33,8 +39,7 @@
     "tabs",
     "webNavigation",
     "contextMenus",
-    "unlimitedStorage",
-    "<all_urls>"
+    "unlimitedStorage"
   ],
   "host_permissions": [
     "*://*/*"
@@ -45,11 +50,15 @@
   },
   "content_scripts": [
     {
-      "matches": ["*://*/*"],
+      "matches": [
+        "*://*/*"
+      ],
       "exclude_matches": [
         "*://dav.jianguoyun.com/*"
       ],
-      "js": ["content.js"],
+      "js": [
+        "content.js"
+      ],
       "run_at": "document_end",
       "all_frames": true
     }
@@ -59,8 +68,19 @@
   },
   "web_accessible_resources": [
     {
-      "resources": ["assets/*", "canvaskit/*", "sqlite3.wasm", "drift_worker.js", "icons/*", "style.css", "loader.js"],
-      "matches": ["<all_urls>"]
+      "resources": [
+        "assets/*",
+        "canvaskit/*",
+        "sqlite3.wasm",
+        "drift_worker.js",
+        "icons/*",
+        "style.css",
+        "loader.js"
+      ],
+      "matches": [
+        "<all_urls>"
+      ]
     }
-  ]
+  ],
+  "default_locale": "en"
 }

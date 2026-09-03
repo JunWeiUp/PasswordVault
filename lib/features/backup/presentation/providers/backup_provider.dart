@@ -1,3 +1,4 @@
+import 'package:password/core/l10n/l10n.dart';
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -33,12 +34,14 @@ dav.Client _webDavClient(WebDavConfig config) {
   return dav.newClient(url, user: user, password: password);
 }
 
-final webDavConfigProvider = StateNotifierProvider<WebDavConfigNotifier, WebDavConfig>((ref) {
-  return WebDavConfigNotifier();
-});
+final webDavConfigProvider =
+    StateNotifierProvider<WebDavConfigNotifier, WebDavConfig>((ref) {
+      return WebDavConfigNotifier();
+    });
 
 class WebDavConfigNotifier extends StateNotifier<WebDavConfig> {
-  WebDavConfigNotifier() : super(WebDavConfig(url: '', username: '', password: '')) {
+  WebDavConfigNotifier()
+    : super(WebDavConfig(url: '', username: '', password: '')) {
     loadConfig();
   }
 
@@ -91,11 +94,13 @@ final backupHistoryProvider = FutureProvider<List<BackupHistory>>((ref) async {
     final files = await client.readDir(config.backupDirectory);
     return files
         .where((f) => f.name != null && f.name!.endsWith('.json'))
-        .map((f) => BackupHistory.fromWebDav(
-              f.name!,
-              f.mTime ?? DateTime.now(),
-              f.size ?? 0,
-            ))
+        .map(
+          (f) => BackupHistory.fromWebDav(
+            f.name!,
+            f.mTime ?? DateTime.now(),
+            f.size ?? 0,
+          ),
+        )
         .toList()
       ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
   } catch (e) {
@@ -125,7 +130,7 @@ class BackupService {
 
     final repository = _ref.read(vaultRepositoryProvider);
     final masterKey = await _ref.read(masterKeyProvider.future);
-    if (masterKey == null) throw Exception('主密钥尚未就绪');
+    if (masterKey == null) throw Exception(tr.theMasterKeyIsNotReady);
 
     final fallbacks = await _ref.read(fallbackKeysProvider.future);
     final userKeyPair = await _ref.read(userKeyPairProvider.future);
@@ -136,10 +141,13 @@ class BackupService {
       userKeyPair: userKeyPair,
     );
 
-    final sharedVaults = userKeyPair != null ? await repository.getSharedVaults(userKeyPair) : <SharedVault>[];
+    final sharedVaults = userKeyPair != null
+        ? await repository.getSharedVaults(userKeyPair)
+        : <SharedVault>[];
     final sharedMembers = await repository.getAllSharedMembers();
 
-    if (items.isEmpty && sharedVaults.isEmpty) throw Exception('No data to backup');
+    if (items.isEmpty && sharedVaults.isEmpty)
+      throw Exception('No data to backup');
 
     final client = _webDavClient(config);
 
@@ -165,12 +173,15 @@ class BackupService {
     if (encrypt) {
       final salt = await _ref.read(masterKeySaltProvider.future);
       final encryptionService = _ref.read(encryptionServiceProvider);
-      
-      if (salt == null) throw Exception('主密钥尚未就绪');
+
+      if (salt == null) throw Exception(tr.theMasterKeyIsNotReady);
 
       final jsonString = json.encode(itemsData);
-      final encryptedBytes = await encryptionService.encrypt(jsonString, masterKey);
-      
+      final encryptedBytes = await encryptionService.encrypt(
+        jsonString,
+        masterKey,
+      );
+
       backupData['payload'] = base64.encode(encryptedBytes);
       final metadata = backupData['metadata'] as Map<String, dynamic>;
       metadata['salt'] = base64.encode(salt);
@@ -183,7 +194,8 @@ class BackupService {
 
     final jsonStr = json.encode(backupData);
     final bytes = utf8.encode(jsonStr);
-    final fileName = 'backup_${encrypt ? 'enc_' : ''}${DateTime.now().millisecondsSinceEpoch}.json';
+    final fileName =
+        'backup_${encrypt ? 'enc_' : ''}${DateTime.now().millisecondsSinceEpoch}.json';
     final remotePath = p.join(config.backupDirectory, fileName);
 
     await client.write(remotePath, Uint8List.fromList(bytes));
@@ -198,36 +210,38 @@ class BackupService {
     final bytes = await client.read(remotePath);
     final jsonStr = utf8.decode(bytes);
     final Map<String, dynamic> data = json.decode(jsonStr);
-    
+
     List<VaultItem> items = [];
     List<SharedVault> sharedVaults = [];
     List<SharedMember> sharedMembers = [];
-    
+
     final metadata = data['metadata'] as Map<String, dynamic>?;
     final bool isEncrypted = metadata?['encrypted'] ?? false;
 
     if (isEncrypted) {
       final masterState = _ref.read(masterPasswordProvider);
       final password = masterState.password;
-      if (password == null) throw Exception('主密码未设置，无法解密');
+      if (password == null)
+        throw Exception(tr.setAMasterPasswordBeforeDecrypting);
 
       final encryptionService = _ref.read(encryptionServiceProvider);
       final String? payloadBase64 = data['payload'] as String?;
-      if (payloadBase64 == null) throw Exception('加密备份缺少数据负载');
+      if (payloadBase64 == null)
+        throw Exception(tr.theEncryptedBackupHasNoPayload);
 
       final encryptedBytes = base64.decode(payloadBase64);
-      
+
       SecretKey decryptionKey;
       final String? saltBase64 = metadata?['salt'] as String?;
-      
+
       if (saltBase64 != null) {
         final salt = base64.decode(saltBase64);
         final iterations = metadata?['iterations'] as int? ?? 2;
         final memory = metadata?['memory'] as int? ?? 32 * 1024;
         final parallelism = metadata?['parallelism'] as int? ?? 1;
-        
+
         decryptionKey = await encryptionService.deriveKey(
-          password, 
+          password,
           salt,
           iterations: iterations,
           memory: memory,
@@ -235,29 +249,35 @@ class BackupService {
         );
       } else {
         final masterKey = await _ref.read(masterKeyProvider.future);
-        if (masterKey == null) throw Exception('主密钥尚未就绪');
+        if (masterKey == null) throw Exception(tr.theMasterKeyIsNotReady);
         decryptionKey = masterKey;
       }
 
       try {
-        final decryptedJson = await encryptionService.decrypt(encryptedBytes, decryptionKey);
+        final decryptedJson = await encryptionService.decrypt(
+          encryptedBytes,
+          decryptionKey,
+        );
         final Map<String, dynamic> decryptedData = json.decode(decryptedJson);
-        
+
         final List<dynamic> list = decryptedData['items'];
         items = list.map((e) => VaultItem.fromJson(e)).toList();
-        
+
         if (decryptedData.containsKey('sharedVaults')) {
           final List<dynamic> svList = decryptedData['sharedVaults'];
           sharedVaults = svList.map((e) => SharedVault.fromJson(e)).toList();
         }
-        
+
         if (decryptedData.containsKey('sharedMembers')) {
           final List<dynamic> smList = decryptedData['sharedMembers'];
           sharedMembers = smList.map((e) => SharedMember.fromJson(e)).toList();
         }
       } catch (e) {
-        if (e.toString().contains('MAC') || e.toString().contains('authentication code')) {
-          throw Exception('解密失败：主密码错误或备份数据损坏');
+        if (e.toString().contains('MAC') ||
+            e.toString().contains('authentication code')) {
+          throw Exception(
+            tr.decryptionFailedIncorrectMasterPasswordOrDamaged73,
+          );
         }
         rethrow;
       }
@@ -265,12 +285,12 @@ class BackupService {
       if (data.containsKey('items')) {
         final List<dynamic> list = data['items'];
         items = list.map((e) => VaultItem.fromJson(e)).toList();
-        
+
         if (data.containsKey('sharedVaults')) {
           final List<dynamic> svList = data['sharedVaults'];
           sharedVaults = svList.map((e) => SharedVault.fromJson(e)).toList();
         }
-        
+
         if (data.containsKey('sharedMembers')) {
           final List<dynamic> smList = data['sharedMembers'];
           sharedMembers = smList.map((e) => SharedMember.fromJson(e)).toList();
@@ -281,7 +301,7 @@ class BackupService {
         items = list.map((e) => VaultItem.fromJson(e)).toList();
       }
     }
-    
+
     // 恢复数据：按时间合并，不直接覆盖
     final repository = _ref.read(vaultRepositoryProvider);
     if (sharedVaults.isNotEmpty) {
@@ -290,8 +310,10 @@ class BackupService {
     if (sharedMembers.isNotEmpty) {
       await repository.addSharedMembers(sharedMembers);
     }
-    final result = await _ref.read(vaultItemsProvider.notifier).mergeBackupItems(items);
-    
+    final result = await _ref
+        .read(vaultItemsProvider.notifier)
+        .mergeBackupItems(items);
+
     // 刷新共享库列表
     _ref.invalidate(sharedVaultsProvider);
     return result;

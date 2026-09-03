@@ -1,3 +1,4 @@
+import 'package:password/core/l10n/l10n.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../../../core/extension/extension_helper.dart';
@@ -34,21 +35,31 @@ class _PasswordGeneratorPageState extends State<PasswordGeneratorPage> {
     );
 
     setState(() {
-      _generatedPassword = password.isEmpty ? '请至少选择一种字符类型' : password;
+      _generatedPassword = password.isEmpty
+          ? tr.selectAtLeastOneCharacterType
+          : password;
     });
   }
 
   void _copyToClipboard() {
-    if (_useUppercase == false && _useLowercase == false && _useNumbers == false && _useSymbols == false) return;
-    
+    if (_useUppercase == false &&
+        _useLowercase == false &&
+        _useNumbers == false &&
+        _useSymbols == false)
+      return;
+
     Clipboard.setData(ClipboardData(text: _generatedPassword));
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('已复制到剪贴板')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(tr.copiedToClipboard)));
   }
 
   Future<void> _fillCurrentPage() async {
-    if (_useUppercase == false && _useLowercase == false && _useNumbers == false && _useSymbols == false) return;
+    if (_useUppercase == false &&
+        _useLowercase == false &&
+        _useNumbers == false &&
+        _useSymbols == false)
+      return;
     if (!ExtensionHelper.isExtension) return;
 
     final contextData = await ExtensionHelper.getActiveContext();
@@ -56,19 +67,23 @@ class _PasswordGeneratorPageState extends State<PasswordGeneratorPage> {
     await ExtensionHelper.fillCredentials(username, _generatedPassword);
 
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('已填充到当前页面')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(tr.filledOnTheCurrentPage)));
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    AppLocalizations.of(context);
     final theme = Theme.of(context);
-    
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text('密码生成器', style: TextStyle(fontWeight: FontWeight.bold)),
+        title: Text(
+          tr.passwordGenerator,
+          style: const TextStyle(fontWeight: FontWeight.bold),
+        ),
       ),
       body: ListView(
         padding: const EdgeInsets.all(16),
@@ -76,7 +91,9 @@ class _PasswordGeneratorPageState extends State<PasswordGeneratorPage> {
           // Password Display
           Card(
             elevation: 0,
-            color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+            color: theme.colorScheme.surfaceContainerHighest.withValues(
+              alpha: 0.3,
+            ),
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(16),
               side: BorderSide(color: theme.colorScheme.outlineVariant),
@@ -91,9 +108,10 @@ class _PasswordGeneratorPageState extends State<PasswordGeneratorPage> {
                       fontSize: 24,
                       fontWeight: FontWeight.bold,
                       fontFamily: 'monospace',
-                      color: _generatedPassword == '请至少选择一种字符类型' 
-                        ? theme.colorScheme.error 
-                        : theme.colorScheme.onSurface,
+                      color:
+                          _generatedPassword == tr.selectAtLeastOneCharacterType
+                          ? theme.colorScheme.error
+                          : theme.colorScheme.onSurface,
                     ),
                     textAlign: TextAlign.center,
                   ),
@@ -103,13 +121,13 @@ class _PasswordGeneratorPageState extends State<PasswordGeneratorPage> {
                     children: [
                       _ActionButton(
                         icon: Icons.refresh,
-                        label: '重新生成',
+                        label: tr.regenerate,
                         onPressed: _generatePassword,
                       ),
                       const SizedBox(width: 16),
                       _ActionButton(
                         icon: Icons.copy,
-                        label: '复制',
+                        label: tr.copy,
                         onPressed: _copyToClipboard,
                         primary: true,
                       ),
@@ -117,7 +135,7 @@ class _PasswordGeneratorPageState extends State<PasswordGeneratorPage> {
                         const SizedBox(width: 16),
                         _ActionButton(
                           icon: Icons.input,
-                          label: '填充',
+                          label: tr.fill,
                           onPressed: _fillCurrentPage,
                         ),
                       ],
@@ -130,7 +148,7 @@ class _PasswordGeneratorPageState extends State<PasswordGeneratorPage> {
           const SizedBox(height: 32),
           // Configuration
           Text(
-            '配置选项',
+            tr.options,
             style: theme.textTheme.titleMedium?.copyWith(
               fontWeight: FontWeight.bold,
               color: theme.colorScheme.primary,
@@ -149,10 +167,16 @@ class _PasswordGeneratorPageState extends State<PasswordGeneratorPage> {
                   padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
                   child: Row(
                     children: [
-                      const Text('密码长度', style: TextStyle(fontWeight: FontWeight.w500)),
+                      Text(
+                        tr.passwordLength,
+                        style: const TextStyle(fontWeight: FontWeight.w500),
+                      ),
                       const Spacer(),
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 4,
+                        ),
                         decoration: BoxDecoration(
                           color: theme.colorScheme.primaryContainer,
                           borderRadius: BorderRadius.circular(12),
@@ -182,7 +206,7 @@ class _PasswordGeneratorPageState extends State<PasswordGeneratorPage> {
                 ),
                 const Divider(height: 1),
                 _ConfigSwitch(
-                  title: '大写字母',
+                  title: tr.uppercaseLetters,
                   subtitle: 'A-Z',
                   value: _useUppercase,
                   onChanged: (v) {
@@ -192,7 +216,7 @@ class _PasswordGeneratorPageState extends State<PasswordGeneratorPage> {
                 ),
                 const Divider(height: 1),
                 _ConfigSwitch(
-                  title: '小写字母',
+                  title: tr.lowercaseLetters,
                   subtitle: 'a-z',
                   value: _useLowercase,
                   onChanged: (v) {
@@ -202,7 +226,7 @@ class _PasswordGeneratorPageState extends State<PasswordGeneratorPage> {
                 ),
                 const Divider(height: 1),
                 _ConfigSwitch(
-                  title: '数字',
+                  title: tr.digits,
                   subtitle: '0-9',
                   value: _useNumbers,
                   onChanged: (v) {
@@ -212,7 +236,7 @@ class _PasswordGeneratorPageState extends State<PasswordGeneratorPage> {
                 ),
                 const Divider(height: 1),
                 _ConfigSwitch(
-                  title: '特殊符号',
+                  title: tr.symbols,
                   subtitle: '!@#\$%^&*',
                   value: _useSymbols,
                   onChanged: (v) {
@@ -244,6 +268,7 @@ class _ActionButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    AppLocalizations.of(context);
     if (primary) {
       return ElevatedButton.icon(
         onPressed: onPressed,
@@ -251,7 +276,9 @@ class _ActionButton extends StatelessWidget {
         label: Text(label),
         style: ElevatedButton.styleFrom(
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
         ),
       );
     }
@@ -282,6 +309,7 @@ class _ConfigSwitch extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    AppLocalizations.of(context);
     return SwitchListTile(
       title: Text(title, style: const TextStyle(fontWeight: FontWeight.w500)),
       subtitle: Text(subtitle, style: const TextStyle(fontSize: 12)),

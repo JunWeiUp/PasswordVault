@@ -105,7 +105,7 @@ class _FaviconWidgetState extends State<FaviconWidget> {
               strokeWidth: 2,
               value: loadingProgress.expectedTotalBytes != null
                   ? loadingProgress.cumulativeBytesLoaded /
-                      loadingProgress.expectedTotalBytes!
+                        loadingProgress.expectedTotalBytes!
                   : null,
             ),
           ),
@@ -115,7 +115,9 @@ class _FaviconWidgetState extends State<FaviconWidget> {
   }
 
   Widget _buildFallback() {
-    final firstLetter = widget.title.isNotEmpty ? widget.title[0].toUpperCase() : '?';
+    final firstLetter = widget.title.isNotEmpty
+        ? widget.title[0].toUpperCase()
+        : '?';
     return Container(
       width: widget.size,
       height: widget.size,

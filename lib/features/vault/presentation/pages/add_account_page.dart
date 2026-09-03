@@ -1,3 +1,4 @@
+import 'package:password/core/l10n/l10n.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -49,7 +50,7 @@ class _AddAccountPageState extends ConsumerState<AddAccountPage> {
     _titleController = TextEditingController(text: widget.item?.title);
     _usernameController = TextEditingController(text: widget.item?.username);
     _passwordController = TextEditingController(text: widget.item?.password);
-    
+
     // 初始化额外账号
     _extraAccounts = (widget.item?.accounts ?? []).map((acc) {
       return _AccountControllerGroup(
@@ -61,21 +62,30 @@ class _AddAccountPageState extends ConsumerState<AddAccountPage> {
         passwordLastChanged: acc.passwordLastChanged,
       );
     }).toList();
-    
+
     // 初始化助记词控制器
     final mnemonic = widget.item?.mnemonic ?? '';
     final words = mnemonic.split(' ').where((w) => w.isNotEmpty).toList();
     _mnemonicControllers = List.generate(12, (index) {
-      return TextEditingController(text: index < words.length ? words[index] : '');
+      return TextEditingController(
+        text: index < words.length ? words[index] : '',
+      );
     });
     _mnemonicFocusNodes = List.generate(12, (index) => FocusNode());
 
-    _privateKeyController = TextEditingController(text: widget.item?.privateKey);
+    _privateKeyController = TextEditingController(
+      text: widget.item?.privateKey,
+    );
     _addressController = TextEditingController(text: widget.item?.address);
-    _categoryController = TextEditingController(text: widget.item?.category ?? (
-      widget.item?.type == VaultItemType.crypto ? '加密资产' : 
-      (widget.item?.type == VaultItemType.secureNote ? '笔记' : '社交媒体')
-    ));
+    _categoryController = TextEditingController(
+      text:
+          widget.item?.category ??
+          (widget.item?.type == VaultItemType.crypto
+              ? '加密资产'
+              : (widget.item?.type == VaultItemType.secureNote
+                    ? '笔记'
+                    : '社交媒体')),
+    );
     _emailController = TextEditingController(text: widget.item?.email);
     _urlController = TextEditingController(text: widget.item?.url);
     _urlController.addListener(() {
@@ -85,17 +95,23 @@ class _AddAccountPageState extends ConsumerState<AddAccountPage> {
       setState(() {});
     });
     _noteController = TextEditingController(text: widget.item?.note);
-    _durationController = TextEditingController(text: widget.item?.passwordDuration?.toString() ?? '');
+    _durationController = TextEditingController(
+      text: widget.item?.passwordDuration?.toString() ?? '',
+    );
     _tagInputController = TextEditingController();
     _tags = List.from(widget.item?.tags ?? []);
     _totpSecret = widget.item?.secret;
     _selectedSharedVaultId = widget.item?.sharedVaultId;
-    _selectedNetwork = widget.item?.network ?? (widget.item?.type == VaultItemType.crypto ? 'ETH' : null);
+    _selectedNetwork =
+        widget.item?.network ??
+        (widget.item?.type == VaultItemType.crypto ? 'ETH' : null);
     _isPinned = widget.item?.isPinned ?? false;
     _colorLabel = widget.item?.colorLabel;
 
     // 添加监听器以自动生成地址
-    _privateKeyController.addListener(() => _updateAddressFromPrivateKey(showErrors: false));
+    _privateKeyController.addListener(
+      () => _updateAddressFromPrivateKey(showErrors: false),
+    );
     for (var controller in _mnemonicControllers) {
       controller.addListener(_onMnemonicChanged);
     }
@@ -133,7 +149,7 @@ class _AddAccountPageState extends ConsumerState<AddAccountPage> {
 
   void _onMnemonicChanged() {
     if (_isUpdatingMnemonicBatch) return;
-    
+
     _debounceTimer?.cancel();
     _debounceTimer = Timer(const Duration(milliseconds: 500), () {
       _updateAddressFromMnemonic(showErrors: false);
@@ -141,7 +157,9 @@ class _AddAccountPageState extends ConsumerState<AddAccountPage> {
   }
 
   void _updateAddressFromPrivateKey({bool showErrors = true}) {
-    final address = CryptoUtils.getEthAddressFromPrivateKey(_privateKeyController.text);
+    final address = CryptoUtils.getEthAddressFromPrivateKey(
+      _privateKeyController.text,
+    );
     if (address != null) {
       setState(() {
         _addressController.text = address;
@@ -149,7 +167,7 @@ class _AddAccountPageState extends ConsumerState<AddAccountPage> {
     } else if (showErrors && _privateKeyController.text.isNotEmpty) {
       // 如果私钥无效，显示提示
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('私钥格式无效，请检查（需为 64 位十六进制）')),
+        SnackBar(content: Text(tr.invalidPrivateKeyEnterHexadecimalCharacters)),
       );
     }
   }
@@ -159,7 +177,7 @@ class _AddAccountPageState extends ConsumerState<AddAccountPage> {
         .map((c) => c.text.trim())
         .where((text) => text.isNotEmpty)
         .join(' ');
-    
+
     final words = mnemonic.split(' ');
     if (words.length == 12) {
       setState(() => _isGeneratingAddress = true);
@@ -167,16 +185,16 @@ class _AddAccountPageState extends ConsumerState<AddAccountPage> {
         final result = await CryptoUtils.getAllFromMnemonic(mnemonic);
         final address = result['address'];
         final privateKey = result['privateKey'];
-        
+
         if (mounted) {
           setState(() {
             if (address != null) _addressController.text = address;
             if (privateKey != null) _privateKeyController.text = privateKey;
           });
-          
+
           if (address == null && showErrors) {
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('助记词无效，请检查单词拼写')),
+              SnackBar(content: Text(tr.invalidRecoveryPhraseCheckTheSpelling)),
             );
           }
         }
@@ -184,17 +202,17 @@ class _AddAccountPageState extends ConsumerState<AddAccountPage> {
         if (mounted) setState(() => _isGeneratingAddress = false);
       }
     } else if (showErrors && mnemonic.isNotEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('请填写完整的 12 个助记词')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(tr.enterAllRecoveryWords)));
     }
   }
 
   void _save() {
     if (_titleController.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('请填写必填项')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(tr.completeAllRequiredFields)));
       return;
     }
 
@@ -204,13 +222,19 @@ class _AddAccountPageState extends ConsumerState<AddAccountPage> {
         .join(' ');
 
     final newItem = VaultItem(
-      id: (widget.item?.id == null || widget.item!.id.isEmpty) ? const Uuid().v4() : widget.item!.id,
+      id: (widget.item?.id == null || widget.item!.id.isEmpty)
+          ? const Uuid().v4()
+          : widget.item!.id,
       type: widget.item?.type ?? VaultItemType.password,
       title: _titleController.text,
       username: _usernameController.text,
-      password: _passwordController.text.isEmpty ? null : _passwordController.text,
+      password: _passwordController.text.isEmpty
+          ? null
+          : _passwordController.text,
       mnemonic: mnemonic.isEmpty ? null : mnemonic,
-      privateKey: _privateKeyController.text.isEmpty ? null : _privateKeyController.text,
+      privateKey: _privateKeyController.text.isEmpty
+          ? null
+          : _privateKeyController.text,
       address: _addressController.text.isEmpty ? null : _addressController.text,
       network: _selectedNetwork,
       category: _categoryController.text,
@@ -227,40 +251,51 @@ class _AddAccountPageState extends ConsumerState<AddAccountPage> {
       sharedVaultId: _selectedSharedVaultId,
       isPinned: _isPinned,
       colorLabel: (_colorLabel?.isEmpty ?? true) ? null : _colorLabel,
-      accounts: _extraAccounts.where((g) => g.usernameController.text.isNotEmpty).map((g) {
-        return AccountEntry(
-          id: g.id.isEmpty ? const Uuid().v4() : g.id,
-          username: g.usernameController.text,
-          password: g.passwordController.text,
-          label: g.labelController.text.isEmpty ? null : g.labelController.text,
-          passwordHistory: g.passwordHistory,
-          passwordLastChanged: g.passwordLastChanged,
-        );
-      }).toList(),
+      accounts: _extraAccounts
+          .where((g) => g.usernameController.text.isNotEmpty)
+          .map((g) {
+            return AccountEntry(
+              id: g.id.isEmpty ? const Uuid().v4() : g.id,
+              username: g.usernameController.text,
+              password: g.passwordController.text,
+              label: g.labelController.text.isEmpty
+                  ? null
+                  : g.labelController.text,
+              passwordHistory: g.passwordHistory,
+              passwordLastChanged: g.passwordLastChanged,
+            );
+          })
+          .toList(),
     );
 
     final action = (widget.item == null || widget.item!.id.isEmpty)
-      ? ref.read(vaultItemsProvider.notifier).addItem(newItem)
-      : ref.read(vaultItemsProvider.notifier).updateItem(newItem);
+        ? ref.read(vaultItemsProvider.notifier).addItem(newItem)
+        : ref.read(vaultItemsProvider.notifier).updateItem(newItem);
 
-    action.then((_) {
-      if (mounted) {
-        Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('保存成功')),
-        );
-      }
-    }).catchError((e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('保存失败: $e'), backgroundColor: Colors.red),
-        );
-      }
-    });
+    action
+        .then((_) {
+          if (mounted) {
+            Navigator.pop(context);
+            ScaffoldMessenger.of(
+              context,
+            ).showSnackBar(SnackBar(content: Text(tr.saved)));
+          }
+        })
+        .catchError((e) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(tr.couldNotSave(e)),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
+        });
   }
 
   @override
   Widget build(BuildContext context) {
+    AppLocalizations.of(context);
     final type = widget.item?.type ?? VaultItemType.password;
     final isCrypto = type == VaultItemType.crypto;
     final isSecureNote = type == VaultItemType.secureNote;
@@ -274,15 +309,23 @@ class _AddAccountPageState extends ConsumerState<AddAccountPage> {
               Padding(
                 padding: const EdgeInsets.only(right: 8),
                 child: FaviconWidget(
-                  url: _urlController.text.isNotEmpty ? _urlController.text : widget.item?.url,
-                  title: _titleController.text.isNotEmpty ? _titleController.text : (widget.item?.title ?? ''),
+                  url: _urlController.text.isNotEmpty
+                      ? _urlController.text
+                      : widget.item?.url,
+                  title: _titleController.text.isNotEmpty
+                      ? _titleController.text
+                      : (widget.item?.title ?? ''),
                   size: 24,
                 ),
               ),
             Text(
-              (widget.item == null || widget.item!.id.isEmpty) 
-                ? (isCrypto ? '添加钱包' : (isSecureNote ? '添加备注' : '添加账号')) 
-                : (isCrypto ? '编辑钱包' : (isSecureNote ? '编辑备注' : '编辑账号')),
+              (widget.item == null || widget.item!.id.isEmpty)
+                  ? (isCrypto
+                        ? tr.addWallet
+                        : (isSecureNote ? tr.addNote : tr.addAccount))
+                  : (isCrypto
+                        ? tr.editWallet
+                        : (isSecureNote ? tr.editNote : tr.editAccount)),
               style: const TextStyle(fontWeight: FontWeight.bold),
             ),
           ],
@@ -292,7 +335,7 @@ class _AddAccountPageState extends ConsumerState<AddAccountPage> {
           IconButton(
             onPressed: _save,
             icon: const Icon(Icons.check),
-            tooltip: '保存',
+            tooltip: tr.save,
           ),
         ],
       ),
@@ -301,64 +344,82 @@ class _AddAccountPageState extends ConsumerState<AddAccountPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _buildSection(context, '基本信息', [
+            _buildSection(context, tr.basicInformation, [
               _buildTextField(
-                label: isCrypto ? '钱包名称' : (isSecureNote ? '备注名称' : '账号名称'),
+                label: isCrypto
+                    ? tr.walletName
+                    : (isSecureNote ? tr.noteTitle : tr.accountName),
                 controller: _titleController,
                 isRequired: true,
-                hintText: isCrypto ? '如: MetaMask, Trust Wallet' : (isSecureNote ? '如: 银行卡信息, 备忘' : '如: Google, GitHub'),
+                hintText: isCrypto
+                    ? tr.eGMetamaskTrustWallet
+                    : (isSecureNote
+                          ? tr.eGCardDetailsReminder
+                          : tr.eGGoogleGithub),
               ),
               if (!isCrypto && !isSecureNote)
                 _buildTextField(
-                  label: '用户名',
+                  label: tr.username,
                   controller: _usernameController,
                   isRequired: true,
-                  hintText: '用户名或邮箱',
-                  autofillHints: const [AutofillHints.username, AutofillHints.email],
+                  hintText: tr.usernameOrEmail,
+                  autofillHints: const [
+                    AutofillHints.username,
+                    AutofillHints.email,
+                  ],
                 ),
               if (isCrypto)
                 _buildTextField(
-                  label: '钱包地址',
+                  label: tr.walletAddress,
                   controller: _addressController,
                   hintText: '0x...',
                   suffixIcon: _isGeneratingAddress
-                    ? const Padding(
-                        padding: EdgeInsets.all(12.0),
-                        child: SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2),
+                      ? const Padding(
+                          padding: EdgeInsets.all(12.0),
+                          child: SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                        )
+                      : IconButton(
+                          icon: const Icon(
+                            Icons.auto_awesome_outlined,
+                            size: 20,
+                          ),
+                          tooltip: tr.generatedFromThePrivateKeyOrRecovery,
+                          onPressed: () {
+                            _updateAddressFromPrivateKey();
+                            _updateAddressFromMnemonic();
+                          },
                         ),
-                      )
-                    : IconButton(
-                        icon: const Icon(Icons.auto_awesome_outlined, size: 20),
-                        tooltip: '根据私钥/助记词自动生成',
-                        onPressed: () {
-                          _updateAddressFromPrivateKey();
-                          _updateAddressFromMnemonic();
-                        },
-                      ),
                 ),
               if (isCrypto)
                 ListTile(
-                  title: const Text('区块链网络'),
-                  subtitle: Text(_selectedNetwork ?? '未选择'),
+                  title: Text(tr.blockchainNetwork),
+                  subtitle: Text(_selectedNetwork ?? tr.notSelected),
                   trailing: const Icon(Icons.chevron_right),
                   onTap: _showNetworkPicker,
                 ),
               if (!isCrypto && !isSecureNote)
                 _buildTextField(
-                  label: '密码',
+                  label: tr.password,
                   controller: _passwordController,
                   isPassword: _obscurePassword,
-                  hintText: '账号密码',
+                  hintText: tr.accountPassword,
                   autofillHints: const [AutofillHints.password],
                   suffixIcon: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       IconButton(
-                        icon: Icon(_obscurePassword ? Icons.visibility_off_outlined : Icons.visibility_outlined),
-                        tooltip: _obscurePassword ? '显示密码' : '隐藏密码',
+                        icon: Icon(
+                          _obscurePassword
+                              ? Icons.visibility_off_outlined
+                              : Icons.visibility_outlined,
+                        ),
+                        tooltip: _obscurePassword
+                            ? tr.showPassword
+                            : tr.hidePassword,
                         onPressed: () {
                           setState(() {
                             _obscurePassword = !_obscurePassword;
@@ -367,21 +428,27 @@ class _AddAccountPageState extends ConsumerState<AddAccountPage> {
                       ),
                       IconButton(
                         icon: const Icon(Icons.copy_rounded),
-                        tooltip: '复制密码',
+                        tooltip: tr.copyPassword,
                         onPressed: () {
                           if (_passwordController.text.isNotEmpty) {
-                            Clipboard.setData(ClipboardData(text: _passwordController.text));
+                            Clipboard.setData(
+                              ClipboardData(text: _passwordController.text),
+                            );
                             ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('密码已复制到剪贴板')),
+                              SnackBar(
+                                content: Text(tr.passwordCopiedToClipboard),
+                              ),
                             );
                           }
                         },
                       ),
                       IconButton(
                         icon: const Icon(Icons.casino_outlined),
-                        tooltip: '生成随机密码',
+                        tooltip: tr.generateRandomPassword,
                         onPressed: () {
-                          final newPassword = PasswordGenerator.generate(length: 16);
+                          final newPassword = PasswordGenerator.generate(
+                            length: 16,
+                          );
                           setState(() {
                             _passwordController.text = newPassword;
                           });
@@ -391,8 +458,8 @@ class _AddAccountPageState extends ConsumerState<AddAccountPage> {
                   ),
                 ),
               ListTile(
-                title: const Text('分类'),
-                subtitle: Text(_categoryController.text),
+                title: Text(tr.category),
+                subtitle: Text(localizedCategory(_categoryController.text)),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: _showCategoryPicker,
               ),
@@ -400,147 +467,218 @@ class _AddAccountPageState extends ConsumerState<AddAccountPage> {
             ]),
             if (!isCrypto && !isSecureNote) ...[
               const SizedBox(height: 16),
-              _buildSection(
-                context, 
-                '更多账号', 
-                [
-                  ..._extraAccounts.asMap().entries.map((entry) {
-                    final index = entry.key;
-                    final group = entry.value;
-                    return Column(
-                      children: [
-                        if (index > 0) const Divider(),
-                        Padding(
-                          padding: const EdgeInsets.only(left: 16, right: 8, top: 8),
-                          child: Row(
-                            children: [
-                              Expanded(
-                                child: Text('账号 ${index + 2}', 
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    color: Theme.of(context).colorScheme.primary,
-                                  )
+              _buildSection(context, tr.additionalAccounts, [
+                ..._extraAccounts.asMap().entries.map((entry) {
+                  final index = entry.key;
+                  final group = entry.value;
+                  return Column(
+                    children: [
+                      if (index > 0) const Divider(),
+                      Padding(
+                        padding: const EdgeInsets.only(
+                          left: 16,
+                          right: 8,
+                          top: 8,
+                        ),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                tr.account(index + 2),
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  color: Theme.of(context).colorScheme.primary,
                                 ),
                               ),
-                              IconButton(
-                                icon: const Icon(Icons.remove_circle_outline, color: Colors.red),
-                                onPressed: () => setState(() => _extraAccounts.removeAt(index)),
+                            ),
+                            IconButton(
+                              icon: const Icon(
+                                Icons.remove_circle_outline,
+                                color: Colors.red,
+                              ),
+                              onPressed: () => setState(
+                                () => _extraAccounts.removeAt(index),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      _buildTextField(
+                        label: tr.note,
+                        controller: group.labelController,
+                        hintText: tr.accountPurposeEGWorkPersonal,
+                      ),
+                      _buildTextField(
+                        label: tr.username,
+                        controller: group.usernameController,
+                        hintText: tr.usernameOrEmail,
+                      ),
+                      _buildTextField(
+                        label: tr.password,
+                        controller: group.passwordController,
+                        isPassword: group.obscurePassword,
+                        hintText: tr.accountPassword,
+                        suffixIcon: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(
+                              icon: Icon(
+                                group.obscurePassword
+                                    ? Icons.visibility_off_outlined
+                                    : Icons.visibility_outlined,
+                              ),
+                              tooltip: group.obscurePassword
+                                  ? tr.showPassword
+                                  : tr.hidePassword,
+                              onPressed: () => setState(
+                                () => group.obscurePassword =
+                                    !group.obscurePassword,
+                              ),
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.copy_rounded),
+                              tooltip: tr.copyPassword,
+                              onPressed: () {
+                                if (group.passwordController.text.isNotEmpty) {
+                                  Clipboard.setData(
+                                    ClipboardData(
+                                      text: group.passwordController.text,
+                                    ),
+                                  );
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text(
+                                        tr.passwordCopiedToClipboard,
+                                      ),
+                                    ),
+                                  );
+                                }
+                              },
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.casino_outlined),
+                              tooltip: tr.generateRandomPassword,
+                              onPressed: () {
+                                final newPassword = PasswordGenerator.generate(
+                                  length: 16,
+                                );
+                                setState(
+                                  () => group.passwordController.text =
+                                      newPassword,
+                                );
+                              },
+                            ),
+                          ],
+                        ),
+                      ),
+                      if (group.passwordHistory != null &&
+                          group.passwordHistory!.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 4,
+                          ),
+                          child: Row(
+                            children: [
+                              if (group.passwordLastChanged != null)
+                                Expanded(
+                                  child: Text(
+                                    tr.lastModified(
+                                      group.passwordLastChanged!
+                                          .toString()
+                                          .split('.')[0],
+                                    ),
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: Theme.of(context).hintColor,
+                                    ),
+                                  ),
+                                ),
+                              TextButton.icon(
+                                onPressed: () {
+                                  final label = group.labelController.text;
+                                  _showPasswordHistory(
+                                    history: group.passwordHistory,
+                                    title: tr.passwordHistoryFor(
+                                      label.isNotEmpty
+                                          ? label
+                                          : tr.account(index + 2),
+                                    ),
+                                  );
+                                },
+                                icon: const Icon(Icons.history, size: 16),
+                                label: Text(
+                                  tr.history(group.passwordHistory!.length),
+                                  style: const TextStyle(fontSize: 12),
+                                ),
+                                style: TextButton.styleFrom(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                  ),
+                                  minimumSize: Size.zero,
+                                  tapTargetSize:
+                                      MaterialTapTargetSize.shrinkWrap,
+                                ),
                               ),
                             ],
                           ),
                         ),
-                        _buildTextField(
-                          label: '备注',
-                          controller: group.labelController,
-                          hintText: '账号用途 (如: 工作, 个人)',
-                        ),
-                        _buildTextField(
-                          label: '用户名',
-                          controller: group.usernameController,
-                          hintText: '用户名或邮箱',
-                        ),
-                        _buildTextField(
-                    label: '密码',
-                    controller: group.passwordController,
-                    isPassword: group.obscurePassword,
-                    hintText: '账号密码',
-                    suffixIcon: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        IconButton(
-                          icon: Icon(group.obscurePassword ? Icons.visibility_off_outlined : Icons.visibility_outlined),
-                          tooltip: group.obscurePassword ? '显示密码' : '隐藏密码',
-                          onPressed: () => setState(() => group.obscurePassword = !group.obscurePassword),
-                        ),
-                        IconButton(
-                          icon: const Icon(Icons.copy_rounded),
-                          tooltip: '复制密码',
-                          onPressed: () {
-                            if (group.passwordController.text.isNotEmpty) {
-                              Clipboard.setData(ClipboardData(text: group.passwordController.text));
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('密码已复制到剪贴板')),
-                              );
-                            }
-                          },
-                        ),
-                        IconButton(
-                          icon: const Icon(Icons.casino_outlined),
-                          tooltip: '生成随机密码',
-                          onPressed: () {
-                            final newPassword = PasswordGenerator.generate(length: 16);
-                            setState(() => group.passwordController.text = newPassword);
-                          },
-                        ),
-                      ],
+                    ],
+                  );
+                }),
+                ListTile(
+                  leading: Icon(
+                    Icons.add_circle_outline,
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
+                  title: Text(
+                    tr.addAnotherAccount,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.primary,
                     ),
                   ),
-                  if (group.passwordHistory != null && group.passwordHistory!.isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                      child: Row(
-                        children: [
-                          if (group.passwordLastChanged != null)
-                            Expanded(
-                              child: Text(
-                                '最后修改: ${group.passwordLastChanged!.toString().split('.')[0]}',
-                                style: TextStyle(fontSize: 11, color: Theme.of(context).hintColor),
-                              ),
-                            ),
-                          TextButton.icon(
-                            onPressed: () {
-                              final label = group.labelController.text;
-                              _showPasswordHistory(
-                                history: group.passwordHistory,
-                                title: '${label.isNotEmpty ? label : '账号 ${index + 2}'} 的历史密码',
-                              );
-                            },
-                            icon: const Icon(Icons.history, size: 16),
-                            label: Text('历史 (${group.passwordHistory!.length})', style: const TextStyle(fontSize: 12)),
-                            style: TextButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(horizontal: 8),
-                              minimumSize: Size.zero,
-                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                      ],
-                    );
-                  }),
-                  ListTile(
-                    leading: Icon(Icons.add_circle_outline, color: Theme.of(context).colorScheme.primary),
-                    title: Text('添加额外账号', style: TextStyle(color: Theme.of(context).colorScheme.primary)),
-                    onTap: () => setState(() => _extraAccounts.add(_AccountControllerGroup())),
+                  onTap: () => setState(
+                    () => _extraAccounts.add(_AccountControllerGroup()),
                   ),
-                ],
-              ),
+                ),
+              ]),
             ],
             const SizedBox(height: 16),
             if (isCrypto) ...[
-              _buildSection(context, '私钥信息', [
+              _buildSection(context, tr.privateKeyDetails, [
                 _buildTextField(
-                  label: '私钥',
+                  label: tr.privateKey,
                   controller: _privateKeyController,
                   isPassword: _obscureMnemonic,
-                  hintText: '输入钱包私钥',
+                  hintText: tr.enterWalletPrivateKey,
                   suffixIcon: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       IconButton(
-                        icon: Icon(_obscureMnemonic ? Icons.visibility_off_outlined : Icons.visibility_outlined),
-                        tooltip: _obscureMnemonic ? '显示私钥' : '隐藏私钥',
-                        onPressed: () => setState(() => _obscureMnemonic = !_obscureMnemonic),
+                        icon: Icon(
+                          _obscureMnemonic
+                              ? Icons.visibility_off_outlined
+                              : Icons.visibility_outlined,
+                        ),
+                        tooltip: _obscureMnemonic
+                            ? tr.showPrivateKey
+                            : tr.hidePrivateKey,
+                        onPressed: () => setState(
+                          () => _obscureMnemonic = !_obscureMnemonic,
+                        ),
                       ),
                       IconButton(
                         icon: const Icon(Icons.copy_rounded),
-                        tooltip: '复制私钥',
+                        tooltip: tr.copyPrivateKey,
                         onPressed: () {
                           if (_privateKeyController.text.isNotEmpty) {
-                            Clipboard.setData(ClipboardData(text: _privateKeyController.text));
+                            Clipboard.setData(
+                              ClipboardData(text: _privateKeyController.text),
+                            );
                             ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('私钥已复制到剪贴板')),
+                              SnackBar(
+                                content: Text(tr.privateKeyCopiedToClipboard),
+                              ),
                             );
                           }
                         },
@@ -550,7 +688,7 @@ class _AddAccountPageState extends ConsumerState<AddAccountPage> {
                 ),
               ]),
               const SizedBox(height: 16),
-              _buildSection(context, '助记词', [
+              _buildSection(context, tr.recoveryPhrase, [
                 Padding(
                   padding: const EdgeInsets.all(16.0),
                   child: Column(
@@ -558,20 +696,25 @@ class _AddAccountPageState extends ConsumerState<AddAccountPage> {
                       GridView.builder(
                         shrinkWrap: true,
                         physics: const NeverScrollableScrollPhysics(),
-                        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: 3,
-                          crossAxisSpacing: 10,
-                          mainAxisSpacing: 10,
-                          childAspectRatio: 2.8, // 进一步调大比例以减小高度
-                        ),
+                        gridDelegate:
+                            const SliverGridDelegateWithFixedCrossAxisCount(
+                              crossAxisCount: 3,
+                              crossAxisSpacing: 10,
+                              mainAxisSpacing: 10,
+                              childAspectRatio: 2.8, // 进一步调大比例以减小高度
+                            ),
                         itemCount: 12,
                         itemBuilder: (context, index) {
                           return Container(
                             decoration: BoxDecoration(
-                              color: Theme.of(context).dividerColor.withValues(alpha: 0.05),
+                              color: Theme.of(
+                                context,
+                              ).dividerColor.withValues(alpha: 0.05),
                               borderRadius: BorderRadius.circular(12),
                               border: Border.all(
-                                color: Theme.of(context).dividerColor.withValues(alpha: 0.1),
+                                color: Theme.of(
+                                  context,
+                                ).dividerColor.withValues(alpha: 0.1),
                               ),
                             ),
                             child: Stack(
@@ -583,7 +726,10 @@ class _AddAccountPageState extends ConsumerState<AddAccountPage> {
                                   child: Text(
                                     '${index + 1}',
                                     style: TextStyle(
-                                      color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.4),
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .primary
+                                          .withValues(alpha: 0.4),
                                       fontSize: 9,
                                       fontWeight: FontWeight.bold,
                                     ),
@@ -591,68 +737,108 @@ class _AddAccountPageState extends ConsumerState<AddAccountPage> {
                                 ),
                                 Center(
                                   child: RawAutocomplete<String>(
-                                    textEditingController: _mnemonicControllers[index],
+                                    textEditingController:
+                                        _mnemonicControllers[index],
                                     focusNode: _mnemonicFocusNodes[index],
-                                    optionsBuilder: (TextEditingValue textEditingValue) {
-                                      if (textEditingValue.text.isEmpty || _obscureMnemonic) {
-                                        return const Iterable<String>.empty();
-                                      }
-                                      return Bip39Words.wordList.where((String option) {
-                                        return option.startsWith(textEditingValue.text.toLowerCase());
-                                      });
-                                    },
-                                    fieldViewBuilder: (context, controller, focusNode, onFieldSubmitted) {
-                                      return TextField(
-                                        controller: controller,
-                                        focusNode: focusNode,
-                                        obscureText: _obscureMnemonic,
-                                        textAlign: TextAlign.center, // 确保文字居中
-                                        autocorrect: false,
-                                        enableSuggestions: false,
-                                        textInputAction: index < 11 ? TextInputAction.next : TextInputAction.done,
-                                        style: const TextStyle(
-                                          fontSize: 16,
-                                          fontWeight: FontWeight.w600,
-                                          letterSpacing: 0.5,
-                                        ),
-                                        decoration: InputDecoration(
-                                          border: InputBorder.none,
-                                          isDense: true,
-                                          contentPadding: const EdgeInsets.symmetric(vertical: 8),
-                                          hintText: '单词',
-                                          hintStyle: TextStyle(
-                                            fontSize: 14,
-                                            color: Theme.of(context).hintColor.withValues(alpha: 0.3),
-                                          ),
-                                        ),
-                                      );
-                                    },
+                                    optionsBuilder:
+                                        (TextEditingValue textEditingValue) {
+                                          if (textEditingValue.text.isEmpty ||
+                                              _obscureMnemonic) {
+                                            return const Iterable<
+                                              String
+                                            >.empty();
+                                          }
+                                          return Bip39Words.wordList.where((
+                                            String option,
+                                          ) {
+                                            return option.startsWith(
+                                              textEditingValue.text
+                                                  .toLowerCase(),
+                                            );
+                                          });
+                                        },
+                                    fieldViewBuilder:
+                                        (
+                                          context,
+                                          controller,
+                                          focusNode,
+                                          onFieldSubmitted,
+                                        ) {
+                                          return TextField(
+                                            controller: controller,
+                                            focusNode: focusNode,
+                                            obscureText: _obscureMnemonic,
+                                            textAlign:
+                                                TextAlign.center, // 确保文字居中
+                                            autocorrect: false,
+                                            enableSuggestions: false,
+                                            textInputAction: index < 11
+                                                ? TextInputAction.next
+                                                : TextInputAction.done,
+                                            style: const TextStyle(
+                                              fontSize: 16,
+                                              fontWeight: FontWeight.w600,
+                                              letterSpacing: 0.5,
+                                            ),
+                                            decoration: InputDecoration(
+                                              border: InputBorder.none,
+                                              isDense: true,
+                                              contentPadding:
+                                                  const EdgeInsets.symmetric(
+                                                    vertical: 8,
+                                                  ),
+                                              hintText: tr.word,
+                                              hintStyle: TextStyle(
+                                                fontSize: 14,
+                                                color: Theme.of(context)
+                                                    .hintColor
+                                                    .withValues(alpha: 0.3),
+                                              ),
+                                            ),
+                                          );
+                                        },
                                     optionsViewBuilder: (context, onSelected, options) {
                                       return Align(
                                         alignment: Alignment.topLeft,
                                         child: Material(
                                           elevation: 4.0,
-                                          borderRadius: BorderRadius.circular(8),
+                                          borderRadius: BorderRadius.circular(
+                                            8,
+                                          ),
                                           child: Container(
                                             width: 150,
-                                            constraints: const BoxConstraints(maxHeight: 200),
+                                            constraints: const BoxConstraints(
+                                              maxHeight: 200,
+                                            ),
                                             child: ListView.builder(
                                               padding: EdgeInsets.zero,
                                               shrinkWrap: true,
                                               itemCount: options.length,
-                                              itemBuilder: (BuildContext context, int index) {
-                                                final String option = options.elementAt(index);
-                                                return InkWell(
-                                                  onTap: () => onSelected(option),
-                                                  child: Padding(
-                                                    padding: const EdgeInsets.all(12.0),
-                                                    child: Text(
-                                                      option,
-                                                      textAlign: TextAlign.center, // 联想列表项也居中
-                                                    ),
-                                                  ),
-                                                );
-                                              },
+                                              itemBuilder:
+                                                  (
+                                                    BuildContext context,
+                                                    int index,
+                                                  ) {
+                                                    final String option =
+                                                        options.elementAt(
+                                                          index,
+                                                        );
+                                                    return InkWell(
+                                                      onTap: () =>
+                                                          onSelected(option),
+                                                      child: Padding(
+                                                        padding:
+                                                            const EdgeInsets.all(
+                                                              12.0,
+                                                            ),
+                                                        child: Text(
+                                                          option,
+                                                          textAlign: TextAlign
+                                                              .center, // 联想列表项也居中
+                                                        ),
+                                                      ),
+                                                    );
+                                                  },
                                             ),
                                           ),
                                         ),
@@ -670,64 +856,90 @@ class _AddAccountPageState extends ConsumerState<AddAccountPage> {
                         children: [
                           Expanded(
                             child: OutlinedButton.icon(
-                              onPressed: _isGeneratingAddress ? null : () async {
-                                // 1. 先更新 UI 状态显示加载动画
-                                setState(() {
-                                  _isGeneratingAddress = true;
-                                  _isUpdatingMnemonicBatch = true;
-                                });
-                                
-                                // 2. 稍微延迟一点点，给 UI 线程留出渲染“正在生成...”动画的时间
-                                await Future.delayed(const Duration(milliseconds: 50));
+                              onPressed: _isGeneratingAddress
+                                  ? null
+                                  : () async {
+                                      // 1. 先更新 UI 状态显示加载动画
+                                      setState(() {
+                                        _isGeneratingAddress = true;
+                                        _isUpdatingMnemonicBatch = true;
+                                      });
 
-                                try {
-                                  // 3. 在 Isolate 中生成助记词
-                                  final randomMnemonic = await PasswordGenerator.generateMnemonic();
-                                  final words = randomMnemonic.split(' ');
-                                  
-                                  if (mounted) {
-                                    setState(() {
-                                      for (int i = 0; i < 12; i++) {
-                                        _mnemonicControllers[i].text = words[i];
+                                      // 2. 稍微延迟一点点，给 UI 线程留出渲染“正在生成...”动画的时间
+                                      await Future.delayed(
+                                        const Duration(milliseconds: 50),
+                                      );
+
+                                      try {
+                                        // 3. 在 Isolate 中生成助记词
+                                        final randomMnemonic =
+                                            await PasswordGenerator.generateMnemonic();
+                                        final words = randomMnemonic.split(' ');
+
+                                        if (mounted) {
+                                          setState(() {
+                                            for (int i = 0; i < 12; i++) {
+                                              _mnemonicControllers[i].text =
+                                                  words[i];
+                                            }
+                                            _obscureMnemonic = false;
+                                          });
+                                        }
+
+                                        // 4. 计算地址 (已经在 Isolate 中)
+                                        await _updateAddressFromMnemonic();
+                                      } finally {
+                                        if (mounted) {
+                                          setState(() {
+                                            _isUpdatingMnemonicBatch = false;
+                                            _isGeneratingAddress = false;
+                                          });
+                                        }
                                       }
-                                      _obscureMnemonic = false;
-                                    });
-                                  }
-                                  
-                                  // 4. 计算地址 (已经在 Isolate 中)
-                                  await _updateAddressFromMnemonic();
-                                } finally {
-                                  if (mounted) {
-                                    setState(() {
-                                      _isUpdatingMnemonicBatch = false;
-                                      _isGeneratingAddress = false;
-                                    });
-                                  }
-                                }
-                              },
+                                    },
                               style: OutlinedButton.styleFrom(
-                                padding: const EdgeInsets.symmetric(vertical: 12),
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 12,
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
                               ),
-                              icon: _isGeneratingAddress 
-                                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
-                                : const Icon(Icons.auto_fix_high, size: 20),
-                              label: Text(_isGeneratingAddress ? '正在生成...' : '生成随机助记词'),
+                              icon: _isGeneratingAddress
+                                  ? const SizedBox(
+                                      width: 20,
+                                      height: 20,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                      ),
+                                    )
+                                  : const Icon(Icons.auto_fix_high, size: 20),
+                              label: Text(
+                                _isGeneratingAddress
+                                    ? tr.generating
+                                    : tr.generateRecoveryPhrase,
+                              ),
                             ),
                           ),
                           const SizedBox(width: 12),
                           Container(
                             decoration: BoxDecoration(
-                              color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.primary.withValues(alpha: 0.1),
                               borderRadius: BorderRadius.circular(12),
                             ),
                             child: IconButton(
                               icon: Icon(
-                                _obscureMnemonic ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+                                _obscureMnemonic
+                                    ? Icons.visibility_off_outlined
+                                    : Icons.visibility_outlined,
                                 color: Theme.of(context).colorScheme.primary,
                               ),
-                              onPressed: () => setState(() => _obscureMnemonic = !_obscureMnemonic),
-                              tooltip: _obscureMnemonic ? '显示' : '隐藏',
+                              onPressed: () => setState(
+                                () => _obscureMnemonic = !_obscureMnemonic,
+                              ),
+                              tooltip: _obscureMnemonic ? tr.show : tr.hide,
                             ),
                           ),
                         ],
@@ -738,80 +950,101 @@ class _AddAccountPageState extends ConsumerState<AddAccountPage> {
               ]),
             ],
             if (!isCrypto)
-              _buildSection(context, '安全设置', [
+              _buildSection(context, tr.securitySettings, [
                 ListTile(
                   leading: const Icon(Icons.security),
-                  title: const Text('双因素认证 (2FA)'),
-                  subtitle: Text(_totpSecret == null ? '未配置' : '已配置 (点击修改)'),
+                  title: Text(tr.twoFactorAuthenticationFa),
+                  subtitle: Text(
+                    _totpSecret == null
+                        ? tr.notConfigured
+                        : tr.configuredTapToEdit,
+                  ),
                   trailing: const Icon(Icons.chevron_right),
                   onTap: _show2FAConfig,
                 ),
               ]),
             const SizedBox(height: 16),
-            _buildSection(context, isSecureNote ? '笔记内容' : '可选信息', [
-              if (!isCrypto && !isSecureNote)
+            _buildSection(
+              context,
+              isSecureNote ? tr.noteContents : tr.optionalInformation,
+              [
+                if (!isCrypto && !isSecureNote)
+                  _buildTextField(
+                    label: tr.email,
+                    controller: _emailController,
+                    hintText: tr.linkedEmail,
+                  ),
+                if (!isCrypto && !isSecureNote)
+                  _buildTextField(
+                    label: tr.websitesDomains,
+                    controller: _urlController,
+                    hintText: tr.separateMultipleDomainsWithCommasOrSemicolons,
+                    maxLines: 2,
+                  ),
                 _buildTextField(
-                  label: '邮箱',
-                  controller: _emailController,
-                  hintText: '关联邮箱',
+                  label: isSecureNote ? tr.contents : tr.note,
+                  controller: _noteController,
+                  hintText: isSecureNote
+                      ? tr.writeYourNoteHere
+                      : tr.additionalInformation,
+                  maxLines: isSecureNote ? 10 : 3,
                 ),
-              if (!isCrypto && !isSecureNote)
-                _buildTextField(
-                  label: '网站/域名',
-                  controller: _urlController,
-                  hintText: '支持多个域名，以逗号或分号分隔',
-                  maxLines: 2,
-                ),
-              _buildTextField(
-                label: isSecureNote ? '内容' : '备注',
-                controller: _noteController,
-                hintText: isSecureNote ? '在此输入您的笔记...' : '额外信息...',
-                maxLines: isSecureNote ? 10 : 3,
-              ),
-              const SizedBox(height: 8),
-              _buildTagsSection(),
-            ]),
+                const SizedBox(height: 8),
+                _buildTagsSection(),
+              ],
+            ),
             const SizedBox(height: 16),
             if (!isCrypto)
-              _buildSection(context, '安全设置', [
+              _buildSection(context, tr.securitySettings, [
                 _buildTextField(
-                  label: '密码有效期 (天)',
+                  label: tr.passwordExpiryDays,
                   controller: _durationController,
                   keyboardType: TextInputType.number,
-                  hintText: '留空表示永不过期',
+                  hintText: tr.leaveBlankForNoExpiry,
                   suffixIcon: const Icon(Icons.timer_outlined),
                 ),
                 if (widget.item?.passwordLastChanged != null)
                   Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 8,
+                    ),
                     child: Text(
-                      '最后修改时间: ${widget.item!.passwordLastChanged!.toString().split('.')[0]}',
+                      tr.lastChanged(
+                        widget.item!.passwordLastChanged!.toString().split(
+                          '.',
+                        )[0],
+                      ),
                       style: TextStyle(
                         fontSize: 12,
                         color: Theme.of(context).hintColor,
                       ),
                     ),
                   ),
-                if (widget.item?.passwordHistory != null && widget.item!.passwordHistory!.isNotEmpty)
+                if (widget.item?.passwordHistory != null &&
+                    widget.item!.passwordHistory!.isNotEmpty)
                   ListTile(
-                    title: const Text('查看历史密码'),
-                    subtitle: Text('共有 ${widget.item!.passwordHistory!.length} 条记录'),
+                    title: Text(tr.viewPasswordHistory),
+                    subtitle: Text(
+                      tr.records(widget.item!.passwordHistory!.length),
+                    ),
                     trailing: const Icon(Icons.history),
                     onTap: _showPasswordHistory,
                   ),
               ]),
             const SizedBox(height: 16),
-            _buildSection(context, '显示设置', [
+            _buildSection(context, tr.displaySettings, [
               SwitchListTile(
-                title: const Text('置顶'),
-                subtitle: const Text('在列表中始终排在最前面'),
+                title: Text(tr.pin),
+                subtitle: Text(tr.keepThisItemAtTheTopOf),
                 secondary: const Icon(Icons.push_pin_outlined),
                 value: _isPinned,
                 onChanged: (v) => setState(() => _isPinned = v),
               ),
               ListTile(
                 leading: Container(
-                  width: 24, height: 24,
+                  width: 24,
+                  height: 24,
                   decoration: BoxDecoration(
                     color: (_colorLabel != null && _colorLabel!.isNotEmpty)
                         ? _getColorForLabel(_colorLabel!).withValues(alpha: 0.3)
@@ -825,8 +1058,8 @@ class _AddAccountPageState extends ConsumerState<AddAccountPage> {
                     ),
                   ),
                 ),
-                title: const Text('颜色标记'),
-                subtitle: Text(_colorLabel ?? '无'),
+                title: Text(tr.colorLabel),
+                subtitle: Text(_colorLabel ?? tr.none),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () => _showColorPicker(),
               ),
@@ -839,49 +1072,57 @@ class _AddAccountPageState extends ConsumerState<AddAccountPage> {
   }
 
   Color _getColorForLabel(String label) {
-    const map = <String, Color>{
-      '红色': Colors.red,
-      '橙色': Colors.orange,
-      '黄色': Colors.amber,
-      '绿色': Colors.green,
-      '蓝色': Colors.blue,
-      '紫色': Colors.purple,
-      '粉色': Colors.pink,
-      '青色': Colors.teal,
+    final map = <String, Color>{
+      tr.red: Colors.red,
+      tr.orange: Colors.orange,
+      tr.yellow: Colors.amber,
+      tr.green: Colors.green,
+      tr.blue: Colors.blue,
+      tr.purple: Colors.purple,
+      tr.pink: Colors.pink,
+      tr.cyan: Colors.teal,
     };
     return map[label] ?? Colors.grey;
   }
 
   void _showColorPicker() {
-    const colors = <String, Color>{
-      '红色': Colors.red,
-      '橙色': Colors.orange,
-      '黄色': Colors.amber,
-      '绿色': Colors.green,
-      '蓝色': Colors.blue,
-      '紫色': Colors.purple,
-      '粉色': Colors.pink,
-      '青色': Colors.teal,
+    final colors = <String, Color>{
+      tr.red: Colors.red,
+      tr.orange: Colors.orange,
+      tr.yellow: Colors.amber,
+      tr.green: Colors.green,
+      tr.blue: Colors.blue,
+      tr.purple: Colors.purple,
+      tr.pink: Colors.pink,
+      tr.cyan: Colors.teal,
     };
 
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('选择颜色标记'),
+        title: Text(tr.chooseColorLabel),
         content: Wrap(
           spacing: 16,
           runSpacing: 16,
           children: [
-            _buildColorChoice(ctx, null, '无', Colors.grey),
-            ...colors.entries.map((e) => _buildColorChoice(ctx, e.key, e.key, e.value)),
+            _buildColorChoice(ctx, null, tr.none, Colors.grey),
+            ...colors.entries.map(
+              (e) => _buildColorChoice(ctx, e.key, e.key, e.value),
+            ),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildColorChoice(BuildContext ctx, String? value, String label, Color color) {
-    final isSelected = _colorLabel == value || (_colorLabel == null && value == null);
+  Widget _buildColorChoice(
+    BuildContext ctx,
+    String? value,
+    String label,
+    Color color,
+  ) {
+    final isSelected =
+        _colorLabel == value || (_colorLabel == null && value == null);
     return InkWell(
       onTap: () {
         setState(() => _colorLabel = value);
@@ -892,7 +1133,8 @@ class _AddAccountPageState extends ConsumerState<AddAccountPage> {
         mainAxisSize: MainAxisSize.min,
         children: [
           Container(
-            width: 40, height: 40,
+            width: 40,
+            height: 40,
             decoration: BoxDecoration(
               color: color.withValues(alpha: 0.2),
               shape: BoxShape.circle,
@@ -900,7 +1142,9 @@ class _AddAccountPageState extends ConsumerState<AddAccountPage> {
             ),
             child: value == null
                 ? Icon(Icons.block, color: Colors.grey[400], size: 20)
-                : (isSelected ? Icon(Icons.check, color: color, size: 20) : null),
+                : (isSelected
+                      ? Icon(Icons.check, color: color, size: 20)
+                      : null),
           ),
           const SizedBox(height: 4),
           Text(label, style: const TextStyle(fontSize: 10)),
@@ -915,23 +1159,25 @@ class _AddAccountPageState extends ConsumerState<AddAccountPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('标签', style: TextStyle(fontWeight: FontWeight.bold)),
+          Text(tr.tags, style: const TextStyle(fontWeight: FontWeight.bold)),
           const SizedBox(height: 8),
           Wrap(
             spacing: 8,
             runSpacing: 4,
             children: [
-              ..._tags.map((tag) => Chip(
-                    label: Text(tag, style: const TextStyle(fontSize: 12)),
-                    onDeleted: () {
-                      setState(() {
-                        _tags.remove(tag);
-                      });
-                    },
-                    deleteIconColor: Colors.red,
-                    padding: EdgeInsets.zero,
-                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  )),
+              ..._tags.map(
+                (tag) => Chip(
+                  label: Text(tag, style: const TextStyle(fontSize: 12)),
+                  onDeleted: () {
+                    setState(() {
+                      _tags.remove(tag);
+                    });
+                  },
+                  deleteIconColor: Colors.red,
+                  padding: EdgeInsets.zero,
+                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+              ),
               ActionChip(
                 label: const Icon(Icons.add, size: 16),
                 onPressed: _showAddTagDialog,
@@ -950,13 +1196,11 @@ class _AddAccountPageState extends ConsumerState<AddAccountPage> {
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: const Text('添加标签'),
+          title: Text(tr.addTag),
           content: TextField(
             controller: _tagInputController,
             autofocus: true,
-            decoration: const InputDecoration(
-              hintText: '输入标签名称',
-            ),
+            decoration: InputDecoration(hintText: tr.enterTagName),
             onSubmitted: (value) {
               if (value.isNotEmpty) {
                 setState(() {
@@ -972,7 +1216,7 @@ class _AddAccountPageState extends ConsumerState<AddAccountPage> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text('取消'),
+              child: Text(tr.cancel),
             ),
             TextButton(
               onPressed: () {
@@ -987,7 +1231,7 @@ class _AddAccountPageState extends ConsumerState<AddAccountPage> {
                 }
                 Navigator.pop(context);
               },
-              child: const Text('确定'),
+              child: Text(tr.confirm),
             ),
           ],
         );
@@ -995,8 +1239,13 @@ class _AddAccountPageState extends ConsumerState<AddAccountPage> {
     );
   }
 
-  void _showPasswordHistory({List<PasswordHistoryEntry>? history, String? title}) {
-    final displayHistory = (history ?? widget.item?.passwordHistory ?? []).reversed.toList();
+  void _showPasswordHistory({
+    List<PasswordHistoryEntry>? history,
+    String? title,
+  }) {
+    final displayHistory = (history ?? widget.item?.passwordHistory ?? [])
+        .reversed
+        .toList();
     if (displayHistory.isEmpty) return;
 
     showModalBottomSheet(
@@ -1024,8 +1273,11 @@ class _AddAccountPageState extends ConsumerState<AddAccountPage> {
                   ),
                 ),
                 Text(
-                  title ?? '历史密码',
-                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  title ?? tr.passwordHistory,
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
                 const SizedBox(height: 16),
                 Expanded(
@@ -1039,13 +1291,17 @@ class _AddAccountPageState extends ConsumerState<AddAccountPage> {
                           entry.password,
                           style: const TextStyle(fontFamily: 'monospace'),
                         ),
-                        subtitle: Text(entry.changedAt.toString().split('.')[0]),
+                        subtitle: Text(
+                          entry.changedAt.toString().split('.')[0],
+                        ),
                         trailing: IconButton(
                           icon: const Icon(Icons.copy_rounded, size: 20),
                           onPressed: () {
-                            Clipboard.setData(ClipboardData(text: entry.password));
+                            Clipboard.setData(
+                              ClipboardData(text: entry.password),
+                            );
                             ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('已复制到剪贴板')),
+                              SnackBar(content: Text(tr.copiedToClipboard)),
                             );
                           },
                         ),
@@ -1061,7 +1317,11 @@ class _AddAccountPageState extends ConsumerState<AddAccountPage> {
     );
   }
 
-  Widget _buildSection(BuildContext context, String title, List<Widget> children) {
+  Widget _buildSection(
+    BuildContext context,
+    String title,
+    List<Widget> children,
+  ) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1078,7 +1338,9 @@ class _AddAccountPageState extends ConsumerState<AddAccountPage> {
         Card(
           elevation: 0,
           shape: RoundedRectangleBorder(
-            side: BorderSide(color: Theme.of(context).dividerColor.withValues(alpha: 0.1)),
+            side: BorderSide(
+              color: Theme.of(context).dividerColor.withValues(alpha: 0.1),
+            ),
             borderRadius: BorderRadius.circular(16),
           ),
           child: Column(
@@ -1088,7 +1350,7 @@ class _AddAccountPageState extends ConsumerState<AddAccountPage> {
               return Column(
                 children: [
                   child,
-                  if (index < children.length - 1) 
+                  if (index < children.length - 1)
                     const Divider(height: 1, indent: 16, endIndent: 16),
                 ],
               );
@@ -1137,9 +1399,12 @@ class _AddAccountPageState extends ConsumerState<AddAccountPage> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Padding(
-              padding: EdgeInsets.all(16.0),
-              child: Text('选择区块链网络', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Text(
+                tr.chooseBlockchainNetwork,
+                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
             ),
             const Divider(),
             Flexible(
@@ -1150,7 +1415,7 @@ class _AddAccountPageState extends ConsumerState<AddAccountPage> {
                   if (index == networks.length) {
                     return ListTile(
                       leading: const Icon(Icons.add),
-                      title: const Text('添加新网络'),
+                      title: Text(tr.addNetwork),
                       onTap: () {
                         Navigator.pop(context);
                         _showAddNetworkDialog();
@@ -1160,7 +1425,9 @@ class _AddAccountPageState extends ConsumerState<AddAccountPage> {
                   final network = networks[index];
                   return ListTile(
                     title: Text(network),
-                    trailing: _selectedNetwork == network ? const Icon(Icons.check, color: Colors.blue) : null,
+                    trailing: _selectedNetwork == network
+                        ? const Icon(Icons.check, color: Colors.blue)
+                        : null,
                     onTap: () {
                       setState(() {
                         _selectedNetwork = network;
@@ -1182,16 +1449,17 @@ class _AddAccountPageState extends ConsumerState<AddAccountPage> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('添加新网络'),
+        title: Text(tr.addNetwork),
         content: TextField(
           controller: controller,
           autofocus: true,
-          decoration: const InputDecoration(
-            hintText: '请输入网络名称 (如: Arbitrum)',
-          ),
+          decoration: InputDecoration(hintText: tr.enterNetworkNameEGArbitrum),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('取消')),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text(tr.cancel),
+          ),
           ElevatedButton(
             onPressed: () {
               if (controller.text.isNotEmpty) {
@@ -1201,7 +1469,7 @@ class _AddAccountPageState extends ConsumerState<AddAccountPage> {
               }
               Navigator.pop(context);
             },
-            child: const Text('确定'),
+            child: Text(tr.confirm),
           ),
         ],
       ),
@@ -1215,11 +1483,13 @@ class _AddAccountPageState extends ConsumerState<AddAccountPage> {
       data: (vaults) {
         if (vaults.isEmpty) return const SizedBox.shrink();
 
-        String subtitle = '个人库';
+        String subtitle = tr.personalVault;
         if (_selectedSharedVaultId != null) {
           try {
-            final vault = vaults.firstWhere((v) => v.id == _selectedSharedVaultId);
-            subtitle = '共享库: ${vault.name}';
+            final vault = vaults.firstWhere(
+              (v) => v.id == _selectedSharedVaultId,
+            );
+            subtitle = tr.sharedVault(vault.name);
           } catch (_) {
             _selectedSharedVaultId = null;
           }
@@ -1227,7 +1497,7 @@ class _AddAccountPageState extends ConsumerState<AddAccountPage> {
 
         return ListTile(
           leading: const Icon(Icons.folder_shared_outlined),
-          title: const Text('存放位置'),
+          title: Text(tr.saveLocation),
           subtitle: Text(subtitle),
           trailing: const Icon(Icons.chevron_right),
           onTap: () => _showSharedVaultPicker(vaults),
@@ -1249,29 +1519,38 @@ class _AddAccountPageState extends ConsumerState<AddAccountPage> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Padding(
-                padding: EdgeInsets.all(16),
-                child: Text('选择存放位置', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Text(
+                  tr.chooseSaveLocation,
+                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
               ),
               const Divider(height: 1),
               ListTile(
                 leading: const Icon(Icons.person_outline),
-                title: const Text('个人库 (默认)'),
-                trailing: _selectedSharedVaultId == null ? const Icon(Icons.check, color: Colors.blue) : null,
+                title: Text(tr.personalVaultDefault),
+                trailing: _selectedSharedVaultId == null
+                    ? const Icon(Icons.check, color: Colors.blue)
+                    : null,
                 onTap: () {
                   setState(() => _selectedSharedVaultId = null);
                   Navigator.pop(context);
                 },
               ),
-              ...vaults.map((vault) => ListTile(
-                    leading: const Icon(Icons.folder_shared_outlined),
-                    title: Text(vault.name),
-                    trailing: _selectedSharedVaultId == vault.id ? const Icon(Icons.check, color: Colors.blue) : null,
-                    onTap: () {
-                      setState(() => _selectedSharedVaultId = vault.id);
-                      Navigator.pop(context);
-                    },
-                  )),
+              ...vaults.map(
+                (vault) => ListTile(
+                  leading: const Icon(Icons.folder_shared_outlined),
+                  title: Text(vault.name),
+                  trailing: _selectedSharedVaultId == vault.id
+                      ? const Icon(Icons.check, color: Colors.blue)
+                      : null,
+                  onTap: () {
+                    setState(() => _selectedSharedVaultId = vault.id);
+                    Navigator.pop(context);
+                  },
+                ),
+              ),
               const SizedBox(height: 16),
             ],
           ),
@@ -1291,7 +1570,7 @@ class _AddAccountPageState extends ConsumerState<AddAccountPage> {
             Padding(
               padding: const EdgeInsets.all(16),
               child: Text(
-                '选择分类',
+                tr.chooseCategory,
                 style: Theme.of(context).textTheme.titleLarge,
               ),
             ),
@@ -1303,7 +1582,7 @@ class _AddAccountPageState extends ConsumerState<AddAccountPage> {
                   if (index == categories.length) {
                     return ListTile(
                       leading: const Icon(Icons.add),
-                      title: const Text('添加新分类'),
+                      title: Text(tr.addCategory),
                       onTap: () {
                         Navigator.pop(context);
                         _showAddCategoryDialog();
@@ -1312,8 +1591,10 @@ class _AddAccountPageState extends ConsumerState<AddAccountPage> {
                   }
                   final category = categories[index];
                   return ListTile(
-                    title: Text(category),
-                    trailing: _categoryController.text == category ? const Icon(Icons.check, color: Colors.blue) : null,
+                    title: Text(localizedCategory(category)),
+                    trailing: _categoryController.text == category
+                        ? const Icon(Icons.check, color: Colors.blue)
+                        : null,
                     onTap: () {
                       setState(() {
                         _categoryController.text = category;
@@ -1335,16 +1616,17 @@ class _AddAccountPageState extends ConsumerState<AddAccountPage> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('添加新分类'),
+        title: Text(tr.addCategory),
         content: TextField(
           controller: controller,
           autofocus: true,
-          decoration: const InputDecoration(
-            hintText: '请输入分类名称',
-          ),
+          decoration: InputDecoration(hintText: tr.enterCategoryName),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('取消')),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text(tr.cancel),
+          ),
           ElevatedButton(
             onPressed: () {
               if (controller.text.isNotEmpty) {
@@ -1354,7 +1636,7 @@ class _AddAccountPageState extends ConsumerState<AddAccountPage> {
               }
               Navigator.pop(context);
             },
-            child: const Text('确定'),
+            child: Text(tr.confirm),
           ),
         ],
       ),
@@ -1366,7 +1648,7 @@ class _AddAccountPageState extends ConsumerState<AddAccountPage> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('配置 2FA'),
+        title: Text(tr.configureFa),
         content: TextField(
           controller: controller,
           autofocus: true,
@@ -1375,17 +1657,19 @@ class _AddAccountPageState extends ConsumerState<AddAccountPage> {
             FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z2-7\s]')),
           ],
           decoration: InputDecoration(
-            labelText: '密钥 (Secret Key)',
+            labelText: tr.secretKey,
             hintText: 'JBSWY3DPEHPK3PXP',
-            helperText: '通常是 16 或 32 位字符',
+            helperText: tr.usuallyOrCharacters,
             suffixIcon: IconButton(
               icon: const Icon(Icons.copy_rounded, size: 20),
-              tooltip: '复制密钥',
+              tooltip: tr.copySecretKey,
               onPressed: () {
                 if (controller.text.isNotEmpty) {
-                  Clipboard.setData(ClipboardData(text: controller.text.replaceAll(' ', '')));
+                  Clipboard.setData(
+                    ClipboardData(text: controller.text.replaceAll(' ', '')),
+                  );
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('密钥已复制到剪贴板')),
+                    SnackBar(content: Text(tr.secretKeyCopiedToClipboard)),
                   );
                 }
               },
@@ -1399,10 +1683,13 @@ class _AddAccountPageState extends ConsumerState<AddAccountPage> {
                 _totpSecret = null;
               });
               Navigator.pop(context);
-            }, 
-            child: const Text('清除', style: TextStyle(color: Colors.red)),
+            },
+            child: Text(tr.clear, style: const TextStyle(color: Colors.red)),
           ),
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('取消')),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text(tr.cancel),
+          ),
           ElevatedButton(
             onPressed: () {
               final secret = controller.text.replaceAll(' ', '').toUpperCase();
@@ -1411,7 +1698,7 @@ class _AddAccountPageState extends ConsumerState<AddAccountPage> {
               });
               Navigator.pop(context);
             },
-            child: const Text('确定'),
+            child: Text(tr.confirm),
           ),
         ],
       ),
@@ -1435,10 +1722,10 @@ class _AccountControllerGroup {
     String? label,
     this.passwordHistory,
     this.passwordLastChanged,
-  })  : id = id ?? '',
-        usernameController = TextEditingController(text: username),
-        passwordController = TextEditingController(text: password),
-        labelController = TextEditingController(text: label);
+  }) : id = id ?? '',
+       usernameController = TextEditingController(text: username),
+       passwordController = TextEditingController(text: password),
+       labelController = TextEditingController(text: label);
 
   void dispose() {
     usernameController.dispose();

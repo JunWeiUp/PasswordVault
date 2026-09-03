@@ -10,7 +10,9 @@ final isSearchingProvider = StateProvider<bool>((ref) => false);
 
 enum SortMode { nameAsc, nameDesc, updatedDesc, updatedAsc }
 
-final themeModeProvider = StateNotifierProvider<ThemeModeNotifier, ThemeMode>((ref) {
+final themeModeProvider = StateNotifierProvider<ThemeModeNotifier, ThemeMode>((
+  ref,
+) {
   return ThemeModeNotifier();
 });
 
@@ -34,7 +36,9 @@ class ThemeModeNotifier extends StateNotifier<ThemeMode> {
 
 // --- Sort ---
 
-final sortModeProvider = StateNotifierProvider<SortModeNotifier, SortMode>((ref) {
+final sortModeProvider = StateNotifierProvider<SortModeNotifier, SortMode>((
+  ref,
+) {
   return SortModeNotifier();
 });
 

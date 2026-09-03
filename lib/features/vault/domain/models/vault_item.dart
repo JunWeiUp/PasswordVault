@@ -5,19 +5,19 @@ class VaultItem {
   final VaultItemType type;
   final String title;
   final String username;
-  final String? secret;   // 用于 TOTP 的密钥
+  final String? secret; // 用于 TOTP 的密钥
   final String? password; // 用于账号密码的密码
   final String? mnemonic; // 用于加密货币的助记词
   final String? privateKey; // 用于加密货币的私钥
-  final String? address;  // 用于加密货币的钱包地址
-  final String? network;  // 用于加密货币的网络 (如 BTC, ETH, SOL)
+  final String? address; // 用于加密货币的钱包地址
+  final String? network; // 用于加密货币的网络 (如 BTC, ETH, SOL)
   final int period;
   final bool isFavorite;
-  final String? url;      // 网站链接
-  final String? note;     // 备注
+  final String? url; // 网站链接
+  final String? note; // 备注
   final String? category; // 分类
-  final String? email;    // 邮箱
-  final bool isDeleted;   // 是否已删除（回收站）
+  final String? email; // 邮箱
+  final bool isDeleted; // 是否已删除（回收站）
   final DateTime? deletedAt; // 删除时间
   final List<PasswordHistoryEntry>? passwordHistory;
   final List<AccountEntry>? accounts;
@@ -117,17 +117,23 @@ class VaultItem {
       category: json['category']?.toString(),
       email: json['email']?.toString(),
       isDeleted: json['isDeleted'] as bool? ?? false,
-      deletedAt: json['deletedAt'] != null ? DateTime.tryParse(json['deletedAt'].toString()) : null,
+      deletedAt: json['deletedAt'] != null
+          ? DateTime.tryParse(json['deletedAt'].toString())
+          : null,
       passwordHistory: (json['passwordHistory'] as List?)
           ?.map((e) => PasswordHistoryEntry.fromJson(e as Map<String, dynamic>))
           .toList(),
       accounts: (json['accounts'] as List?)
           ?.map((e) => AccountEntry.fromJson(e as Map<String, dynamic>))
           .toList(),
-      passwordLastChanged: json['passwordLastChanged'] != null ? DateTime.tryParse(json['passwordLastChanged'].toString()) : null,
+      passwordLastChanged: json['passwordLastChanged'] != null
+          ? DateTime.tryParse(json['passwordLastChanged'].toString())
+          : null,
       passwordDuration: json['passwordDuration'] as int?,
       tags: (json['tags'] as List?)?.map((e) => e.toString()).toList() ?? [],
-      updatedAt: json['updatedAt'] != null ? DateTime.tryParse(json['updatedAt'].toString()) : null,
+      updatedAt: json['updatedAt'] != null
+          ? DateTime.tryParse(json['updatedAt'].toString())
+          : null,
       sharedVaultId: json['sharedVaultId']?.toString(),
       isPinned: json['isPinned'] as bool? ?? false,
       colorLabel: json['colorLabel']?.toString(),
@@ -343,16 +349,10 @@ class PasswordHistoryEntry {
   final String password;
   final DateTime changedAt;
 
-  PasswordHistoryEntry({
-    required this.password,
-    required this.changedAt,
-  });
+  PasswordHistoryEntry({required this.password, required this.changedAt});
 
   Map<String, dynamic> toJson() {
-    return {
-      'password': password,
-      'changedAt': changedAt.toIso8601String(),
-    };
+    return {'password': password, 'changedAt': changedAt.toIso8601String()};
   }
 
   factory PasswordHistoryEntry.fromJson(Map<String, dynamic> json) {

@@ -1,3 +1,4 @@
+import 'package:password/core/l10n/l10n.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -29,24 +30,28 @@ class _LocalSyncPageState extends ConsumerState<LocalSyncPage> {
 
   @override
   Widget build(BuildContext context) {
+    AppLocalizations.of(context);
     final syncService = ref.watch(localSyncServiceProvider);
     final devicesAsync = ref.watch(syncDevicesProvider);
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('局域网同步'),
+        title: Text(tr.localNetworkSync),
         actions: [
           if (!kIsWeb)
             IconButton(
               icon: const Icon(Icons.refresh),
-              tooltip: '刷新设备列表',
+              tooltip: tr.refreshDevices,
               onPressed: () async {
                 if (syncService.isEnabled) {
                   await syncService.stop();
                   await syncService.start();
                   if (!context.mounted) return;
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('正在重新搜索设备...'), duration: Duration(seconds: 1)),
+                    SnackBar(
+                      content: Text(tr.searchingForDevices),
+                      duration: const Duration(seconds: 1),
+                    ),
                   );
                 }
               },
@@ -59,34 +64,34 @@ class _LocalSyncPageState extends ConsumerState<LocalSyncPage> {
           if (kIsWeb)
             Card(
               color: Colors.blue.withValues(alpha: 0.1),
-              child: const Padding(
-                padding: EdgeInsets.all(16),
+              child: Padding(
+                padding: const EdgeInsets.all(16),
                 child: Column(
                   children: [
-                    Icon(Icons.info_outline, color: Colors.blue),
-                    SizedBox(height: 8),
+                    const Icon(Icons.info_outline, color: Colors.blue),
+                    const SizedBox(height: 8),
                     Text(
-                      'Web 版提示',
-                      style: TextStyle(fontWeight: FontWeight.bold),
+                      tr.webLimitations,
+                      style: const TextStyle(fontWeight: FontWeight.bold),
                     ),
-                    SizedBox(height: 4),
+                    const SizedBox(height: 4),
                     Text(
-                      '由于浏览器安全限制，Web 版无法作为同步服务器。请在手机或桌面客户端开启同步，并在此处手动输入其地址进行连接。',
+                      tr.browsersCannotActAsSyncServersEnable,
                       textAlign: TextAlign.center,
-                      style: TextStyle(fontSize: 13),
+                      style: const TextStyle(fontSize: 13),
                     ),
                   ],
                 ),
               ),
             ),
           if (!kIsWeb) ...[
-            _buildSectionTitle('同步设置'),
+            _buildSectionTitle(tr.syncSettings),
             Card(
               child: Column(
                 children: [
                   SwitchListTile(
-                    title: const Text('启用同步'),
-                    subtitle: const Text('允许在同一局域网下的设备发现并同步数据'),
+                    title: Text(tr.enableSync),
+                    subtitle: Text(tr.allowDiscoveryAndSyncWithDevicesOn),
                     value: syncService.isEnabled,
                     onChanged: (value) async {
                       await syncService.setEnabled(value);
@@ -94,38 +99,40 @@ class _LocalSyncPageState extends ConsumerState<LocalSyncPage> {
                     },
                   ),
                   ListTile(
-                  title: const Text('设备名称'),
-                  subtitle: Text(syncService.deviceName),
-                  trailing: IconButton(
-                    icon: const Icon(Icons.edit),
-                    onPressed: () {
-                      _showNameDialog(syncService);
-                    },
+                    title: Text(tr.deviceName),
+                    subtitle: Text(syncService.deviceName),
+                    trailing: IconButton(
+                      icon: const Icon(Icons.edit),
+                      onPressed: () {
+                        _showNameDialog(syncService);
+                      },
+                    ),
                   ),
-                ),
-                if (syncService.isEnabled) ...[
-                  const Divider(),
-                  FutureBuilder<List<String>>(
-                    future: syncService.getLocalIps(),
-                    builder: (context, snapshot) {
-                      final ips = snapshot.data ?? [];
-                      if (ips.isEmpty) {
-                        return const SizedBox.shrink();
-                      }
-                      return ListTile(
-                        title: const Text('本机地址'),
-                        subtitle: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: ips.map((ip) {
-                            final port = syncService.port;
-                            return SelectableText('$ip:${port != null ? port.toString() : "8080"}');
-                          }).toList(),
-                        ),
-                        leading: const Icon(Icons.dns),
-                      );
-                    },
-                  ),
-                ],
+                  if (syncService.isEnabled) ...[
+                    const Divider(),
+                    FutureBuilder<List<String>>(
+                      future: syncService.getLocalIps(),
+                      builder: (context, snapshot) {
+                        final ips = snapshot.data ?? [];
+                        if (ips.isEmpty) {
+                          return const SizedBox.shrink();
+                        }
+                        return ListTile(
+                          title: Text(tr.localAddress),
+                          subtitle: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: ips.map((ip) {
+                              final port = syncService.port;
+                              return SelectableText(
+                                '$ip:${port != null ? port.toString() : "8080"}',
+                              );
+                            }).toList(),
+                          ),
+                          leading: const Icon(Icons.dns),
+                        );
+                      },
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -134,11 +141,13 @@ class _LocalSyncPageState extends ConsumerState<LocalSyncPage> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              _buildSectionTitle(kIsWeb ? '手动连接同步' : '已发现的设备'),
+              _buildSectionTitle(
+                kIsWeb ? tr.connectManually : tr.discoveredDevices,
+              ),
               if (!kIsWeb && syncService.isEnabled || kIsWeb)
                 TextButton.icon(
                   icon: const Icon(Icons.add_link),
-                  label: const Text('连接到设备'),
+                  label: Text(tr.connectToADevice),
                   onPressed: () => _showManualConnectDialog(syncService),
                 ),
             ],
@@ -149,14 +158,21 @@ class _LocalSyncPageState extends ConsumerState<LocalSyncPage> {
                 padding: const EdgeInsets.symmetric(vertical: 48),
                 child: Column(
                   children: [
-                    Icon(Icons.phonelink_setup, size: 64, color: Colors.grey[400]),
+                    Icon(
+                      Icons.phonelink_setup,
+                      size: 64,
+                      color: Colors.grey[400],
+                    ),
                     const SizedBox(height: 16),
                     ElevatedButton.icon(
                       onPressed: () => _showManualConnectDialog(syncService),
                       icon: const Icon(Icons.add_link),
-                      label: const Text('输入设备地址并同步'),
+                      label: Text(tr.enterADeviceAddressToSync),
                       style: ElevatedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 24,
+                          vertical: 12,
+                        ),
                       ),
                     ),
                   ],
@@ -165,39 +181,44 @@ class _LocalSyncPageState extends ConsumerState<LocalSyncPage> {
             )
           else
             devicesAsync.when(
-            data: (devices) => devices.isEmpty
-                ? const Center(
-                    child: Padding(
-                      padding: EdgeInsets.symmetric(vertical: 32),
-                      child: Text('未发现其他设备', style: TextStyle(color: Colors.grey)),
-                    ),
-                  )
-                : ListView.builder(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    itemCount: devices.length,
-                    itemBuilder: (context, index) {
-                      final device = devices[index];
-                      return Card(
-                        child: ListTile(
-                          leading: const CircleAvatar(child: Icon(Icons.devices)),
-                          title: Text(device.name),
-                          subtitle: Text('${device.host}:${device.port}'),
-                          trailing: ElevatedButton(
-                            onPressed: () => _syncWithDevice(device),
-                            child: const Text('立即同步'),
-                          ),
+              data: (devices) => devices.isEmpty
+                  ? Center(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 32),
+                        child: Text(
+                          tr.noOtherDevicesFound,
+                          style: const TextStyle(color: Colors.grey),
                         ),
-                      );
-                    },
-                  ),
-            loading: () => const Center(child: CircularProgressIndicator()),
-            error: (e, _) => Center(child: Text('错误: ${e.toString()}')),
-          ),
+                      ),
+                    )
+                  : ListView.builder(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      itemCount: devices.length,
+                      itemBuilder: (context, index) {
+                        final device = devices[index];
+                        return Card(
+                          child: ListTile(
+                            leading: const CircleAvatar(
+                              child: Icon(Icons.devices),
+                            ),
+                            title: Text(device.name),
+                            subtitle: Text('${device.host}:${device.port}'),
+                            trailing: ElevatedButton(
+                              onPressed: () => _syncWithDevice(device),
+                              child: Text(tr.syncNow),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+              loading: () => const Center(child: CircularProgressIndicator()),
+              error: (e, _) => Center(child: Text(tr.error(e.toString()))),
+            ),
           const SizedBox(height: 16),
-          const Text(
-            '提示：数据在传输过程中保持加密状态，同步仅在设备间进行，不经过任何云端服务器。',
-            style: TextStyle(fontSize: 12, color: Colors.grey),
+          Text(
+            tr.vaultContentIsEncryptedForTransferBetween,
+            style: const TextStyle(fontSize: 12, color: Colors.grey),
             textAlign: TextAlign.center,
           ),
         ],
@@ -207,20 +228,22 @@ class _LocalSyncPageState extends ConsumerState<LocalSyncPage> {
 
   Future<void> _showManualConnectDialog(LocalSyncService syncService) async {
     final hostController = TextEditingController();
-    final portController = TextEditingController(text: (syncService.port ?? 8080).toString());
+    final portController = TextEditingController(
+      text: (syncService.port ?? 8080).toString(),
+    );
 
     return showDialog(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('连接到设备'),
+        title: Text(tr.connectToADevice),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             TextField(
               controller: hostController,
-              decoration: const InputDecoration(
-                labelText: 'IP 地址',
-                hintText: '例如: 192.168.1.5',
+              decoration: InputDecoration(
+                labelText: tr.ipAddress,
+                hintText: tr.eG,
               ),
               keyboardType: TextInputType.number,
               autofocus: true,
@@ -228,54 +251,58 @@ class _LocalSyncPageState extends ConsumerState<LocalSyncPage> {
             const SizedBox(height: 16),
             TextField(
               controller: portController,
-              decoration: const InputDecoration(
-                labelText: '端口',
-                hintText: '默认: 8080',
+              decoration: InputDecoration(
+                labelText: tr.port,
+                hintText: tr.labelDefault,
               ),
               keyboardType: TextInputType.number,
             ),
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('取消')),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: Text(tr.cancel),
+          ),
           TextButton(
             onPressed: () async {
               final host = hostController.text.trim();
               final port = int.tryParse(portController.text.trim());
-              
+
               if (host.isEmpty || port == null) {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('请输入有效的地址和端口')),
+                  SnackBar(content: Text(tr.enterAValidAddressAndPort)),
                 );
                 return;
               }
 
               Navigator.pop(dialogContext);
-              
+
               // 显示加载中
               showDialog(
                 context: context,
                 barrierDismissible: false,
-                builder: (_) => const Center(child: CircularProgressIndicator()),
+                builder: (_) =>
+                    const Center(child: CircularProgressIndicator()),
               );
 
               try {
                 await syncService.connectToAddress(host, port);
                 if (!context.mounted) return;
                 Navigator.pop(context); // 关闭加载
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('同步成功')),
-                );
+                ScaffoldMessenger.of(
+                  context,
+                ).showSnackBar(SnackBar(content: Text(tr.syncComplete)));
                 ref.read(vaultItemsProvider.notifier).refresh();
               } catch (e) {
                 if (!context.mounted) return;
                 Navigator.pop(context); // 关闭加载
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('连接失败: $e')),
-                );
+                ScaffoldMessenger.of(
+                  context,
+                ).showSnackBar(SnackBar(content: Text(tr.connectionFailed(e))));
               }
             },
-            child: const Text('连接'),
+            child: Text(tr.connect),
           ),
         ],
       ),
@@ -296,14 +323,17 @@ class _LocalSyncPageState extends ConsumerState<LocalSyncPage> {
     return showDialog(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('设置设备名称'),
+        title: Text(tr.setDeviceName),
         content: TextField(
           controller: _nameController,
-          decoration: const InputDecoration(hintText: '输入设备名称'),
+          decoration: InputDecoration(hintText: tr.enterDeviceName),
           autofocus: true,
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('取消')),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: Text(tr.cancel),
+          ),
           TextButton(
             onPressed: () async {
               if (_nameController.text.isNotEmpty) {
@@ -313,7 +343,7 @@ class _LocalSyncPageState extends ConsumerState<LocalSyncPage> {
                 Navigator.pop(dialogContext);
               }
             },
-            child: const Text('保存'),
+            child: Text(tr.save),
           ),
         ],
       ),
@@ -331,9 +361,9 @@ class _LocalSyncPageState extends ConsumerState<LocalSyncPage> {
       await ref.read(localSyncServiceProvider).syncWithDevice(device);
       if (mounted) {
         Navigator.pop(context); // Close loading
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('同步成功')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(tr.syncComplete)));
         // Refresh vault items
         ref.read(vaultItemsProvider.notifier).refresh();
       }
@@ -341,7 +371,10 @@ class _LocalSyncPageState extends ConsumerState<LocalSyncPage> {
       if (mounted) {
         Navigator.pop(context); // Close loading
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('同步失败: $e'), backgroundColor: Colors.red),
+          SnackBar(
+            content: Text(tr.syncFailed(e)),
+            backgroundColor: Colors.red,
+          ),
         );
       }
     }

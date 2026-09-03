@@ -2,7 +2,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../domain/local_sync_service.dart';
 import '../../../vault/presentation/providers/vault_provider.dart';
 
-final localSyncServiceProvider = ChangeNotifierProvider<LocalSyncService>((ref) {
+final localSyncServiceProvider = ChangeNotifierProvider<LocalSyncService>((
+  ref,
+) {
   final service = LocalSyncService(ref);
   return service;
 });
@@ -11,7 +13,9 @@ final syncDevicesProvider = StreamProvider<List<SyncDevice>>((ref) {
   return ref.watch(localSyncServiceProvider).devicesStream;
 });
 
-final discoverableVaultsProvider = StreamProvider<List<DiscoverableVault>>((ref) {
+final discoverableVaultsProvider = StreamProvider<List<DiscoverableVault>>((
+  ref,
+) {
   return ref.watch(localSyncServiceProvider).discoverableVaultsStream;
 });
 

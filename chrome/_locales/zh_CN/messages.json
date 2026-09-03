@@ -1,0 +1,68 @@
+{
+  "extensionName": {
+    "message": "PasswordVault — 开发预览版"
+  },
+  "extensionDescription": {
+    "message": "本地优先的密码与 TOTP 管理工具，实验性开发预览版。"
+  },
+  "openVault": {
+    "message": "打开 PasswordVault…"
+  },
+  "fillPage": {
+    "message": "填充当前页面的账号"
+  },
+  "fillAccount": {
+    "message": "填充：$1"
+  },
+  "noMatch": {
+    "message": "当前网站没有匹配的账号"
+  },
+  "unlockFirst": {
+    "message": "请先打开并解锁 PasswordVault 后再填充"
+  },
+  "filled": {
+    "message": "已自动填充"
+  },
+  "recentlyUsed": {
+    "message": "最近使用"
+  },
+  "close": {
+    "message": "关闭"
+  },
+  "passwordChangeDetected": {
+    "message": "检测到修改密码表单，是否需要帮助？"
+  },
+  "fillCurrentPassword": {
+    "message": "填充当前密码"
+  },
+  "generateNewPassword": {
+    "message": "生成新密码"
+  },
+  "fillingCurrentPassword": {
+    "message": "正在填充当前密码…"
+  },
+  "openingGenerator": {
+    "message": "正在打开密码生成器…"
+  },
+  "savePasswordFor": {
+    "message": "是否将 $1 的密码保存到保险箱？"
+  },
+  "quickSave": {
+    "message": "保存待处理"
+  },
+  "editDetails": {
+    "message": "详细编辑"
+  },
+  "ignore": {
+    "message": "忽略"
+  },
+  "savedForReview": {
+    "message": "已保存到待处理"
+  },
+  "reviewNextOpen": {
+    "message": "下次打开 PasswordVault 时可完善信息"
+  },
+  "openingVault": {
+    "message": "正在打开 PasswordVault…"
+  }
+}

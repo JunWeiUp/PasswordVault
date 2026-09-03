@@ -29,8 +29,10 @@ class VaultItems extends Table {
   TextColumn get accounts => text().nullable()(); // Encrypted JSON
   BoolColumn get isDeleted => boolean().withDefault(const Constant(false))();
   DateTimeColumn get deletedAt => dateTime().nullable()();
-  TextColumn get tags => text().nullable()(); // Comma separated or JSON array of tags
-  TextColumn get sharedVaultId => text().nullable().references(SharedVaults, #id)();
+  TextColumn get tags =>
+      text().nullable()(); // Comma separated or JSON array of tags
+  TextColumn get sharedVaultId =>
+      text().nullable().references(SharedVaults, #id)();
   BoolColumn get isPinned => boolean().withDefault(const Constant(false))();
   TextColumn get colorLabel => text().nullable()();
 
@@ -45,7 +47,8 @@ class SharedVaults extends Table {
   TextColumn get encryptedVaultKey => text()(); // 对当前用户加密后的 VaultKey (Base64)
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
   DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();
-  BoolColumn get isDiscoverable => boolean().withDefault(const Constant(false))();
+  BoolColumn get isDiscoverable =>
+      boolean().withDefault(const Constant(false))();
 
   @override
   Set<Column> get primaryKey => {id};
@@ -54,7 +57,8 @@ class SharedVaults extends Table {
 @DataClassName('SharedMemberEntity')
 class SharedMembers extends Table {
   TextColumn get id => text()();
-  TextColumn get vaultId => text().references(SharedVaults, #id, onDelete: KeyAction.cascade)();
+  TextColumn get vaultId =>
+      text().references(SharedVaults, #id, onDelete: KeyAction.cascade)();
   TextColumn get userPublicKey => text()(); // 成员的公钥 (Base64)
   TextColumn get encryptedVaultKey => text()(); // 对该成员加密后的 VaultKey (Base64)
   IntColumn get role => integer()(); // 0: Viewer, 1: Editor, 2: Owner
@@ -72,11 +76,17 @@ class AppDatabase extends _$AppDatabase {
   int get schemaVersion => 12;
 
   /// Safely add a column; logs a warning if it already exists instead of silently swallowing.
-  Future<void> _safeAddColumn(Migrator m, TableInfo table, GeneratedColumn column) async {
+  Future<void> _safeAddColumn(
+    Migrator m,
+    TableInfo table,
+    GeneratedColumn column,
+  ) async {
     try {
       await m.addColumn(table, column);
     } catch (e) {
-      debugPrint('DB migration: column ${column.name} likely already exists – $e');
+      debugPrint(
+        'DB migration: column ${column.name} likely already exists – $e',
+      );
     }
   }
 
@@ -84,7 +94,9 @@ class AppDatabase extends _$AppDatabase {
     try {
       await m.createTable(table);
     } catch (e) {
-      debugPrint('DB migration: table ${table.actualTableName} likely already exists – $e');
+      debugPrint(
+        'DB migration: table ${table.actualTableName} likely already exists – $e',
+      );
     }
   }
 
@@ -136,7 +148,7 @@ class AppDatabase extends _$AppDatabase {
     },
     beforeOpen: (details) async {
       await customStatement('PRAGMA foreign_keys = ON');
-      
+
       if (details.versionBefore != null && details.versionNow >= 10) {
         final m = createMigrator();
         await _safeAddColumn(m, vaultItems, vaultItems.sharedVaultId);

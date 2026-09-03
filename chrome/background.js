@@ -1,3 +1,4 @@
+const messageText = (key, substitutions) => chrome.i18n.getMessage(key, substitutions);
 // Background service worker for SecurePass Extension
 console.log('🛡️ SecurePass Service Worker starting...');
 
@@ -8,13 +9,13 @@ chrome.runtime.onInstalled.addListener((details) => {
   chrome.contextMenus.removeAll(() => {
     chrome.contextMenus.create({
       id: 'securepass_parent',
-      title: 'SecurePass',
+      title: 'PasswordVault',
       contexts: ['editable']
     });
     chrome.contextMenus.create({
       id: 'securepass_open',
       parentId: 'securepass_parent',
-      title: '打开 SecurePass...',
+      title: messageText('openVault'),
       contexts: ['editable']
     });
     chrome.contextMenus.create({
@@ -55,7 +56,7 @@ async function rebuildContextMenuAccounts() {
       chrome.contextMenus.create({
         id: id,
         parentId: 'securepass_parent',
-        title: '填充: ' + accounts[i].username,
+        title: messageText('fillAccount', [accounts[i].username]),
         contexts: ['editable']
       });
       newIds.push(id);
@@ -67,7 +68,7 @@ async function rebuildContextMenuAccounts() {
     chrome.contextMenus.create({
       id: id,
       parentId: 'securepass_parent',
-      title: '当前域名无匹配账号',
+      title: messageText('noMatch'),
       enabled: false,
       contexts: ['editable']
     });
@@ -288,7 +289,7 @@ async function fillAccountInTab(tab, domain, username, frameId, options = {}) {
       try {
         await sendMessageToTabFrame(tab.id, {
           type: 'SHOW_TOAST',
-          data: { message: '请先打开并解锁 SecurePass 后再填充' }
+          data: { message: messageText('unlockFirst') }
         }, frameId);
       } catch (_) {}
     }
@@ -781,7 +782,7 @@ chrome.commands.onCommand.addListener(async (command) => {
 
     if (accounts.length === 0) {
       try {
-        await chrome.tabs.sendMessage(tab.id, { type: 'SHOW_TOAST', data: { message: '当前网站没有匹配的账号' } });
+        await chrome.tabs.sendMessage(tab.id, { type: 'SHOW_TOAST', data: { message: messageText('noMatch') } });
       } catch (_) {}
     } else if (accounts.length === 1) {
       await fillAccountInTab(tab, domain, accounts[0].username);

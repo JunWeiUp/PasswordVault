@@ -1,3 +1,4 @@
+import 'package:password/core/l10n/l10n.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
@@ -16,11 +17,13 @@ class PasswordItemCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    AppLocalizations.of(context);
     final bool isExpired = _checkIsExpired();
     final int? remainingDays = _getRemainingDays();
     final bool hasTotp = item.secret != null && item.secret!.isNotEmpty;
-    final bool hasMultipleAccounts = item.accounts != null && item.accounts!.isNotEmpty;
-    
+    final bool hasMultipleAccounts =
+        item.accounts != null && item.accounts!.isNotEmpty;
+
     final healthReport = ref.watch(passwordHealthProvider);
     final issues = healthReport.getIssues(item.id);
     final isWeak = issues.contains(PasswordHealthIssue.weak);
@@ -28,7 +31,7 @@ class PasswordItemCard extends ConsumerWidget {
 
     String? totpCode;
     double? totpProgress;
-    
+
     if (hasTotp) {
       totpProgress = ref.watch(totpProgressProvider(item.period));
       totpCode = TotpEngine.generateCode(item.secret!);
@@ -39,9 +42,9 @@ class PasswordItemCard extends ConsumerWidget {
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       shape: RoundedRectangleBorder(
         side: BorderSide(
-          color: isExpired 
-            ? Colors.red.withValues(alpha: 0.5) 
-            : Theme.of(context).dividerColor.withValues(alpha: 0.1)
+          color: isExpired
+              ? Colors.red.withValues(alpha: 0.5)
+              : Theme.of(context).dividerColor.withValues(alpha: 0.1),
         ),
         borderRadius: BorderRadius.circular(16),
       ),
@@ -58,11 +61,7 @@ class PasswordItemCard extends ConsumerWidget {
           child: Row(
             children: [
               // 网站图标
-              FaviconWidget(
-                url: item.url,
-                title: item.title,
-                size: 48,
-              ),
+              FaviconWidget(url: item.url, title: item.title, size: 48),
               const SizedBox(width: 16),
               Expanded(
                 child: Column(
@@ -73,29 +72,45 @@ class PasswordItemCard extends ConsumerWidget {
                         Expanded(
                           child: Text(
                             item.title,
-                            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                              fontWeight: FontWeight.bold,
-                            ),
+                            style: Theme.of(context).textTheme.titleMedium
+                                ?.copyWith(fontWeight: FontWeight.bold),
                           ),
                         ),
                         if (hasMultipleAccounts)
                           Container(
                             margin: const EdgeInsets.only(right: 8),
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 2,
+                            ),
                             decoration: BoxDecoration(
-                              color: Theme.of(context).colorScheme.secondary.withValues(alpha: 0.1),
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.secondary.withValues(alpha: 0.1),
                               borderRadius: BorderRadius.circular(4),
-                              border: Border.all(color: Theme.of(context).colorScheme.secondary.withValues(alpha: 0.3)),
+                              border: Border.all(
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.secondary.withValues(alpha: 0.3),
+                              ),
                             ),
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                Icon(Icons.people_outline, size: 10, color: Theme.of(context).colorScheme.secondary),
+                                Icon(
+                                  Icons.people_outline,
+                                  size: 10,
+                                  color: Theme.of(
+                                    context,
+                                  ).colorScheme.secondary,
+                                ),
                                 const SizedBox(width: 2),
                                 Text(
                                   '${item.accounts!.length + 1}',
                                   style: TextStyle(
-                                    color: Theme.of(context).colorScheme.secondary,
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.secondary,
                                     fontSize: 10,
                                     fontWeight: FontWeight.bold,
                                   ),
@@ -105,55 +120,87 @@ class PasswordItemCard extends ConsumerWidget {
                           ),
                         if (isExpired)
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 2,
+                            ),
                             decoration: BoxDecoration(
                               color: Colors.red,
                               borderRadius: BorderRadius.circular(4),
                             ),
-                            child: const Text(
-                              '已过期',
-                              style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                            child: Text(
+                              tr.expired,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                              ),
                             ),
                           )
                         else if (remainingDays != null && remainingDays <= 7)
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 2,
+                            ),
                             decoration: BoxDecoration(
                               color: Colors.orange,
                               borderRadius: BorderRadius.circular(4),
                             ),
                             child: Text(
-                              '$remainingDays天后过期',
-                              style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                              tr.expiresInDays(remainingDays),
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                              ),
                             ),
                           ),
                         if (isWeak) ...[
                           const SizedBox(width: 4),
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 2,
+                            ),
                             decoration: BoxDecoration(
                               color: Colors.red.withValues(alpha: 0.1),
                               borderRadius: BorderRadius.circular(4),
-                              border: Border.all(color: Colors.red.withValues(alpha: 0.3)),
+                              border: Border.all(
+                                color: Colors.red.withValues(alpha: 0.3),
+                              ),
                             ),
-                            child: const Text(
-                              '弱密码',
-                              style: TextStyle(color: Colors.red, fontSize: 10, fontWeight: FontWeight.bold),
+                            child: Text(
+                              tr.weakPasswords,
+                              style: const TextStyle(
+                                color: Colors.red,
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                              ),
                             ),
                           ),
                         ],
                         if (isReused) ...[
                           const SizedBox(width: 4),
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 2,
+                            ),
                             decoration: BoxDecoration(
                               color: Colors.orange.withValues(alpha: 0.1),
                               borderRadius: BorderRadius.circular(4),
-                              border: Border.all(color: Colors.orange.withValues(alpha: 0.3)),
+                              border: Border.all(
+                                color: Colors.orange.withValues(alpha: 0.3),
+                              ),
                             ),
-                            child: const Text(
-                              '重复使用',
-                              style: TextStyle(color: Colors.orange, fontSize: 10, fontWeight: FontWeight.bold),
+                            child: Text(
+                              tr.reused,
+                              style: const TextStyle(
+                                color: Colors.orange,
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                              ),
                             ),
                           ),
                         ],
@@ -168,21 +215,31 @@ class PasswordItemCard extends ConsumerWidget {
                         padding: const EdgeInsets.only(top: 4),
                         child: Wrap(
                           spacing: 4,
-                          children: item.tags.map((tag) => Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-                            decoration: BoxDecoration(
-                              color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: Text(
-                              tag,
-                              style: TextStyle(
-                                fontSize: 10,
-                                color: Theme.of(context).colorScheme.primary,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          )).toList(),
+                          children: item.tags
+                              .map(
+                                (tag) => Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 6,
+                                    vertical: 1,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: Theme.of(context).colorScheme.primary
+                                        .withValues(alpha: 0.1),
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: Text(
+                                    tag,
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      color: Theme.of(
+                                        context,
+                                      ).colorScheme.primary,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                              )
+                              .toList(),
                         ),
                       ),
                     if (item.url != null && item.url!.isNotEmpty)
@@ -198,22 +255,36 @@ class PasswordItemCard extends ConsumerWidget {
                       const SizedBox(height: 8),
                       InkWell(
                         onTap: () {
-                          Clipboard.setData(ClipboardData(text: totpCode!.replaceAll(' ', '')));
+                          Clipboard.setData(
+                            ClipboardData(text: totpCode!.replaceAll(' ', '')),
+                          );
                           ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('验证码已复制到剪贴板'), duration: Duration(seconds: 2)),
+                            SnackBar(
+                              content: Text(tr.codeCopiedToClipboard),
+                              duration: const Duration(seconds: 2),
+                            ),
                           );
                         },
                         borderRadius: BorderRadius.circular(8),
                         child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 6,
+                          ),
                           decoration: BoxDecoration(
-                            color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.05),
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.primary.withValues(alpha: 0.05),
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              const Icon(Icons.timer_outlined, size: 14, color: Colors.grey),
+                              const Icon(
+                                Icons.timer_outlined,
+                                size: 14,
+                                color: Colors.grey,
+                              ),
                               const SizedBox(width: 6),
                               Text(
                                 totpCode!,
@@ -231,7 +302,9 @@ class PasswordItemCard extends ConsumerWidget {
                                 child: CircularProgressIndicator(
                                   value: totpProgress,
                                   strokeWidth: 2,
-                                  backgroundColor: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
+                                  backgroundColor: Theme.of(
+                                    context,
+                                  ).colorScheme.primary.withValues(alpha: 0.1),
                                 ),
                               ),
                             ],
@@ -246,85 +319,119 @@ class PasswordItemCard extends ConsumerWidget {
                 IconButton(
                   icon: const Icon(Icons.auto_fix_high),
                   onPressed: () {
-                    ExtensionHelper.fillCredentials(item.username, item.password ?? '');
+                    ExtensionHelper.fillCredentials(
+                      item.username,
+                      item.password ?? '',
+                    );
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('正在自动填充...'), duration: Duration(seconds: 1)),
+                      SnackBar(
+                        content: Text(tr.fillingCredentials),
+                        duration: const Duration(seconds: 1),
+                      ),
                     );
                   },
-                  tooltip: '自动填充',
-                color: Theme.of(context).colorScheme.primary,
-              ),
-            IconButton(
-              icon: Icon(
-                item.isFavorite ? Icons.star : Icons.star_border,
-                color: item.isFavorite ? Colors.amber : Colors.grey,
-              ),
-              onPressed: () {
-                final updatedItem = item.copyWith(isFavorite: !item.isFavorite);
-                ref.read(vaultItemsProvider.notifier).updateItem(updatedItem);
-              },
-            ),
-            if (hasMultipleAccounts)
-              PopupMenuButton<AccountEntry?>(
-                icon: const Icon(Icons.copy),
-                tooltip: '复制密码',
-                onSelected: (account) {
-                  final password = account?.password ?? item.password ?? '';
-                  Clipboard.setData(ClipboardData(text: password));
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('${account?.label ?? account?.username ?? '默认账号'} 密码已复制'), duration: const Duration(seconds: 2)),
-                  );
-                },
-                itemBuilder: (context) => [
-                  PopupMenuItem<AccountEntry?>(
-                    value: null,
-                    child: Row(
-                      children: [
-                        const Icon(Icons.person_outline, size: 20),
-                        const SizedBox(width: 8),
-                        Expanded(child: Text('默认: ${item.username}')),
-                      ],
-                    ),
-                  ),
-                  ...item.accounts!.map((acc) => PopupMenuItem<AccountEntry?>(
-                    value: acc,
-                    child: Row(
-                      children: [
-                        const Icon(Icons.person_outline, size: 20),
-                        const SizedBox(width: 8),
-                        Expanded(child: Text('${acc.label ?? '账号'}: ${acc.username}')),
-                      ],
-                    ),
-                  )),
-                ],
-              )
-            else
+                  tooltip: tr.autofill,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
               IconButton(
-                icon: const Icon(Icons.copy),
+                icon: Icon(
+                  item.isFavorite ? Icons.star : Icons.star_border,
+                  color: item.isFavorite ? Colors.amber : Colors.grey,
+                ),
                 onPressed: () {
-                  Clipboard.setData(ClipboardData(text: item.password ?? ''));
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('密码已复制'), duration: Duration(seconds: 2)),
+                  final updatedItem = item.copyWith(
+                    isFavorite: !item.isFavorite,
                   );
+                  ref.read(vaultItemsProvider.notifier).updateItem(updatedItem);
                 },
-                tooltip: '复制密码',
               ),
-          ],
-        ),
+              if (hasMultipleAccounts)
+                PopupMenuButton<AccountEntry?>(
+                  icon: const Icon(Icons.copy),
+                  tooltip: tr.copyPassword,
+                  onSelected: (account) {
+                    final password = account?.password ?? item.password ?? '';
+                    Clipboard.setData(ClipboardData(text: password));
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          tr.passwordCopiedFor(
+                            account?.label ??
+                                account?.username ??
+                                tr.defaultAccount,
+                          ),
+                        ),
+                        duration: const Duration(seconds: 2),
+                      ),
+                    );
+                  },
+                  itemBuilder: (context) => [
+                    PopupMenuItem<AccountEntry?>(
+                      value: null,
+                      child: Row(
+                        children: [
+                          const Icon(Icons.person_outline, size: 20),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(tr.labelDefault385(item.username)),
+                          ),
+                        ],
+                      ),
+                    ),
+                    ...item.accounts!.map(
+                      (acc) => PopupMenuItem<AccountEntry?>(
+                        value: acc,
+                        child: Row(
+                          children: [
+                            const Icon(Icons.person_outline, size: 20),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                '${acc.label ?? tr.account386}: ${acc.username}',
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                )
+              else
+                IconButton(
+                  icon: const Icon(Icons.copy),
+                  onPressed: () {
+                    Clipboard.setData(ClipboardData(text: item.password ?? ''));
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(tr.passwordCopied),
+                        duration: const Duration(seconds: 2),
+                      ),
+                    );
+                  },
+                  tooltip: tr.copyPassword,
+                ),
+            ],
+          ),
         ),
       ),
     );
   }
 
   bool _checkIsExpired() {
-    if (item.passwordDuration == null || item.passwordLastChanged == null) return false;
-    final expiryDate = item.passwordLastChanged!.add(Duration(days: item.passwordDuration!));
+    if (item.passwordDuration == null || item.passwordLastChanged == null)
+      return false;
+    final expiryDate = item.passwordLastChanged!.add(
+      Duration(days: item.passwordDuration!),
+    );
     return DateTime.now().isAfter(expiryDate);
   }
 
   int? _getRemainingDays() {
-    if (item.passwordDuration == null || item.passwordLastChanged == null) return null;
-    final expiryDate = item.passwordLastChanged!.add(Duration(days: item.passwordDuration!));
+    if (item.passwordDuration == null || item.passwordLastChanged == null)
+      return null;
+    final expiryDate = item.passwordLastChanged!.add(
+      Duration(days: item.passwordDuration!),
+    );
     final difference = expiryDate.difference(DateTime.now()).inDays;
     return difference;
   }
@@ -333,23 +440,23 @@ class PasswordItemCard extends ConsumerWidget {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('删除确认'),
-        content: Text('确定要删除 ${item.title} 吗？'),
+        title: Text(tr.confirmDeletion),
+        content: Text(tr.delete(item.title)),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('取消'),
+            child: Text(tr.cancel),
           ),
           TextButton(
             onPressed: () {
               ref.read(vaultItemsProvider.notifier).softDeleteItem(item.id);
               Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('已移至回收站')),
-              );
+              ScaffoldMessenger.of(
+                context,
+              ).showSnackBar(SnackBar(content: Text(tr.movedToTrash)));
             },
             style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: const Text('移至回收站'),
+            child: Text(tr.moveToTrash),
           ),
         ],
       ),

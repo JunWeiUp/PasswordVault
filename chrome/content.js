@@ -1,3 +1,10 @@
+// Escape both text and attributes before adding dynamic values to markup.
+const escapeHtml = (value) => String(value).replace(/[&<>"']/g, (character) => ({
+  '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+})[character]);
+const messageText = (key, substitutions) => chrome.i18n.getMessage(key, substitutions);
+const messageHtml = (key, substitutions) => escapeHtml(messageText(key, substitutions));
+
 // Content script for SecurePass Extension
 console.log('🛡️ SecurePass Content Script loaded');
 
@@ -102,11 +109,11 @@ function showAutofillDropdown(field) {
 
     let itemsHtml = '';
     result.accounts.forEach((acc, idx) => {
-      const badge = acc.lastUsed ? '<span class="badge">最近使用</span>' : '';
+      const badge = acc.lastUsed ? `<span class="badge">${messageHtml('recentlyUsed')}</span>` : '';
       itemsHtml += `
-        <div class="item" data-index="${idx}" data-username="${acc.username.replace(/"/g, '&quot;')}">
+        <div class="item" data-index="${idx}" data-username="${escapeHtml(acc.username)}">
           <img src="${iconUrl}" class="icon" />
-          <span class="username">${acc.username}</span>
+          <span class="username">${escapeHtml(acc.username)}</span>
           ${badge}
         </div>`;
     });
@@ -142,11 +149,11 @@ function showAutofillDropdown(field) {
       <div class="dropdown">
         <div class="header">
           <img src="${iconUrl}" />
-          <span class="header-title">SecurePass</span>
-          <button class="close-btn" id="close-dropdown" title="关闭" aria-label="关闭">&times;</button>
+          <span class="header-title">PasswordVault</span>
+          <button class="close-btn" id="close-dropdown" title="${messageHtml('close')}" aria-label="${messageHtml('close')}">&times;</button>
         </div>
         ${itemsHtml}
-        <div class="footer" id="open-sp"><img src="${iconUrl}" />打开 SecurePass...</div>
+        <div class="footer" id="open-sp"><img src="${iconUrl}" />${messageHtml('openVault')}</div>
       </div>
     `;
 
@@ -183,9 +190,9 @@ function showAutofillDropdown(field) {
           }
         }, (response) => {
           if (chrome.runtime.lastError || !response?.success) {
-            showToast('请先打开并解锁 SecurePass 后再填充');
+            showToast(messageText('unlockFirst'));
           } else {
-            showToast('已自动填充');
+            showToast(messageText('filled'));
           }
         });
       };
@@ -331,15 +338,15 @@ function showPasswordChangeBanner(pwChangeInfo) {
   banner.innerHTML = `
     <div style="display:flex;align-items:center;margin-bottom:12px;">
       <img src="${iconUrl}" style="width:24px;height:24px;margin-right:10px;">
-      <span style="font-weight:600;font-size:16px;">SecurePass</span>
+      <span style="font-weight:600;font-size:16px;">PasswordVault</span>
       <button id="securepass-pwchange-close" style="margin-left:auto;background:none;border:none;font-size:20px;cursor:pointer;color:#999;">&times;</button>
     </div>
     <div style="margin-bottom:16px;line-height:1.4;">
-      检测到修改密码表单，是否需要帮助？
+      ${messageHtml('passwordChangeDetected')}
     </div>
     <div style="display:flex;gap:8px;">
-      <button id="securepass-fill-current" class="securepass-btn" style="flex:1;background:#1a73e8;color:#fff;border:none;padding:10px;border-radius:6px;cursor:pointer;font-weight:500;font-size:13px;">填充当前密码</button>
-      <button id="securepass-gen-new" class="securepass-btn" style="flex:1;background:#e8f0fe;color:#1a73e8;border:none;padding:10px;border-radius:6px;cursor:pointer;font-weight:500;font-size:13px;">生成新密码</button>
+      <button id="securepass-fill-current" class="securepass-btn" style="flex:1;background:#1a73e8;color:#fff;border:none;padding:10px;border-radius:6px;cursor:pointer;font-weight:500;font-size:13px;">${messageHtml('fillCurrentPassword')}</button>
+      <button id="securepass-gen-new" class="securepass-btn" style="flex:1;background:#e8f0fe;color:#1a73e8;border:none;padding:10px;border-radius:6px;cursor:pointer;font-weight:500;font-size:13px;">${messageHtml('generateNewPassword')}</button>
     </div>
   `;
 
@@ -356,7 +363,7 @@ function showPasswordChangeBanner(pwChangeInfo) {
         username: '',
       }
     });
-    showToast('正在从保险箱填充当前密码...');
+    showToast(messageText('fillingCurrentPassword'));
   };
 
   document.getElementById('securepass-gen-new').onclick = () => {
@@ -369,7 +376,7 @@ function showPasswordChangeBanner(pwChangeInfo) {
         fillTarget: 'new_password',
       }
     });
-    showToast('正在打开密码生成器...');
+    showToast(messageText('openingGenerator'));
     banner.remove();
   };
 
@@ -558,9 +565,9 @@ function injectIcons() {
           }
         }, (response) => {
           if (chrome.runtime.lastError || !response?.success) {
-            showToast('请先打开并解锁 SecurePass 后再填充');
+            showToast(messageText('unlockFirst'));
           } else {
-            showToast('已自动填充');
+            showToast(messageText('filled'));
           }
         });
       } catch (err) {
@@ -665,16 +672,16 @@ function showSaveBanner(creds) {
   banner.innerHTML = `
     <div style="display: flex; align-items: center; margin-bottom: 12px;">
       <img src="${iconUrl}" style="width: 24px; height: 24px; margin-right: 10px;">
-      <span style="font-weight: 600; font-size: 16px;">SecurePass</span>
+      <span style="font-weight: 600; font-size: 16px;">PasswordVault</span>
       <button id="securepass-close-x" style="margin-left: auto; background: none; border: none; font-size: 20px; cursor: pointer; color: #999;">&times;</button>
     </div>
     <div style="margin-bottom: 16px; line-height: 1.4;">
-      是否将 <strong>${creds.username}</strong> 的密码保存到保险箱？
+      ${messageHtml('savePasswordFor', [creds.username])}
     </div>
     <div style="display: flex; gap: 8px;">
-      <button id="securepass-quick-save-btn" class="securepass-btn" style="flex: 1; background: #1a73e8; color: white; border: none; padding: 10px; border-radius: 6px; cursor: pointer; font-weight: 500; font-size: 14px;">一键保存</button>
-      <button id="securepass-detail-save-btn" class="securepass-btn" style="flex: 0; background: #e8f0fe; color: #1a73e8; border: none; padding: 10px 14px; border-radius: 6px; cursor: pointer; font-weight: 500; font-size: 13px; white-space: nowrap;">详细编辑</button>
-      <button id="securepass-ignore-btn" class="securepass-btn" style="flex: 0; background: #f1f3f4; color: #3c4043; border: none; padding: 10px 14px; border-radius: 6px; cursor: pointer; font-weight: 500; font-size: 13px;">忽略</button>
+      <button id="securepass-quick-save-btn" class="securepass-btn" style="flex: 1; background: #1a73e8; color: white; border: none; padding: 10px; border-radius: 6px; cursor: pointer; font-weight: 500; font-size: 14px;">${messageHtml('quickSave')}</button>
+      <button id="securepass-detail-save-btn" class="securepass-btn" style="flex: 0; background: #e8f0fe; color: #1a73e8; border: none; padding: 10px 14px; border-radius: 6px; cursor: pointer; font-weight: 500; font-size: 13px; white-space: nowrap;">${messageHtml('editDetails')}</button>
+      <button id="securepass-ignore-btn" class="securepass-btn" style="flex: 0; background: #f1f3f4; color: #3c4043; border: none; padding: 10px 14px; border-radius: 6px; cursor: pointer; font-weight: 500; font-size: 13px;">${messageHtml('ignore')}</button>
     </div>
   `;
 
@@ -685,8 +692,8 @@ function showSaveBanner(creds) {
       banner.innerHTML = `
         <div style="display: flex; flex-direction: column; align-items: center; padding: 10px;">
           <div style="font-size: 24px; margin-bottom: 10px;">✅</div>
-          <div style="font-weight: 600; color: #1e8e3e; margin-bottom: 4px;">已保存到待处理</div>
-          <div style="font-size: 12px; color: #666; text-align: center;">下次打开 SecurePass 时可完善信息</div>
+          <div style="font-weight: 600; color: #1e8e3e; margin-bottom: 4px;">${messageHtml('savedForReview')}</div>
+          <div style="font-size: 12px; color: #666; text-align: center;">${messageHtml('reviewNextOpen')}</div>
         </div>
       `;
       setTimeout(() => banner.remove(), 2500);
@@ -694,7 +701,7 @@ function showSaveBanner(creds) {
   };
 
   document.getElementById('securepass-detail-save-btn').onclick = () => {
-    showToast('正在打开 SecurePass...');
+    showToast(messageText('openingVault'));
     chrome.runtime.sendMessage({ type: 'CONFIRM_SAVE', data: creds }, () => {
       banner.remove();
     });

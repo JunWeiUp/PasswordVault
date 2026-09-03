@@ -1,3 +1,4 @@
+import 'package:password/core/l10n/l10n.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -15,6 +16,7 @@ class TotpItemCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    AppLocalizations.of(context);
     final progress = ref.watch(totpProgressProvider(item.period));
     final code = TotpEngine.generateCode(item.secret ?? '');
 
@@ -22,7 +24,9 @@ class TotpItemCard extends ConsumerWidget {
       elevation: 0,
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       shape: RoundedRectangleBorder(
-        side: BorderSide(color: Theme.of(context).dividerColor.withValues(alpha: 0.1)),
+        side: BorderSide(
+          color: Theme.of(context).dividerColor.withValues(alpha: 0.1),
+        ),
         borderRadius: BorderRadius.circular(16),
       ),
       child: InkWell(
@@ -31,9 +35,9 @@ class TotpItemCard extends ConsumerWidget {
           final cleanCode = code.replaceAll(' ', '');
           Clipboard.setData(ClipboardData(text: cleanCode));
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('验证码已复制到剪贴板'),
-              duration: Duration(seconds: 2),
+            SnackBar(
+              content: Text(tr.codeCopiedToClipboard),
+              duration: const Duration(seconds: 2),
             ),
           );
         },
@@ -48,18 +52,20 @@ class TotpItemCard extends ConsumerWidget {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  FaviconWidget(
-                    url: item.url,
-                    title: item.title,
-                    size: 40,
-                  ),
+                  FaviconWidget(url: item.url, title: item.title, size: 40),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(item.title, style: Theme.of(context).textTheme.titleMedium),
-                        Text(item.username, style: Theme.of(context).textTheme.bodyMedium),
+                        Text(
+                          item.title,
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
+                        Text(
+                          item.username,
+                          style: Theme.of(context).textTheme.bodyMedium,
+                        ),
                       ],
                     ),
                   ),
@@ -69,8 +75,12 @@ class TotpItemCard extends ConsumerWidget {
                       color: item.isFavorite ? Colors.amber : Colors.grey,
                     ),
                     onPressed: () {
-                      final updatedItem = item.copyWith(isFavorite: !item.isFavorite);
-                      ref.read(vaultItemsProvider.notifier).updateItem(updatedItem);
+                      final updatedItem = item.copyWith(
+                        isFavorite: !item.isFavorite,
+                      );
+                      ref
+                          .read(vaultItemsProvider.notifier)
+                          .updateItem(updatedItem);
                     },
                   ),
                 ],
@@ -80,21 +90,30 @@ class TotpItemCard extends ConsumerWidget {
                   padding: const EdgeInsets.only(top: 8),
                   child: Wrap(
                     spacing: 4,
-                    children: item.tags.map((tag) => Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-                      decoration: BoxDecoration(
-                        color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: Text(
-                        tag,
-                        style: TextStyle(
-                          fontSize: 10,
-                          color: Theme.of(context).colorScheme.primary,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    )).toList(),
+                    children: item.tags
+                        .map(
+                          (tag) => Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 1,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.primary.withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              tag,
+                              style: TextStyle(
+                                fontSize: 10,
+                                color: Theme.of(context).colorScheme.primary,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        )
+                        .toList(),
                   ),
                 ),
               const SizedBox(height: 16),
@@ -108,11 +127,16 @@ class TotpItemCard extends ConsumerWidget {
                       CircularProgressIndicator(
                         value: progress,
                         strokeWidth: 4,
-                        backgroundColor: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
+                        backgroundColor: Theme.of(
+                          context,
+                        ).colorScheme.primary.withValues(alpha: 0.1),
                       ),
                       Text(
                         "${(progress * item.period).toInt()}",
-                        style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold),
+                        style: const TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                     ],
                   ),
@@ -134,7 +158,7 @@ class TotpItemCard extends ConsumerWidget {
           children: [
             ListTile(
               leading: const Icon(Icons.edit_outlined),
-              title: const Text('编辑项目'),
+              title: Text(tr.editItem),
               onTap: () {
                 Navigator.pop(context);
                 context.push('/add-account', extra: item);
@@ -142,8 +166,8 @@ class TotpItemCard extends ConsumerWidget {
             ),
             ListTile(
               leading: const Icon(Icons.share_outlined),
-              title: const Text('导出为 otpauth URI'),
-              subtitle: const Text('用于导入到其他 2FA 应用'),
+              title: Text(tr.exportOtpauthUri),
+              subtitle: Text(tr.importIntoAnotherAuthenticatorApp),
               onTap: () {
                 Navigator.pop(context);
                 _exportAsUri(context);
@@ -151,7 +175,7 @@ class TotpItemCard extends ConsumerWidget {
             ),
             ListTile(
               leading: const Icon(Icons.delete_outline, color: Colors.red),
-              title: const Text('删除项目', style: TextStyle(color: Colors.red)),
+              title: Text(tr.deleteItem, style: const TextStyle(color: Colors.red)),
               onTap: () {
                 Navigator.pop(context);
                 _showDeleteConfirm(context, ref);
@@ -171,9 +195,9 @@ class TotpItemCard extends ConsumerWidget {
 
     Clipboard.setData(ClipboardData(text: uri));
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('otpauth URI 已复制到剪贴板'),
-        duration: Duration(seconds: 3),
+      SnackBar(
+        content: Text(tr.otpauthUriCopiedToClipboard),
+        duration: const Duration(seconds: 3),
       ),
     );
   }
@@ -182,23 +206,23 @@ class TotpItemCard extends ConsumerWidget {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('删除确认'),
-        content: Text('确定要删除 ${item.title} 吗？'),
+        title: Text(tr.confirmDeletion),
+        content: Text(tr.delete(item.title)),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('取消'),
+            child: Text(tr.cancel),
           ),
           TextButton(
             onPressed: () {
               ref.read(vaultItemsProvider.notifier).softDeleteItem(item.id);
               Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('已移至回收站')),
-              );
+              ScaffoldMessenger.of(
+                context,
+              ).showSnackBar(SnackBar(content: Text(tr.movedToTrash)));
             },
             style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: const Text('移至回收站'),
+            child: Text(tr.moveToTrash),
           ),
         ],
       ),

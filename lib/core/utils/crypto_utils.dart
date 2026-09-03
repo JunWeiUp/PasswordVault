@@ -9,9 +9,11 @@ class CryptoUtils {
   static String? getEthAddressFromPrivateKey(String privateKey) {
     try {
       // 移除 0x 前缀
-      String cleanKey = privateKey.trim().startsWith('0x') ? privateKey.trim().substring(2) : privateKey.trim();
+      String cleanKey = privateKey.trim().startsWith('0x')
+          ? privateKey.trim().substring(2)
+          : privateKey.trim();
       if (cleanKey.length != 64) return null;
-      
+
       final credentials = EthPrivateKey.fromHex(cleanKey);
       return credentials.address.hexEip55;
     } catch (e) {
@@ -24,7 +26,7 @@ class CryptoUtils {
     try {
       final cleanMnemonic = mnemonic.trim();
       if (!bip39.validateMnemonic(cleanMnemonic)) return null;
-      
+
       return await compute(_derivePrivateKeyTask, cleanMnemonic);
     } catch (e) {
       return null;
@@ -50,28 +52,29 @@ class CryptoUtils {
       final seed = bip39.mnemonicToSeed(mnemonic);
       final root = bip32.BIP32.fromSeed(seed);
       final child = root.derivePath("m/44'/60'/0'/0/0");
-      
-      if (child.privateKey == null) return {'address': null, 'privateKey': null};
-      
+
+      if (child.privateKey == null)
+        return {'address': null, 'privateKey': null};
+
       final privateKeyHex = HEX.encode(child.privateKey!);
       final credentials = EthPrivateKey.fromHex(privateKeyHex);
       final address = credentials.address.hexEip55;
-      
-      return {
-        'address': address,
-        'privateKey': privateKeyHex,
-      };
+
+      return {'address': address, 'privateKey': privateKeyHex};
     } catch (e) {
       return {'address': null, 'privateKey': null};
     }
   }
 
   /// 从助记词同步生成地址和私钥
-  static Future<Map<String, String?>> getAllFromMnemonic(String mnemonic) async {
+  static Future<Map<String, String?>> getAllFromMnemonic(
+    String mnemonic,
+  ) async {
     try {
       final cleanMnemonic = mnemonic.trim();
-      if (!bip39.validateMnemonic(cleanMnemonic)) return {'address': null, 'privateKey': null};
-      
+      if (!bip39.validateMnemonic(cleanMnemonic))
+        return {'address': null, 'privateKey': null};
+
       return await compute(_deriveAllTask, cleanMnemonic);
     } catch (e) {
       return {'address': null, 'privateKey': null};

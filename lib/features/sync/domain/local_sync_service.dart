@@ -1,9 +1,8 @@
+import 'package:password/core/l10n/l10n.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
 
-import 'package:drift/drift.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:nsd/nsd.dart';
@@ -104,7 +103,9 @@ class LanJoinRequest {
     vaultName: json['vaultName'],
     senderPort: json['senderPort'],
     senderHost: json['senderHost'],
-    timestamp: json['timestamp'] != null ? DateTime.parse(json['timestamp']) : DateTime.now(),
+    timestamp: json['timestamp'] != null
+        ? DateTime.parse(json['timestamp'])
+        : DateTime.now(),
   );
 }
 
@@ -157,14 +158,15 @@ class LocalSyncService extends ChangeNotifier {
   HttpServer? _server;
   Discovery? _discovery;
   Registration? _registration;
-  
+
   final _devicesController = StreamController<List<SyncDevice>>.broadcast();
   Stream<List<SyncDevice>> get devicesStream {
     Timer.run(() => _devicesController.add(_discoveredDevices.values.toList()));
     return _devicesController.stream;
   }
 
-  final _discoverableVaultsController = StreamController<List<DiscoverableVault>>.broadcast();
+  final _discoverableVaultsController =
+      StreamController<List<DiscoverableVault>>.broadcast();
   Stream<List<DiscoverableVault>> get discoverableVaultsStream {
     Timer.run(() => _refreshDiscoverableVaults());
     return _discoverableVaultsController.stream;
@@ -172,17 +174,21 @@ class LocalSyncService extends ChangeNotifier {
 
   final _syncStatusController = StreamController<bool>.broadcast();
   Stream<bool> get syncStatusStream => _syncStatusController.stream;
-  
+
   final Map<String, SyncDevice> _discoveredDevices = {};
   final Map<String, List<DiscoverableVault>> _deviceVaults = {};
-  final _joinRequestsController = StreamController<List<LanJoinRequest>>.broadcast();
+  final _joinRequestsController =
+      StreamController<List<LanJoinRequest>>.broadcast();
   Stream<List<LanJoinRequest>> get joinRequestsStream {
     // Emit current state immediately when a new listener joins
-    Timer.run(() => _joinRequestsController.add(List.from(_pendingJoinRequests)));
+    Timer.run(
+      () => _joinRequestsController.add(List.from(_pendingJoinRequests)),
+    );
     return _joinRequestsController.stream;
   }
 
-  final _sentRequestsController = StreamController<List<SentJoinRequest>>.broadcast();
+  final _sentRequestsController =
+      StreamController<List<SentJoinRequest>>.broadcast();
   Stream<List<SentJoinRequest>> get sentRequestsStream {
     // Emit current state immediately when a new listener joins
     Timer.run(() => _sentRequestsController.add(List.from(_sentJoinRequests)));
@@ -229,7 +235,7 @@ class LocalSyncService extends ChangeNotifier {
       _myDeviceId = const Uuid().v4();
       await prefs.setString(_deviceIdKey, _myDeviceId!);
     }
-    
+
     String defaultName = 'Unknown Device';
     if (!kIsWeb) {
       try {
@@ -238,7 +244,7 @@ class LocalSyncService extends ChangeNotifier {
         // Fallback for some platforms
       }
     }
-    
+
     _myDeviceName = prefs.getString(_deviceNameKey) ?? defaultName;
     _isEnabled = prefs.getBool(_syncEnabledKey) ?? false;
 
@@ -264,23 +270,24 @@ class LocalSyncService extends ChangeNotifier {
     if (sharedVaultId == null) return;
 
     debugPrint('📢 Broadcasting update for shared vault: $sharedVaultId');
-    
+
     // Find members of this vault to only sync with them
     final repository = _ref.read(vaultRepositoryProvider);
     final members = await repository.getVaultMembers(sharedVaultId);
     final memberPublicKeys = members.map((m) => m.userPublicKey).toSet();
-    
+
     for (final device in _discoveredDevices.values) {
       // If we don't have the device's public key yet, try to fetch it first
       if (device.userPublicKey == null) {
         await _fetchDeviceDetails(device);
       }
-      
+
       // Re-get device from map in case it was updated by _fetchDeviceDetails
       final updatedDevice = _discoveredDevices[device.id] ?? device;
 
       // Only sync if the device's public key matches a member of the vault
-      if (updatedDevice.userPublicKey != null && memberPublicKeys.contains(updatedDevice.userPublicKey)) {
+      if (updatedDevice.userPublicKey != null &&
+          memberPublicKeys.contains(updatedDevice.userPublicKey)) {
         debugPrint('  - Syncing with member device: ${updatedDevice.name}');
         syncWithDevice(updatedDevice).catchError((e) {
           debugPrint('Broadcast sync failed for ${updatedDevice.name}: $e');
@@ -297,7 +304,7 @@ class LocalSyncService extends ChangeNotifier {
     _isEnabled = enabled;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_syncEnabledKey, _isEnabled);
-    
+
     if (_isEnabled) {
       await start();
     } else {
@@ -319,22 +326,22 @@ class LocalSyncService extends ChangeNotifier {
 
   Future<void> refreshDiscovery() async {
     if (!_isEnabled || kIsWeb) return;
-    
+
     debugPrint('🔄 Refreshing discovery...');
-    
+
     // 1. Restart NSD discovery if it's running
     if (_discovery != null) {
-      // Re-trigger discovery by starting it again if nsd supports it, 
+      // Re-trigger discovery by starting it again if nsd supports it,
       // or just re-fetch details for all known devices.
       // nsd doesn't have a direct 'refresh', but we can re-fetch details.
     }
-    
+
     // 2. Re-fetch details for all known devices
     final devices = _discoveredDevices.values.toList();
     for (final device in devices) {
       _fetchDeviceDetails(device);
     }
-    
+
     notifyListeners();
   }
 
@@ -350,17 +357,22 @@ class LocalSyncService extends ChangeNotifier {
     final router = Router();
 
     bool _checkAuth(Request request) {
-      final token = request.headers['x-sync-token'] ?? request.url.queryParameters['token'];
+      final token =
+          request.headers['x-sync-token'] ??
+          request.url.queryParameters['token'];
       return token == _syncToken;
     }
-    
+
     // Check sync status (public, but does not expose secrets)
     router.get('/status', (Request request) {
-      return Response.ok(jsonEncode({
-        'id': _myDeviceId,
-        'name': _myDeviceName,
-        'version': '1.0.0',
-      }), headers: {'content-type': 'application/json'});
+      return Response.ok(
+        jsonEncode({
+          'id': _myDeviceId,
+          'name': _myDeviceName,
+          'version': '1.0.0',
+        }),
+        headers: {'content-type': 'application/json'},
+      );
     });
 
     // Get all items (encrypted with sync key, requires auth token)
@@ -370,16 +382,22 @@ class LocalSyncService extends ChangeNotifier {
         final masterKey = await _ref.read(masterKeyProvider.future);
         final fallbacks = await _ref.read(fallbackKeysProvider.future);
         final userKeyPair = await _ref.read(userKeyPairProvider.future);
-        if (masterKey == null) return Response.forbidden('Master key not ready');
-        
+        if (masterKey == null)
+          return Response.forbidden('Master key not ready');
+
         final repository = _ref.read(vaultRepositoryProvider);
-        final items = await repository.getAllItems(masterKey, includeDeleted: true, fallbacks: fallbacks, userKeyPair: userKeyPair);
-        
+        final items = await repository.getAllItems(
+          masterKey,
+          includeDeleted: true,
+          fallbacks: fallbacks,
+          userKeyPair: userKeyPair,
+        );
+
         final encryptedPayload = await _encryptPayload(items);
-        return Response.ok(jsonEncode({
-          'payload': encryptedPayload,
-          'deviceId': _myDeviceId,
-        }), headers: {'content-type': 'application/json'});
+        return Response.ok(
+          jsonEncode({'payload': encryptedPayload, 'deviceId': _myDeviceId}),
+          headers: {'content-type': 'application/json'},
+        );
       } catch (e) {
         return Response.internalServerError(body: e.toString());
       }
@@ -392,7 +410,7 @@ class LocalSyncService extends ChangeNotifier {
         final payload = await request.readAsString();
         final Map<String, dynamic> body = jsonDecode(payload);
         final encryptedData = body['payload'] as String;
-        
+
         final items = await _decryptPayload(encryptedData);
         await _mergeVaultItems(items);
         return Response.ok('OK');
@@ -404,11 +422,14 @@ class LocalSyncService extends ChangeNotifier {
     // Share: Get Public Key
     router.get('/share/info', (Request request) async {
       final masterState = _ref.read(masterPasswordProvider);
-      return Response.ok(jsonEncode({
-        'deviceId': _myDeviceId,
-        'deviceName': _myDeviceName,
-        'userPublicKey': masterState.userPublicKey,
-      }), headers: {'content-type': 'application/json'});
+      return Response.ok(
+        jsonEncode({
+          'deviceId': _myDeviceId,
+          'deviceName': _myDeviceName,
+          'userPublicKey': masterState.userPublicKey,
+        }),
+        headers: {'content-type': 'application/json'},
+      );
     });
 
     // Share: Receive Join Request
@@ -416,27 +437,30 @@ class LocalSyncService extends ChangeNotifier {
       try {
         final payload = await request.readAsString();
         debugPrint('📥 Received join request: $payload');
-        
+
         final Map<String, dynamic> json = jsonDecode(payload);
-        
+
         // 记录申请方的来源 IP，确保回调能送达
-        final connectionInfo = request.context['shelf.io.connection_info'] as HttpConnectionInfo?;
+        final connectionInfo =
+            request.context['shelf.io.connection_info'] as HttpConnectionInfo?;
         final remoteIp = connectionInfo?.remoteAddress.address;
-        
+
         if (json['senderHost'] == null && remoteIp != null) {
           json['senderHost'] = remoteIp;
         }
-        
+
         final req = LanJoinRequest.fromJson(json);
-        
+
         // Add to pending requests
         _pendingJoinRequests.removeWhere((r) => r.deviceId == req.deviceId);
         _pendingJoinRequests.add(req);
         _joinRequestsController.add(List.from(_pendingJoinRequests));
-        
+
         // 如果是发送方通过轮询来检查状态，这里可以先记录请求
-        return Response.ok(jsonEncode({'status': 'pending', 'remoteIp': remoteIp}), 
-          headers: {'content-type': 'application/json'});
+        return Response.ok(
+          jsonEncode({'status': 'pending', 'remoteIp': remoteIp}),
+          headers: {'content-type': 'application/json'},
+        );
       } catch (e) {
         return Response.internalServerError(body: e.toString());
       }
@@ -447,36 +471,46 @@ class LocalSyncService extends ChangeNotifier {
       try {
         final deviceId = request.url.queryParameters['deviceId'];
         final vaultId = request.url.queryParameters['vaultId'];
-        
-        if (deviceId == null) return Response.badRequest(body: 'Missing deviceId');
+
+        if (deviceId == null)
+          return Response.badRequest(body: 'Missing deviceId');
 
         // 检查该设备是否有已通过但未通知成功的申请
         final repository = _ref.read(vaultRepositoryProvider);
         final members = await repository.getAllSharedMembers();
-        
+
         // 查找该设备作为成员且角色不是 owner 的记录（说明是申请者）
         final member = members.firstWhere(
-          (m) => m.userPublicKey != _ref.read(masterPasswordProvider).userPublicKey && 
-                 (vaultId == null || vaultId.isEmpty || m.vaultId == vaultId),
+          (m) =>
+              m.userPublicKey !=
+                  _ref.read(masterPasswordProvider).userPublicKey &&
+              (vaultId == null || vaultId.isEmpty || m.vaultId == vaultId),
           orElse: () => throw Exception('Not found'),
         );
 
         final userKeyPair = await _ref.read(userKeyPairProvider.future);
-        if (userKeyPair == null) return Response.forbidden('User key pair not ready');
+        if (userKeyPair == null)
+          return Response.forbidden('User key pair not ready');
         final vaults = await repository.getSharedVaults(userKeyPair);
         final vault = vaults.firstWhere((v) => v.id == member.vaultId);
 
-        return Response.ok(jsonEncode({
-          'status': 'approved',
-          'vaultId': vault.id,
-          'vaultName': vault.name,
-          'encryptedVaultKey': member.encryptedVaultKey,
-          'ownerPublicKey': _ref.read(masterPasswordProvider).userPublicKey!,
-          'ownerName': _myDeviceName,
-          'ownerDeviceId': _myDeviceId,
-        }), headers: {'content-type': 'application/json'});
+        return Response.ok(
+          jsonEncode({
+            'status': 'approved',
+            'vaultId': vault.id,
+            'vaultName': vault.name,
+            'encryptedVaultKey': member.encryptedVaultKey,
+            'ownerPublicKey': _ref.read(masterPasswordProvider).userPublicKey!,
+            'ownerName': _myDeviceName,
+            'ownerDeviceId': _myDeviceId,
+          }),
+          headers: {'content-type': 'application/json'},
+        );
       } catch (e) {
-        return Response.ok(jsonEncode({'status': 'pending'}), headers: {'content-type': 'application/json'});
+        return Response.ok(
+          jsonEncode({'status': 'pending'}),
+          headers: {'content-type': 'application/json'},
+        );
       }
     });
 
@@ -486,9 +520,9 @@ class LocalSyncService extends ChangeNotifier {
         final payload = await request.readAsString();
         debugPrint('📥 Received approval notification: $payload');
         final body = jsonDecode(payload);
-        
+
         await _handleApproval(body);
-        
+
         return Response.ok('OK');
       } catch (e) {
         return Response.internalServerError(body: e.toString());
@@ -500,15 +534,19 @@ class LocalSyncService extends ChangeNotifier {
       try {
         final repository = _ref.read(vaultRepositoryProvider);
         final userKeyPair = await _ref.read(userKeyPairProvider.future);
-        if (userKeyPair == null) return Response.forbidden('User key pair not ready');
-        
+        if (userKeyPair == null)
+          return Response.forbidden('User key pair not ready');
+
         final vaults = await repository.getSharedVaults(userKeyPair);
-        final discoverableVaults = vaults.where((v) => v.isDiscoverable).map((v) => {
-          'id': v.id,
-          'name': v.name,
-        }).toList();
-        
-        return Response.ok(jsonEncode(discoverableVaults), headers: {'content-type': 'application/json'});
+        final discoverableVaults = vaults
+            .where((v) => v.isDiscoverable)
+            .map((v) => {'id': v.id, 'name': v.name})
+            .toList();
+
+        return Response.ok(
+          jsonEncode(discoverableVaults),
+          headers: {'content-type': 'application/json'},
+        );
       } catch (e) {
         return Response.internalServerError(body: e.toString());
       }
@@ -531,12 +569,14 @@ class LocalSyncService extends ChangeNotifier {
     // 2. Register Service
     // Use a unique name to avoid collisions on the network
     final uniqueName = '$_myDeviceName (${_myDeviceId!.substring(0, 4)})';
-    _registration = await register(Service(
-      name: uniqueName,
-      type: _serviceType,
-      port: _server!.port,
-      txt: {'id': Uint8List.fromList(utf8.encode(_myDeviceId!))},
-    ));
+    _registration = await register(
+      Service(
+        name: uniqueName,
+        type: _serviceType,
+        port: _server!.port,
+        txt: {'id': Uint8List.fromList(utf8.encode(_myDeviceId!))},
+      ),
+    );
 
     // 3. Start Discovery
     _discovery = await startDiscovery(_serviceType);
@@ -550,24 +590,29 @@ class LocalSyncService extends ChangeNotifier {
       await unregister(_registration!);
       _registration = null;
     }
-    
+
     if (_discovery != null) {
       await stopDiscovery(_discovery!);
       _discovery = null;
     }
-    
+
     await _server?.close(force: true);
     _server = null;
-    
+
     _discoveredDevices.clear();
     _devicesController.add([]);
     _deviceVaults.clear();
     _discoverableVaultsController.add([]);
   }
 
-  Future<void> sendJoinRequest(SyncDevice device, {String? vaultId, String? vaultName}) async {
+  Future<void> sendJoinRequest(
+    SyncDevice device, {
+    String? vaultId,
+    String? vaultName,
+  }) async {
     final masterState = _ref.read(masterPasswordProvider);
-    if (masterState.userPublicKey == null) throw Exception('请先设置主密码以生成密钥对');
+    if (masterState.userPublicKey == null)
+      throw Exception(tr.setAMasterPasswordToGenerateYour);
 
     final localIps = await getLocalIps();
 
@@ -582,14 +627,16 @@ class LocalSyncService extends ChangeNotifier {
       timestamp: DateTime.now(),
     );
 
-    debugPrint('🚀 Sending join request to http://${device.host}:${device.port}/share/join-request');
+    debugPrint(
+      '🚀 Sending join request to http://${device.host}:${device.port}/share/join-request',
+    );
     final response = await http.post(
       Uri.parse('http://${device.host}:${device.port}/share/join-request'),
       body: jsonEncode(req.toJson()),
     );
 
     if (response.statusCode != 200) {
-      throw Exception('发送加入请求失败: ${response.body}');
+      throw Exception(tr.couldNotSendJoinRequest(response.body));
     }
 
     // 添加到已发送请求列表
@@ -600,8 +647,10 @@ class LocalSyncService extends ChangeNotifier {
       vaultName: vaultName,
       timestamp: DateTime.now(),
     );
-    
-    _sentJoinRequests.removeWhere((r) => r.deviceId == device.id && r.vaultId == vaultId);
+
+    _sentJoinRequests.removeWhere(
+      (r) => r.deviceId == device.id && r.vaultId == vaultId,
+    );
     _sentJoinRequests.add(sentReq);
     _sentRequestsController.add(List.from(_sentJoinRequests));
 
@@ -613,23 +662,30 @@ class LocalSyncService extends ChangeNotifier {
   void _startPollingStatus(SyncDevice ownerDevice, SentJoinRequest sentReq) {
     Timer.periodic(const Duration(seconds: 5), (timer) async {
       // 如果状态已经是已通过，或者请求被手动清除，停止轮询
-      if (sentReq.status == JoinRequestStatus.approved || !_sentJoinRequests.contains(sentReq)) {
+      if (sentReq.status == JoinRequestStatus.approved ||
+          !_sentJoinRequests.contains(sentReq)) {
         timer.cancel();
         return;
       }
 
       try {
-        debugPrint('🔍 Polling status from http://${ownerDevice.host}:${ownerDevice.port}/share/check-status');
-        final response = await http.get(
-          Uri.parse('http://${ownerDevice.host}:${ownerDevice.port}/share/check-status?deviceId=$_myDeviceId&vaultId=${sentReq.vaultId ?? ""}'),
-        ).timeout(const Duration(seconds: 3));
+        debugPrint(
+          '🔍 Polling status from http://${ownerDevice.host}:${ownerDevice.port}/share/check-status',
+        );
+        final response = await http
+            .get(
+              Uri.parse(
+                'http://${ownerDevice.host}:${ownerDevice.port}/share/check-status?deviceId=$_myDeviceId&vaultId=${sentReq.vaultId ?? ""}',
+              ),
+            )
+            .timeout(const Duration(seconds: 3));
 
         if (response.statusCode == 200) {
           final body = jsonDecode(response.body);
           if (body['status'] == 'approved') {
             timer.cancel();
             debugPrint('✅ Polling: Request approved!');
-            
+
             // 模拟收到批准通知的处理逻辑
             await _handleApproval(body);
           }
@@ -669,7 +725,7 @@ class LocalSyncService extends ChangeNotifier {
           encryptedVaultKey: encryptedVaultKey,
           createdAt: DateTime.now(),
           updatedAt: DateTime.now(),
-        )
+        ),
       ]);
 
       // 2. 保存成员信息（自己）
@@ -681,7 +737,7 @@ class LocalSyncService extends ChangeNotifier {
           encryptedVaultKey: encryptedVaultKey,
           role: SharedMemberRole.editor,
           name: _myDeviceName,
-        )
+        ),
       ]);
 
       // 3. 保存房主信息
@@ -693,7 +749,7 @@ class LocalSyncService extends ChangeNotifier {
           encryptedVaultKey: '',
           role: SharedMemberRole.owner,
           name: ownerName,
-        )
+        ),
       ]);
     }
 
@@ -705,15 +761,24 @@ class LocalSyncService extends ChangeNotifier {
     final ownerDeviceId = body['ownerDeviceId'];
     final ownerDevice = _discoveredDevices.values.firstWhere(
       (d) => d.id == ownerDeviceId || d.name.contains(ownerName),
-      orElse: () => SyncDevice(id: '', name: ownerName, host: '', port: 0, lastSeen: DateTime.now()),
+      orElse: () => SyncDevice(
+        id: '',
+        name: ownerName,
+        host: '',
+        port: 0,
+        lastSeen: DateTime.now(),
+      ),
     );
     if (ownerDevice.host.isNotEmpty) {
-      syncWithDevice(ownerDevice).catchError((e) => debugPrint('Initial sync failed: $e'));
+      syncWithDevice(
+        ownerDevice,
+      ).catchError((e) => debugPrint('Initial sync failed: $e'));
     }
 
     // 更新已发送请求的状态
     for (var req in _sentJoinRequests) {
-      if (req.vaultId == vaultId || (req.vaultId == null && vaultId.isNotEmpty)) {
+      if (req.vaultId == vaultId ||
+          (req.vaultId == null && vaultId.isNotEmpty)) {
         req.status = JoinRequestStatus.approved;
       }
     }
@@ -721,24 +786,29 @@ class LocalSyncService extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> approveJoinRequest(LanJoinRequest request, String vaultId, String vaultName) async {
+  Future<void> approveJoinRequest(
+    LanJoinRequest request,
+    String vaultId,
+    String vaultName,
+  ) async {
     final userKeyPair = await _ref.read(userKeyPairProvider.future);
-    if (userKeyPair == null) throw Exception('无法获取当前用户的密钥对');
+    if (userKeyPair == null) throw Exception(tr.couldNotLoadYourKeyPair);
 
     // 1. 获取 VaultKey
     final repository = _ref.read(vaultRepositoryProvider);
     final vaultKey = await repository.getSharedVaultKey(vaultId, userKeyPair);
-    if (vaultKey == null) throw Exception('无法获取共享库密钥');
+    if (vaultKey == null) throw Exception(tr.couldNotLoadTheSharedVaultKey);
 
     // 2. 用申请者的公钥加密 VaultKey
     final encryptionService = _ref.read(encryptionServiceProvider);
     final requesterPublicKeyBytes = base64.decode(request.userPublicKey);
-    
+
     final vaultKeyBase64 = base64.encode(await vaultKey.extractBytes());
-    final encryptedVaultKeyForRequester = await encryptionService.encryptWithPublicKey(
-      utf8.encode(vaultKeyBase64),
-      requesterPublicKeyBytes,
-    );
+    final encryptedVaultKeyForRequester = await encryptionService
+        .encryptWithPublicKey(
+          utf8.encode(vaultKeyBase64),
+          requesterPublicKeyBytes,
+        );
 
     // 3. 将申请者添加为成员
     await repository.addSharedMembers([
@@ -749,7 +819,7 @@ class LocalSyncService extends ChangeNotifier {
         encryptedVaultKey: base64.encode(encryptedVaultKeyForRequester),
         role: SharedMemberRole.editor,
         name: request.deviceName,
-      )
+      ),
     ]);
 
     // 4. 通知申请者已通过
@@ -759,29 +829,43 @@ class LocalSyncService extends ChangeNotifier {
 
     if (targetHost != null && targetPort != null) {
       try {
-        debugPrint('🚀 Sending approval to http://$targetHost:$targetPort/share/join-approve');
-        final notifyResponse = await http.post(
-          Uri.parse('http://$targetHost:$targetPort/share/join-approve'),
-          body: jsonEncode({
-            'vaultId': vaultId,
-            'vaultName': vaultName,
-            'encryptedVaultKey': base64.encode(encryptedVaultKeyForRequester),
-            'ownerPublicKey': _ref.read(masterPasswordProvider).userPublicKey!,
-            'ownerName': _myDeviceName,
-            'ownerDeviceId': _myDeviceId,
-          }),
-        ).timeout(const Duration(seconds: 10));
-        
+        debugPrint(
+          '🚀 Sending approval to http://$targetHost:$targetPort/share/join-approve',
+        );
+        final notifyResponse = await http
+            .post(
+              Uri.parse('http://$targetHost:$targetPort/share/join-approve'),
+              body: jsonEncode({
+                'vaultId': vaultId,
+                'vaultName': vaultName,
+                'encryptedVaultKey': base64.encode(
+                  encryptedVaultKeyForRequester,
+                ),
+                'ownerPublicKey': _ref
+                    .read(masterPasswordProvider)
+                    .userPublicKey!,
+                'ownerName': _myDeviceName,
+                'ownerDeviceId': _myDeviceId,
+              }),
+            )
+            .timeout(const Duration(seconds: 10));
+
         if (notifyResponse.statusCode == 200) {
           debugPrint('✅ Requester notified successfully');
         } else {
-          debugPrint('❌ Failed to notify requester: ${notifyResponse.statusCode} ${notifyResponse.body}');
+          debugPrint(
+            '❌ Failed to notify requester: ${notifyResponse.statusCode} ${notifyResponse.body}',
+          );
         }
       } catch (e) {
-        debugPrint('❌ Error notifying requester at $targetHost:$targetPort: $e');
+        debugPrint(
+          '❌ Error notifying requester at $targetHost:$targetPort: $e',
+        );
       }
     } else {
-      debugPrint('⚠️ Cannot notify requester: Target host/port unknown. Host: $targetHost, Port: $targetPort');
+      debugPrint(
+        '⚠️ Cannot notify requester: Target host/port unknown. Host: $targetHost, Port: $targetPort',
+      );
     }
 
     // 从待处理列表中移除
@@ -803,9 +887,9 @@ class LocalSyncService extends ChangeNotifier {
     final now = DateTime.now();
     final Map<String, SyncDevice> newDiscoveredDevices = {};
     final Set<String> currentServiceIds = {};
-    
+
     debugPrint('🔍 Found ${services.length} services on network');
-    
+
     for (final service in services) {
       final txt = service.txt;
       final idBytes = txt?['id'];
@@ -815,18 +899,20 @@ class LocalSyncService extends ChangeNotifier {
       }
       final id = utf8.decode(idBytes);
       if (id == _myDeviceId) continue;
-      
+
       currentServiceIds.add(id);
       final host = service.host;
       final port = service.port;
-      
+
       if (host == null || port == null) {
-        debugPrint('  - Service ${service.name} ($id) host or port is null, waiting for resolution...');
+        debugPrint(
+          '  - Service ${service.name} ($id) host or port is null, waiting for resolution...',
+        );
         continue;
       }
-      
+
       debugPrint('  - Device discovered: ${service.name} at $host:$port');
-      
+
       // Keep existing device to preserve public key if already fetched
       final existingDevice = _discoveredDevices[id];
       final device = SyncDevice(
@@ -837,7 +923,7 @@ class LocalSyncService extends ChangeNotifier {
         userPublicKey: existingDevice?.userPublicKey,
         lastSeen: now,
       );
-      
+
       newDiscoveredDevices[id] = device;
 
       // Fetch discoverable vaults if we don't have them or they might have changed
@@ -855,12 +941,14 @@ class LocalSyncService extends ChangeNotifier {
     // Remove devices that are no longer present
     _discoveredDevices.clear();
     _discoveredDevices.addAll(newDiscoveredDevices);
-    
-    final deviceIdsToRemove = _deviceVaults.keys.where((id) => !currentServiceIds.contains(id)).toList();
+
+    final deviceIdsToRemove = _deviceVaults.keys
+        .where((id) => !currentServiceIds.contains(id))
+        .toList();
     for (final id in deviceIdsToRemove) {
       _deviceVaults.remove(id);
     }
-    
+
     _devicesController.add(_discoveredDevices.values.toList());
     _refreshDiscoverableVaults();
   }
@@ -870,13 +958,19 @@ class LocalSyncService extends ChangeNotifier {
     if (password == null) return null;
     final encryptionService = _ref.read(encryptionServiceProvider);
     final salt = utf8.encode('PasswordVault_LAN_Sync_Salt_v1');
-    return await encryptionService.deriveKey(password, salt, iterations: 2, memory: 32 * 1024, parallelism: 1);
+    return await encryptionService.deriveKey(
+      password,
+      salt,
+      iterations: 2,
+      memory: 32 * 1024,
+      parallelism: 1,
+    );
   }
 
   Future<String> _encryptPayload(List<VaultItem> items) async {
     final syncKey = await _getSyncKey();
-    if (syncKey == null) throw Exception('未设置主密码');
-    
+    if (syncKey == null) throw Exception(tr.noMasterPasswordIsSet);
+
     final encryptionService = _ref.read(encryptionServiceProvider);
     final jsonString = jsonEncode(items.map((e) => e.toJson()).toList());
     final encryptedBytes = await encryptionService.encrypt(jsonString, syncKey);
@@ -885,17 +979,21 @@ class LocalSyncService extends ChangeNotifier {
 
   Future<List<VaultItem>> _decryptPayload(String payload) async {
     final syncKey = await _getSyncKey();
-    if (syncKey == null) throw Exception('未设置主密码');
-    
+    if (syncKey == null) throw Exception(tr.noMasterPasswordIsSet);
+
     final encryptionService = _ref.read(encryptionServiceProvider);
     final encryptedBytes = base64.decode(payload);
     try {
-      final decryptedJson = await encryptionService.decrypt(encryptedBytes, syncKey);
+      final decryptedJson = await encryptionService.decrypt(
+        encryptedBytes,
+        syncKey,
+      );
       final List<dynamic> list = jsonDecode(decryptedJson);
       return list.map((e) => VaultItem.fromJson(e)).toList();
     } catch (e) {
-      if (e.toString().contains('MAC') || e.toString().contains('authentication')) {
-        throw Exception('同步失败：对方设备的主密码与本地不一致');
+      if (e.toString().contains('MAC') ||
+          e.toString().contains('authentication')) {
+        throw Exception(tr.syncFailedTheDevicesUseDifferentMaster);
       }
       rethrow;
     }
@@ -909,36 +1007,46 @@ class LocalSyncService extends ChangeNotifier {
   Future<void> _fetchDeviceDetails(SyncDevice device) async {
     try {
       // Handle IPv6 addresses by wrapping them in square brackets for the URI
-      final String host = device.host.contains(':') ? '[${device.host}]' : device.host;
-      
+      final String host = device.host.contains(':')
+          ? '[${device.host}]'
+          : device.host;
+
       // 1. Fetch Device Info (Public Key)
       if (device.userPublicKey == null) {
-        final infoResponse = await http.get(
-          Uri.parse('http://$host:${device.port}/share/info'),
-        ).timeout(const Duration(seconds: 3));
+        final infoResponse = await http
+            .get(Uri.parse('http://$host:${device.port}/share/info'))
+            .timeout(const Duration(seconds: 3));
 
         if (infoResponse.statusCode == 200) {
           final info = jsonDecode(infoResponse.body);
           final publicKey = info['userPublicKey'] as String?;
           if (publicKey != null) {
-            _discoveredDevices[device.id] = device.copyWith(userPublicKey: publicKey);
+            _discoveredDevices[device.id] = device.copyWith(
+              userPublicKey: publicKey,
+            );
             _devicesController.add(_discoveredDevices.values.toList());
           }
         }
       }
 
       // 2. Fetch Discoverable Vaults
-      final response = await http.get(
-        Uri.parse('http://$host:${device.port}/share/discoverable-vaults'),
-      ).timeout(const Duration(seconds: 3));
+      final response = await http
+          .get(
+            Uri.parse('http://$host:${device.port}/share/discoverable-vaults'),
+          )
+          .timeout(const Duration(seconds: 3));
 
       if (response.statusCode == 200) {
         final List<dynamic> data = jsonDecode(response.body);
-        final vaults = data.map((v) => DiscoverableVault(
-          id: v['id'],
-          name: v['name'],
-          device: _discoveredDevices[device.id] ?? device,
-        )).toList();
+        final vaults = data
+            .map(
+              (v) => DiscoverableVault(
+                id: v['id'],
+                name: v['name'],
+                device: _discoveredDevices[device.id] ?? device,
+              ),
+            )
+            .toList();
 
         _deviceVaults[device.id] = vaults;
         _refreshDiscoverableVaults();
@@ -951,55 +1059,63 @@ class LocalSyncService extends ChangeNotifier {
   Future<void> syncWithDevice(SyncDevice device) async {
     if (_syncingDevices.contains(device.id)) return;
     _syncingDevices.add(device.id);
-    
+
     try {
       // 1. 从远程拉取并合并
       final pullUrl = Uri.http('${device.host}:${device.port}', '/pull');
-      final pullResponse = await http.get(pullUrl, headers: {
-        if (_syncToken != null) 'x-sync-token': _syncToken!,
-      }).timeout(const Duration(seconds: 10));
-      
+      final pullResponse = await http
+          .get(
+            pullUrl,
+            headers: {if (_syncToken != null) 'x-sync-token': _syncToken!},
+          )
+          .timeout(const Duration(seconds: 10));
+
       if (pullResponse.statusCode == 200) {
         final dynamic decoded = jsonDecode(pullResponse.body);
         if (decoded is! Map) {
-          throw Exception('无效的响应格式：期望 Map');
+          throw Exception(tr.invalidResponseExpectedAnObject);
         }
         final Map<String, dynamic> body = Map<String, dynamic>.from(decoded);
         final encryptedData = body['payload']?.toString();
         if (encryptedData == null) {
-          throw Exception('无效的响应数据：payload 为空');
+          throw Exception(tr.invalidResponseEmptyPayload);
         }
         final remoteItems = await _decryptPayload(encryptedData);
         await _mergeVaultItems(remoteItems);
       } else {
-        throw Exception('从远程拉取失败: ${pullResponse.statusCode}');
+        throw Exception(tr.couldNotPullRemoteData(pullResponse.statusCode));
       }
 
       // 2. 推送本地到远程
       final masterKey = await _ref.read(masterKeyProvider.future);
-      if (masterKey == null) throw Exception('主密钥尚未就绪');
+      if (masterKey == null) throw Exception(tr.theMasterKeyIsNotReady);
 
       final repository = _ref.read(vaultRepositoryProvider);
-      final items = await repository.getAllItems(masterKey, includeDeleted: true);
+      final items = await repository.getAllItems(
+        masterKey,
+        includeDeleted: true,
+      );
       final encryptedPayload = await _encryptPayload(items);
-      
+
       final pushUrl = Uri.http('${device.host}:${device.port}', '/push');
-      final pushResponse = await http.post(
-        pushUrl,
-        headers: {
-          'Content-Type': 'application/json',
-          if (_syncToken != null) 'x-sync-token': _syncToken!,
-        },
-        body: jsonEncode({
-          'payload': encryptedPayload,
-          'deviceId': _myDeviceId,
-        }),
-      ).timeout(const Duration(seconds: 10));
-      
+      final pushResponse = await http
+          .post(
+            pushUrl,
+            headers: {
+              'Content-Type': 'application/json',
+              if (_syncToken != null) 'x-sync-token': _syncToken!,
+            },
+            body: jsonEncode({
+              'payload': encryptedPayload,
+              'deviceId': _myDeviceId,
+            }),
+          )
+          .timeout(const Duration(seconds: 10));
+
       if (pushResponse.statusCode != 200) {
-        throw Exception('推送到远程失败: ${pushResponse.statusCode}');
+        throw Exception(tr.couldNotPushRemoteData(pushResponse.statusCode));
       }
-      
+
       _syncStatusController.add(true);
     } catch (e) {
       debugPrint('Sync error: $e');
@@ -1012,65 +1128,72 @@ class LocalSyncService extends ChangeNotifier {
   Future<void> connectToAddress(String host, int port) async {
     try {
       debugPrint('Attempting manual connection to $host:$port');
-      
+
       // 在 Web 端，Uri.http 可能需要特殊处理或检查
       final statusUrl = Uri.http('$host:$port', '/status');
-      
-      final response = await http.get(statusUrl).timeout(const Duration(seconds: 5));
-      
+
+      final response = await http
+          .get(statusUrl)
+          .timeout(const Duration(seconds: 5));
+
       debugPrint('Manual connection response: ${response.statusCode}');
       if (response.statusCode == 200) {
         final dynamic decoded = jsonDecode(response.body);
         if (decoded is! Map) {
-          throw Exception('无效的响应格式');
+          throw Exception(tr.invalidResponseFormat);
         }
         final Map<String, dynamic> status = Map<String, dynamic>.from(decoded);
-        
+
         final device = SyncDevice(
           id: status['id']?.toString() ?? 'unknown_id',
-          name: status['name']?.toString() ?? '未知设备',
+          name: status['name']?.toString() ?? tr.unknownDevice,
           host: host,
           port: port,
           lastSeen: DateTime.now(),
         );
-        
+
         await syncWithDevice(device);
       } else {
-        throw Exception('无法连接到设备: HTTP ${response.statusCode}');
+        throw Exception(tr.couldNotConnectToDeviceHttp(response.statusCode));
       }
     } catch (e) {
       debugPrint('Manual connection error: $e');
-      
+
       if (e is TimeoutException) {
-        throw Exception('连接超时，请确保设备在同一局域网并已开启同步。注意：部分浏览器可能拦截跨域请求 (CORS)。');
+        throw Exception(tr.connectionTimedOutCheckThatBothDevices);
       }
-      
+
       final errorStr = e.toString();
-      if (errorStr.contains('XMLHttpRequest error') || errorStr.contains('CORS')) {
-        throw Exception('网络连接错误或跨域拦截。请确保对方设备已开启“同步”并允许来自此地址的访问。');
+      if (errorStr.contains('XMLHttpRequest error') ||
+          errorStr.contains('CORS')) {
+        throw Exception(tr.networkOrCorsErrorCheckThatSync);
       }
-      
-      if (errorStr.contains('Connection refused') || errorStr.contains('Failed host lookup')) {
-        throw Exception('无法连接到目标地址，请检查 IP 和端口是否正确。');
+
+      if (errorStr.contains('Connection refused') ||
+          errorStr.contains('Failed host lookup')) {
+        throw Exception(tr.couldNotReachThisAddressCheckThe);
       }
-      
-      throw Exception('连接失败: $e');
+
+      throw Exception(tr.connectionFailed(e));
     }
   }
 
   Future<void> _mergeVaultItems(List<VaultItem> remoteItems) async {
     final masterKey = await _ref.read(masterKeyProvider.future);
-    if (masterKey == null) throw Exception('主密钥尚未就绪');
-    
+    if (masterKey == null) throw Exception(tr.theMasterKeyIsNotReady);
+
     final repository = _ref.read(vaultRepositoryProvider);
-    
+
     // 获取本地所有项（包括已删除的）以便进行比较
-    final localItems = await repository.getAllItems(masterKey, includeDeleted: true);
+    final localItems = await repository.getAllItems(
+      masterKey,
+      includeDeleted: true,
+    );
     final localMap = {for (var item in localItems) item.id: item};
 
     for (final remote in remoteItems) {
       final local = localMap[remote.id];
-      
+
       // 如果本地没有，或者远程更新时间更晚，则更新本地
       bool shouldUpdate = false;
       if (local == null) {
@@ -1097,20 +1220,27 @@ class LocalSyncService extends ChangeNotifier {
     return (Handler innerHandler) {
       return (Request request) async {
         if (request.method == 'OPTIONS') {
-          return Response.ok('', headers: {
+          return Response.ok(
+            '',
+            headers: {
+              'Access-Control-Allow-Origin': '*',
+              'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+              'Access-Control-Allow-Headers':
+                  'Origin, Content-Type, Accept, Authorization',
+              'Access-Control-Allow-Private-Network': 'true',
+            },
+          );
+        }
+
+        final response = await innerHandler(request);
+        return response.change(
+          headers: {
             'Access-Control-Allow-Origin': '*',
             'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-            'Access-Control-Allow-Headers': 'Origin, Content-Type, Accept, Authorization',
-            'Access-Control-Allow-Private-Network': 'true',
-          });
-        }
-        
-        final response = await innerHandler(request);
-        return response.change(headers: {
-          'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-          'Access-Control-Allow-Headers': 'Origin, Content-Type, Accept, Authorization',
-        });
+            'Access-Control-Allow-Headers':
+                'Origin, Content-Type, Accept, Authorization',
+          },
+        );
       };
     };
   }

@@ -1,107 +1,85 @@
 name: Release
 
-# 推送形如 v1.2.3 的标签时：跑检查、构建多种产物，并创建 GitHub Release 上传。
 on:
   push:
-    tags:
-      - 'v*'
+    tags: ['v*']
 
 permissions:
-  contents: write
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
-  release:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
+  checks:
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
 
-      - uses: actions/setup-java@v4
+  package:
+    name: Build signed release assets
+    needs: checks
+    runs-on: ubuntu-latest
+    environment: release
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
         with:
           distribution: temurin
-          java-version: 17
-
-      - uses: subosito/flutter-action@v2
-        with:
-          channel: stable
-          cache: true
-
-      # 与 android/app/build.gradle 中 ndkVersion 一致；避免每次 runner 冷启动都重新下载 NDK（常占数分钟）。
-      - name: Cache Android NDK
-        uses: actions/cache@v4
-        with:
-          path: /usr/local/lib/android/sdk/ndk/27.0.12077973
-          key: android-ndk-27.0.12077973-${{ runner.os }}
-
-      - name: Cache Gradle
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: ${{ runner.os }}-gradle-${{ hashFiles('android/**/*.gradle*', 'android/gradle/wrapper/gradle-wrapper.properties', 'pubspec.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-gradle-
-
-      - name: Install dependencies
-        run: flutter pub get
-
-      - name: Analyze
-        run: flutter analyze --no-fatal-infos --no-fatal-warnings
-
-      - name: Run tests
-        run: flutter test
-
-      # 未提交 key.properties：Android 均为 debug；正式签名请在本地或配置 Secrets 后扩展。
-      - name: Prepare release assets directory
-        run: mkdir -p release_assets
-
-      - name: Build APK (debug, universal)
-        run: flutter build apk --debug
-
-      - name: Stage Android universal APK
-        run: |
-          cp build/app/outputs/flutter-apk/app-debug.apk \
-            "release_assets/PasswordVault-${{ github.ref_name }}-android-universal-debug.apk"
-
-      - name: Build APK (debug, split per ABI)
-        run: flutter build apk --debug --split-per-abi
-
-      - name: Stage Android per-ABI APKs
-        run: |
-          shopt -s nullglob
-          for f in build/app/outputs/flutter-apk/app-*-debug.apk; do
-            base=$(basename "$f" .apk)
-            [[ "$base" == "app-debug" ]] && continue
-            abi=${base#app-}
-            abi=${abi%-debug}
-            cp "$f" "release_assets/PasswordVault-${{ github.ref_name }}-android-${abi}-debug.apk"
-          done
-
-      - name: Build Web + Chrome extension (build_extension.sh)
-        run: bash build_extension.sh
-
-      - name: Zip Web & Chrome extension
-        run: |
-          (cd build/web && zip -r "${GITHUB_WORKSPACE}/release_assets/PasswordVault-${{ github.ref_name }}-web.zip" .)
-          (cd build && zip -r "${GITHUB_WORKSPACE}/release_assets/PasswordVault-${{ github.ref_name }}-chrome-extension.zip" chrome_extension)
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          draft: false
-          prerelease: false
-          generate_release_notes: true
-          body: |
-            ### 附件说明
-
-            | 文件 | 说明 |
-            | --- | --- |
-            | `PasswordVault-<tag>-android-universal-debug.apk` | Android 通用包（debug，无 Play 签名） |
-            | `PasswordVault-<tag>-android-*-debug.apk` | 按 CPU 架构拆分，体积更小 |
-            | `PasswordVault-<tag>-web.zip` | 独立部署的 Flutter Web（`build_extension.sh` 同次构建产物） |
-            | `PasswordVault-<tag>-chrome-extension.zip` | 解压后在 Chrome「加载已解压的扩展程序」中选 `chrome_extension` 目录 |
-
-            可上架的 **release** 包请在本地使用 `key.properties` 构建，或在仓库中配置 Android 签名 Secrets 后扩展本 workflow。
-          files: release_assets/*
+          java-version: '17'
+      - uses: ./.github/actions/setup-flutter
+      - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4
+      - name: Validate version and tag
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: python3 tool/check_repository.py --release
+      - name: Configure private signing key
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: python3 tool/configure_signing.py
+      - run: flutter pub get --enforce-lockfile
+      - run: flutter build apk --release --split-per-abi --no-pub
+      - run: flutter build appbundle --release --no-pub
+      - run: ./build_extension.sh
+      - name: Stage packages and checksums
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: python3 tool/package_release.py
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-assets
+          path: release_assets/*
+          if-no-files-found: error
+          retention-days: 7
+      - name: Remove signing material
+        if: always()
+        run: rm -f android/key.properties "$RUNNER_TEMP/passwordvault-release.jks"
+
+  publish:
+    name: Create draft prerelease
+    needs: package
+    runs-on: ubuntu-latest
+    environment: release
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: release-assets
+          path: release_assets
+      - name: Create reviewable release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          gh release create "$RELEASE_TAG" release_assets/* \
+            --verify-tag --draft --prerelease \
+            --title "PasswordVault $RELEASE_TAG — Developer preview" \
+            --notes-file docs/RELEASE_NOTES.md

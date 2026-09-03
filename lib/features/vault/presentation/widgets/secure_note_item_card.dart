@@ -1,5 +1,5 @@
+import 'package:password/core/l10n/l10n.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import '../../domain/models/vault_item.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -11,11 +11,14 @@ class SecureNoteItemCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    AppLocalizations.of(context);
     return Card(
       elevation: 0,
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       shape: RoundedRectangleBorder(
-        side: BorderSide(color: Theme.of(context).dividerColor.withValues(alpha: 0.1)),
+        side: BorderSide(
+          color: Theme.of(context).dividerColor.withValues(alpha: 0.1),
+        ),
         borderRadius: BorderRadius.circular(16),
       ),
       child: InkWell(
@@ -58,21 +61,31 @@ class SecureNoteItemCard extends ConsumerWidget {
                         padding: const EdgeInsets.only(top: 4),
                         child: Wrap(
                           spacing: 4,
-                          children: item.tags.map((tag) => Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-                            decoration: BoxDecoration(
-                              color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: Text(
-                              tag,
-                              style: TextStyle(
-                                fontSize: 10,
-                                color: Theme.of(context).colorScheme.primary,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          )).toList(),
+                          children: item.tags
+                              .map(
+                                (tag) => Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 6,
+                                    vertical: 1,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: Theme.of(context).colorScheme.primary
+                                        .withValues(alpha: 0.1),
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: Text(
+                                    tag,
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      color: Theme.of(
+                                        context,
+                                      ).colorScheme.primary,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                              )
+                              .toList(),
                         ),
                       ),
                     if (item.note != null && item.note!.isNotEmpty)
@@ -91,7 +104,9 @@ class SecureNoteItemCard extends ConsumerWidget {
                   color: item.isFavorite ? Colors.amber : Colors.grey,
                 ),
                 onPressed: () {
-                  final updatedItem = item.copyWith(isFavorite: !item.isFavorite);
+                  final updatedItem = item.copyWith(
+                    isFavorite: !item.isFavorite,
+                  );
                   ref.read(vaultItemsProvider.notifier).updateItem(updatedItem);
                 },
               ),
@@ -106,22 +121,22 @@ class SecureNoteItemCard extends ConsumerWidget {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('删除确认'),
-        content: Text('确定要删除 ${item.title} 吗？'),
+        title: Text(tr.confirmDeletion),
+        content: Text(tr.delete(item.title)),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('取消'),
+            child: Text(tr.cancel),
           ),
           TextButton(
             onPressed: () {
               ref.read(vaultItemsProvider.notifier).softDeleteItem(item.id);
               Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('已移至回收站')),
-              );
+              ScaffoldMessenger.of(
+                context,
+              ).showSnackBar(SnackBar(content: Text(tr.movedToTrash)));
             },
-            child: const Text('移至回收站', style: TextStyle(color: Colors.red)),
+            child: Text(tr.moveToTrash, style: const TextStyle(color: Colors.red)),
           ),
         ],
       ),
