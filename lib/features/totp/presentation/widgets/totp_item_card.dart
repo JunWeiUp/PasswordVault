@@ -175,7 +175,10 @@ class TotpItemCard extends ConsumerWidget {
             ),
             ListTile(
               leading: const Icon(Icons.delete_outline, color: Colors.red),
-              title: Text(tr.deleteItem, style: const TextStyle(color: Colors.red)),
+              title: Text(
+                tr.deleteItem,
+                style: const TextStyle(color: Colors.red),
+              ),
               onTap: () {
                 Navigator.pop(context);
                 _showDeleteConfirm(context, ref);

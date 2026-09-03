@@ -36,9 +36,16 @@ class RecycleBinPage extends ConsumerWidget {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const Icon(Icons.delete_outline, size: 64, color: Colors.grey),
+                  const Icon(
+                    Icons.delete_outline,
+                    size: 64,
+                    color: Colors.grey,
+                  ),
                   const SizedBox(height: 16),
-                  Text(tr.trashIsEmpty, style: const TextStyle(color: Colors.grey)),
+                  Text(
+                    tr.trashIsEmpty,
+                    style: const TextStyle(color: Colors.grey),
+                  ),
                 ],
               ),
             );

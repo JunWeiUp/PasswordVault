@@ -70,7 +70,10 @@ class _LanDiscoveryPageState extends ConsumerState<LanDiscoveryPage> {
                         const SizedBox(height: 8),
                         Text(
                           tr.askTheOtherPersonToEnableLocal,
-                          style: const TextStyle(color: Colors.grey, fontSize: 12),
+                          style: const TextStyle(
+                            color: Colors.grey,
+                            fontSize: 12,
+                          ),
                         ),
                       ],
                     ),

@@ -9,7 +9,7 @@ Tag pushes run CI again, create signed release APKs and an AAB, package Web and 
 1. Complete [public history cleanup](PUBLICATION.md). The private development keystore and its passwords were tracked; do not reuse them for public distribution. Decide how existing installations will migrate before changing the signing identity.
 2. Generate a new private keystore outside the repository with Java's `keytool`. Keep a protected backup and record its certificate fingerprint. Do not place passwords in shell history.
 3. Create a GitHub environment named `release`. Configure required reviewers and restrict deployment to reviewed release tags where your GitHub plan supports it.
-4. Configure environment secrets: `ANDROID_KEYSTORE_BASE64`, `ANDROID_STORE_PASSWORD`, `ANDROID_KEY_ALIAS`, and `ANDROID_KEY_PASSWORD`. The Base64 value is the keystore file; encoding is not encryption.
+4. Configure environment secrets: `ANDROID_KEYSTORE_BASE64`, `ANDROID_STORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`, and `ANDROID_CERT_SHA256`. The certificate fingerprint must match the new public signing identity. The Base64 value is the keystore file; encoding is not encryption.
 5. Enable private vulnerability reporting and choose required branch checks from a successful CI run. Configure squash merge and require the English Conventional Commit PR title.
 
 `tool/configure_signing.py` writes an ephemeral keystore under `RUNNER_TEMP`, escapes Java properties correctly, and fails if a secret is absent. An `always()` cleanup removes it after packaging. Signing credentials must never be supplied to fork pull requests.
