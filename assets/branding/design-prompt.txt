@@ -1,0 +1,14 @@
+Tool: built-in imagegen (no CLI/API fallback).
+
+Initial brief:
+Use case: logo-brand
+Asset type: production app icon and GitHub README brand mark for PasswordVault, a local-first password manager whose existing interface uses blue accents.
+Primary request: Design one polished, original, highly legible icon: a bold geometric P monogram that feels like a compact vault door, with a simple keyhole cleanly cut out of the upper bowl. The monogram should be one coherent solid silhouette, optically centered, memorable at 16 px. Friendly precision and quiet trust.
+Style: exceptionally clean flat vector-like design, broad shapes, carefully balanced geometry, crisp antialiased edges. Minimal and contemporary, suitable for a serious open-source utility.
+Palette: deep navy full-bleed square background (#12233A), warm white main symbol, a restrained existing-app blue (#448AFF) accent integrated into the monogram. Only these flat colors.
+Composition: a single icon on a square 1024 by 1024 canvas. Keep every part of the symbol inside the central 60% width and height so platform masks cannot crop it. Opaque edge-to-edge navy background, square canvas with no baked-in rounded outer corners, no border and no surrounding whitespace.
+Text: none; only the designed P-shaped symbol, no wordmark or captions.
+Avoid: generic shield badges, stock Flutter logo, gradients, glow, texture, shadows, 3D rendering, presentation sheets, mockups, multiple alternatives, extra ornaments, watermark. Output only the final icon artwork.
+
+Final refinement applied to the initial generated image:
+Use case: logo-brand refinement. Edit this icon into final production artwork. Preserve the recognizable white P-shaped vault silhouette, centered keyhole, and restrained blue arc accent. Simplify away the two blue hinge rectangles. Crucial correction: absolutely flat, crisp vector-like artwork only. Replace ALL outer transparency, black surroundings, rough edges, glow, gradients, shadows and texture with ONE uniform solid deep navy #12233A background extending to every pixel of the entire square image. The white P and keyhole must be uniform solid warm white; blue accents uniform #448AFF. Keep the complete symbol centered within the central 60% of the square for app mask safety, with generous equal margins. Square opaque image, no rounded outer card, no inset panel, no presentation, no text or caption. Sharp clean geometry, minimal professional app icon, exactly one final icon.

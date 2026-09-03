@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="chrome/icons/icon192.png" alt="PasswordVault 图标" width="88">
+  <img src="assets/branding/passwordvault-icon-512.png" alt="PasswordVault — P 字母保险库与钥匙孔" width="112" height="112">
   <h1>PasswordVault</h1>
   <p>本地优先的密码、验证码、笔记和钱包凭据管理工具。</p>
   <p><a href="README.md">English</a> · <strong>简体中文</strong></p>

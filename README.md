@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="chrome/icons/icon192.png" alt="PasswordVault icon" width="88">
+  <img src="assets/branding/passwordvault-icon-512.png" alt="PasswordVault — a P-shaped vault and keyhole" width="112" height="112">
   <h1>PasswordVault</h1>
   <p>A local-first vault for passwords, authenticator codes, notes, and wallet credentials.</p>
   <p><strong>English</strong> · <a href="README.zh-CN.md">简体中文</a></p>
