@@ -31,6 +31,7 @@ def main():
         if not (ROOT / source / 'index.html').exists():
             raise SystemExit(f'Missing build: {source}')
         archive(ROOT / source, output / f'{prefix}-{name}.zip')
+    shutil.copyfile(ROOT / 'android/release-certificate.sha256', output / 'SIGNING-CERTIFICATE-SHA256.txt')
     lines = []
     for path in sorted(output.iterdir()):
         with path.open('rb') as stream:

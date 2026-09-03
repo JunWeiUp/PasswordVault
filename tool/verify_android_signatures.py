@@ -11,14 +11,17 @@ def normalized(value):
 
 
 def main():
+    root = Path(__file__).resolve().parent.parent
     expected = normalized(os.environ.get('ANDROID_CERT_SHA256', ''))
+    published = normalized((root / 'android/release-certificate.sha256').read_text())
+    if expected != published:
+        raise SystemExit('Configured signing certificate differs from the reviewed public fingerprint.')
     if len(expected) != 64:
         raise SystemExit('Configure ANDROID_CERT_SHA256 with the expected signing certificate.')
     sdk = Path(os.environ.get('ANDROID_HOME') or os.environ.get('ANDROID_SDK_ROOT', ''))
     candidates = sorted(sdk.glob('build-tools/*/apksigner'), reverse=True)
     if not candidates:
         raise SystemExit('Android SDK apksigner was not found.')
-    root = Path(__file__).resolve().parent.parent
     for abi in ['arm64-v8a', 'armeabi-v7a', 'x86_64']:
         path = root / f'build/app/outputs/flutter-apk/app-{abi}-release.apk'
         result = subprocess.run([str(candidates[0]), 'verify', '--print-certs', str(path)], capture_output=True, text=True, check=True)

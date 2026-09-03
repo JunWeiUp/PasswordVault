@@ -24,7 +24,7 @@ flutter build appbundle --release
 ./build_extension.sh
 ```
 
-Before distribution, verify APK signatures using Android SDK `apksigner verify --print-certs`, compare the fingerprint with the expected signing identity, and smoke-test on a device.
+Before distribution, verify APK signatures using Android SDK `apksigner verify --print-certs`, compare the fingerprint with `android/release-certificate.sha256`, and smoke-test on a device.
 
 ## Prepare a version
 

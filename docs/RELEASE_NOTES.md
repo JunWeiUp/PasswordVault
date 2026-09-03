@@ -10,6 +10,7 @@ English is the default UI language; Simplified Chinese is available on the lock 
 | `*-android.aab` | Signed Android App Bundle for maintainer distribution |
 | `*-web.zip` | Self-hosted experimental Web build |
 | `*-chrome-extension.zip` | Unpack and load in Chrome/Edge developer mode |
+| `SIGNING-CERTIFICATE-SHA256.txt` | Expected public Android signing certificate fingerprint |
 | `SHA256SUMS` | SHA-256 checksums for all packages |
 
 Verify downloaded files with `shasum -a 256 -c SHA256SUMS` (macOS) or `sha256sum -c SHA256SUMS` (Linux). Checksums detect corruption; verify the release's source and signing identity separately.
