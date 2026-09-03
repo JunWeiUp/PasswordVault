@@ -5,7 +5,7 @@
   <p><a href="README.md">English</a> · <strong>简体中文</strong></p>
 </div>
 
-**开发预览版。** 项目正在准备首次公开发布，尚未经过独立安全审计。在[安全发布阻碍](docs/SECURITY_MODEL.md)解决之前，请使用测试凭据。此前的私有开发标签不代表可用于生产环境。
+**开发预览版。** PasswordVault 是早期阶段的开源项目，尚未经过独立安全审计。在[安全发布阻碍](docs/SECURITY_MODEL.md)解决之前，请使用测试凭据。此前的私有开发标签不代表可用于生产环境。
 
 ## 功能
 
@@ -23,13 +23,13 @@
 
 | 平台 | 状态 | 体验方式 |
 | --- | --- | --- |
-| Android | 主要原生目标，CI 构建 debug APK | 本地构建或下载 CI 产物 |
-| Chrome / Edge 扩展 | 实验性，使用解压安装 | `./build_extension.sh` |
-| Web | 实验性，存在浏览器存储和 CORS 限制 | `flutter run -d chrome` |
+| Android | 已签名的开发预览 APK，Android 7.0+ | 下载对应架构的 APK |
+| Chrome / Edge 扩展 | 实验性，使用解压安装 | 下载扩展 ZIP 或运行 `./build_extension.sh` |
+| Web | 实验性，存在浏览器存储和 CORS 限制 | 自行托管 Web ZIP 或运行 `flutter run -d chrome` |
 | iOS | 有工程骨架，待真机和发布验证 | 需要 macOS、Xcode、签名 |
 | Windows / macOS / Linux 桌面 | 尚无对应 runner | 欢迎贡献 |
 
-目前尚未上架 Chrome Web Store、Google Play 或 App Store。后续正式发布的产物见 [Releases](https://github.com/JunWeiUp/PasswordVault/releases)。
+下载[开发预览版及校验和](https://github.com/JunWeiUp/PasswordVault/releases/tag/v1.1.0-preview.3)。大多数较新的 Android 设备使用 `arm64-v8a`；Chrome/Edge 用户解压扩展 ZIP 后，在开发者模式下加载目录。目前尚未上架 Chrome Web Store、Google Play 或 App Store。
 
 ## 从源码运行
 

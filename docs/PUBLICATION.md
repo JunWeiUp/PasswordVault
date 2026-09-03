@@ -1,6 +1,6 @@
 # Publishing the repository
 
-The original repository is private. Its history contains Android signing material and local development journals. Removing a file from the current tree is not sufficient to make those earlier commits safe to publish.
+The repository originated as a private project. Its original history contained Android signing material and local development journals. Removing a file from the current tree is not sufficient to make those earlier commits safe to publish. The publication procedure below covers the full history and release assets.
 
 ## Prepared approach
 

@@ -14,7 +14,7 @@ Keep the About description, README, social preview, and release notes consistent
 
 ## English announcement draft
 
-> I'm preparing PasswordVault, a local-first Flutter vault for passwords, TOTP codes, notes, and wallet credentials. It includes an Android app, experimental Web/Chromium extension, WebDAV backup, and local sharing. The project now has English/Chinese UI and contributor documentation.
+> I've open-sourced PasswordVault, a local-first Flutter vault for passwords, TOTP codes, notes, and wallet credentials. It includes an Android app, experimental Web/Chromium extension, WebDAV backup, and local sharing. The project now has English/Chinese UI and contributor documentation.
 >
 > This is a developer preview, not an audited production password manager. I'm looking for feedback on the security model, backup migrations, extension behavior, accessibility, and translations. Please test with disposable credentials.
 >
