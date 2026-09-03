@@ -41,3 +41,30 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Private signing material and local configuration
+*.jks
+*.keystore
+*.p12
+*.pfx
+*.pem
+.env
+.env.*
+!.env.example
+android/key.properties
+local.properties
+
+# Local agent journals, debug output, and release staging
+Kim_AGENTS.md
+debug-info/
+release_assets/
+*.bundle
+*.patch
+
+# Rebuilt by flutter gen-l10n
+lib/l10n/app_localizations*.dart
+web/drift_worker.js.map
+web/drift_worker.js.deps
+coverage/
+
+__pycache__/

@@ -1,0 +1,11 @@
+title = "PasswordVault secret scanning"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "android-signing-password"
+description = "Android signing password in tracked configuration"
+path = '''(^|/)android/key\.properties$'''
+regex = '''(?m)^\s*(?:storePassword|keyPassword)\s*=\s*(\S+)'''
+secretGroup = 1
