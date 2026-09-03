@@ -25,6 +25,7 @@ jobs:
       - uses: ./.github/actions/setup-flutter
       - run: flutter pub get --enforce-lockfile
       - run: flutter gen-l10n
+      - run: python3 tool/update_sqlite_wasm.py --check
       - run: dart run build_runner build --delete-conflicting-outputs
       - name: Verify generated database code
         run: git diff --exit-code -- lib/core/database/app_database.g.dart

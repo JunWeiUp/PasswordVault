@@ -2,7 +2,7 @@
 
 ## Toolchain
 
-Use Flutter **3.41.7**, Dart **3.11.5**, Java **17**, Android SDK **36**, and NDK **27.0.12077973**. `.flutter-version` is consumed by CI. `pubspec.lock` is committed to keep resolution repeatable. `flutter doctor -v` diagnoses platform setup.
+Use Flutter **3.41.7**, Dart **3.11.5**, Java **17**, Android SDK **36**, and NDK **27.0.12077973**, Gradle **8.13**, AGP **8.13.1**, and Kotlin **2.2.20**. The Android minimum is API 24, matching the locked secure-storage and cryptography plugins. `.flutter-version` is consumed by CI. `pubspec.lock` is committed to keep resolution repeatable. `flutter doctor -v` diagnoses platform setup.
 
 ```bash
 flutter pub get
@@ -44,3 +44,5 @@ For WebDAV, browsers enforce CORS. Configure your server to allow your chosen or
 ## Data compatibility
 
 Do not rename stored category strings, protocol fields, app IDs, salts, or database names as part of a translation. Changes to master passwords, key derivation, and encrypted backups need migration tests using disposable fixtures. Never use a developer's real vault as a test fixture.
+
+When updating Drift/sqlite3, run `python3 tool/update_sqlite_wasm.py` to download the matching upstream WebAssembly asset and verify its package-published checksum. Commit the updated binary and regenerated worker. CI and extension builds reject mismatched assets.
