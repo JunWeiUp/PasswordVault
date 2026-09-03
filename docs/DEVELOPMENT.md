@@ -37,7 +37,7 @@ Riverpod owns application state; GoRouter handles navigation. The internal packa
 
 `flutter build apk --debug` needs no release credentials. `./build_extension.sh` creates `build/web` and `build/chrome_extension`; it bundles rendering assets locally. Source maps should not be distributed as release assets. See [RELEASING.md](RELEASING.md) for signing.
 
-The project uses the official Google/Maven Central/Gradle endpoints by default. Developers in restricted networks can configure local proxies or trusted mirrors; do not commit machine-specific paths or force regional mirrors on all contributors.
+The project uses the official Google/Maven Central/Gradle endpoints by default. Developers in restricted networks can configure local proxies. To opt into the Aliyun Maven mirrors for one build, run `PASSWORDVAULT_USE_MAVEN_MIRRORS=true flutter build apk --debug`. Do not commit machine-specific paths or force regional mirrors on all contributors.
 
 For WebDAV, browsers enforce CORS. Configure your server to allow your chosen origin and methods. Ordinary browsers cannot host the local sync server. An APK build alone does not validate runtime SQLite loading, autofill, biometrics, or network behavior; device smoke tests are required before releases.
 

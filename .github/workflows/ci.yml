@@ -55,9 +55,12 @@ jobs:
           fetch-depth: 0
       - uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2
         env:
+          GITLEAKS_VERSION: 8.30.1
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITLEAKS_ENABLE_COMMENTS: false
           GITLEAKS_ENABLE_UPLOAD_ARTIFACT: false
+      - name: Scan every commit reachable from the reviewed revision
+        run: gitleaks git --redact=100 --log-opts="HEAD" --no-banner
 
   web-extension:
     name: Build Web and Chromium extension

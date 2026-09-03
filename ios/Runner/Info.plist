@@ -46,9 +46,9 @@
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
 	<key>NSFaceIDUsageDescription</key>
-	<string>我们需要 Face ID 来保护您的密码库</string>
+	<string>Use Face ID to unlock your PasswordVault.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>用于从相册选择含公钥的二维码图片</string>
+	<string>Choose a public-key QR image from your photo library.</string>
 	<key>UIFileSharingEnabled</key>
 	<true/>
 	<key>LSSupportsOpeningDocumentsInPlace</key>
