@@ -29,7 +29,7 @@ void main() {
   testWidgets('lock screen defaults to English and switches to Chinese', (
     tester,
   ) async {
-    tester.view.physicalSize = const Size(400, 700);
+    tester.view.physicalSize = const Size(360, 500);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);

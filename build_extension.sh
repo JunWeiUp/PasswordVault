@@ -5,6 +5,7 @@ cd "$(dirname "$0")"
 printf 'Building PasswordVault Web and Chromium extension…\n'
 flutter pub get --enforce-lockfile
 flutter gen-l10n
+python3 tool/update_sqlite_wasm.py --check
 # Keep the Drift worker compatible with the version in pubspec.lock.
 dart compile js -O4 web/drift_worker.dart -o web/drift_worker.js
 flutter build web --release --no-pub --no-tree-shake-icons --no-wasm-dry-run --no-web-resources-cdn

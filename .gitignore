@@ -68,3 +68,4 @@ web/drift_worker.js.deps
 coverage/
 
 __pycache__/
+android/build/

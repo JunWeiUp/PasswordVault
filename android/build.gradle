@@ -14,7 +14,7 @@ allprojects {
 rootProject.buildDir = "../build"
 rootProject.ext.set("flutter", [
     compileSdkVersion: 36,
-    minSdkVersion: 21,
+    minSdkVersion: 24,
     targetSdkVersion: 36,
     ndkVersion: "27.0.12077973"
 ])
@@ -29,7 +29,7 @@ subprojects {
     // 1. 注入 flutter 扩展，修复 share_plus 等插件找不到 flutter.compileSdkVersion 的问题
     project.ext.set("flutter", [
         compileSdkVersion: 36,
-        minSdkVersion: 21,
+        minSdkVersion: 24,
         targetSdkVersion: 36,
         ndkVersion: "27.0.12077973"
     ])
