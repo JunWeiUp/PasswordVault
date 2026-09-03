@@ -133,7 +133,7 @@ class SecurePassAutofillService : AutofillService() {
 
                 items.add(
                     VaultItem(
-                        title = title.ifBlank { url ?: "SecurePass" },
+                        title = title.ifBlank { url ?: "PasswordVault" },
                         username = username,
                         password = password,
                         url = url,
