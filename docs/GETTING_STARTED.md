@@ -6,7 +6,7 @@ PasswordVault is a developer preview. Use fictional accounts and disposable secr
 
 ## Choose a build
 
-The [existing preview release](https://github.com/JunWeiUp/PasswordVault/releases/tag/v1.1.0-preview.3) provides Android packages, a Chromium extension ZIP, a Web ZIP, and checksums. It may have an earlier interface than the current-source images in the README. To evaluate the redesign, [run the current source](../README.md#run-from-source) or use a CI artifact built from the relevant revision.
+The [existing preview release](https://github.com/JunWeiUp/PasswordVault/releases/tag/v1.1.0-preview.4) provides Android packages, a Chromium extension ZIP, a Web ZIP, and checksums. This release includes the redesigned workspace shown in the README. You can also [run the current source](../README.md#run-from-source) or use a CI artifact built from a later revision.
 
 | You want to try | Choose | Requirements |
 | --- | --- | --- |
@@ -95,5 +95,5 @@ For a bug report, include the source revision or release tag, operating system, 
 
 - [Product design](PRODUCT_DESIGN.md): navigation, interactions, and visual standards.
 - [Development](DEVELOPMENT.md): architecture, toolchain, and validation commands.
-- [Releasing](RELEASING.md): CI artifacts, private signing, package verification, and draft releases.
+- [Releasing](RELEASING.md): CI artifacts, private signing, package verification, and public preview releases.
 - [Security model](SECURITY_MODEL.md) and [privacy policy](../PRIVACY.md): current limitations and data flows.

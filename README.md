@@ -7,7 +7,7 @@
   <img src="docs/images/vault-hero.png" alt="PasswordVault concept illustration: a blue vault surrounded by account cards and authenticator symbols" width="1120">
   <br><br>
 
-**[Try the developer preview ↗](https://github.com/JunWeiUp/PasswordVault/releases/tag/v1.1.0-preview.3)** &nbsp; · &nbsp; **[Run the new design from source](#run-from-source)**
+**[Try the developer preview ↗](https://github.com/JunWeiUp/PasswordVault/releases/tag/v1.1.0-preview.4)** &nbsp; · &nbsp; **[Build from source](#run-from-source)**
 
 <sub>Android 7.0+ · Experimental Chromium extension and Web · <a href="docs/GETTING_STARTED.md">Installation & first steps</a></sub>
 
@@ -109,7 +109,7 @@ Feature availability in the source does not establish security or runtime valida
 | iOS | Project scaffold exists; device and release validation pending | Requires macOS, Xcode, and signing |
 | Windows / macOS / Linux desktop | No desktop runner is included | The wide screenshots demonstrate responsive layout only |
 
-The [existing developer preview](https://github.com/JunWeiUp/PasswordVault/releases/tag/v1.1.0-preview.3) includes downloads and checksums. There is no Chrome Web Store, Google Play, or App Store listing. Source version: **1.1.0+5** in [pubspec.yaml](pubspec.yaml); a source version is not proof that a matching package has been published.
+The [existing developer preview](https://github.com/JunWeiUp/PasswordVault/releases/tag/v1.1.0-preview.4) includes downloads and checksums. There is no Chrome Web Store, Google Play, or App Store listing. Source version: **1.1.0+6** in [pubspec.yaml](pubspec.yaml); a source version is not proof that a matching package has been published.
 
 ## Run from source
 
@@ -153,7 +153,7 @@ Load `build/chrome_extension` from `chrome://extensions` or `edge://extensions` 
 
 Pull requests, branch pushes, and manual runs use separate repository, Flutter quality, and secret-scanning jobs. CI checks localization and generated code, formatting, analysis, tests, and Git history, then builds **android-debug**, **web-preview**, and **chromium-extension-preview** artifacts. Build artifacts are retained for 14 days; coverage for 7 days. Passing CI is build evidence, not an independent security audit.
 
-A version tag or a manual run for an existing tag starts release delivery. Automation verifies the version and Android signing identity, packages APK/AAB, Web, and extension assets with build metadata and SHA-256 checksums, and creates a **draft prerelease** for review. Build success does not automatically publish a production release. See [Releasing](docs/RELEASING.md) for signing secrets, artifacts, and the review checklist.
+A version tag or a manual run for an existing tag starts release delivery. Automation verifies the version and Android signing identity, packages APK/AAB, Web, and extension assets with build metadata and SHA-256 checksums, and publishes a **developer prerelease directly, without draft mode**. Branch pushes produce CI artifacts; push a new version tag to publish a release. See [Releasing](docs/RELEASING.md) for signing secrets, artifacts, and the review checklist.
 
 ## Security and privacy
 
@@ -173,7 +173,7 @@ Start with [CONTRIBUTING.md](CONTRIBUTING.md). Security fixes, migration tests, 
 | [Product design](docs/PRODUCT_DESIGN.md) | Navigation, interaction patterns, visual direction, and review criteria |
 | [Development](docs/DEVELOPMENT.md) | Architecture, toolchain, and platform checks |
 | [Internationalization](docs/INTERNATIONALIZATION.md) | Adding and maintaining translations |
-| [Releasing](docs/RELEASING.md) | CI, signing, packaging, and draft review |
+| [Releasing](docs/RELEASING.md) | CI, signing, packaging, and publication |
 | [Roadmap](docs/ROADMAP.md) · [Changelog](CHANGELOG.md) | Priorities and recorded changes |
 
 ## License

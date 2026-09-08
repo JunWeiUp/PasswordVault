@@ -92,25 +92,25 @@ jobs:
           if-no-files-found: error
           retention-days: 7
           compression-level: 0
-      - name: Release review details
+      - name: Release build details
         env:
           RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
           RELEASE_COMMIT: ${{ needs.prepare.outputs.commit }}
           ASSET_URL: ${{ steps.assets.outputs.artifact-url }}
         run: |
           {
-            echo '## Developer preview prepared for review'
+            echo '## Developer preview packages verified'
             printf 'Tag: `%s` · Commit: `%s`\n\n' "$RELEASE_TAG" "$RELEASE_COMMIT"
             printf '[Verified release assets](%s) (retained for 7 days)\n\n' "$ASSET_URL"
             echo 'Android APK/AAB signatures match the reviewed certificate. BUILD.json records source and toolchain.'
-            echo 'The next job verifies downloaded checksums and creates a draft prerelease. A maintainer must review it before publication.'
+            echo 'The next job verifies downloaded checksums and publishes the developer preview directly.'
           } >> "$GITHUB_STEP_SUMMARY"
       - name: Remove signing material
         if: always()
         run: rm -f android/key.properties "$RUNNER_TEMP/passwordvault-release.jks"
 
-  draft:
-    name: Create draft prerelease
+  publish:
+    name: Publish developer preview
     needs: [prepare, package]
     runs-on: ubuntu-latest
     environment: release
@@ -129,17 +129,25 @@ jobs:
           path: release_assets
       - name: Verify downloaded asset inventory and checksums
         run: python3 tool/package_release.py --verify release_assets
-      - name: Recheck tag before drafting
+      - name: Recheck tag before publishing
         env:
           RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
           CHECKED_COMMIT: ${{ needs.prepare.outputs.commit }}
         run: python3 tool/validate_release_ref.py
-      - name: Create reviewable release
+      - name: Publish verified release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
         run: |
           gh release create "$RELEASE_TAG" release_assets/* \
-            --verify-tag --draft --prerelease \
+            --verify-tag --prerelease --latest=false \
             --title "PasswordVault $RELEASE_TAG — Developer preview" \
             --notes-file docs/RELEASE_NOTES.md
+      - name: Verify public release state
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+        run: |
+          gh release view "$RELEASE_TAG" --json isDraft,isPrerelease,url \
+            --jq 'if .isDraft or (.isPrerelease | not) then error("Expected a published developer preview") else .url end' \
+            >> "$GITHUB_STEP_SUMMARY"

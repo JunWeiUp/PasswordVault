@@ -1,5 +1,9 @@
 PasswordVault developer preview. Not independently audited; use synthetic credentials and review the security model before evaluation.
 
+This preview includes the redesigned Accounts-first workspace, responsive navigation and account cards, persistent search, updated lock screen and password generator, and revised light/dark themes. Android version: **1.1.0 (build 6)**.
+
+All CI checks, Android signature verification, and package checksum checks complete before this release is published automatically.
+
 English is the default UI language; Simplified Chinese is available on the lock screen and in Settings → Appearance.
 
 | Asset | Purpose |
@@ -11,7 +15,9 @@ English is the default UI language; Simplified Chinese is available on the lock 
 | `*-web.zip` | Self-hosted experimental Web build |
 | `*-chrome-extension.zip` | Unpack and load in Chrome/Edge developer mode |
 | `SIGNING-CERTIFICATE-SHA256.txt` | Expected public Android signing certificate fingerprint |
-| `SHA256SUMS` | SHA-256 checksums for all packages |
+| `BUILD.json` | Source commit, tag, toolchain, and workflow URL |
+| `LICENSE`, `THIRD_PARTY_NOTICES.md`, `INSTALL.md` | Licensing and installation guidance |
+| `SHA256SUMS` | SHA-256 checksums for the complete asset inventory |
 
 Verify downloaded files with `shasum -a 256 -c SHA256SUMS` (macOS) or `sha256sum -c SHA256SUMS` (Linux). Checksums detect corruption; verify the release's source and signing identity separately.
 

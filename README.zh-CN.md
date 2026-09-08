@@ -7,7 +7,7 @@
   <img src="docs/images/vault-hero.png" alt="PasswordVault 概念插画：蓝色保险库旁放着账号卡片与验证码符号" width="1120">
   <br><br>
 
-**[体验开发预览版 ↗](https://github.com/JunWeiUp/PasswordVault/releases/tag/v1.1.0-preview.3)** &nbsp; · &nbsp; **[从源码体验新版设计](#从源码运行)**
+**[体验开发预览版 ↗](https://github.com/JunWeiUp/PasswordVault/releases/tag/v1.1.0-preview.4)** &nbsp; · &nbsp; **[从源码构建](#从源码运行)**
 
 <sub>Android 7.0+ · 实验性 Chromium 扩展与 Web · <a href="docs/GETTING_STARTED.md">安装与入门</a></sub>
 
@@ -109,7 +109,7 @@
 | iOS | 有工程骨架，待真机和发布验证 | 需要 macOS、Xcode 和签名 |
 | Windows / macOS / Linux 桌面 | 尚无对应 runner | 宽屏图片仅展示响应式布局 |
 
-[现有开发预览版](https://github.com/JunWeiUp/PasswordVault/releases/tag/v1.1.0-preview.3)提供下载和校验和。目前尚未上架 Chrome Web Store、Google Play 或 App Store。源码版本为 [pubspec.yaml](pubspec.yaml) 中的 **1.1.0+5**；源码版本号不代表对应安装包已经发布。
+[现有开发预览版](https://github.com/JunWeiUp/PasswordVault/releases/tag/v1.1.0-preview.4)提供下载和校验和。目前尚未上架 Chrome Web Store、Google Play 或 App Store。源码版本为 [pubspec.yaml](pubspec.yaml) 中的 **1.1.0+6**；源码版本号不代表对应安装包已经发布。
 
 ## 从源码运行
 
@@ -153,7 +153,7 @@ bash tool/check.sh all
 
 PR、分支推送及手动运行，分别执行仓库检查、Flutter 质量检查和秘密扫描任务。CI 检查本地化、生成代码、格式、静态分析、测试与 Git 历史，再构建 **android-debug**、**web-preview** 和 **chromium-extension-preview** 产物。构建产物保留 14 天，覆盖率保留 7 天。CI 通过代表相应构建检查通过，不等于独立安全审计。
 
-推送版本标签，或针对已有标签手动运行工作流，即可开始发布交付。流程核对版本和 Android 签名身份，将 APK/AAB、Web、扩展与构建元数据、SHA-256 校验文件打包，再创建供审核的 **预发布草稿**。构建成功不会自动公开发布正式版。签名密钥、产物和审核清单见[发布指南](docs/RELEASING.md)。
+推送版本标签，或针对已有标签手动运行工作流，即可开始发布交付。流程核对版本和 Android 签名身份，将 APK/AAB、Web、扩展与构建元数据、SHA-256 校验文件打包，并 **直接公开发布开发预览版，不再创建草稿**。主分支推送生成 CI 构建产物；发布下载包需要推送新的版本标签。签名密钥、产物和审核清单见[发布指南](docs/RELEASING.md)。
 
 ## 安全与隐私
 
@@ -173,7 +173,7 @@ CSV/JSON 导出可能包含明文凭据。WebDAV 会连接配置的服务器，�
 | [产品设计](docs/PRODUCT_DESIGN.md) | 导航、交互模式、视觉方向与评审标准 |
 | [开发指南](docs/DEVELOPMENT.md) | 架构、工具链与平台检查 |
 | [国际化](docs/INTERNATIONALIZATION.md) | 新增与维护翻译 |
-| [发布指南](docs/RELEASING.md) | CI、签名、打包与草稿审核 |
+| [发布指南](docs/RELEASING.md) | CI、签名、打包与公开发布 |
 | [路线图](docs/ROADMAP.md) · [更新记录](CHANGELOG.md) | 优先事项与变更记录 |
 
 ## 许可证

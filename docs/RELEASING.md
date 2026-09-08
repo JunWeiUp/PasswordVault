@@ -1,6 +1,6 @@
 # Releasing PasswordVault
 
-PasswordVault ships as a **developer preview**. CI builds reviewable downloads; the release workflow creates a **draft prerelease**. A maintainer reviews and publishes it separately. No app store deployment is configured, and passing CI does not close the [security release blockers](SECURITY_MODEL.md).
+PasswordVault ships as a **developer preview**. Branch CI builds downloadable artifacts; a version tag triggers the release workflow, which **publishes a public prerelease directly, without draft mode**, after all checks pass. No app store deployment is configured, and passing CI does not close the [security release blockers](SECURITY_MODEL.md).
 
 ## Delivery flow
 
@@ -17,8 +17,8 @@ flowchart LR
   H --> I[Protected release environment]
   I --> J[Signed APKs + AAB + browser ZIPs]
   J --> K[Verify signatures and checksums]
-  K --> L[Draft prerelease]
-  L --> M[Maintainer review and device smoke tests]
+  K --> L[Public developer prerelease]
+  L --> M[Download and device smoke tests]
 ```
 
 All Flutter jobs use the version in `.flutter-version`, the committed dependency lockfile, and the same `tool/check.sh` entry points used locally. Pull requests never receive Android release credentials. CI runs on all branch pushes, pull requests into `main`/`master` (including title edits), and manual runs. Tag releases reuse the quality/security jobs and build release assets themselves instead of repeating debug builds.
@@ -71,14 +71,14 @@ A debug APK cannot update an installation signed by a different key. Keep a test
    ```
 
    The workflow must already be available on the default branch for manual dispatch. The CLI example starts a remote workflow; it is not part of the local check commands.
-5. Approve the protected `release` environment after checking the source revision. The pipeline verifies APK and AAB signatures against the configured and committed certificate, packages the files, verifies their checksum inventory, and uploads the assets.
-6. The draft job downloads those exact artifacts, verifies their checksums again, rechecks the tag, and creates a draft prerelease. It never creates a missing tag or substitutes a different revision.
+5. If the `release` environment has required reviewers configured, approve it after checking the source revision. Otherwise the job starts automatically. The pipeline verifies APK and AAB signatures against the configured and committed certificate, packages the files, verifies their checksum inventory, and uploads the assets.
+6. The publish job downloads those exact artifacts, verifies their checksums again, rechecks the tag, and publishes a public developer prerelease. It verifies that the resulting release is not a draft. It never creates a missing tag or substitutes a different revision.
 
-`tool/validate_release_ref.py` rejects missing tags and tag/commit mismatches before signing secrets are used. Manual dispatch cannot accidentally package one branch while labeling it as a different tag. Each build job checks out the validated commit. Existing drafts/releases are not silently overwritten: inspect a failed or partial draft and resolve it deliberately before retrying.
+`tool/validate_release_ref.py` rejects missing tags and tag/commit mismatches before signing secrets are used. Manual dispatch cannot accidentally package one branch while labeling it as a different tag. Each build job checks out the validated commit. Existing releases are not silently overwritten: inspect a failed or partial publication and resolve it deliberately before retrying.
 
 ## Review the delivered files
 
-The draft includes three APKs (`arm64-v8a`, `armeabi-v7a`, `x86_64`), one AAB, Web and extension ZIPs, `SIGNING-CERTIFICATE-SHA256.txt`, `BUILD.json`, `LICENSE`, `THIRD_PARTY_NOTICES.md`, `INSTALL.md`, and `SHA256SUMS`. `BUILD.json` records the tag, commit, Flutter version, expected Android certificate and, in CI, the Actions run URL. ZIP file ordering and timestamps are normalized; this does not claim that complete Flutter binaries are reproducible.
+The public release includes three APKs (`arm64-v8a`, `armeabi-v7a`, `x86_64`), one AAB, Web and extension ZIPs, `SIGNING-CERTIFICATE-SHA256.txt`, `BUILD.json`, `LICENSE`, `THIRD_PARTY_NOTICES.md`, `INSTALL.md`, and `SHA256SUMS`. `BUILD.json` records the tag, commit, Flutter version, expected Android certificate and, in CI, the Actions run URL. ZIP file ordering and timestamps are normalized; this does not claim that complete Flutter binaries are reproducible.
 
 Download **all** release assets into a fresh directory. Verify them with:
 
@@ -91,7 +91,7 @@ shasum -a 256 -c SHA256SUMS    # macOS
 sha256sum -c SHA256SUMS       # Linux
 ```
 
-Checksums detect corrupted or changed downloads. Verify the release source and signing identity separately. Use Android SDK `apksigner verify --print-certs` on each APK and compare the fingerprint with the reviewed certificate. Smoke-test installation and upgrade on Android, unlock and restore using synthetic data, Web loading, and unpacked Chrome/Edge installation. Confirm the limitations and release status are accurately described before publishing.
+Checksums detect corrupted or changed downloads. Verify the release source and signing identity separately. Use Android SDK `apksigner verify --print-certs` on each APK and compare the fingerprint with the reviewed certificate. Smoke-test installation and upgrade on Android, unlock and restore using synthetic data, Web loading, and unpacked Chrome/Edge installation. Confirm the limitations and release status are accurately described before pushing the release tag.
 
 A failed or missing signing secret fails the release. The workflow never substitutes a debug signature or distributes an unsigned Android release. A signed release-mode binary is not a production security endorsement; production releases additionally require closing the documented security blockers.
 
