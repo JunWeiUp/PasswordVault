@@ -59,7 +59,7 @@ dependencies:
   webdav_client: ^1.2.2
   csv: ^6.0.0
   hex: ^0.2.0
-  intl: ^0.20.2
+  intl: ^0.20.3
   nsd: 4.0.0
   shelf: ^1.4.1
   shelf_router: ^1.1.4
