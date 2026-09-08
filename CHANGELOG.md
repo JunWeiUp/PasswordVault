@@ -2,6 +2,17 @@
 
 User-facing changes are recorded in English. Versions follow Semantic Versioning; build numbers are recorded in `pubspec.yaml`.
 
+## Unreleased
+
+- Responsive Accounts-first workspace with persistent search, keyboard shortcuts, compact navigation, and wide-screen tool shortcuts.
+- Shared light/dark design system, revised setup and unlock forms, a responsive password generator, and adaptable account cards.
+- Correct account-type selection, visible filter resets, keyboard-safe search, and guarded editor/generator routes while locked.
+- Reliable default/additional-account copying with completion and failure feedback.
+- Product-led English/Chinese documentation, an original concept illustration, and five reproducible Flutter widget captures using fictional data.
+- Unified local/CI checks, reviewed-tag release dispatch, non-overwriting signing setup, build metadata, and complete release checksum verification.
+
+The source redesign is not included in the preview package below. Existing security release blockers remain open.
+
 ## 1.1.0-preview.3 — 2026-09-03
 
 - English-first README, Chinese README, contributor guidance, and documented platform status.

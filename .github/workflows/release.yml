@@ -3,16 +3,45 @@ name: Release
 on:
   push:
     tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing reviewed tag (for example v1.1.0-preview.4); run the workflow on that tag
+        required: true
+        type: string
 
 permissions:
   contents: read
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: release-${{ inputs.tag || github.ref_name }}
   cancel-in-progress: false
 
 jobs:
+  prepare:
+    name: Validate release revision
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      tag: ${{ steps.release.outputs.tag }}
+      commit: ${{ steps.release.outputs.commit }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Require an existing tag at the checked commit
+        id: release
+        env:
+          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+        run: python3 tool/validate_release_ref.py
+      - name: Validate release manifests
+        env:
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+        run: python3 tool/check_repository.py --release
+
   checks:
+    needs: prepare
     uses: ./.github/workflows/ci.yml
     with:
       checks_only: true
@@ -21,22 +50,22 @@ jobs:
 
   package:
     name: Build signed release assets
-    needs: checks
+    needs: [prepare, checks]
     runs-on: ubuntu-latest
     environment: release
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ needs.prepare.outputs.commit }}
+          persist-credentials: false
       - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
         with:
           distribution: temurin
           java-version: '17'
       - uses: ./.github/actions/setup-flutter
       - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4
-      - name: Validate version and tag
-        env:
-          RELEASE_TAG: ${{ github.ref_name }}
-        run: python3 tool/check_repository.py --release
+      - run: bash tool/check.sh web
       - name: Configure private signing key
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
@@ -44,31 +73,45 @@ jobs:
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: python3 tool/configure_signing.py
-      - run: flutter pub get --enforce-lockfile
       - run: flutter build apk --release --split-per-abi --no-pub
       - run: flutter build appbundle --release --no-pub
       - name: Verify Android signing identity
         env:
           ANDROID_CERT_SHA256: ${{ secrets.ANDROID_CERT_SHA256 }}
         run: python3 tool/verify_android_signatures.py
-      - run: ./build_extension.sh
-      - name: Stage packages and checksums
+      - name: Stage packages, build metadata, and checksums
         env:
-          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
         run: python3 tool/package_release.py
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - name: Upload verified release assets
+        id: assets
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: release-assets
           path: release_assets/*
           if-no-files-found: error
           retention-days: 7
+          compression-level: 0
+      - name: Release review details
+        env:
+          RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+          RELEASE_COMMIT: ${{ needs.prepare.outputs.commit }}
+          ASSET_URL: ${{ steps.assets.outputs.artifact-url }}
+        run: |
+          {
+            echo '## Developer preview prepared for review'
+            printf 'Tag: `%s` · Commit: `%s`\n\n' "$RELEASE_TAG" "$RELEASE_COMMIT"
+            printf '[Verified release assets](%s) (retained for 7 days)\n\n' "$ASSET_URL"
+            echo 'Android APK/AAB signatures match the reviewed certificate. BUILD.json records source and toolchain.'
+            echo 'The next job verifies downloaded checksums and creates a draft prerelease. A maintainer must review it before publication.'
+          } >> "$GITHUB_STEP_SUMMARY"
       - name: Remove signing material
         if: always()
         run: rm -f android/key.properties "$RUNNER_TEMP/passwordvault-release.jks"
 
-  publish:
+  draft:
     name: Create draft prerelease
-    needs: package
+    needs: [prepare, package]
     runs-on: ubuntu-latest
     environment: release
     timeout-minutes: 10
@@ -76,14 +119,25 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ needs.prepare.outputs.commit }}
+          fetch-depth: 0
+          persist-credentials: false
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: release-assets
           path: release_assets
+      - name: Verify downloaded asset inventory and checksums
+        run: python3 tool/package_release.py --verify release_assets
+      - name: Recheck tag before drafting
+        env:
+          RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+          CHECKED_COMMIT: ${{ needs.prepare.outputs.commit }}
+        run: python3 tool/validate_release_ref.py
       - name: Create reviewable release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
         run: |
           gh release create "$RELEASE_TAG" release_assets/* \
             --verify-tag --draft --prerelease \
