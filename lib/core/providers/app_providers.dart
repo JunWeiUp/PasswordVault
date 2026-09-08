@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-final selectedTabProvider = StateProvider<int>((ref) => 0);
+final selectedTabProvider = StateProvider<int>((ref) => 1);
 final searchQueryProvider = StateProvider<String>((ref) => '');
 final isSearchingProvider = StateProvider<bool>((ref) => false);
 

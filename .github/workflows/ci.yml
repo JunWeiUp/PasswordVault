@@ -2,9 +2,10 @@ name: CI
 
 on:
   push:
-    branches: [main, master, 'codex/**']
+    branches: ['**']
   pull_request:
     branches: [main, master]
+    types: [opened, synchronize, reopened, edited, ready_for_review]
   workflow_call:
     inputs:
       checks_only:
@@ -21,35 +22,39 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  repository:
+    name: Repository and release-tool checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - run: bash tool/check.sh repo
+      - name: Validate pull request title
+        if: github.event_name == 'pull_request'
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: python3 tool/check_repository.py --pr-title
+
   quality:
     name: Analyze, test, and validate
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
       - uses: ./.github/actions/setup-flutter
-      - run: flutter pub get --enforce-lockfile
-      - run: flutter gen-l10n
-      - run: python3 tool/update_sqlite_wasm.py --check
-      - run: dart run build_runner build --delete-conflicting-outputs
-      - name: Verify generated database code
-        run: git diff --exit-code -- lib/core/database/app_database.g.dart
-      - run: dart format --output=none --set-exit-if-changed lib test tool
-      - run: flutter analyze --no-pub --no-fatal-infos
-      - run: flutter test --no-pub --coverage
-      - run: python3 tool/check_repository.py
-      - run: python3 -m unittest discover -s tool -p 'test_*.py'
-      - run: node --test test/extension/*.test.cjs
-      - name: Validate pull request title
-        if: github.event_name == 'pull_request'
-        env:
-          PR_TITLE: ${{ github.event.pull_request.title }}
-        run: python3 tool/check_repository.py --pr-title
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - run: bash tool/check.sh flutter
+      - name: Upload coverage
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: coverage
           path: coverage/lcov.info
           if-no-files-found: error
+          retention-days: 7
 
   secrets:
     name: Scan Git history for secrets
@@ -59,6 +64,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
+          persist-credentials: false
       - uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2
         env:
           GITLEAKS_VERSION: 8.30.1
@@ -72,37 +78,77 @@ jobs:
     name: Build Web and Chromium extension
     if: ${{ !inputs.checks_only }}
     runs-on: ubuntu-latest
-    needs: quality
+    needs: [repository, quality, secrets]
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
       - uses: ./.github/actions/setup-flutter
-      - run: flutter pub get --enforce-lockfile
-      - run: ./build_extension.sh
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - run: bash tool/check.sh web
+      - name: Upload Web preview
+        id: web
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: web-preview
+          path: build/web/
+          if-no-files-found: error
+          retention-days: 14
+      - name: Upload extension preview
+        id: extension
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: chromium-extension-preview
           path: build/chrome_extension/
           if-no-files-found: error
+          retention-days: 14
+      - name: Preview download instructions
+        env:
+          WEB_URL: ${{ steps.web.outputs.artifact-url }}
+          EXTENSION_URL: ${{ steps.extension.outputs.artifact-url }}
+        run: |
+          {
+            echo '## Browser previews'
+            printf '[Web build](%s) · [Chromium extension](%s)\n\n' "$WEB_URL" "$EXTENSION_URL"
+            echo 'Sign in to GitHub to download. Artifacts expire after 14 days.'
+            echo 'Serve the extracted Web build over HTTP, or load the extracted extension in Chrome/Edge developer mode.'
+            echo 'Developer preview: use synthetic credentials. Browser storage limitations remain unresolved.'
+          } >> "$GITHUB_STEP_SUMMARY"
 
   android:
     name: Build Android development APK
     if: ${{ !inputs.checks_only }}
     runs-on: ubuntu-latest
-    needs: quality
+    needs: [repository, quality, secrets]
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
         with:
           distribution: temurin
           java-version: '17'
       - uses: ./.github/actions/setup-flutter
       - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4
-      - run: flutter pub get --enforce-lockfile
-      - run: flutter build apk --debug --no-pub
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - run: bash tool/check.sh android
+      - name: Upload development APK
+        id: apk
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: android-debug
           path: build/app/outputs/flutter-apk/app-debug.apk
           if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
+      - name: Preview download instructions
+        env:
+          APK_URL: ${{ steps.apk.outputs.artifact-url }}
+        run: |
+          {
+            echo '## Android development APK'
+            printf '[Download APK](%s)\n\n' "$APK_URL"
+            echo 'Sign in to GitHub to download. Artifact expires after 14 days.'
+            echo 'Debug signed; Android 7.0+. It cannot update an installation with a different signing key.'
+            echo 'Developer preview: use synthetic credentials and test backups before changing installations.'
+          } >> "$GITHUB_STEP_SUMMARY"

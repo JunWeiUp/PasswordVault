@@ -159,7 +159,7 @@
   "items": "项目",
   "members": "成员",
   "noItemsInThisSharedVault": "该共享库暂无项目",
-  "addItem": "添加项目",
+  "addItem": "添加记录",
   "pendingJoinRequests": "待处理加入申请 ({arg0})",
   "requestToJoinAnyVault": "申请加入任何库",
   "requestToJoinThisVault": "申请加入此库",
@@ -531,5 +531,39 @@
   "english": "English",
   "simplifiedChinese": "简体中文",
   "appName": "PasswordVault",
-  "previewNotice": "开发预览版：使用真实凭据前请先阅读安全说明。"
+  "previewNotice": "开发预览版：使用真实凭据前请先阅读安全说明。",
+  "localVaultTagline": "把重要的事，安放一处。",
+  "generatorDescription": "生成独立密码，复制到需要使用的地方。",
+  "generatedPassword": "生成的密码",
+  "unlockFailedTryAgain": "解锁失败，请重试。",
+  "clipboardWriteFailed": "复制失败，请重试。",
+  "vaultWorkspace": "保管库",
+  "vaultWorkspaceDescription": "让数字生活，井然有序。",
+  "accountsDescription": "常用账号，需要时就在手边。",
+  "codesDescription": "下一次登录的动态验证码。",
+  "walletsDescription": "集中管理钱包凭据。",
+  "notesDescription": "妥善收好值得留存的细节。",
+  "settingsDescription": "按你的习惯，打理这片空间。",
+  "walletsNav": "钱包",
+  "notesNav": "笔记",
+  "quickAccess": "快捷工具",
+  "libraryLabel": "资料库",
+  "developerPreview": "开发预览版",
+  "emptyVaultDescription": "添加第一条记录，或从其他管理器导入测试数据。",
+  "emptySearchDescription": "换个关键词，或清除筛选以查看其他记录。",
+  "clearSearch": "清除搜索",
+  "loadVaultFailed": "暂时无法加载保管库。",
+  "retryAction": "重试",
+  "itemsCount": "{count} 条记录",
+  "filtersLabel": "筛选",
+  "@itemsCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "fillFailedTryAgain": "无法填入当前页面，请重试。",
+  "addToFavorites": "添加到收藏",
+  "removeFromFavorites": "取消收藏"
 }

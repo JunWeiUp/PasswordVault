@@ -2441,5 +2441,39 @@
   "english": "English",
   "simplifiedChinese": "简体中文",
   "appName": "PasswordVault",
-  "previewNotice": "Developer preview — review the security notes before using real credentials."
+  "previewNotice": "Developer preview — review the security notes before using real credentials.",
+  "localVaultTagline": "Your essentials. One quiet place.",
+  "generatorDescription": "Create a unique password, then copy it wherever you need it.",
+  "generatedPassword": "Generated password",
+  "unlockFailedTryAgain": "Could not unlock. Please try again.",
+  "clipboardWriteFailed": "Could not copy. Please try again.",
+  "vaultWorkspace": "Your vault",
+  "vaultWorkspaceDescription": "A little order for your digital life.",
+  "accountsDescription": "Your logins, ready when you need them.",
+  "codesDescription": "Time-based codes for your next sign-in.",
+  "walletsDescription": "Keep wallet credentials in one place.",
+  "notesDescription": "A home for the details worth keeping.",
+  "settingsDescription": "Make this space work for you.",
+  "walletsNav": "Wallets",
+  "notesNav": "Notes",
+  "quickAccess": "QUICK ACCESS",
+  "libraryLabel": "LIBRARY",
+  "developerPreview": "Developer preview",
+  "emptyVaultDescription": "Add your first item, or bring your test data from another manager.",
+  "emptySearchDescription": "Try another search or clear your filters to see more items.",
+  "clearSearch": "Clear search",
+  "loadVaultFailed": "Your vault could not be loaded.",
+  "retryAction": "Try again",
+  "itemsCount": "{count} items",
+  "filtersLabel": "Filters",
+  "@itemsCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "fillFailedTryAgain": "Could not fill this page. Please try again.",
+  "addToFavorites": "Add to favorites",
+  "removeFromFavorites": "Remove from favorites"
 }

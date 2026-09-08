@@ -23,5 +23,5 @@ This is a prioritized work list, not a release-date promise.
 
 - More languages and accessibility validation.
 - Reproducible release instructions, signing continuity, and store packaging.
-- Real screenshots and a short demonstration using a synthetic vault.
+- Installed-app screenshots and a short demonstration using a synthetic vault; the [current-source widget gallery](images/README.md) provides repeatable UI renders in the meantime.
 - iOS device support and optional desktop runners after platform-specific validation.
