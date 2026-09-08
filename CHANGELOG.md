@@ -2,7 +2,7 @@
 
 User-facing changes are recorded in English. Versions follow Semantic Versioning; build numbers are recorded in `pubspec.yaml`.
 
-## Unreleased
+## 1.1.0-preview.4 — 2026-09-09
 
 - Responsive Accounts-first workspace with persistent search, keyboard shortcuts, compact navigation, and wide-screen tool shortcuts.
 - Shared light/dark design system, revised setup and unlock forms, a responsive password generator, and adaptable account cards.
@@ -10,8 +10,9 @@ User-facing changes are recorded in English. Versions follow Semantic Versioning
 - Reliable default/additional-account copying with completion and failure feedback.
 - Product-led English/Chinese documentation, an original concept illustration, and five reproducible Flutter widget captures using fictional data.
 - Unified local/CI checks, reviewed-tag release dispatch, non-overwriting signing setup, build metadata, and complete release checksum verification.
+- Publish verified preview packages directly on a version tag, without creating a draft; Android build number increases to 6.
 
-The source redesign is not included in the preview package below. Existing security release blockers remain open.
+Existing security release blockers remain open.
 
 ## 1.1.0-preview.3 — 2026-09-03
 
