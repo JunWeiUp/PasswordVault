@@ -1,6 +1,6 @@
 # Releasing PasswordVault
 
-PasswordVault ships as a **developer preview**. Branch CI builds downloadable artifacts; a version tag triggers the release workflow, which **publishes a public prerelease directly, without draft mode**, after all checks pass. No app store deployment is configured, and passing CI does not close the [security release blockers](SECURITY_MODEL.md).
+PasswordVault ships as a **developer preview**. Branch CI builds downloadable artifacts; a version tag triggers the release workflow, which **publishes a regular GitHub Release marked Latest, without draft or pre-release mode**, after all checks pass. No app store deployment is configured, and passing CI does not close the [security release blockers](SECURITY_MODEL.md).
 
 ## Delivery flow
 
@@ -17,7 +17,7 @@ flowchart LR
   H --> I[Protected release environment]
   I --> J[Signed APKs + AAB + browser ZIPs]
   J --> K[Verify signatures and checksums]
-  K --> L[Public developer prerelease]
+  K --> L[Public GitHub Release]
   L --> M[Download and device smoke tests]
 ```
 
@@ -63,18 +63,28 @@ A debug APK cannot update an installation signed by a different key. Keep a test
 
 1. Update the version/build number in `pubspec.yaml`, the matching numeric version in `chrome/manifest.json`, and `CHANGELOG.md`. Review the installation guidance in `docs/RELEASE_NOTES.md`.
 2. Run the local checks, then review and commit the change. Complete the publication/history decision before pushing it.
-3. Create a unique tag such as `v1.1.0-preview.4`. Its base version must match the manifests. Push the reviewed tag to start the release workflow; never overwrite an existing tag.
+3. Create a unique tag such as `v1.1.0`. Its base version must match the manifests. Push the reviewed tag to start the release workflow; never overwrite an existing tag.
 4. If a manual run is needed, select that **existing tag** as the workflow ref and enter the same tag in the input. For example:
 
    ```bash
-   gh workflow run release.yml --ref v1.1.0-preview.4 -f tag=v1.1.0-preview.4
+   gh workflow run release.yml --ref v1.1.0 -f tag=v1.1.0
    ```
 
    The workflow must already be available on the default branch for manual dispatch. The CLI example starts a remote workflow; it is not part of the local check commands.
 5. If the `release` environment has required reviewers configured, approve it after checking the source revision. Otherwise the job starts automatically. The pipeline verifies APK and AAB signatures against the configured and committed certificate, packages the files, verifies their checksum inventory, and uploads the assets.
-6. The publish job downloads those exact artifacts, verifies their checksums again, rechecks the tag, and publishes a public developer prerelease. It verifies that the resulting release is not a draft. It never creates a missing tag or substitutes a different revision.
+6. The publish job downloads those exact artifacts, verifies their checksums again, rechecks the tag, and publishes a regular GitHub Release marked Latest. It verifies that both `isDraft` and `isPrerelease` are false. It never creates a missing tag or substitutes a different revision.
 
 `tool/validate_release_ref.py` rejects missing tags and tag/commit mismatches before signing secrets are used. Manual dispatch cannot accidentally package one branch while labeling it as a different tag. Each build job checks out the validated commit. Existing releases are not silently overwritten: inspect a failed or partial publication and resolve it deliberately before retrying.
+
+## An existing tag already has a release
+
+`tag name has already been taken` means the tag already has a release record. Edit that release instead of creating another record or deleting its tag. To change only its publication status while preserving the tag and all assets:
+
+```bash
+gh release edit v1.1.0-preview.4 --draft=false --prerelease=false --latest
+```
+
+The historical `v1.1.0-preview.4` tag name remains unchanged; GitHub's draft/pre-release flags determine its release classification. For new versions, choose a unique tag after updating the manifests. Changing the GitHub classification does not resolve the documented product security blockers.
 
 ## Review the delivered files
 
@@ -107,4 +117,4 @@ flutter build appbundle --release --no-pub
 bash tool/check.sh web
 ```
 
-Verify signatures and the expected certificate before distribution. `RELEASE_TAG=v1.1.0-preview.4 python3 tool/package_release.py` stages the same package layout locally after builds exist; it refuses non-empty output directories and includes no keystore or private signing configuration. This packaging command does not itself prove the Android signature: run `tool/verify_android_signatures.py` with the expected certificate configured first.
+Verify signatures and the expected certificate before distribution. `RELEASE_TAG=v1.1.0 python3 tool/package_release.py` stages the same package layout locally after builds exist; it refuses non-empty output directories and includes no keystore or private signing configuration. This packaging command does not itself prove the Android signature: run `tool/verify_android_signatures.py` with the expected certificate configured first.

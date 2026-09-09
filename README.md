@@ -153,7 +153,7 @@ Load `build/chrome_extension` from `chrome://extensions` or `edge://extensions` 
 
 Pull requests, branch pushes, and manual runs use separate repository, Flutter quality, and secret-scanning jobs. CI checks localization and generated code, formatting, analysis, tests, and Git history, then builds **android-debug**, **web-preview**, and **chromium-extension-preview** artifacts. Build artifacts are retained for 14 days; coverage for 7 days. Passing CI is build evidence, not an independent security audit.
 
-A version tag or a manual run for an existing tag starts release delivery. Automation verifies the version and Android signing identity, packages APK/AAB, Web, and extension assets with build metadata and SHA-256 checksums, and publishes a **developer prerelease directly, without draft mode**. Branch pushes produce CI artifacts; push a new version tag to publish a release. See [Releasing](docs/RELEASING.md) for signing secrets, artifacts, and the review checklist.
+A version tag or a manual run for an existing tag starts release delivery. Automation verifies the version and Android signing identity, packages APK/AAB, Web, and extension assets with build metadata and SHA-256 checksums, and publishes a **regular GitHub Release marked Latest, with neither draft nor pre-release enabled**. Branch pushes produce CI artifacts; push a new version tag to publish a release. See [Releasing](docs/RELEASING.md) for signing secrets, artifacts, and the review checklist.
 
 ## Security and privacy
 
