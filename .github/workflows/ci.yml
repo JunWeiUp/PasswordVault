@@ -49,7 +49,7 @@ jobs:
       - run: bash tool/check.sh flutter
       - name: Upload coverage
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: coverage
           path: coverage/lcov.info
@@ -88,7 +88,7 @@ jobs:
       - run: bash tool/check.sh web
       - name: Upload Web preview
         id: web
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: web-preview
           path: build/web/
@@ -96,7 +96,7 @@ jobs:
           retention-days: 14
       - name: Upload extension preview
         id: extension
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: chromium-extension-preview
           path: build/chrome_extension/
@@ -134,7 +134,7 @@ jobs:
       - run: bash tool/check.sh android
       - name: Upload development APK
         id: apk
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: android-debug
           path: build/app/outputs/flutter-apk/app-debug.apk
