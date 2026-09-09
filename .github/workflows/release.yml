@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Existing reviewed tag (for example v1.1.0-preview.4); run the workflow on that tag
+        description: Existing reviewed tag (for example v1.1.0); run the workflow on that tag
         required: true
         type: string
 
@@ -99,18 +99,18 @@ jobs:
           ASSET_URL: ${{ steps.assets.outputs.artifact-url }}
         run: |
           {
-            echo '## Developer preview packages verified'
+            echo '## Release packages verified'
             printf 'Tag: `%s` · Commit: `%s`\n\n' "$RELEASE_TAG" "$RELEASE_COMMIT"
             printf '[Verified release assets](%s) (retained for 7 days)\n\n' "$ASSET_URL"
             echo 'Android APK/AAB signatures match the reviewed certificate. BUILD.json records source and toolchain.'
-            echo 'The next job verifies downloaded checksums and publishes the developer preview directly.'
+            echo 'The next job verifies downloaded checksums and publishes the release directly.'
           } >> "$GITHUB_STEP_SUMMARY"
       - name: Remove signing material
         if: always()
         run: rm -f android/key.properties "$RUNNER_TEMP/passwordvault-release.jks"
 
   publish:
-    name: Publish developer preview
+    name: Publish release
     needs: [prepare, package]
     runs-on: ubuntu-latest
     environment: release
@@ -140,8 +140,8 @@ jobs:
           RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
         run: |
           gh release create "$RELEASE_TAG" release_assets/* \
-            --verify-tag --prerelease --latest=false \
-            --title "PasswordVault $RELEASE_TAG — Developer preview" \
+            --verify-tag --latest \
+            --title "PasswordVault $RELEASE_TAG" \
             --notes-file docs/RELEASE_NOTES.md
       - name: Verify public release state
         env:
@@ -149,5 +149,5 @@ jobs:
           RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
         run: |
           gh release view "$RELEASE_TAG" --json isDraft,isPrerelease,url \
-            --jq 'if .isDraft or (.isPrerelease | not) then error("Expected a published developer preview") else .url end' \
+            --jq 'if .isDraft or .isPrerelease then error("Expected a published regular release") else .url end' \
             >> "$GITHUB_STEP_SUMMARY"

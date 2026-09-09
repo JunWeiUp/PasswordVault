@@ -2,6 +2,10 @@
 
 User-facing changes are recorded in English. Versions follow Semantic Versioning; build numbers are recorded in `pubspec.yaml`.
 
+## Unreleased
+
+- Publish regular GitHub Releases marked Latest, with draft and pre-release modes disabled. Existing release records can be reclassified without changing tags or assets.
+
 ## 1.1.0-preview.4 — 2026-09-09
 
 - Responsive Accounts-first workspace with persistent search, keyboard shortcuts, compact navigation, and wide-screen tool shortcuts.
