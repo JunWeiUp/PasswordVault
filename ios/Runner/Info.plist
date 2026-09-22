@@ -45,6 +45,8 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>Scan authenticator QR codes to add verification codes to your vault.</string>
 	<key>NSFaceIDUsageDescription</key>
 	<string>Use Face ID to unlock your PasswordVault.</string>
 	<key>NSPhotoLibraryUsageDescription</key>

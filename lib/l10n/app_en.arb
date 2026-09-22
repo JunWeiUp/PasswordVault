@@ -2475,5 +2475,15 @@
   },
   "fillFailedTryAgain": "Could not fill this page. Please try again.",
   "addToFavorites": "Add to favorites",
-  "removeFromFavorites": "Remove from favorites"
+  "removeFromFavorites": "Remove from favorites",
+  "scanCode": "Scan QR code",
+  "scanCodeInstructions": "Point the camera at an authenticator QR code. Review the account before saving.",
+  "invalidTotpQr": "This is not a valid authenticator QR code. Try another code.",
+  "unsupportedTotpQr": "Only single-account TOTP QR codes using SHA-1 and 6 digits are supported.",
+  "cameraPermissionRequired": "Camera access is denied. Enable camera access in system settings, then try again, or go back to enter the key manually.",
+  "cameraUnavailable": "The camera could not start. Try again, or go back to enter the key manually.",
+  "invalidTotpSecret": "Enter a valid Base32 authenticator key.",
+  "totpScanReview": "QR code scanned. Review the account details before saving.",
+  "totpPeriodSeconds": "Refresh interval (seconds)",
+  "codeSaveFailed": "Could not save the code. Your entries are still here; please try again."
 }

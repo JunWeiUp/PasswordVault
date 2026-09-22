@@ -2,7 +2,7 @@ import 'package:otp/otp.dart';
 
 class TotpEngine {
   // 生成 6 位验证码并格式化为 "123 456"
-  static String generateCode(String secret, {int interval = 30}) {
+  static String generateCode(String secret, {int interval = 30, DateTime? at}) {
     if (secret.isEmpty) return "------";
 
     try {
@@ -11,7 +11,7 @@ class TotpEngine {
 
       final code = OTP.generateTOTPCodeString(
         normalizedSecret,
-        DateTime.now().millisecondsSinceEpoch,
+        (at ?? DateTime.now()).millisecondsSinceEpoch,
         interval: interval,
         algorithm: Algorithm.SHA1,
         isGoogle: true,

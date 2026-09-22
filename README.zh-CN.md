@@ -76,6 +76,8 @@
 
 </details>
 
+在 Android 和 iOS 上，打开 **验证码（Codes）→ 添加 → 扫描二维码**，扫描验证器设置二维码，核对账号后保存。仅在扫码时申请相机权限。支持 SHA-1 算法、6 位验证码的单账号 `otpauth://totp` 二维码，并保留其刷新间隔；暂不支持 HOTP、其他算法或位数，以及 Google Authenticator 批量迁移二维码。拒绝相机权限后仍可手动输入密钥。
+
 ## 三步开始使用
 
 1. **选择一种体验方式。** 安装 Android APK、加载解压后的 Chromium 扩展，或从源码运行新版设计。见[安装说明](docs/GETTING_STARTED.md#choose-a-build)。

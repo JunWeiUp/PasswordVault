@@ -53,6 +53,39 @@ app.*.map.json
 !.env.example
 android/key.properties
 local.properties
+*.key
+*.mobileprovision
+credentials*.json
+service-account*.json
+
+# User vault data, exports, and local databases (never source fixtures)
+/private/
+/sensitive-data/
+/credentials/
+/backups/
+/exports/
+securepass_backup*.json
+securepass_export*.csv
+securepass_export*.csv.enc
+backup_*.json
+*.db
+*.db-wal
+*.db-shm
+*.db-journal
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+*.sqlite-journal
+*.sqlite3
+*.sqlite3-wal
+*.sqlite3-shm
+*.sqlite3-journal
+
+# Local installation packages and build overrides
+*.apk
+*.aab
+*.ipa
+pubspec_overrides.yaml
 
 # Local agent journals, debug output, and release staging
 Kim_AGENTS.md

@@ -18,7 +18,10 @@ class TotpItemCard extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     AppLocalizations.of(context);
     final progress = ref.watch(totpProgressProvider(item.period));
-    final code = TotpEngine.generateCode(item.secret ?? '');
+    final code = TotpEngine.generateCode(
+      item.secret ?? '',
+      interval: item.period,
+    );
 
     return Card(
       elevation: 0,
@@ -117,8 +120,10 @@ class TotpItemCard extends ConsumerWidget {
                   ),
                 ),
               const SizedBox(height: 16),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              Wrap(
+                spacing: 20,
+                runSpacing: 16,
+                crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
                   Text(code, style: Theme.of(context).textTheme.displayLarge),
                   Stack(
@@ -194,7 +199,8 @@ class TotpItemCard extends ConsumerWidget {
     final issuer = Uri.encodeComponent(item.title);
     final account = Uri.encodeComponent(item.username);
     final secret = item.secret ?? '';
-    final uri = 'otpauth://totp/$issuer:$account?secret=$secret&issuer=$issuer';
+    final uri =
+        'otpauth://totp/$issuer:$account?secret=$secret&issuer=$issuer&period=${item.period}';
 
     Clipboard.setData(ClipboardData(text: uri));
     ScaffoldMessenger.of(context).showSnackBar(
