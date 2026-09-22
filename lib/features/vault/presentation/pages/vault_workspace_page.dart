@@ -1,5 +1,8 @@
 import 'package:password/core/l10n/l10n.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
+import 'package:password/features/totp/domain/totp_uri.dart';
+import 'package:password/features/totp/presentation/pages/scan_code_page.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -512,14 +515,21 @@ void _showAddItemDialog(
   WidgetRef ref,
   VaultItemType type,
 ) {
+  final itemId = const Uuid().v4();
   final titleController = TextEditingController();
   final usernameController = TextEditingController();
   final secretOrPasswordController = TextEditingController();
   final urlController = TextEditingController();
 
+  int period = 30;
+  bool scanned = false;
+  bool scanning = false;
+  bool saving = false;
+  bool saveFailed = false;
+  String? validationError;
   String? selectedVaultId = ref.read(selectedSharedVaultIdProvider);
 
-  showDialog(
+  final route = DialogRoute<void>(
     context: context,
     builder: (context) => StatefulBuilder(
       builder: (context, setState) {
@@ -535,6 +545,55 @@ void _showAddItemDialog(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
+                if (type == VaultItemType.totp &&
+                    !kIsWeb &&
+                    (defaultTargetPlatform == TargetPlatform.android ||
+                        defaultTargetPlatform == TargetPlatform.iOS)) ...[
+                  OutlinedButton.icon(
+                    key: const ValueKey('scan-totp'),
+                    icon: const Icon(Icons.qr_code_scanner),
+                    label: Text(
+                      tr.scanCode,
+                      style: const TextStyle(fontSize: 16),
+                    ),
+                    onPressed: scanning || saving
+                        ? null
+                        : () async {
+                            setState(() => scanning = true);
+                            final result = await Navigator.of(context)
+                                .push<TotpUri>(
+                                  MaterialPageRoute(
+                                    builder: (_) => const ScanCodePage(),
+                                  ),
+                                );
+                            if (!context.mounted) return;
+                            setState(() {
+                              scanning = false;
+                              if (result == null) return;
+                              titleController.text = result.issuer;
+                              usernameController.text = result.account;
+                              secretOrPasswordController.text = result.secret;
+                              period = result.period;
+                              scanned = true;
+                              validationError = null;
+                            });
+                          },
+                  ),
+                  const SizedBox(height: 12),
+                ],
+                if (saveFailed)
+                  Text(tr.codeSaveFailed, style: const TextStyle(fontSize: 18)),
+                if (scanned) ...[
+                  Text(
+                    tr.totpScanReview,
+                    style: const TextStyle(fontSize: 18, height: 1.75),
+                  ),
+                  Text(
+                    '${tr.totpPeriodSeconds}: $period',
+                    style: const TextStyle(fontSize: 16),
+                  ),
+                  const SizedBox(height: 12),
+                ],
                 TextField(
                   controller: titleController,
                   decoration: InputDecoration(labelText: tr.nameEGGoogleGithub),
@@ -549,6 +608,7 @@ void _showAddItemDialog(
                     labelText: type == VaultItemType.totp
                         ? tr.secretKey
                         : tr.password,
+                    errorText: validationError,
                     suffixIcon: IconButton(
                       icon: const Icon(Icons.copy_rounded, size: 20),
                       tooltip: tr.copy,
@@ -661,48 +721,70 @@ void _showAddItemDialog(
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(context),
+              onPressed: saving ? null : () => Navigator.pop(context),
               child: Text(tr.cancel),
             ),
             ElevatedButton(
-              onPressed: () {
-                if (titleController.text.isEmpty ||
-                    secretOrPasswordController.text.isEmpty) {
-                  return;
-                }
+              onPressed: saving
+                  ? null
+                  : () async {
+                      if (titleController.text.trim().isEmpty ||
+                          secretOrPasswordController.text.isEmpty) {
+                        return;
+                      }
 
-                final newItem = VaultItem(
-                  id: const Uuid().v4(),
-                  type: type,
-                  title: titleController.text,
-                  username: usernameController.text,
-                  secret: type == VaultItemType.totp
-                      ? secretOrPasswordController.text
-                      : null,
-                  password: type == VaultItemType.password
-                      ? secretOrPasswordController.text
-                      : null,
-                  url: urlController.text.isEmpty ? null : urlController.text,
-                  sharedVaultId: selectedVaultId,
-                );
-
-                final messenger = ScaffoldMessenger.of(context);
-                Navigator.pop(context);
-                ref
-                    .read(vaultItemsProvider.notifier)
-                    .addItem(newItem)
-                    .then((_) {
-                      messenger.showSnackBar(SnackBar(content: Text(tr.saved)));
-                    })
-                    .catchError((e) {
-                      messenger.showSnackBar(
-                        SnackBar(
-                          content: Text(tr.couldNotSave(e)),
-                          backgroundColor: Colors.red,
-                        ),
+                      String? secret;
+                      if (type == VaultItemType.totp) {
+                        try {
+                          secret = TotpUri.normalizeSecret(
+                            secretOrPasswordController.text,
+                          );
+                        } on FormatException {
+                          setState(
+                            () => validationError = tr.invalidTotpSecret,
+                          );
+                          return;
+                        }
+                      }
+                      final newItem = VaultItem(
+                        id: itemId,
+                        type: type,
+                        title: titleController.text,
+                        username: usernameController.text,
+                        secret: secret,
+                        period: period,
+                        password: type == VaultItemType.password
+                            ? secretOrPasswordController.text
+                            : null,
+                        url: urlController.text.isEmpty
+                            ? null
+                            : urlController.text,
+                        sharedVaultId: selectedVaultId,
                       );
-                    });
-              },
+
+                      final messenger = ScaffoldMessenger.of(context);
+                      setState(() {
+                        saving = true;
+                        saveFailed = false;
+                      });
+                      try {
+                        await ref
+                            .read(vaultItemsProvider.notifier)
+                            .addItem(newItem);
+                        if (!context.mounted) return;
+                        Navigator.pop(context);
+                        messenger.showSnackBar(
+                          SnackBar(content: Text(tr.saved)),
+                        );
+                      } catch (_) {
+                        if (context.mounted) {
+                          setState(() {
+                            saving = false;
+                            saveFailed = true;
+                          });
+                        }
+                      }
+                    },
               child: Text(tr.save),
             ),
           ],
@@ -710,6 +792,13 @@ void _showAddItemDialog(
       },
     ),
   );
+  Navigator.of(context, rootNavigator: true).push(route);
+  route.completed.then((_) {
+    titleController.dispose();
+    usernameController.dispose();
+    secretOrPasswordController.dispose();
+    urlController.dispose();
+  });
 }
 
 class MainNavigationScreen extends ConsumerStatefulWidget {

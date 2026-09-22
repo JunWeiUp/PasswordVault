@@ -76,6 +76,8 @@ Choose length and character types, regenerate, then copy. In the browser extensi
 
 </details>
 
+On Android and iOS, open **Codes → Add → Scan QR code** to scan an authenticator setup QR code, review the account, and save it. Camera access is requested only when scanning. Single-account `otpauth://totp` codes using SHA-1 and 6 digits are supported; their refresh interval is retained. HOTP, other algorithms/digit lengths, and Google Authenticator migration QR codes are not supported. Manual key entry remains available if camera access is denied.
+
 ## Get started in three steps
 
 1. **Choose a preview.** Install an Android APK, load the unpacked Chromium extension, or run the current source to see the redesign. [Installation details](docs/GETTING_STARTED.md#choose-a-build).

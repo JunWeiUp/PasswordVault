@@ -4,6 +4,13 @@ User-facing changes are recorded in English. Versions follow Semantic Versioning
 
 ## Unreleased
 
+## 1.2.0
+
+- Scan single-account authenticator QR codes on Android and iOS, review the account details, and save them to Codes.
+- Validate SHA-1 / 6-digit TOTP provisioning links, retain custom refresh intervals, and handle camera denial, invalid scans, repeated detections, and save retries.
+- Use stored refresh intervals when generating and exporting codes, and wrap code cards on narrow screens.
+- Expand sensitive-file ignore rules and document pre-commit privacy requirements in `Agent.md` and `AGENTS.md`.
+
 - Publish regular GitHub Releases marked Latest, with draft and pre-release modes disabled. Existing release records can be reclassified without changing tags or assets.
 
 ## 1.1.0-preview.4 — 2026-09-09
