@@ -1,5 +1,11 @@
 # Changelog
 
+## Native Android 2.1.6 preview and documentation
+
+- Align the Notes Add button with Accounts, Codes and Wallets using shared theme colors and an 18dp rounded shape; retain the separate notes layout.
+- Use purely English interface and fictional-content captures in the English README. Keep the Chinese README screenshots localized, including the refreshed Notes button. Add reproducible English synthetic screenshot fixtures.
+- Synchronize the iOS delete/restore UI test with completed persistence and navigation before switching tabs, and preserve failed CI test result bundles.
+
 ## Native Mac 2.0.9 preview
 
 - Replace the rendered Markdown editor with locally bundled Milkdown 7.22.2. Continue lists on Return, retain a local caret, and use ProseMirror undo/redo while keeping direct preview editing and encrypted native autosave. Keep advanced Markdown source editing.

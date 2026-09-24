@@ -4,7 +4,7 @@
 
 The native Android client follows the original PasswordVault account UI: warm off-white background, blue accents, bordered white cards, search/filter controls and Accounts → Codes → Wallets → Notes → Settings navigation. References are the legacy `lib/core/theme/app_theme.dart`, `lib/features/vault/presentation/pages/vault_workspace_page.dart` and `docs/images/vault-mobile.png` component render. This is a native adaptation, not a pixel-identical Flutter replacement.
 
-Notes is a separate workspace inspired by Xiaomi Notes: a prominent title, compact folder controls, a two-column masonry overview, plain text cards and a yellow create button. The [official MIUI 14 guide](https://alsgp0.fds.api.xiaomi.com/gl123/Generic%20User%20Guide%20for%20MIUI%2014/Generic%20User%20Guide%20for%20MIUI%2014.pdf) informed the search, folder, pin and delete interactions. No Xiaomi assets or branding are included. This change does not restyle iOS, Mac or the browser extension.
+Notes is a separate workspace inspired by Xiaomi Notes: a prominent title, compact folder controls, a two-column masonry overview, plain text cards and a create button matching the other workspace pages (theme primary/onPrimary colors and an 18dp rounded shape). The [official MIUI 14 guide](https://alsgp0.fds.api.xiaomi.com/gl123/Generic%20User%20Guide%20for%20MIUI%2014/Generic%20User%20Guide%20for%20MIUI%2014.pdf) informed the search, folder, pin and delete interactions. No Xiaomi assets or branding are included. This change does not restyle iOS, Mac or the browser extension.
 
 ## Implemented behavior
 

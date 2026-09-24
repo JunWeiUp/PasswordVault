@@ -53,3 +53,7 @@ The 2.1.4 clean ARM64 UI refinement is 14,634,904 bytes (14.63 MB), an increase 
 ## 2.1.5 migration update
 
 The clean ARM64 APK is 15,423,775 bytes (15.42 MB), up 788,871 bytes from 2.1.4. The addition includes CameraX live preview/analysis, restored editable legacy workflows and their supporting resources. It remains a compact debug-signed preview with the same package identity. Signature, ZIP page alignment and every native library's ELF LOAD alignment pass the 16 KB checks.
+
+## 2.1.6 scoped update
+
+The clean ARM64 compact artifact measures 15,423,783 bytes (15.42 MB). This increment changes Notes button styling and documentation fixtures; the detailed 2.1.5 component breakdown above remains historical. Signature and 16 KB ZIP alignment checks pass, with the scoped emulator evidence in [Android parity](ANDROID-LEGACY-PARITY.md#216-notes-action-alignment).

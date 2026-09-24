@@ -47,3 +47,5 @@ Companion images were created with the built-in Image Gen tool using the selecte
 ## Current application screenshots
 
 The [notes workspace](current-notes.png) and [account details](current-password.png) are captured from the Mac 2.0.9 preview with a newly seeded, fictional vault. They show the integrated Milkdown editor and revised adaptive toolbar; the other PNGs in this directory remain design concepts. See [editor acceptance](../../MARKDOWN-EDITOR-EVALUATION.md) for the checked scope and remaining hardware/input-method gates.
+
+English README captures are [English notes](current-notes-en.png) and [English account details](current-password-en.png). Both UI labels and fixture content are English. Recreate a fresh English fixture with `cargo run -p vault-core --example seed_demo -- <new-empty-directory> --english`; use the standard synthetic fixture password and never point this example at an existing vault.

@@ -81,3 +81,9 @@ The independent interaction-design review scores this Android migration UI and i
 | Layout, dark theme and enlarged text | 15% | 9.0 |
 
 Nonblocking polish: some password-change times still use ISO formatting; bilingual copy feedback occupies extra space with enlarged text. The score excludes end-to-end physical camera recognition, fingerprint hardware, full TalkBack, old-OS device acceptance, production security and completion of other platforms.
+
+## 2.1.6 Notes action alignment
+
+Notes uses the same primary/onPrimary colors and 18dp Add-button shape as Accounts, Codes and Wallets. The navigation item, note cards and reading layout are unchanged. The clean ARM64 compact preview is 15,423,783 bytes; APK signature verification and 16 KB ZIP alignment pass. The exact compact package passes the English screenshot/creation flow and the Chinese Notes design flow in light mode (2 tests), plus the English flow in dark mode (1 test). These checks do not repeat the entire 2.1.5 parity suite or physical-device acceptance above.
+
+The English [Notes](design/android-native/notes-en.png) and [account editor](design/android-native/account-editor-en.png) captures contain only fictional English content. The Chinese [Notes capture](design/android-native/notes.png) is refreshed with the same button styling. `ReadmeScreenshotsTest` generates these images from a UUID-scoped test vault and restores the previous language preference afterward.

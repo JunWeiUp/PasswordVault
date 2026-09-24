@@ -48,7 +48,7 @@ Android/iOS accept any nonempty local master password without a minimum characte
 
 ## Current preview artifacts
 
-Android version **2.1.5**, code **21007**; iOS remains **2.1.1**, build **3**. The compact Android APK is produced at `apps/android/app/build/outputs/apk/compact/app-compact.apk`; the local delivery copy and SHA-256 are in ignored `native-test-output/mobile/`. Preview package IDs use the `nativepreview` suffix and preserve existing installations. This is a test build, not a production release.
+Android version **2.1.6**, code **21008**; iOS remains **2.1.1**, build **3**. The compact Android APK is produced at `apps/android/app/build/outputs/apk/compact/app-compact.apk`; the local delivery copy and SHA-256 are in ignored `native-test-output/mobile/`. Preview package IDs use the `nativepreview` suffix and preserve existing installations. This is a test build, not a production release.
 
 The native mobile CI workflow is authored in `.github/workflows/native.yml`. The local results above do not establish a remote CI result; record the relevant PR run separately after it executes.
 
@@ -65,3 +65,9 @@ The 2.1.4 interaction review scores the verified Android collection/detail/secur
 Android 2.1.5 restores direct editable credential forms and legacy collection/transfer workflows. See [migration parity](ANDROID-LEGACY-PARITY.md) for current evidence and the separate hardware gates.
 
 The 2.1.5 Android migration review is **9.1/10** (9.135 weighted). The final 22-test run, dark/large 3+3 checks and 11 physical-device non-UI checks pass; real vault bytes are preserved. Hardware scanning/fingerprint and the release gates above remain open.
+
+## Preview 2.1.6 interface consistency
+
+The Notes Add button now shares theme colors, contrast and the 18dp rounded shape with Accounts, Codes and Wallets. The note cards and reading layout retain their separate design. The clean ARM64 compact package passes two light-mode screenshot/design tests and one dark-mode screenshot/creation test; signature and 16 KB ZIP alignment checks pass. No physical-device update was performed for this increment. English README captures use an English interface and fictional English content on both Mac and Android; the Chinese note screenshot is refreshed for the shared button style.
+
+The iOS delete/restore UI flow now waits for asynchronous persistence and navigation dismissal before changing tabs, then asserts the selected tab before opening Trash. Both lifecycle flows pass three local iterations each; CI retains failed `.xcresult` bundles for diagnosing older simulator behavior. This does not add retry-on-failure or skip the restore assertion.
