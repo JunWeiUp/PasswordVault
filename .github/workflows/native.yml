@@ -3,6 +3,7 @@ on:
   pull_request:
     paths: ['apps/**', 'crates/**', 'Cargo.*', 'rust-toolchain.toml', 'tool/check_native.sh', 'tool/build_mobile_core.sh', '.github/workflows/native.yml']
   push:
+    branches: [main]
     paths: ['apps/**', 'crates/**', 'Cargo.*', 'rust-toolchain.toml', 'tool/check_native.sh', 'tool/build_mobile_core.sh', '.github/workflows/native.yml']
   workflow_dispatch:
 permissions:
@@ -27,6 +28,9 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22'
       - name: Install pinned build tools
         run: |
           rustup toolchain install 1.96.0 --profile minimal --component rustfmt,clippy --target aarch64-apple-darwin,x86_64-apple-darwin,wasm32-unknown-unknown
@@ -61,15 +65,21 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
+        with:
+          packages: platform-tools
+          log-accepted-android-sdk-licenses: false
       - name: Install native targets and Android tools
         run: |
           rustup toolchain install 1.96.0 --profile minimal --target aarch64-linux-android,x86_64-linux-android
-          yes | sdkmanager --licenses >/dev/null || true
           sdkmanager 'platforms;android-36' 'build-tools;36.0.0' 'ndk;27.0.12077973'
       - run: bash tool/build_mobile_core.sh android
       - name: Build isolated preview and test applications
         run: |
-          export JAVA_HOME="$JAVA_HOME_17_X64"
           ./apps/android/gradlew -p apps/android :app:assembleCompact :app:assembleCompactAndroidTest :login-fixture:assembleDebug -PtestBuildType=compact -PtargetAbi=arm64-v8a
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
