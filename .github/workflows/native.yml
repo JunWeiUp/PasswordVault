@@ -67,7 +67,8 @@ jobs:
       - name: Install pinned build tools
         run: |
           rustup toolchain install 1.96.0 --profile minimal --component rustfmt,clippy --target aarch64-apple-darwin,x86_64-apple-darwin
-          export PATH="$(dirname "$(rustup which --toolchain 1.96.0 rustc)"):$PATH"
+          toolchain_bin="$(dirname "$(rustup which --toolchain 1.96.0 rustc)")"
+          export PATH="$toolchain_bin:$PATH"
           brew install xcodegen
           node --version
       - run: bash tool/check_native.sh macos
@@ -77,8 +78,8 @@ jobs:
       - name: Package Mac preview
         run: |
           app=apps/macos/build/Build/Products/Release/PasswordVault.app
-          lipo -verify_arch arm64 x86_64 "$app/Contents/MacOS/PasswordVault"
-          lipo -verify_arch arm64 x86_64 "$app/Contents/MacOS/PasswordVaultBridge"
+          lipo "$app/Contents/MacOS/PasswordVault" -verify_arch arm64 x86_64
+          lipo "$app/Contents/MacOS/PasswordVaultBridge" -verify_arch arm64 x86_64
           codesign --verify --deep --strict "$app"
           ditto -c -k --sequesterRsrc --keepParent "$app" apps/macos/build/PasswordVault-macos-universal.zip
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -201,7 +202,8 @@ jobs:
       - name: Install pinned WASM tool
         if: steps.wasm-tool.outputs.cache-hit != 'true'
         run: |
-          export PATH="$(dirname "$(rustup which --toolchain 1.96.0 rustc)"):$PATH"
+          toolchain_bin="$(dirname "$(rustup which --toolchain 1.96.0 rustc)")"
+          export PATH="$toolchain_bin:$PATH"
           cargo install wasm-bindgen-cli --version 0.2.128 --locked
       - run: bash tool/check_native.sh browser
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
