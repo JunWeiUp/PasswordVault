@@ -142,3 +142,6 @@ android/build/
 /apps/macos/NoteEditor/node_modules/
 /apps/macos/Resources/NoteEditor.html
 /apps/macos/Resources/NoteEditor-LICENSES.txt
+
+/release-input/
+/downloaded/

@@ -31,8 +31,8 @@ targets:
       properties:
         VaultAppGroup: $(VAULT_APP_GROUP)
         CFBundleDisplayName: PasswordVault
-        CFBundleShortVersionString: "2.1.1"
-        CFBundleVersion: "3"
+        CFBundleShortVersionString: "2.2.0"
+        CFBundleVersion: "4"
         UILaunchScreen: {}
         NSFaceIDUsageDescription: Unlock your encrypted PasswordVault with Face ID.
         NSLocalNetworkUsageDescription: Sync encrypted shared vaults with devices you authorize.
@@ -104,8 +104,8 @@ targets:
       path: Autofill/Info.plist
       properties:
         CFBundleDisplayName: PasswordVault
-        CFBundleShortVersionString: "2.1.1"
-        CFBundleVersion: "3"
+        CFBundleShortVersionString: "2.2.0"
+        CFBundleVersion: "4"
         VaultAppGroup: $(VAULT_APP_GROUP)
         NSExtension:
           NSExtensionPointIdentifier: com.apple.authentication-services-credential-provider-ui
