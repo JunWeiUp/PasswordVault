@@ -28,7 +28,7 @@ jobs:
       - id: release
         env:
           RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
-        run: python3 tool/validate_release_ref.py
+        run: python3 tool/validate_release_ref.py --native
       - name: Validate coordinated versions and repository regressions
         env:
           RELEASE_TAG: ${{ steps.release.outputs.tag }}
@@ -132,7 +132,7 @@ jobs:
         env:
           RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
           CHECKED_COMMIT: ${{ needs.prepare.outputs.commit }}
-        run: python3 tool/validate_release_ref.py
+        run: python3 tool/validate_release_ref.py --native
       - name: Publish regular GitHub release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
