@@ -48,13 +48,13 @@ Android/iOS accept any nonempty local master password without a minimum characte
 
 ## Current preview artifacts
 
-Android version **2.1.6**, code **21008**; iOS remains **2.1.1**, build **3**. The compact Android APK is produced at `apps/android/app/build/outputs/apk/compact/app-compact.apk`; the local delivery copy and SHA-256 are in ignored `native-test-output/mobile/`. Preview package IDs use the `nativepreview` suffix and preserve existing installations. This is a test build, not a production release.
+Android version **2.1.7**, code **21009**; iOS remains **2.1.1**, build **3**. The compact Android APK is produced at `apps/android/app/build/outputs/apk/compact/app-compact.apk`; the local delivery copy and SHA-256 are in ignored `native-test-output/mobile/`. Preview package IDs use the `nativepreview` suffix and preserve existing installations. This is a test build, not a production release.
 
 The native mobile CI workflow is authored in `.github/workflows/native.yml`. The local results above do not establish a remote CI result; record the relevant PR run separately after it executes.
 
 Interaction review: **9.1/10** (weighted 9.08) for the verified mobile core flows, after fixing cancellation races and false idle locking. This score excludes untested hardware, full accessibility, signed upgrades and release readiness.
 
-Android delivery now uses R8 and a phone-specific ARM64 package: **15.42 MB** (2.1.5), compared with the previous 36.43 MB universal debug package. See the [measured APK breakdown](ANDROID-APK-SIZE.md).
+Android delivery now uses R8 and a phone-specific ARM64 package: **15.44 MB** (2.1.7), compared with the previous 36.43 MB universal debug package. See the [measured APK breakdown](ANDROID-APK-SIZE.md).
 
 Android 2.1.3 restores the legacy account-card visual language and adds a separate Xiaomi Notes-inspired note workspace. See [UI reference and acceptance](ANDROID-UI-REFRESH.md).
 
@@ -71,3 +71,9 @@ The 2.1.5 Android migration review is **9.1/10** (9.135 weighted). The final 22-
 The Notes Add button now shares theme colors, contrast and the 18dp rounded shape with Accounts, Codes and Wallets. The note cards and reading layout retain their separate design. The clean ARM64 compact package passes two light-mode screenshot/design tests and one dark-mode screenshot/creation test; signature and 16 KB ZIP alignment checks pass. No physical-device update was performed for this increment. English README captures use an English interface and fictional English content on both Mac and Android; the Chinese note screenshot is refreshed for the shared button style.
 
 The iOS delete/restore UI flow now waits for asynchronous persistence and navigation dismissal before changing tabs, then asserts the selected tab before opening Trash. Both lifecycle flows pass three local iterations each; CI retains failed `.xcresult` bundles for diagnosing older simulator behavior. This does not add retry-on-failure or skip the restore assertion.
+
+## Preview 2.1.7 Notes and account refinement
+
+Only the Notes collection and password-account editor are restyled. Theme-aware system bars remove the gray full-screen dialog bands; filled account fields and adaptive secret actions retain readable width, while note tools share a compact row. See the [scoped design and validation record](design/android-native/ACCOUNT-NOTES-REVIEW.md) for the seven existing regressions, localized screenshot flows, dark appearance and 360dp/1.8× text checks. The final dark-only color adjustment received a fresh compact build and dark workflow check. The scope scored 9.2/10.
+
+The ARM64 compact APK is 15,440,179 bytes. Signature and 16 KB ZIP/ELF checks passed. It was installed over the existing Mi 10 preview after matching signatures and read back as 2.1.7-preview / 21009; no real vault was opened for testing. Broader hardware and production gates above remain unchanged.
