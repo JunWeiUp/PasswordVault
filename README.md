@@ -14,7 +14,7 @@
 
 Native clients are in **developer preview**. [Platform availability](#choose-your-workspace) and the [security model](docs/SECURITY_MODEL.md) describe current limits; an independent security review is still pending.
 
-**Download native 2.2.0:** [GitHub Release](https://github.com/JunWeiUp/PasswordVault/releases/tag/v2.2.0) · [Installation and signing limits](docs/NATIVE-RELEASE-NOTES.md). Includes Android, Mac development build, unpacked extension, Web, iOS Simulator and source.
+**Download native 2.2.1:** [GitHub Release](https://github.com/JunWeiUp/PasswordVault/releases/tag/v2.2.1) · [Installation and signing limits](docs/NATIVE-RELEASE-NOTES.md). Includes Android, Mac development build, unpacked extension, Web, iOS Simulator and source.
 
 ## Less searching. More doing.
 
