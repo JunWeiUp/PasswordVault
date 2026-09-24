@@ -1,0 +1,23 @@
+name: PR metadata
+on:
+  pull_request:
+    branches: [main, master]
+    types: [edited]
+permissions:
+  contents: read
+concurrency:
+  group: pr-metadata-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+jobs:
+  title:
+    name: Validate edited PR title
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Check Conventional Commit title
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: python3 tool/check_repository.py --pr-title
