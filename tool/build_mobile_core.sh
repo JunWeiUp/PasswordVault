@@ -16,15 +16,28 @@ bindings() {
     --config crates/vault-core/uniffi.toml
 }
 ios() {
+  local simulator_arch="${PASSWORDVAULT_IOS_SIM_ARCH:-universal}"
+  if [[ "$simulator_arch" == host ]]; then simulator_arch="$(uname -m)"; fi
+  local simulator_targets
+  case "$simulator_arch" in
+    universal) simulator_targets=(aarch64-apple-ios-sim x86_64-apple-ios) ;;
+    arm64) simulator_targets=(aarch64-apple-ios-sim) ;;
+    x86_64) simulator_targets=(x86_64-apple-ios) ;;
+    *) echo 'Invalid PASSWORDVAULT_IOS_SIM_ARCH; use universal, host, arm64 or x86_64.' >&2; return 2 ;;
+  esac
   mkdir -p apps/ios/Generated/Headers
   bindings swift apps/ios/Generated
   cp apps/ios/Generated/VaultCoreFFI.h apps/ios/Generated/Headers/
   cp apps/ios/Generated/VaultCoreFFI.modulemap apps/ios/Generated/Headers/module.modulemap
-  for mobile_target in aarch64-apple-ios aarch64-apple-ios-sim x86_64-apple-ios; do
+  for mobile_target in aarch64-apple-ios "${simulator_targets[@]}"; do
     IPHONEOS_DEPLOYMENT_TARGET=16.0 cargo build -p vault-core --release --locked --target "$mobile_target"
   done
   mkdir -p target/ios-simulator
-  lipo -create target/aarch64-apple-ios-sim/release/libvault_core.a target/x86_64-apple-ios/release/libvault_core.a -output target/ios-simulator/libvault_core.a
+  if [[ ${#simulator_targets[@]} -eq 2 ]]; then
+    lipo -create target/aarch64-apple-ios-sim/release/libvault_core.a target/x86_64-apple-ios/release/libvault_core.a -output target/ios-simulator/libvault_core.a
+  else
+    cp "target/${simulator_targets[0]}/release/libvault_core.a" target/ios-simulator/libvault_core.a
+  fi
   if [[ -d apps/ios/Generated/VaultCore.xcframework ]]; then
     rm -rf apps/ios/Generated/VaultCore.xcframework
   fi
@@ -34,12 +47,19 @@ ios() {
     -output apps/ios/Generated/VaultCore.xcframework
 }
 android() {
+  local android_targets
+  case "${PASSWORDVAULT_ANDROID_ABI:-all}" in
+    all) android_targets=(aarch64-linux-android x86_64-linux-android) ;;
+    arm64-v8a) android_targets=(aarch64-linux-android) ;;
+    x86_64) android_targets=(x86_64-linux-android) ;;
+    *) echo 'Invalid PASSWORDVAULT_ANDROID_ABI; use all, arm64-v8a or x86_64.' >&2; return 2 ;;
+  esac
   local sdk="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-$HOME/Library/Android/sdk}}"
   local ndk="${PASSWORDVAULT_NDK:-$sdk/ndk/27.0.12077973}"
   local bin="$ndk/toolchains/llvm/prebuilt/$ndk_host/bin"
   test -x "$bin/aarch64-linux-android24-clang"
   bindings kotlin apps/android/app/src/main/generated
-  for mobile_target in aarch64-linux-android x86_64-linux-android; do
+  for mobile_target in "${android_targets[@]}"; do
     local triple abi target_env
     case "$mobile_target" in
       aarch64-linux-android) triple=aarch64-linux-android; abi=arm64-v8a; target_env=AARCH64_LINUX_ANDROID ;;

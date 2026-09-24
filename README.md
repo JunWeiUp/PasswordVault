@@ -127,6 +127,8 @@ See [current plans](TODO.md), [security limitations](docs/SECURITY_MODEL.md) and
 
 ## Build with us
 
+CI runs only affected platform jobs for normal PRs; [selection, caching and full-run instructions](docs/CI.md).
+
 Use [development checks](docs/DEVELOPMENT.md), the [artifact registry](docs/REGISTRY.md) and [release procedure](docs/DEPLOYMENT.md). Native workflow source is in [.github/workflows/native.yml](.github/workflows/native.yml); use actual PR results when reporting CI status. Contribute with synthetic fixtures and follow [CONTRIBUTING.md](CONTRIBUTING.md) and [AGENTS.md](AGENTS.md).
 
 | Topic | Guides |

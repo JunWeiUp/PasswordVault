@@ -5,6 +5,12 @@
 - Scroll the Notes title, search, folders and collection tools with the note grid or list, including empty results. Keep bottom navigation and the New action available.
 - Preserve grid/list positions and filters when opening a note or switching tabs.
 
+## CI efficiency
+
+- Run affected native/legacy platform jobs instead of rebuilding every client for any edit; retain repository, secret-scan and complete release gates.
+- Remove duplicate feature-branch push runs and isolate PR metadata edits from code checks.
+- Split browser builds onto Linux; cache Rust, npm, Gradle and the pinned WASM CLI. Compile only the packaged Android ABI and host iOS simulator ABI in CI, preserving full local defaults and iOS device-library compilation.
+
 ## Native Android 2.1.7 preview and README presentation
 
 - Refine the Android Notes list and account editor while preserving the existing code, wallet and settings presentation. Consolidate note tools, improve card spacing, simplify account fields and make Save easier to find.
