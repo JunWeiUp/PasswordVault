@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.2.1 — first published coordinated native release
+
+- Validate native release tags against native manifests instead of the legacy Flutter version. Native and legacy releases keep separate version gates.
+- Supersede the unpublished 2.2.0 tag, which was stopped by validation before any public assets were created. The original tag remains unchanged.
+
+
 ## 2.2.0 — coordinated native release
 
 - Deliver native Android, universal Mac development app, Chromium extension, standalone Web, iOS Simulator and source archives from one verified tag.
