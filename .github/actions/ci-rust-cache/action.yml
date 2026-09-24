@@ -1,0 +1,18 @@
+name: Cache native Rust builds
+description: Cache registries and compiled native dependencies separately for each platform job.
+inputs:
+  component:
+    description: Stable platform cache namespace
+    required: true
+runs:
+  using: composite
+  steps:
+    - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: rust-v1-${{ runner.os }}-${{ runner.arch }}-${{ inputs.component }}-${{ hashFiles('rust-toolchain.toml', 'Cargo.lock', 'crates/**') }}
+        restore-keys: |
+          rust-v1-${{ runner.os }}-${{ runner.arch }}-${{ inputs.component }}-

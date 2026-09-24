@@ -1,48 +1,78 @@
 name: Native clients
 on:
   pull_request:
-    paths: ['apps/**', 'crates/**', 'Cargo.*', 'rust-toolchain.toml', 'tool/check_native.sh', 'tool/build_mobile_core.sh', '.github/workflows/native.yml']
+    branches: [main, master]
   push:
-    branches: [main]
-    paths: ['apps/**', 'crates/**', 'Cargo.*', 'rust-toolchain.toml', 'tool/check_native.sh', 'tool/build_mobile_core.sh', '.github/workflows/native.yml']
+    branches: [main, master]
   workflow_dispatch:
 permissions:
   contents: read
 concurrency:
-  group: native-${{ github.ref }}
+  group: native-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 jobs:
+  changes:
+    name: Select changed components
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      legacy: ${{ steps.select.outputs.legacy }}
+      legacy_android: ${{ steps.select.outputs.legacy_android }}
+      legacy_web: ${{ steps.select.outputs.legacy_web }}
+      core: ${{ steps.select.outputs.core }}
+      macos: ${{ steps.select.outputs.macos }}
+      browser: ${{ steps.select.outputs.browser }}
+      android: ${{ steps.select.outputs.android }}
+      ios: ${{ steps.select.outputs.ios }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - id: select
+        run: python3 tool/ci_changes.py
+
   native-core:
+    needs: changes
+    if: needs.changes.outputs.core == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
+      - uses: ./.github/actions/ci-rust-cache
+        with:
+          component: core
       - run: rustup toolchain install 1.96.0 --profile minimal --component rustfmt,clippy
       - run: bash tool/check_native.sh core
   mac-and-browser:
+    needs: changes
+    if: needs.changes.outputs.macos == 'true'
     runs-on: macos-15
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
+      - uses: ./.github/actions/ci-rust-cache
+        with:
+          component: macos
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: '22'
+          cache: npm
+          cache-dependency-path: apps/macos/NoteEditor/package-lock.json
       - name: Install pinned build tools
         run: |
-          rustup toolchain install 1.96.0 --profile minimal --component rustfmt,clippy --target aarch64-apple-darwin,x86_64-apple-darwin,wasm32-unknown-unknown
+          rustup toolchain install 1.96.0 --profile minimal --component rustfmt,clippy --target aarch64-apple-darwin,x86_64-apple-darwin
           export PATH="$(dirname "$(rustup which --toolchain 1.96.0 rustc)"):$PATH"
-          cargo install wasm-bindgen-cli --version 0.2.128 --locked
           brew install xcodegen
           node --version
       - run: bash tool/check_native.sh macos
       - name: Native state tests
         run: |
           xcodebuild -project apps/macos/PasswordVault.xcodeproj -scheme PasswordVault -configuration Debug -derivedDataPath apps/macos/build -destination 'platform=macOS,arch=arm64' ARCHS=arm64 test
-      - run: bash tool/check_native.sh browser
       - name: Package Mac preview
         run: ditto -c -k --sequesterRsrc --keepParent apps/macos/build/Build/Products/Release/PasswordVault.app apps/macos/build/PasswordVault-macos-universal.zip
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -51,33 +81,35 @@ jobs:
           path: apps/macos/build/PasswordVault-macos-universal.zip
           if-no-files-found: error
           retention-days: 14
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: lightweight-browser-developer-preview
-          path: apps/browser/dist
-          if-no-files-found: error
-          retention-days: 14
 
   android-native:
+    needs: changes
+    if: needs.changes.outputs.android == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
+      - uses: ./.github/actions/ci-rust-cache
+        with:
+          component: android
       - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
         with:
           distribution: temurin
           java-version: '17'
+      - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4
       - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
         with:
           packages: platform-tools
           log-accepted-android-sdk-licenses: false
       - name: Install native targets and Android tools
         run: |
-          rustup toolchain install 1.96.0 --profile minimal --target aarch64-linux-android,x86_64-linux-android
+          rustup toolchain install 1.96.0 --profile minimal --target aarch64-linux-android
           sdkmanager 'platforms;android-36' 'build-tools;36.0.0' 'ndk;27.0.12077973'
       - run: bash tool/build_mobile_core.sh android
+        env:
+          PASSWORDVAULT_ANDROID_ABI: arm64-v8a
       - name: Build isolated preview and test applications
         run: |
           ./apps/android/gradlew -p apps/android :app:assembleCompact :app:assembleCompactAndroidTest :login-fixture:assembleDebug -PtestBuildType=compact -PtargetAbi=arm64-v8a
@@ -91,17 +123,29 @@ jobs:
           if-no-files-found: error
           retention-days: 14
   ios-native:
+    needs: changes
+    if: needs.changes.outputs.ios == 'true'
     runs-on: macos-15
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
+      - uses: ./.github/actions/ci-rust-cache
+        with:
+          component: ios
       - name: Install native targets and project generator
         run: |
-          rustup toolchain install 1.96.0 --profile minimal --target aarch64-apple-ios,aarch64-apple-ios-sim,x86_64-apple-ios
+          case "$(uname -m)" in
+            arm64) simulator_target=aarch64-apple-ios-sim ;;
+            x86_64) simulator_target=x86_64-apple-ios ;;
+            *) echo 'Unsupported runner architecture' >&2; exit 1 ;;
+          esac
+          rustup toolchain install 1.96.0 --profile minimal --target "aarch64-apple-ios,$simulator_target"
           brew install xcodegen
       - run: bash tool/build_mobile_core.sh ios
+        env:
+          PASSWORDVAULT_IOS_SIM_ARCH: host
       - name: Compile app, extension and run isolated lifecycle tests
         run: |
           xcodegen generate --spec apps/ios/project.yml
@@ -119,5 +163,42 @@ jobs:
         with:
           name: native-ios-simulator-preview
           path: apps/ios/build/Build/Products/Debug-iphonesimulator/PasswordVault.app
+          if-no-files-found: error
+          retention-days: 14
+
+  browser-native:
+    needs: changes
+    if: needs.changes.outputs.browser == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/ci-rust-cache
+        with:
+          component: browser
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: apps/browser/package-lock.json
+      - name: Install Rust target
+        run: rustup toolchain install 1.96.0 --profile minimal --component clippy --target wasm32-unknown-unknown
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
+        id: wasm-tool
+        with:
+          path: ~/.cargo/bin/wasm-bindgen*
+          key: wasm-bindgen-${{ runner.os }}-${{ runner.arch }}-0.2.128
+      - name: Install pinned WASM tool
+        if: steps.wasm-tool.outputs.cache-hit != 'true'
+        run: |
+          export PATH="$(dirname "$(rustup which --toolchain 1.96.0 rustc)"):$PATH"
+          cargo install wasm-bindgen-cli --version 0.2.128 --locked
+      - run: bash tool/check_native.sh browser
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: lightweight-browser-developer-preview
+          path: apps/browser/dist
           if-no-files-found: error
           retention-days: 14

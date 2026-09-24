@@ -56,3 +56,7 @@ For WebDAV, browsers enforce CORS. Configure your server to allow your chosen or
 ## Dependency and schema changes
 
 Follow the [data compatibility rules](ARCHITECTURE.md#data-compatibility). Regenerate the database and localizations before analysis, and include migration/failure-path tests when changing storage or encryption. Package and runtime asset validation is documented in [REGISTRY.md](REGISTRY.md).
+
+## CI scope and performance
+
+[CI selection and caching](CI.md) explains which platform checks run for a change, how to request a complete run, and why release checks remain complete. Local default mobile builds still compile all supported ABIs; CI selects only the Android APK ABI and host iOS simulator architecture while retaining the iOS device-library build.
