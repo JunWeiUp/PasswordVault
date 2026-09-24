@@ -165,6 +165,7 @@ internal fun EntryCollection(
     val compact =
         WindowInsets.ime.getBottom(LocalDensity.current) > 0 ||
             LocalConfiguration.current.screenHeightDp < 500
+    val inlineNoteTools = notes && !compact && !ui.selecting.value && state.sharedVaults.isEmpty()
     val header: @Composable () -> Unit = {
         Column {
             if (!compact && !notes)
@@ -216,12 +217,14 @@ internal fun EntryCollection(
                             Icon(Icons.Outlined.Close, t("清空搜索", "Clear search"))
                         }
                 },
-                shape = RoundedCornerShape(12.dp),
+                shape = RoundedCornerShape(if (notes) 16.dp else 12.dp),
                 colors =
                     OutlinedTextFieldDefaults.colors(
                         unfocusedContainerColor = MaterialTheme.colorScheme.surface,
                         focusedContainerColor = MaterialTheme.colorScheme.surface,
-                        unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant,
+                        unfocusedBorderColor =
+                            if (notes) Color.Transparent
+                            else MaterialTheme.colorScheme.outlineVariant,
                     ),
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
             )
@@ -236,8 +239,10 @@ internal fun EntryCollection(
                                 onClick = { folderMenu = true },
                                 modifier = Modifier.fillMaxWidth(),
                             ) {
-                                Icon(Icons.Outlined.FolderOpen, null, Modifier.size(18.dp))
-                                Spacer(Modifier.width(6.dp))
+                                if (LocalDensity.current.fontScale <= 1.25f) {
+                                    Icon(Icons.Outlined.FolderOpen, null, Modifier.size(18.dp))
+                                    Spacer(Modifier.width(6.dp))
+                                }
                                 Text(
                                     category.ifEmpty { t("全部笔记", "All notes") },
                                     modifier = Modifier.weight(1f),
@@ -284,8 +289,7 @@ internal fun EntryCollection(
                         Box {
                             IconButton(onClick = { sortMenu = true }) {
                                 Icon(
-                                    if (favorites) Icons.Outlined.Star
-                                    else Icons.Outlined.MoreHoriz,
+                                    if (favorites) Icons.Outlined.Star else Icons.Outlined.Sort,
                                     t("筛选与排序", "Filter and sort"),
                                 )
                             }
@@ -336,6 +340,18 @@ internal fun EntryCollection(
                                 )
                             }
                         }
+                        if (inlineNoteTools)
+                            CollectionTools(
+                                page,
+                                ui,
+                                filtered,
+                                state,
+                                vault,
+                                t,
+                                manageCategories,
+                                operationScope,
+                                compactActions = true,
+                            )
                     }
                 else if (categories.isNotEmpty()) {
                     Row(
@@ -379,7 +395,7 @@ internal fun EntryCollection(
                         }
                     }
             }
-            if (page != "trash")
+            if (page != "trash" && !inlineNoteTools)
                 CollectionTools(
                     page,
                     ui,
@@ -902,8 +918,8 @@ private fun NoteCard(
                     ),
         ) {
             Column(
-                Modifier.padding(16.dp).heightIn(min = 140.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
+                Modifier.padding(14.dp).heightIn(min = 128.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 Row(verticalAlignment = Alignment.Top) {
                     if (selection != null)
@@ -945,23 +961,25 @@ private fun NoteCard(
                         preview,
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 5,
+                        maxLines = 4,
                         overflow = TextOverflow.Ellipsis,
                     )
-                Spacer(Modifier.height(4.dp))
-                if (item.optString("category").isNotEmpty())
-                    Text(
-                        item.optString("category"),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        noteDate(item),
-                        Modifier.weight(1f),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        if (item.optString("category").isNotEmpty())
+                            Text(
+                                item.optString("category"),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        Text(
+                            noteDate(item),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                     IconButton(
                         enabled = selection == null,
                         onClick = { menu = true },
