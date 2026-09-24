@@ -1,0 +1,73 @@
+name: PasswordVault
+configs:
+  Debug: debug
+  Release: release
+  SignedRelease: release
+options:
+  minimumXcodeGenVersion: 2.38.0
+  deploymentTarget:
+    macOS: "13.0"
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    MACOSX_DEPLOYMENT_TARGET: "13.0"
+    CODE_SIGN_STYLE: Manual
+    CODE_SIGN_IDENTITY: "-"
+    ENABLE_HARDENED_RUNTIME: YES
+    SWIFT_STRICT_CONCURRENCY: targeted
+  configs:
+    SignedRelease:
+      CODE_SIGN_STYLE: Automatic
+      CODE_SIGN_IDENTITY: Apple Development
+targets:
+  PasswordVault:
+    type: application
+    platform: macOS
+    sources:
+      - Sources
+      - path: Generated
+        excludes: ["*.h", "*.modulemap"]
+      - path: Resources
+        buildPhase: resources
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.securepass.vault.macos
+        PRODUCT_NAME: PasswordVault
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        SWIFT_OBJC_BRIDGING_HEADER: Generated/VaultCoreFFI.h
+        HEADER_SEARCH_PATHS: "$(PROJECT_DIR)/Generated"
+        LIBRARY_SEARCH_PATHS: "$(PROJECT_DIR)/../../target/release"
+        OTHER_LDFLAGS: ["$(PROJECT_DIR)/../../target/universal/libvault_core.a", "-lresolv", "-liconv", "-framework", "Security"]
+        GENERATE_INFOPLIST_FILE: NO
+        INFOPLIST_FILE: Info.plist
+      configs:
+        SignedRelease:
+          CODE_SIGN_ENTITLEMENTS: Keychain.entitlements
+    dependencies:
+      - target: PasswordVaultBridge
+    postBuildScripts:
+      - name: Embed native messaging bridge
+        script: |
+          cp "${BUILT_PRODUCTS_DIR}/PasswordVaultBridge" "${TARGET_BUILD_DIR}/${CONTENTS_FOLDER_PATH}/MacOS/PasswordVaultBridge"
+        inputFiles: ["$(BUILT_PRODUCTS_DIR)/PasswordVaultBridge"]
+        outputFiles: ["$(TARGET_BUILD_DIR)/$(CONTENTS_FOLDER_PATH)/MacOS/PasswordVaultBridge"]
+    scheme:
+      testTargets: [PasswordVaultTests]
+  PasswordVaultTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources: Tests
+    dependencies:
+      - target: PasswordVault
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.securepass.vault.macos.tests
+        GENERATE_INFOPLIST_FILE: YES
+  PasswordVaultBridge:
+    type: tool
+    platform: macOS
+    sources: Bridge
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.securepass.vault.macos.bridge
+        PRODUCT_NAME: PasswordVaultBridge
