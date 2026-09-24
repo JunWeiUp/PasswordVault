@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.2.0 — coordinated native release
+
+- Deliver native Android, universal Mac development app, Chromium extension, standalone Web, iOS Simulator and source archives from one verified tag.
+- Sign Android public APKs with the reviewed release certificate; keep the native vault isolated from legacy installations.
+- Validate coordinated client versions, release identity, Apple archive permissions, APK metadata and complete asset checksums before publishing.
+- Include refreshed Android Notes/account detail interfaces and whole-page Notes scrolling from the merged native updates.
+- Document unsigned distribution boundaries: Mac is ad-hoc signed and not notarized; iOS device distribution is not included. Security and hardware acceptance gates remain open.
+
+
 ## Native Android 2.1.8 preview
 
 - Scroll the Notes title, search, folders and collection tools with the note grid or list, including empty results. Keep bottom navigation and the New action available.

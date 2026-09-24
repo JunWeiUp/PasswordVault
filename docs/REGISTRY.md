@@ -1,5 +1,16 @@
 # Build and distribution registry
 
+## Native 2.x releases
+
+Tags `v2.*` and later use `native-release.yml`; `v1.*` remains the legacy Flutter release workflow. Update `native-version.json` and the native platform manifests together, including both iOS targets. For browser releases use `PASSWORDVAULT_RELEASE_VERSION=2.2.0 npm run release:local` (omit the variable for the usual patch increment). Validate with `python3 tool/native_release.py versions` and `bash tool/check.sh repo`.
+
+Native release checks run the complete native suite, then publish only after every job succeeds. Android public APKs use the protected `release` environment and the reviewed certificate; `previewRelease` is non-debuggable and keeps the separate native-preview application ID. Missing signing configuration fails the build. Ad-hoc Mac universal ZIPs, iOS Simulator ZIPs (not IPA), browser/Web ZIPs and committed-source ZIPs accompany the APKs. Apple archives retain executable permissions. The packager validates versions, simulator identity and checksums; the workflow verifies the tag still identifies the checked commit before publishing a regular Latest release.
+
+See [native installation notes](NATIVE-RELEASE-NOTES.md) for signature-change migration, Mac Touch ID limitations, simulator/device differences and the exact public inventory. No Apple signing identities or provisioning material are published. Downloaded native builds do not replace or automatically migrate legacy vaults.
+
+## Legacy 1.x delivery
+
+
 ## Scope
 
 PasswordVault distributes an application, not a public component package. There is no component registry service or package publication job. `pubspec.yaml` sets `publish_to: 'none'`; reusable widgets are consumed directly from this repository. This guide records the build inputs, validation, and distribution boundaries for the existing application targets.

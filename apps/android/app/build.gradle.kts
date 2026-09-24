@@ -1,8 +1,18 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
 }
+
+// Release credentials are generated only in the protected CI environment.
+val releasePropertiesFile = rootProject.file("../../android/key.properties")
+val releaseProperties = Properties().apply {
+    if (releasePropertiesFile.isFile) releasePropertiesFile.inputStream().use { load(it) }
+}
+val hasReleaseSigning = listOf("storeFile", "storePassword", "keyAlias", "keyPassword")
+    .all { !releaseProperties.getProperty(it).isNullOrEmpty() }
 
 android {
     namespace = "com.securepass.vault"
@@ -12,14 +22,22 @@ android {
         applicationId = "com.securepass.vault"
         minSdk = 24
         targetSdk = 36
-        versionCode = 21010
-        versionName = "2.1.8"
+        versionCode = 22001
+        versionName = "2.2.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         testProguardFile("test-proguard-rules.pro")
         ndk {
             val requestedAbi = providers.gradleProperty("targetAbi").orNull
             require(requestedAbi == null || requestedAbi in listOf("arm64-v8a", "x86_64"))
             abiFilters += requestedAbi?.let(::listOf) ?: listOf("arm64-v8a", "x86_64")
+        }
+    }
+    signingConfigs {
+        if (hasReleaseSigning) create("publicRelease") {
+            storeFile = file(releaseProperties.getProperty("storeFile"))
+            storePassword = releaseProperties.getProperty("storePassword")
+            keyAlias = releaseProperties.getProperty("keyAlias")
+            keyPassword = releaseProperties.getProperty("keyPassword")
         }
     }
     buildTypes {
@@ -31,6 +49,13 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+        }
+        create("previewRelease") {
+            initWith(getByName("release"))
+            // Keep the native vault separate until legacy migration gates pass.
+            applicationIdSuffix = ".nativepreview"
+            matchingFallbacks += "release"
+            if (hasReleaseSigning) signingConfig = signingConfigs.getByName("publicRelease")
         }
         create("compact") {
             initWith(getByName("debug"))
@@ -82,4 +107,11 @@ dependencies {
     androidTestImplementation("androidx.test.ext:junit:1.3.0")
     androidTestImplementation("androidx.test:runner:1.7.0")
     androidTestImplementation("androidx.test.uiautomator:uiautomator:2.3.0")
+}
+
+// Fail closed: never publish an unsigned or debug-signed native release.
+tasks.configureEach {
+    if (name == "prePreviewReleaseBuild") doFirst {
+        check(hasReleaseSigning) { "Public native release requires protected signing configuration." }
+    }
 }
