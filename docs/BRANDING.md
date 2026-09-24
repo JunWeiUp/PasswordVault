@@ -19,3 +19,9 @@ dart run tool/generate_icons.dart
 ```
 
 Keep the English and Chinese README image references synchronized. Check 16/32 px readability and platform masking before committing changed exports. Do not use screenshots containing real credentials in project marketing.
+
+## README campaign
+
+The native-client README uses localized [English](design/readme/hero-en.png) and [Chinese](design/readme/hero-zh-CN.png) campaign covers: a navy vault, notebook and credential cards against a warm ivory architectural backdrop. This illustration establishes the product story; the separate Mac and Android galleries show actual interfaces with fictional data. The existing app icon remains the brand reference.
+
+The covers were created with the built-in image generation tool. Exact prompts and localization constraints are retained in [campaign prompts](design/readme/PROMPTS.md). They make no security-certification, public-release or automatic-sync claim. Preserve the original language-specific PNGs in the repository and keep meaningful copy, preview status and links in accessible README text.
