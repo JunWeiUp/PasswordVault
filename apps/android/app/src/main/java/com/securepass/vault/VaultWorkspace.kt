@@ -10,7 +10,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -195,13 +194,9 @@ internal fun VaultWorkspace(
                                 put("category", preferences.category.value)
                             }
                     },
-                    containerColor =
-                        if (page == "secureNote") Color(0xFFFFC847)
-                        else MaterialTheme.colorScheme.primary,
-                    contentColor =
-                        if (page == "secureNote") Color(0xFF403000)
-                        else MaterialTheme.colorScheme.onPrimary,
-                    shape = RoundedCornerShape(if (page == "secureNote") 28.dp else 18.dp),
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary,
+                    shape = RoundedCornerShape(18.dp),
                 ) {
                     Icon(Icons.Outlined.Add, t("新建", "Add"))
                 }

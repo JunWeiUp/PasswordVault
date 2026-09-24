@@ -52,7 +52,7 @@ Mac 外壳使用 SwiftUI，仅 Markdown 编辑采用本地 WKWebView。插件使
 | **独立 Web** | 独立加密资料库、增删改查、TOTP、备份/导入和工具 | 共享/WebDAV/QR 界面、完整主题/语言对齐及旧 OPFS 自动迁移尚未完成 |
 | **Windows / Linux 桌面** | 无原生桌面客户端 | 尚未实现 |
 
-本轮目标为 **Mac 2.0.9 build 13**，浏览器保持 **2.0.9**。Android 预览为 **2.1.5 / 21007**，iOS 预览为 **2.1.1 / 3**。本地版本和测试结果不代表已公开发布或上架，详见[原生迁移](docs/NATIVE-MIGRATION.md)及[移动端产物](docs/MOBILE-IMPLEMENTATION.md#current-preview-artifacts)。
+本轮目标为 **Mac 2.0.9 build 13**，浏览器保持 **2.0.9**。Android 预览为 **2.1.6 / 21008**，iOS 预览为 **2.1.1 / 3**。本地版本和测试结果不代表已公开发布或上架，详见[原生迁移](docs/NATIVE-MIGRATION.md)及[移动端产物](docs/MOBILE-IMPLEMENTATION.md#current-preview-artifacts)。
 
 ## 快速开始
 

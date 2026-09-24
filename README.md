@@ -11,7 +11,7 @@
 
 > **Developer preview.** Use fictional credentials for evaluation. Native V2 encrypts stored vault data and does not persist the master password, but independent security review, broader device testing and distribution gates remain open. See the [security model](docs/SECURITY_MODEL.md).
 
-![Mac notes workspace with locally bundled Milkdown and fictional notes](docs/design/macos-native/current-notes.png)
+![Mac notes workspace with locally bundled Milkdown and fictional notes](docs/design/macos-native/current-notes-en.png)
 
 ## What you can do
 
@@ -30,13 +30,13 @@ These native interfaces use fictional data. They are not the older Flutter galle
 
 ### Mac account details
 
-![Mac account details with in-place editing and grouped toolbar actions](docs/design/macos-native/current-password.png)
+![Mac account details with in-place editing and grouped toolbar actions](docs/design/macos-native/current-password-en.png)
 
 ### Android preview
 
 <p align="center">
-  <img src="docs/design/android-native/notes.png" alt="Native Android notes with fictional entries" width="280">
-  <img src="docs/design/android-native/parity/account-editor.png" alt="Native Android account editor with fictional credentials" width="280">
+  <img src="docs/design/android-native/notes-en.png" alt="Native Android notes with fictional entries" width="280">
+  <img src="docs/design/android-native/account-editor-en.png" alt="Native Android account editor with fictional credentials" width="280">
 </p>
 
 More evidence: [Mac workflows](docs/design/macos-native/INTERACTION-AUDIT.md) · [Android UI and migration](docs/ANDROID-LEGACY-PARITY.md) · [Browser workflows](docs/BROWSER-ACCEPTANCE.md).
@@ -52,7 +52,7 @@ More evidence: [Mac workflows](docs/design/macos-native/INTERACTION-AUDIT.md) ·
 | **Standalone Web** | Independent encrypted vault, CRUD, TOTP, backup/import and utilities | Sharing/WebDAV/QR UI, full theme/language parity and automatic legacy OPFS migration remain incomplete |
 | **Windows / Linux desktop** | No native desktop client | Not implemented |
 
-This increment targets **Mac 2.0.9 build 13**; the browser remains **2.0.9**. Android preview is **2.1.5 / 21007**; iOS preview is **2.1.1 / 3**. Local versions and test results do not imply a public or store release. See [native migration](docs/NATIVE-MIGRATION.md) and [mobile artifacts](docs/MOBILE-IMPLEMENTATION.md#current-preview-artifacts).
+This increment targets **Mac 2.0.9 build 13**; the browser remains **2.0.9**. Android preview is **2.1.6 / 21008**; iOS preview is **2.1.1 / 3**. Local versions and test results do not imply a public or store release. See [native migration](docs/NATIVE-MIGRATION.md) and [mobile artifacts](docs/MOBILE-IMPLEMENTATION.md#current-preview-artifacts).
 
 ## Run from source
 

@@ -12,8 +12,8 @@ android {
         applicationId = "com.securepass.vault"
         minSdk = 24
         targetSdk = 36
-        versionCode = 21007
-        versionName = "2.1.5"
+        versionCode = 21008
+        versionName = "2.1.6"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         testProguardFile("test-proguard-rules.pro")
         ndk {

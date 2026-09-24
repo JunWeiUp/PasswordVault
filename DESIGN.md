@@ -16,7 +16,7 @@ The native-specific sections describe the current client direction; the shared p
 
 The owner requested alignment with the existing Flutter Android UI, except for a separately designed Notes experience inspired by Xiaomi Notes. Use `lib/core/theme/app_theme.dart` and `docs/images/vault-mobile.png` as the account/workspace reference: warm `#FAF9F6` background, `#315CE7` primary actions, white 18dp cards, category/tag filters and the original Accounts → Codes → Wallets → Notes → Settings order. Keep every visible menu/action functional.
 
-Notes use a compact heading, folder selector, grid/list switch, text-first adaptive cards with real modification times, and a yellow circular Add action. Large fonts reduce the grid to one column. Reading and editing have wide text margins; formatting/preview remain secondary. Folder, tags and vault membership are in Note information. This is an inspiration-based design, not a complete clone of Xiaomi's attachment/audio features. See [Android UI acceptance](docs/ANDROID-UI-REFRESH.md).
+Notes use a compact heading, folder selector, grid/list switch, text-first adaptive cards with real modification times, and the same primary-colored, 18dp rounded Add action used by Accounts, Codes and Wallets. Large fonts reduce the grid to one column. Reading and editing have wide text margins; formatting/preview remain secondary. Folder, tags and vault membership are in Note information. This is an inspiration-based design, not a complete clone of Xiaomi's attachment/audio features. See [Android UI acceptance](docs/ANDROID-UI-REFRESH.md).
 
 ## Product direction
 
