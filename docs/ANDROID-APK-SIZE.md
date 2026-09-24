@@ -61,3 +61,7 @@ The clean ARM64 compact artifact measures 15,423,783 bytes (15.42 MB). This incr
 ## 2.1.7 Notes/account refinement
 
 The clean ARM64 compact APK is **15,440,179 bytes (15.44 MB)**, 16,396 bytes above 2.1.6. Signature, 16 KB ZIP alignment and all five native libraries' load-segment alignments passed. This presentation update adds adaptive account form styling; the older component breakdown remains historical. See the [scoped validation record](design/android-native/ACCOUNT-NOTES-REVIEW.md).
+
+## 2.1.8 whole-page Notes scrolling
+
+The clean ARM64 compact APK remains **15,440,179 bytes (15.44 MB)**. This update changes collection layout and navigation presentation only. See the [scrolling regression record](design/android-native/NOTES-SCROLL.md).

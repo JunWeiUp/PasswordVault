@@ -1,5 +1,10 @@
 # Changelog
 
+## Native Android 2.1.8 preview
+
+- Scroll the Notes title, search, folders and collection tools with the note grid or list, including empty results. Keep bottom navigation and the New action available.
+- Preserve grid/list positions and filters when opening a note or switching tabs.
+
 ## CI efficiency
 
 - Run affected native/legacy platform jobs instead of rebuilding every client for any edit; retain repository, secret-scan and complete release gates.

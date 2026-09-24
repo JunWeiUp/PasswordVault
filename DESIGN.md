@@ -18,6 +18,8 @@ The owner requested alignment with the existing Flutter Android UI, except for a
 
 Notes use a compact heading, folder selector, grid/list switch, text-first adaptive cards with real modification times, and the same primary-colored, 18dp rounded Add action used by Accounts, Codes and Wallets. Large fonts reduce the grid to one column. Reading and editing have wide text margins; formatting/preview remain secondary. Folder, tags and vault membership are in Note information. This is an inspiration-based design, not a complete clone of Xiaomi's attachment/audio features. See [Android UI acceptance](docs/ANDROID-UI-REFRESH.md).
 
+Notes uses a single lazy scrolling surface in both grid and list modes. Its title, search, folders and collection actions are ordinary scrollable content; the grid header spans all columns. Empty results remain in that same surface. Bottom navigation and New remain available, and opening a note or switching tabs preserves the corresponding collection scroll state. The note reader retains its own navigation bar.
+
 The scoped Notes/account refinement consolidates note tools into the folder row when space and selection state permit; batch selection remains available from the tools menu. Account editing uses neutral section headings, soft filled fields, restrained secondary actions and a clear Save button. Its full-screen window follows the page's system-bar colors and contrast in both themes. Keep all existing fields, reveal/copy/generate actions and cancellation behavior. This refinement does not restyle authenticator, wallet or settings pages.
 
 ## Product direction

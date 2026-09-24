@@ -10,6 +10,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.staggeredgrid.LazyVerticalStaggeredGrid
 import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells
+import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridItemSpan
 import androidx.compose.foundation.lazy.staggeredgrid.items as gridItems
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -166,11 +167,25 @@ internal fun EntryCollection(
         WindowInsets.ime.getBottom(LocalDensity.current) > 0 ||
             LocalConfiguration.current.screenHeightDp < 500
     val inlineNoteTools = notes && !compact && !ui.selecting.value && state.sharedVaults.isEmpty()
+    val headerInset = if (notes) 0.dp else 20.dp
     val header: @Composable () -> Unit = {
         Column {
+            if (notes)
+                Row(
+                    Modifier.fillMaxWidth().heightIn(min = 64.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        t("笔记", "Notes"),
+                        Modifier.weight(1f),
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
+                    )
+                    IconButton(onClick = vault::lock) { Icon(Icons.Outlined.Lock, t("锁定", "Lock")) }
+                }
             if (!compact && !notes)
                 Column(
-                    Modifier.padding(horizontal = 20.dp).padding(top = 16.dp, bottom = 18.dp),
+                    Modifier.padding(horizontal = headerInset).padding(top = 16.dp, bottom = 18.dp),
                     verticalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
                     Text(
@@ -226,12 +241,12 @@ internal fun EntryCollection(
                             if (notes) Color.Transparent
                             else MaterialTheme.colorScheme.outlineVariant,
                     ),
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = headerInset),
             )
             if (!compact) {
                 if (notes)
                     Row(
-                        Modifier.fillMaxWidth().padding(start = 20.dp, top = 10.dp, end = 12.dp),
+                        Modifier.fillMaxWidth().padding(top = 10.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Box(Modifier.weight(1f)) {
@@ -408,7 +423,7 @@ internal fun EntryCollection(
                 )
             if (!notes)
                 Row(
-                    Modifier.fillMaxWidth().padding(horizontal = 20.dp),
+                    Modifier.fillMaxWidth().padding(horizontal = headerInset),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
@@ -510,78 +525,49 @@ internal fun EntryCollection(
                 }
         }
     }
-    if (notes)
-        Column(Modifier.fillMaxSize()) {
-            header()
-            if (filtered.isEmpty()) emptyState()
-            else if (grid) {
-                val minimum = if (LocalDensity.current.fontScale > 1.2f) 210.dp else 160.dp
-                LazyVerticalStaggeredGrid(
-                    columns = StaggeredGridCells.Adaptive(minimum),
-                    state = ui.masonry,
-                    modifier = Modifier.weight(1f),
-                    contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 100.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    verticalItemSpacing = 12.dp,
-                ) {
-                    gridItems(filtered, key = { it.getString("id") }) { item ->
-                        NoteCard(
-                            item,
-                            vault,
-                            t,
-                            { openItem(item) },
-                            { edit(item) },
-                            { delete(item) },
-                            selection =
-                                if (ui.selecting.value) item.optString("id") in ui.selectedIds.value
-                                else null,
-                        )
-                    }
-                }
-            } else
-                LazyColumn(
-                    Modifier.weight(1f).fillMaxWidth(),
-                    state = ui.list,
-                    contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 100.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    items(filtered, key = { it.getString("id") }) { item ->
-                        if (item.optString("type") == "secureNote")
-                            NoteCard(
-                                item,
-                                vault,
-                                t,
-                                { openItem(item) },
-                                { edit(item) },
-                                { delete(item) },
-                                selection =
-                                    if (ui.selecting.value)
-                                        item.optString("id") in ui.selectedIds.value
-                                    else null,
-                            )
-                        else
-                            CredentialCard(
-                                item,
-                                vault,
-                                t,
-                                { openItem(item) },
-                                { edit(item) },
-                                { delete(item) },
-                            )
-                    }
-                }
+    if (notes && grid) {
+        val minimum = if (LocalDensity.current.fontScale > 1.2f) 210.dp else 160.dp
+        LazyVerticalStaggeredGrid(
+            columns = StaggeredGridCells.Adaptive(minimum),
+            state = ui.masonry,
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 100.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalItemSpacing = 12.dp,
+        ) {
+            item(key = "collection-controls", span = StaggeredGridItemSpan.FullLine) { header() }
+            if (filtered.isEmpty())
+                item(key = "empty", span = StaggeredGridItemSpan.FullLine) { emptyState() }
+            gridItems(filtered, key = { it.getString("id") }) { item ->
+                NoteCard(
+                    item,
+                    vault,
+                    t,
+                    { openItem(item) },
+                    { edit(item) },
+                    { delete(item) },
+                    selection =
+                        if (ui.selecting.value) item.optString("id") in ui.selectedIds.value
+                        else null,
+                )
+            }
         }
-    else {
+    } else {
         LazyColumn(
             state = ui.list,
             modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(bottom = 100.dp),
+            contentPadding =
+                PaddingValues(
+                    start = if (notes) 20.dp else 0.dp,
+                    end = if (notes) 20.dp else 0.dp,
+                    bottom = 100.dp,
+                ),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             item(key = "collection-controls") { header() }
             if (filtered.isEmpty()) item(key = "empty") { emptyState() }
             items(filtered, key = { it.getString("id") }) { item ->
-                Box(Modifier.padding(horizontal = 20.dp)) {
+                Box(Modifier.padding(horizontal = if (notes) 0.dp else 20.dp)) {
                     if (item.optString("type") == "secureNote")
                         NoteCard(
                             item,
