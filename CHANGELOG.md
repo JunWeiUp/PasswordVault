@@ -1,5 +1,10 @@
 # Changelog
 
+## Native Android 2.1.8 preview
+
+- Scroll the Notes title, search, folders and collection tools with the note grid or list, including empty results. Keep bottom navigation and the New action available.
+- Preserve grid/list positions and filters when opening a note or switching tabs.
+
 ## Native Android 2.1.7 preview and README presentation
 
 - Refine the Android Notes list and account editor while preserving the existing code, wallet and settings presentation. Consolidate note tools, improve card spacing, simplify account fields and make Save easier to find.

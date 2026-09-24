@@ -88,7 +88,7 @@ internal fun CollectionTools(
     var cachedInput by ui.tools.cachedInput
     var parsed by ui.tools.parsed
     Column(
-        Modifier.padding(horizontal = if (compactActions) 0.dp else 20.dp),
+        Modifier.padding(horizontal = if (compactActions || page == "secureNote") 0.dp else 20.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {

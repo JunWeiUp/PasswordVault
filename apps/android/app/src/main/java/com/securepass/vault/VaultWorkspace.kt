@@ -83,79 +83,74 @@ internal fun VaultWorkspace(
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
-            TopAppBar(
-                colors =
-                    TopAppBarDefaults.topAppBarColors(
-                        containerColor = MaterialTheme.colorScheme.background
-                    ),
-                title = {
-                    if (current != null || page in secondary)
-                        Text(
-                            if (current?.optString("type") == "secureNote") t("笔记", "Note")
-                            else
-                                when (current?.optString("type")) {
-                                    "password" -> t("账号详情", "Account details")
-                                    "totp" -> t("验证码详情", "Code details")
-                                    "crypto" -> t("钱包详情", "Wallet details")
-                                    else -> secondary[page].orEmpty()
-                                },
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    else if (page == "secureNote")
-                        Text(
-                            t("笔记", "Notes"),
-                            style =
-                                MaterialTheme.typography.headlineSmall.copy(
-                                    fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold
-                                ),
-                        )
-                    else
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        ) {
-                            Surface(
-                                color = MaterialTheme.colorScheme.primary,
-                                shape = RoundedCornerShape(9.dp),
+            if (page != "secureNote" || current != null)
+                TopAppBar(
+                    colors =
+                        TopAppBarDefaults.topAppBarColors(
+                            containerColor = MaterialTheme.colorScheme.background
+                        ),
+                    title = {
+                        if (current != null || page in secondary)
+                            Text(
+                                if (current?.optString("type") == "secureNote") t("笔记", "Note")
+                                else
+                                    when (current?.optString("type")) {
+                                        "password" -> t("账号详情", "Account details")
+                                        "totp" -> t("验证码详情", "Code details")
+                                        "crypto" -> t("钱包详情", "Wallet details")
+                                        else -> secondary[page].orEmpty()
+                                    },
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        else
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
                             ) {
-                                Icon(
-                                    Icons.Outlined.Lock,
-                                    null,
-                                    Modifier.padding(7.dp).size(18.dp),
-                                    tint = MaterialTheme.colorScheme.onPrimary,
-                                )
+                                Surface(
+                                    color = MaterialTheme.colorScheme.primary,
+                                    shape = RoundedCornerShape(9.dp),
+                                ) {
+                                    Icon(
+                                        Icons.Outlined.Lock,
+                                        null,
+                                        Modifier.padding(7.dp).size(18.dp),
+                                        tint = MaterialTheme.colorScheme.onPrimary,
+                                    )
+                                }
+                                Text("PasswordVault", style = MaterialTheme.typography.titleSmall)
                             }
-                            Text("PasswordVault", style = MaterialTheme.typography.titleSmall)
-                        }
-                },
-                navigationIcon = {
-                    if (current != null || page in secondary)
-                        IconButton(onClick = ::back) {
-                            Icon(Icons.AutoMirrored.Outlined.ArrowBack, t("返回", "Back"))
-                        }
-                },
-                actions = {
-                    if (
-                        current != null &&
-                            !current.optBoolean("isDeleted") &&
-                            vault.canEdit(current)
-                    )
-                        IconButton(
-                            onClick = {
-                                editingRestored = false
-                                editing = JSONObject(current.toString())
+                    },
+                    navigationIcon = {
+                        if (current != null || page in secondary)
+                            IconButton(onClick = ::back) {
+                                Icon(Icons.AutoMirrored.Outlined.ArrowBack, t("返回", "Back"))
                             }
-                        ) {
-                            Icon(Icons.Outlined.Edit, t("编辑", "Edit"))
+                    },
+                    actions = {
+                        if (
+                            current != null &&
+                                !current.optBoolean("isDeleted") &&
+                                vault.canEdit(current)
+                        )
+                            IconButton(
+                                onClick = {
+                                    editingRestored = false
+                                    editing = JSONObject(current.toString())
+                                }
+                            ) {
+                                Icon(Icons.Outlined.Edit, t("编辑", "Edit"))
+                            }
+                        if (current == null && page !in secondary && page != "secureNote")
+                            IconButton(onClick = { generator = true }) {
+                                Icon(Icons.Outlined.AutoAwesome, t("密码生成器", "Password generator"))
+                            }
+                        IconButton(onClick = vault::lock) {
+                            Icon(Icons.Outlined.Lock, t("锁定", "Lock"))
                         }
-                    if (current == null && page !in secondary && page != "secureNote")
-                        IconButton(onClick = { generator = true }) {
-                            Icon(Icons.Outlined.AutoAwesome, t("密码生成器", "Password generator"))
-                        }
-                    IconButton(onClick = vault::lock) { Icon(Icons.Outlined.Lock, t("锁定", "Lock")) }
-                },
-            )
+                    },
+                )
         },
         bottomBar = {
             if (!wide)

@@ -91,3 +91,11 @@ The authoritative [migration matrix](ANDROID-LEGACY-PARITY.md) records the legac
 The owner scoped this refinement to the Notes collection and account editor. Notes consolidates its toolbar and card metadata. Account editing replaces stacked outlines with soft filled fields, clearer section headings and a distinct Save action; its system bars now match the rest of the page. Narrow widths and large fonts place reveal/copy/generate controls below their input. Code, wallet and settings styling remains unchanged.
 
 The current [four localized captures and scoped acceptance record](design/android-native/ACCOUNT-NOTES-REVIEW.md) document the change. The reviewed scope scored **9.2/10**, with separate light/dark, Chinese/English and 360dp/1.8× checks. Earlier image/test sections above remain historical evidence and are not a claim that every old matrix was rerun for 2.1.7.
+
+## 2.1.8 whole-page Notes scrolling
+
+The Notes title, search, folder selector and collection actions now scroll together with the cards. A full-width header sits inside the masonry grid; list mode and empty states follow the same single-scroll-surface behavior. Bottom navigation and New stay available. Grid and list positions remain independently remembered across note navigation and tab changes.
+
+The note reader and other tabs retain their existing navigation. No record, encryption or backup format changes are involved.
+
+See the [scrolling behavior and screenshots](design/android-native/NOTES-SCROLL.md) for the focused 2.1.8 checks.
