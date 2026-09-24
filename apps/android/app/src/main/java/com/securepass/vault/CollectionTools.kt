@@ -72,6 +72,7 @@ internal fun CollectionTools(
     t: (String, String) -> String,
     backup: () -> Unit,
     scope: kotlinx.coroutines.CoroutineScope,
+    compactActions: Boolean = false,
 ) {
     var selecting by ui.selecting
     var ids by ui.selectedIds
@@ -86,7 +87,10 @@ internal fun CollectionTools(
     var lines by ui.tools.lines
     var cachedInput by ui.tools.cachedInput
     var parsed by ui.tools.parsed
-    Column(Modifier.padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+    Column(
+        Modifier.padding(horizontal = if (compactActions) 0.dp else 20.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             if (state.sharedVaults.isNotEmpty())
                 Box(Modifier.weight(1f)) {
@@ -124,22 +128,34 @@ internal fun CollectionTools(
                             }
                     }
                 }
-            else Spacer(Modifier.weight(1f))
-            TextButton(
-                enabled = !busy,
-                onClick = {
-                    selecting = !selecting
-                    ids = emptySet()
-                    result = null
-                },
-            ) {
-                Text(if (selecting) t("完成选择", "Done selecting") else t("选择", "Select"))
-            }
+            else if (!compactActions) Spacer(Modifier.weight(1f))
+            if (!compactActions)
+                TextButton(
+                    enabled = !busy,
+                    onClick = {
+                        selecting = !selecting
+                        ids = emptySet()
+                        result = null
+                    },
+                ) {
+                    Text(if (selecting) t("完成选择", "Done selecting") else t("选择", "Select"))
+                }
             Box {
                 IconButton(enabled = !busy, onClick = { menu = true }) {
                     Icon(Icons.Outlined.MoreVert, t("资料工具", "Collection tools"))
                 }
                 DropdownMenu(menu, { menu = false }) {
+                    if (compactActions)
+                        DropdownMenuItem(
+                            text = { Text(t("选择", "Select")) },
+                            leadingIcon = { Icon(Icons.Outlined.Checklist, null) },
+                            onClick = {
+                                selecting = true
+                                ids = emptySet()
+                                result = null
+                                menu = false
+                            },
+                        )
                     DropdownMenuItem(
                         text = { Text(t("导入 / 导出", "Import / export")) },
                         onClick = {

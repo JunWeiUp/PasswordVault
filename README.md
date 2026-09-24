@@ -1,47 +1,75 @@
-<div align="center">
-  <img src="assets/branding/passwordvault-icon-512.png" alt="PasswordVault" width="72" height="72">
-  <h1>PasswordVault</h1>
-  <p><strong>Notes, passwords and authenticator codes, together on Mac.</strong></p>
-  <p>A local-first macOS app, native mobile previews and a lightweight browser extension.</p>
-  <p><strong>English</strong> · <a href="README.zh-CN.md">简体中文</a></p>
-
-**[Quick start](#run-from-source)** · **[Screenshots](#screenshots)** · **[Platforms](#platforms)** · **[Development](docs/DEVELOPMENT.md)**
-
-</div>
-
-> **Developer preview.** Use fictional credentials for evaluation. Native V2 encrypts stored vault data and does not persist the master password, but independent security review, broader device testing and distribution gates remain open. See the [security model](docs/SECURITY_MODEL.md).
-
-![Mac notes workspace with locally bundled Milkdown and fictional notes](docs/design/macos-native/current-notes-en.png)
-
-## What you can do
-
-- **Write and organize on Mac.** A three-column workspace with folders, search, favorites, pins and Trash. New creates an entry immediately; edit its details in place with encrypted autosave.
-- **Edit Markdown directly.** The locally bundled Milkdown editor renders headings, lists, task items, tables and code. Keep editing in the document, use undo/redo, or switch to Markdown source after the editor hands over its latest input.
-- **Keep complete account records.** Main and additional logins, independent password reveal/copy/generation, history, multiple domains, linked TOTP and wallet address/key/recovery-phrase fields.
-- **Back up and recover.** Versioned encrypted backups and tested legacy readers; Mac/mobile WebDAV shows backup time and size, distinguishes server and backup passwords, and asks before merging a restore.
-- **Use credentials in your browser.** Choose an account beside a supported password field, review and edit a detected login before saving, or open a saved account in Mac. Editing and filling are separate actions; login forms are never automatically submitted.
-- **Continue on native mobile previews.** Android Compose and iOS SwiftUI share the Rust encryption core, with notes, credentials, encrypted drafts, Trash, backup/WebDAV, system Autofill and V2 sharing. Their [acceptance matrix](docs/MOBILE-IMPLEMENTATION.md) records platform-specific limits.
-
-The Mac shell is SwiftUI; only Markdown editing uses a local WKWebView. The extension is TypeScript/Preact with no Flutter or CanvasKit runtime. It can connect to Mac or use a **separate** encrypted browser vault. Standalone Web currently has a smaller feature set.
-
-## Screenshots
-
-These native interfaces use fictional data. They are not the older Flutter gallery or design mockups.
-
-### Mac account details
-
-![Mac account details with in-place editing and grouped toolbar actions](docs/design/macos-native/current-password-en.png)
-
-### Android preview
-
 <p align="center">
-  <img src="docs/design/android-native/notes-en.png" alt="Native Android notes with fictional entries" width="280">
-  <img src="docs/design/android-native/account-editor-en.png" alt="Native Android account editor with fictional credentials" width="280">
+  <img src="docs/design/readme/hero-en.png" alt="PasswordVault — Your notes. Your passwords. Your space. A navy vault, an open notebook and credential cards on a warm illustrated background." width="1000">
 </p>
 
-More evidence: [Mac workflows](docs/design/macos-native/INTERACTION-AUDIT.md) · [Android UI and migration](docs/ANDROID-LEGACY-PARITY.md) · [Browser workflows](docs/BROWSER-ACCEPTANCE.md).
+<div align="center">
+  <h1>PasswordVault</h1>
+  <p><strong>A quieter place for your digital life.</strong></p>
+  <p>Bring notes, passwords, authenticator codes and wallet records together.<br>Write on Mac, keep things close on mobile, and fill logins in your browser.</p>
+  <p><strong>English</strong> · <a href="README.zh-CN.md">简体中文</a></p>
+  <p><a href="#run-from-source"><strong>Get started</strong></a> &nbsp; · &nbsp; <a href="#see-it-in-action">Explore the app</a> &nbsp; · &nbsp; <a href="#choose-your-workspace">Choose your platform</a></p>
+</div>
 
-## Platforms
+**Local-first · Encrypted storage · Open source**
+
+Native clients are in **developer preview**. [Platform availability](#choose-your-workspace) and the [security model](docs/SECURITY_MODEL.md) describe current limits; an independent security review is still pending.
+
+## Less searching. More doing.
+
+- **Write freely.** On Mac, notes feel like documents, with live Markdown, undo/redo and encrypted autosave. Organize with folders, search, favorites and pins.
+- **Keep the details together.** Passwords, additional logins, authenticator codes and wallet records, with the fields you actually need.
+- **Get back to your day.** Choose an account beside a supported password field. Review new logins before saving them, and edit existing ones on Mac.
+
+Deleted something? Recover it from Trash. Moving your data? Create an encrypted backup or manage backups on your own WebDAV server.
+
+## See it in action
+
+### A desktop workspace with room to think
+
+A familiar three-column Mac layout keeps folders, notes and your document in view. Headings, lists and tasks take shape as you type, with Markdown source one step away.
+
+![PasswordVault Mac workspace showing English fictional notes in the live Markdown editor](docs/design/macos-native/current-notes-en.png)
+
+<details>
+<summary><strong>Look inside an account</strong> — passwords, additional logins and linked codes</summary>
+
+Edit details in place, reveal or copy individual passwords, generate replacements and keep password history. Add multiple websites, extra logins and a linked authenticator without scattering the record across screens.
+
+![PasswordVault Mac account editor with fictional English data and grouped actions](docs/design/macos-native/current-password-en.png)
+
+</details>
+
+### Small screen. Same essentials.
+
+Native mobile previews bring notes, accounts, codes and wallets into a touch-friendly workspace. Notes have their own reading-focused layout; familiar actions stay consistent across pages.
+
+<p align="center">
+  <img src="docs/design/android-native/notes-en.png" alt="Android Notes grid with English fictional notes and the shared blue Add button" width="260">
+  &nbsp;&nbsp;
+  <img src="docs/design/android-native/account-editor-en.png" alt="Android account editor with English fictional credentials" width="260">
+</p>
+
+<p align="center"><sub>Actual Mac and Android preview interfaces. All entries shown are fictional.</sub></p>
+
+### Your browser, with a little less typing
+
+Choose a saved account next to a supported password field. Review a detected login before saving it, or open an existing account in Mac to edit its details. Filling never submits the form for you.
+
+The lightweight Chromium extension connects to Mac or uses its own **separate encrypted vault**. It has no Flutter or CanvasKit runtime. [Explore browser setup →](docs/NATIVE-MIGRATION.md#build-and-launch)
+
+## Choose your workspace
+
+| Platform | What you can use | Start here |
+| --- | --- | --- |
+| **Mac · macOS 13+** | Native desktop preview, notes editor and browser connection | [Mac setup](docs/NATIVE-MIGRATION.md#build-and-launch) |
+| **Android · 7.0+** | Native mobile preview; system Autofill on Android 8+ | [Android guide](apps/android/README.md) |
+| **iPhone / iPad · iOS 16+** | Native simulator preview; signed-device distribution pending | [iOS guide](apps/ios/README.md) |
+| **Chromium browsers** | Unpacked extension; connect to Mac or create a separate vault | [Extension setup](#run-from-source) |
+
+Standalone Web is also available with a smaller feature set. Windows and Linux have no native desktop client yet. These are development builds, not App Store or extension-store releases. Moving between separate vaults requires an explicit transfer; installation does not automatically sync them.
+
+<details>
+<summary>Versions, platform validation and remaining delivery gates</summary>
 
 | Client | Current scope | Validation and delivery |
 | --- | --- | --- |
@@ -52,7 +80,9 @@ More evidence: [Mac workflows](docs/design/macos-native/INTERACTION-AUDIT.md) ·
 | **Standalone Web** | Independent encrypted vault, CRUD, TOTP, backup/import and utilities | Sharing/WebDAV/QR UI, full theme/language parity and automatic legacy OPFS migration remain incomplete |
 | **Windows / Linux desktop** | No native desktop client | Not implemented |
 
-This increment targets **Mac 2.0.9 build 13**; the browser remains **2.0.9**. Android preview is **2.1.6 / 21008**; iOS preview is **2.1.1 / 3**. Local versions and test results do not imply a public or store release. See [native migration](docs/NATIVE-MIGRATION.md) and [mobile artifacts](docs/MOBILE-IMPLEMENTATION.md#current-preview-artifacts).
+This increment targets **Mac 2.0.9 build 13**; the browser remains **2.0.9**. Android preview is **2.1.7 / 21009**; iOS preview is **2.1.1 / 3**. Local versions and test results do not imply a public or store release. See [native migration](docs/NATIVE-MIGRATION.md) and [mobile artifacts](docs/MOBILE-IMPLEMENTATION.md#current-preview-artifacts).
+
+</details>
 
 ## Run from source
 
@@ -80,7 +110,12 @@ Keep the unpacked directory and extension identity stable. Every delivered exten
 
 Follow the dedicated [Android build guide](apps/android/README.md) or [iOS build guide](apps/ios/README.md). Preview identities are separate from legacy production installations. Do not uninstall an existing vault to work around a signing mismatch.
 
-## Data, safety and remaining work
+## Your data stays yours
+
+Native vaults encrypt notes, accounts, codes, wallet records and settings on disk, including while the app is open. You choose when to create a backup or connect your own WebDAV server. Unlocked content exists in memory; an explicit plaintext export is still plaintext.
+
+<details>
+<summary>Encryption, security boundaries and remaining work</summary>
 
 Native V2 uses SQLCipher/authenticated document encryption, salted Argon2id root-key wrapping and authenticated browser ciphertext. Local notes and server credentials use the same encrypted vault path. The Milkdown page has no remote editor assets or persistent web-data store; its CSP blocks network content. Decrypted content still exists in memory while unlocked, and explicit plaintext exports remain plaintext.
 
@@ -88,7 +123,9 @@ Implemented features, automated checks and manual acceptance are recorded separa
 
 See [current plans](TODO.md), [security limitations](docs/SECURITY_MODEL.md) and [privacy](PRIVACY.md). Report vulnerabilities through [SECURITY.md](SECURITY.md); never attach real credentials or vault exports.
 
-## Development and documentation
+</details>
+
+## Build with us
 
 Use [development checks](docs/DEVELOPMENT.md), the [artifact registry](docs/REGISTRY.md) and [release procedure](docs/DEPLOYMENT.md). Native workflow source is in [.github/workflows/native.yml](.github/workflows/native.yml); use actual PR results when reporting CI status. Contribute with synthetic fixtures and follow [CONTRIBUTING.md](CONTRIBUTING.md) and [AGENTS.md](AGENTS.md).
 
@@ -99,9 +136,12 @@ Use [development checks](docs/DEVELOPMENT.md), the [artifact registry](docs/REGI
 | Platform evidence | [Native migration](docs/NATIVE-MIGRATION.md) · [Mac field parity](docs/MAC-MOBILE-PARITY.md) · [Mobile acceptance](docs/MOBILE-IMPLEMENTATION.md) · [Android parity](docs/ANDROID-LEGACY-PARITY.md) · [Browser acceptance](docs/BROWSER-ACCEPTANCE.md) |
 | Progress | [TODO](TODO.md) · [Changelog](CHANGELOG.md) |
 
-## Legacy Flutter client
+<details>
+<summary>Looking for the older Flutter client?</summary>
 
 The retained `lib/`, `android/`, `ios/`, `web/` and `chrome/` clients have separate storage and security findings. They remain available until their replacement and migration gates pass. The older [Flutter preview download](https://github.com/JunWeiUp/PasswordVault/releases/tag/v1.1.0-preview.4), [widget gallery](docs/images/README.md) and [installation guide](docs/GETTING_STARTED.md) describe that client, not the native screenshots above. Its toolchain remains pinned in [.flutter-version](.flutter-version).
+
+</details>
 
 ## License
 

@@ -261,10 +261,15 @@ fun EntryEditor(
                 usePlatformDefaultWidth = false,
                 dismissOnBackPress = false,
                 securePolicy = androidx.compose.ui.window.SecureFlagPolicy.Inherit,
+                decorFitsSystemWindows = type != "password",
             ),
     ) {
+        if (type == "password") EditorDialogBars()
         BackHandler(onBack = ::cancel)
-        CompositionLocalProvider(LocalEditorEnabled provides !busy) {
+        CompositionLocalProvider(
+            LocalEditorEnabled provides !busy,
+            LocalAccountForm provides (type == "password"),
+        ) {
             Scaffold(
                 containerColor = MaterialTheme.colorScheme.background,
                 snackbarHost = { SnackbarHost(snackbar) },
@@ -286,7 +291,15 @@ fun EntryEditor(
                                     else ->
                                         if (existing) t("编辑账号", "Edit account")
                                         else t("添加账号", "Add account")
-                                }
+                                },
+                                style =
+                                    if (type == "password") MaterialTheme.typography.titleLarge
+                                    else LocalTextStyle.current,
+                                maxLines = if (type == "password") 1 else Int.MAX_VALUE,
+                                overflow =
+                                    if (type == "password")
+                                        androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                    else androidx.compose.ui.text.style.TextOverflow.Clip,
                             )
                         },
                         navigationIcon = {
@@ -295,15 +308,29 @@ fun EntryEditor(
                             }
                         },
                         actions = {
-                            TextButton(
-                                enabled =
-                                    !busy &&
-                                        walletRevision == derivedRevision &&
-                                        draft.optString("title").isNotBlank(),
-                                onClick = ::save,
-                            ) {
-                                Icon(Icons.Outlined.Check, null)
-                                Text(if (saving) t("保存中…", "Saving…") else t("保存", "Save"))
+                            if (type == "password") {
+                                Button(
+                                    enabled = !busy && draft.optString("title").isNotBlank(),
+                                    onClick = ::save,
+                                    modifier = Modifier.padding(end = 16.dp).heightIn(min = 40.dp),
+                                    contentPadding =
+                                        PaddingValues(horizontal = 18.dp, vertical = 8.dp),
+                                    shape =
+                                        androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
+                                ) {
+                                    Text(if (saving) t("保存中…", "Saving…") else t("保存", "Save"))
+                                }
+                            } else {
+                                TextButton(
+                                    enabled =
+                                        !busy &&
+                                            walletRevision == derivedRevision &&
+                                            draft.optString("title").isNotBlank(),
+                                    onClick = ::save,
+                                ) {
+                                    Icon(Icons.Outlined.Check, null)
+                                    Text(if (saving) t("保存中…", "Saving…") else t("保存", "Save"))
+                                }
                             }
                         },
                     )
@@ -313,8 +340,10 @@ fun EntryEditor(
                     Modifier.padding(padding)
                         .imePadding()
                         .verticalScroll(rememberScrollState())
-                        .padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                        .padding(horizontal = if (type == "password") 20.dp else 16.dp)
+                        .padding(top = if (type == "password") 8.dp else 16.dp, bottom = 16.dp),
+                    verticalArrangement =
+                        Arrangement.spacedBy(if (type == "password") 20.dp else 16.dp),
                 ) {
                     error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                     if (working || deriving) LinearProgressIndicator(Modifier.fillMaxWidth())
