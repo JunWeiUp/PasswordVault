@@ -85,3 +85,9 @@ Collection tools restore persisted sorting, email search, shared filters, select
 The authoritative [migration matrix](ANDROID-LEGACY-PARITY.md) records the legacy source references and verification scope. Native CSV export deliberately uses authenticated native backup encryption; the legacy weaker writer is not restored. All backup imports retain existing records unless explicitly changed by the merge rules.
 
 2.1.5 acceptance: final APK 22 instrumentation tests, dark 3, large text 3, wallet restoration recheck 1 and Mi10 non-UI 11 pass. The independent migration-interaction score is **9.1/10** (9.135 weighted); see the matrix for screenshots and unverified hardware boundaries.
+
+## 2.1.7 Notes and account presentation
+
+The owner scoped this refinement to the Notes collection and account editor. Notes consolidates its toolbar and card metadata. Account editing replaces stacked outlines with soft filled fields, clearer section headings and a distinct Save action; its system bars now match the rest of the page. Narrow widths and large fonts place reveal/copy/generate controls below their input. Code, wallet and settings styling remains unchanged.
+
+The current [four localized captures and scoped acceptance record](design/android-native/ACCOUNT-NOTES-REVIEW.md) document the change. The reviewed scope scored **9.2/10**, with separate light/dark, Chinese/English and 360dp/1.8× checks. Earlier image/test sections above remain historical evidence and are not a claim that every old matrix was rerun for 2.1.7.

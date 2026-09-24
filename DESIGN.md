@@ -18,6 +18,8 @@ The owner requested alignment with the existing Flutter Android UI, except for a
 
 Notes use a compact heading, folder selector, grid/list switch, text-first adaptive cards with real modification times, and the same primary-colored, 18dp rounded Add action used by Accounts, Codes and Wallets. Large fonts reduce the grid to one column. Reading and editing have wide text margins; formatting/preview remain secondary. Folder, tags and vault membership are in Note information. This is an inspiration-based design, not a complete clone of Xiaomi's attachment/audio features. See [Android UI acceptance](docs/ANDROID-UI-REFRESH.md).
 
+The scoped Notes/account refinement consolidates note tools into the folder row when space and selection state permit; batch selection remains available from the tools menu. Account editing uses neutral section headings, soft filled fields, restrained secondary actions and a clear Save button. Its full-screen window follows the page's system-bar colors and contrast in both themes. Keep all existing fields, reveal/copy/generate actions and cancellation behavior. This refinement does not restyle authenticator, wallet or settings pages.
+
 ## Product direction
 
 The documentation takes inspiration from Clipy's product presentation: lead with the job a person needs to do, show the actual interface, and provide a short route to a first successful session. PasswordVault keeps its own vault-specific information architecture and brand; illustrations explain the product without posing as implementation evidence.
@@ -62,7 +64,7 @@ Keep error messages adjacent to the action or field that caused them. Do not put
 
 Review affected pages in both themes and languages, narrow and wide layouts, with synthetic data. Include empty, populated, loading, error, long-text, and enlarged-text states when relevant. Verify keyboard focus, clear labels on icon actions, screen-reader announcements for form errors, and useful feedback after copy or save.
 
-Run the [documented checks](README.md#build-and-verify) and relevant interaction tests. The [README image suite](docs/images/README.md) renders real Flutter widgets, but cannot validate platform clipboard permissions, biometrics, Android autofill, browser-extension boundaries, or device storage. Record those separately when tested on a real browser/device.
+Run the [documented checks](README.md#run-from-source) and relevant interaction tests. The [legacy image suite](docs/images/README.md) renders real Flutter widgets, but cannot validate platform clipboard permissions, biometrics, Android autofill, browser-extension boundaries, or device storage. Record those separately when tested on a real browser/device.
 
 Further platform validation and security work remain in the [roadmap](TODO.md). Do not remove a release blocker based on presentation changes or screenshots.
 
@@ -80,6 +82,8 @@ Further platform validation and security work remain in the [roadmap](TODO.md). 
 ## Brand assets
 
 See [BRANDING.md](docs/BRANDING.md) for the icon source, platform exports, and reproduction commands. Keep the English and Chinese README galleries synchronized and use synthetic vault data in all captures.
+
+README presentation leads with a warm ivory, navy and cobalt campaign illustration, followed by a concise product introduction, real native interfaces and platform setup. The cover is promotional art, not a simulated screenshot. Keep localized cover copy and live interface captures separate: the English README uses English UI and fictional English content; the Chinese edition uses Chinese assets. Preserve readable text and navigation outside the image for accessibility. Keep preview status visible; collapse detailed validation matrices and historical-client material instead of burying product discovery in them. Artwork briefs live in [README campaign prompts](docs/design/readme/PROMPTS.md).
 
 ## Native Mac interaction feedback
 

@@ -10,6 +10,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
@@ -79,7 +80,7 @@ internal fun LegacyCredentialForm(
             }
         }
     }
-    LegacySection {
+    EditorFormSection {
         EditorHeading(t("基本信息", "Basic information"))
         EditorField(
             if (kind == "crypto") t("钱包名称", "Wallet name") else t("账号名称", "Account name"),
@@ -177,7 +178,7 @@ internal fun LegacyCredentialForm(
         }
     }
     if (kind in listOf("password", "totp")) {
-        LegacySection {
+        EditorFormSection {
             EditorHeading(t("附加账号", "Additional accounts"))
             if (accounts.isEmpty())
                 Text(
@@ -238,7 +239,7 @@ internal fun LegacyCredentialForm(
                     PasswordHistory(account, vault, t)
                 }
             }
-            OutlinedButton(
+            EditorActionButton(
                 enabled = enabled,
                 onClick = {
                     set(
@@ -260,13 +261,13 @@ internal fun LegacyCredentialForm(
             }
         }
         if (kind == "password")
-            LegacySection {
+            EditorFormSection {
                 EditorHeading(t("二次验证", "Two-step verification"))
                 Text(
                     if (draft.optString("secret").isBlank()) t("未配置", "Not configured")
                     else t("已配置", "Configured")
                 )
-                OutlinedButton(
+                EditorActionButton(
                     enabled = enabled,
                     onClick = {
                         secretInput = draft.optString("secret")
@@ -278,7 +279,7 @@ internal fun LegacyCredentialForm(
             }
     }
     if (kind == "totp")
-        LegacySection {
+        EditorFormSection {
             EditorHeading(t("验证码设置", "Code settings"))
             EditorField(
                 t("设置密钥", "Setup key"),
@@ -325,7 +326,7 @@ internal fun LegacyCredentialForm(
             }
         }
     if (kind == "crypto") {
-        LegacySection {
+        EditorFormSection {
             EditorHeading(t("私钥详情", "Private key details"))
             EditorField(
                 t("私钥", "Private key"),
@@ -337,13 +338,13 @@ internal fun LegacyCredentialForm(
                 lines = 2,
             )
         }
-        LegacySection {
+        EditorFormSection {
             EditorHeading(t("助记词", "Recovery phrase"))
             RecoveryWordsEditor(draft.optString("mnemonic"), { set("mnemonic", it) }, vault, t)
             TextButton(enabled = enabled, onClick = { deriveWallet("mnemonic") }) {
                 Text(t("根据助记词更新私钥和地址", "Update key and address from recovery phrase"))
             }
-            OutlinedButton(
+            EditorActionButton(
                 enabled = enabled,
                 onClick = generateWallet,
                 modifier = Modifier.fillMaxWidth(),
@@ -352,7 +353,7 @@ internal fun LegacyCredentialForm(
             }
         }
     }
-    LegacySection {
+    EditorFormSection {
         EditorHeading(t("可选信息", "Optional information"))
         if (kind != "crypto") {
             EditorField(t("邮箱", "Email"), draft.optString("email"), { set("email", it) }, vault, t)
@@ -412,7 +413,7 @@ internal fun LegacyCredentialForm(
         }
     }
     if (kind in listOf("password", "totp"))
-        LegacySection {
+        EditorFormSection {
             EditorHeading(t("密码安全", "Password security"))
             EditorField(
                 t("密码有效期（天）", "Password expiry (days)"),
@@ -432,7 +433,7 @@ internal fun LegacyCredentialForm(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-    LegacySection {
+    EditorFormSection {
         EditorHeading(t("显示设置", "Display settings"))
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(t("置顶", "Pin to top"), Modifier.weight(1f))
@@ -519,7 +520,9 @@ internal fun EditorHeading(text: String) {
     Text(
         text,
         style = MaterialTheme.typography.titleMedium,
-        color = MaterialTheme.colorScheme.primary,
+        color =
+            if (LocalAccountForm.current) MaterialTheme.colorScheme.onSurface
+            else MaterialTheme.colorScheme.primary,
     )
 }
 
@@ -538,6 +541,80 @@ internal fun EditorField(
 ) {
     var visible by remember { mutableStateOf(false) }
     val enabled = LocalEditorEnabled.current
+    if (LocalAccountForm.current) {
+        val separateActions =
+            LocalConfiguration.current.screenWidthDp < 380 || LocalDensity.current.fontScale > 1.25f
+        val fieldActions: @Composable () -> Unit = {
+            Row {
+                if (secret)
+                    IconButton(enabled = enabled, onClick = { visible = !visible }) {
+                        Icon(
+                            if (visible) Icons.Outlined.VisibilityOff
+                            else Icons.Outlined.Visibility,
+                            if (visible) t("隐藏$label", "Hide $label")
+                            else t("显示$label", "Show $label"),
+                            Modifier.size(20.dp),
+                        )
+                    }
+                if (copy)
+                    IconButton(enabled = value.isNotEmpty(), onClick = { vault.copy(value) }) {
+                        Icon(
+                            Icons.Outlined.ContentCopy,
+                            t("复制$label", "Copy $label"),
+                            Modifier.size(20.dp),
+                        )
+                    }
+                if (generate != null)
+                    IconButton(enabled = enabled, onClick = generate) {
+                        Icon(
+                            Icons.Outlined.Casino,
+                            t("生成$label", "Generate $label"),
+                            Modifier.size(20.dp),
+                        )
+                    }
+            }
+        }
+        Column {
+            TextField(
+                value,
+                change,
+                modifier = Modifier.fillMaxWidth().semantics { contentDescription = label },
+                enabled = enabled,
+                singleLine = lines == 1,
+                minLines = lines,
+                label = { Text(label) },
+                textStyle = MaterialTheme.typography.bodyLarge,
+                visualTransformation =
+                    if (secret && !visible) PasswordVisualTransformation()
+                    else VisualTransformation.None,
+                keyboardOptions =
+                    androidx.compose.foundation.text.KeyboardOptions(
+                        autoCorrectEnabled = false,
+                        keyboardType =
+                            if (numeric) androidx.compose.ui.text.input.KeyboardType.Number
+                            else if (secret) androidx.compose.ui.text.input.KeyboardType.Password
+                            else androidx.compose.ui.text.input.KeyboardType.Text,
+                    ),
+                trailingIcon =
+                    if (!separateActions && (secret || copy || generate != null)) fieldActions
+                    else null,
+                shape = androidx.compose.foundation.shape.RoundedCornerShape(10.dp),
+                colors =
+                    TextFieldDefaults.colors(
+                        focusedContainerColor = accountFieldColor(),
+                        unfocusedContainerColor = accountFieldColor(),
+                        disabledContainerColor = accountFieldColor(),
+                        unfocusedIndicatorColor = Color.Transparent,
+                        disabledIndicatorColor = Color.Transparent,
+                    ),
+            )
+            if (separateActions && (secret || copy || generate != null))
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    fieldActions()
+                }
+        }
+        return
+    }
     Column {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
@@ -597,17 +674,45 @@ internal fun ChoiceEditor(
 ) {
     var open by remember { mutableStateOf(false) }
     var custom by remember { mutableStateOf("") }
-    OutlinedButton(
-        enabled = LocalEditorEnabled.current,
-        onClick = {
-            custom = ""
-            open = true
-        },
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Text("$label · " + value.ifEmpty { t("无", "None") }, Modifier.weight(1f))
-        Icon(Icons.Outlined.ExpandMore, null)
-    }
+    if (LocalAccountForm.current) {
+        Surface(
+            onClick = {
+                custom = ""
+                open = true
+            },
+            enabled = LocalEditorEnabled.current,
+            color = accountFieldColor(),
+            shape = androidx.compose.foundation.shape.RoundedCornerShape(10.dp),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Row(
+                Modifier.heightIn(min = 48.dp).padding(horizontal = 16.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    "$label · " + value.ifEmpty { t("无", "None") },
+                    Modifier.weight(1f),
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                Icon(
+                    Icons.Outlined.ExpandMore,
+                    null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    } else
+        EditorActionButton(
+            enabled = LocalEditorEnabled.current,
+            onClick = {
+                custom = ""
+                open = true
+            },
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text("$label · " + value.ifEmpty { t("无", "None") }, Modifier.weight(1f))
+            Icon(Icons.Outlined.ExpandMore, null)
+        }
     if (open)
         AlertDialog(
             onDismissRequest = { open = false },

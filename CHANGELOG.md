@@ -1,5 +1,11 @@
 # Changelog
 
+## Native Android 2.1.7 preview and README presentation
+
+- Refine the Android Notes list and account editor while preserving the existing code, wallet and settings presentation. Consolidate note tools, improve card spacing, simplify account fields and make Save easier to find.
+- Give full-screen account editing the same theme-aware system bars as note editing, removing the gray bands above and below the form.
+- Restore a product-focused README with localized illustrated campaign covers, concise feature introductions and real native-client galleries. Keep preview status visible and move detailed validation matrices into expandable sections.
+
 ## Native Android 2.1.6 preview and documentation
 
 - Align the Notes Add button with Accounts, Codes and Wallets using shared theme colors and an 18dp rounded shape; retain the separate notes layout.
