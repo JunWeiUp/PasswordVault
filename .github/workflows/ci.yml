@@ -2,10 +2,10 @@ name: CI
 
 on:
   push:
-    branches: ['**']
+    branches: [main, master]
   pull_request:
     branches: [main, master]
-    types: [opened, synchronize, reopened, edited, ready_for_review]
+    types: [opened, synchronize, reopened, ready_for_review]
   workflow_call:
     inputs:
       checks_only:
@@ -18,10 +18,31 @@ permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
+  changes:
+    name: Select changed components
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      legacy: ${{ steps.select.outputs.legacy }}
+      legacy_android: ${{ steps.select.outputs.legacy_android }}
+      legacy_web: ${{ steps.select.outputs.legacy_web }}
+      core: ${{ steps.select.outputs.core }}
+      macos: ${{ steps.select.outputs.macos }}
+      browser: ${{ steps.select.outputs.browser }}
+      android: ${{ steps.select.outputs.android }}
+      ios: ${{ steps.select.outputs.ios }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - id: select
+        run: python3 tool/ci_changes.py
+
   repository:
     name: Repository and release-tool checks
     runs-on: ubuntu-latest
@@ -39,9 +60,15 @@ jobs:
 
   quality:
     name: Analyze, test, and validate
+    needs: changes
+    if: ${{ always() && (needs.changes.result != 'success' || needs.changes.outputs.legacy == 'true') }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
+      - name: Require successful change detection
+        env:
+          CHANGE_RESULT: ${{ needs.changes.result }}
+        run: test "$CHANGE_RESULT" = success
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
@@ -76,9 +103,9 @@ jobs:
 
   web-extension:
     name: Build Web and Chromium extension
-    if: ${{ !inputs.checks_only }}
+    if: ${{ !inputs.checks_only && needs.changes.outputs.legacy_web == 'true' }}
     runs-on: ubuntu-latest
-    needs: [repository, quality, secrets]
+    needs: changes
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -117,9 +144,9 @@ jobs:
 
   android:
     name: Build Android development APK
-    if: ${{ !inputs.checks_only }}
+    if: ${{ !inputs.checks_only && needs.changes.outputs.legacy_android == 'true' }}
     runs-on: ubuntu-latest
-    needs: [repository, quality, secrets]
+    needs: changes
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
