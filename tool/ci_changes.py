@@ -21,7 +21,7 @@ def classify(paths):
             continue
         if path.startswith(('crates/', '.cargo/')) or path in {'Cargo.toml', 'Cargo.lock', 'rust-toolchain.toml'}:
             selected |= NATIVE
-        elif path == '.github/workflows/native.yml' or path == 'tool/check_native.sh':
+        elif path in {'.github/workflows/native.yml', '.github/workflows/native-release.yml', 'tool/check_native.sh', 'native-version.json', 'tool/native_release.py', 'tool/test_native_release.py'}:
             selected |= NATIVE
         elif path == 'tool/build_mobile_core.sh':
             selected |= {'android', 'ios'}
