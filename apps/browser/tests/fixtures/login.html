@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>晴空笔记 · 模拟登录</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #f5f6fa; color: #202b42; font: 15px/1.65 system-ui, sans-serif; }
+    main { max-width: 920px; margin: 64px auto; padding: 0 24px; }
+    header { margin-bottom: 28px; }
+    h1 { font-size: 30px; margin: 8px 0; letter-spacing: -.5px; }
+    h2 { font-size: 20px; margin: 0 0 18px; }
+    p { margin: 8px 0; }
+    .muted { color: #58677e; }
+    .badge { color: #2755ae; font-weight: 600; font-size: 13px; }
+    .layout { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; align-items: start; }
+    .card { background: white; border: 1px solid #dce2ed; border-radius: 18px; padding: 28px; }
+    label { display: block; font-weight: 600; margin: 18px 0 6px; }
+    input { width: 100%; padding: 11px 13px; border: 1px solid #b5c1d4; border-radius: 8px; font: inherit; background: white; color: inherit; }
+    button { cursor: pointer; border: 1px solid #cbd5e5; background: #f5f7fb; color: #284976; border-radius: 8px; padding: 9px 14px; font: inherit; }
+    button:hover { background: #e7edf8; border-color: #8fa7cc; }
+    button:disabled { cursor: default; opacity: .6; }
+    .primary { width: 100%; margin-top: 22px; background: #255ad7; color: white; border-color: #255ad7; font-weight: 600; }
+    .primary:hover { background: #1748bd; }
+    :focus-visible { outline: 3px solid #84a9f9; outline-offset: 3px; }
+    .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+    .notice { margin-bottom: 20px; padding: 14px 18px; background: #fff3d6; border: 1px solid #d4b36b; border-radius: 10px; }
+    .feedback { min-height: 28px; margin-top: 16px; color: #176d42; overflow-wrap: anywhere; }
+    ol { padding-left: 22px; margin-bottom: 0; }
+    li { margin: 12px 0; }
+    a { color: #255ad7; text-underline-offset: 3px; }
+    [hidden] { display: none !important; }
+    footer { margin-top: 22px; font-size: 13px; }
+    @media (max-width: 680px) { main { margin: 28px auto; } .layout { grid-template-columns: 1fr; } .card { padding: 22px; } }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <span class="badge">PasswordVault 测试站点</span>
+    <h1>晴空笔记</h1>
+    <p class="muted">模拟一次登录，测试账号保存与再次填充。</p>
+  </header>
+  <div id="environment" class="notice" role="alert" hidden>
+    请使用 <a href="http://127.0.0.1:4387/tests/fixtures/login.html">本地 HTTP 地址</a>打开，并在 Edge 中测试插件。直接打开文件无法测试填充。
+  </div>
+  <div class="layout">
+    <section class="card" aria-labelledby="login-title">
+      <h2 id="login-title">登录测试账号</h2>
+      <p class="muted">可填入示例，也可输入任意虚构账号和至少 8 位测试密码。</p>
+      <div class="actions" aria-label="填入示例">
+        <button type="button" data-example="personal">填入个人示例</button>
+        <button type="button" data-example="work">填入工作示例</button>
+      </div>
+      <form id="login" method="post">
+        <label for="username">账号</label>
+        <input id="username" name="username" type="text" autocomplete="username" placeholder="demo@example.test" required maxlength="120" spellcheck="false">
+        <label for="password">密码</label>
+        <input id="password" name="password" type="password" autocomplete="current-password" placeholder="至少 8 位测试密码" required minlength="8" maxlength="128">
+        <label for="redirect">登录后页面行为</label>
+        <select id="redirect" style="width:100%;padding:10px;font:inherit;border:1px solid #b5c1d4;border-radius:8px">
+          <option value="stay">留在当前页</option>
+          <option value="immediate">立即跳转到本站完成页</option>
+          <option value="spa">2 秒后局部跳转并重绘页面</option>
+            <option value="delayed">2 秒后跳转到本站完成页</option>
+          <option value="other-host">跳转到另一主机（取消待保存）</option>
+        </select>
+        <button id="submit" class="primary" type="submit">模拟登录</button>
+      </form>
+      <p id="feedback" class="feedback" role="status" aria-live="polite"></p>
+      <div class="actions">
+        <button id="clear" type="button">清空，测试自动填充</button>
+        <button id="logout" type="button" hidden>退出登录</button>
+        <a href="login-complete.html">手动前往本站完成页</a>
+      </div>
+    </section>
+    <aside class="card">
+      <h2>在 Edge 中测试</h2>
+      <ol>
+        <li>填入示例账号，点击「模拟登录」。</li>
+        <li>点击登录提醒中的「查看并保存」，核对后点「保存」；也可从插件手动选择「保存网页中的账号」。</li>
+        <li>点击本页「清空，测试自动填充」，再从插件选择刚保存的账号进行填充。</li>
+        <li>再次点击「模拟登录」，检查流程是否正常。</li>
+      </ol>
+      <p class="muted">登录成功后会保留输入框。插件默认提示保存；若关闭了本站提醒，可在插件中重新开启。保存仍需你确认。</p>
+    </aside>
+  </div>
+  <footer class="muted">
+    这是本地模拟登录，没有真实账号验证；不发送或持久化输入内容。仅使用虚构账号。刷新或关闭页面后登录状态消失。
+    <p><a href="page-integration.html">查看 9 项脚本检查</a></p>
+  </footer>
+</main>
+<script>
+  const form = document.querySelector('#login');
+  const username = document.querySelector('#username');
+  const password = document.querySelector('#password');
+  const feedback = document.querySelector('#feedback');
+  const logout = document.querySelector('#logout');
+  const submit = document.querySelector('#submit');
+  const supported = ['http:', 'https:'].includes(location.protocol);
+  document.querySelector('#environment').hidden = supported;
+  submit.disabled = !supported;
+  function resetStatus() {
+    feedback.textContent = '';
+    logout.hidden = true;
+    submit.textContent = '模拟登录';
+    username.setCustomValidity('');
+  }
+  function clearForm() {
+    form.reset();
+    resetStatus();
+    username.focus();
+  }
+  form.addEventListener('input', resetStatus);
+  form.addEventListener('submit', event => {
+    event.preventDefault();
+    if (!supported) return;
+    username.setCustomValidity(username.value.trim() ? '' : '请输入虚构的测试账号');
+    if (!form.reportValidity()) return;
+    feedback.textContent = `模拟登录成功：${username.value.trim()}。现在可以用插件保存此账号。`;
+    logout.hidden = false;
+    submit.textContent = '再次模拟登录';
+    const redirect = document.querySelector('#redirect').value;
+    if (redirect !== 'stay') {
+      const destination = new URL('login-complete.html', location.href);
+      if (redirect === 'other-host') destination.hostname = location.hostname === 'localhost' ? '127.0.0.1' : 'localhost';
+      if (redirect === 'spa') setTimeout(() => {
+        history.pushState({}, '', destination.href + '?spa=1');
+        document.documentElement.innerHTML = '<head><title>晴空笔记 · 局部跳转完成</title></head><body style="font:16px system-ui;padding:40px"><h1>局部跳转并重绘已完成</h1><p>登录表单和旧页面内容已移除，插件提醒应仍然可见。</p><a href="login.html">返回登录测试</a></body>';
+      }, 2000);
+      else if (redirect === 'delayed') setTimeout(() => location.assign(destination.href), 2000);
+      else location.assign(destination.href);
+    }
+  });
+  document.querySelectorAll('[data-example]').forEach(button => {
+    button.addEventListener('click', () => {
+      username.value = button.dataset.example === 'work' ? 'work@example.test' : 'demo@example.test';
+      password.value = button.dataset.example === 'work' ? 'Work-Demo-42!' : 'Demo-Only-42!';
+      for (const input of [username, password]) {
+        input.dispatchEvent(new Event('input', {bubbles: true}));
+        input.dispatchEvent(new Event('change', {bubbles: true}));
+      }
+      feedback.textContent = '示例已填入，可以模拟登录。';
+    });
+  });
+  document.querySelector('#clear').addEventListener('click', clearForm);
+  logout.addEventListener('click', () => {
+    clearForm();
+    feedback.textContent = '已退出，表单已清空。';
+  });
+</script>
+</body>
+</html>

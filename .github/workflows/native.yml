@@ -1,0 +1,105 @@
+name: Native clients
+on:
+  pull_request:
+    paths: ['apps/**', 'crates/**', 'Cargo.*', 'rust-toolchain.toml', 'tool/check_native.sh', 'tool/build_mobile_core.sh', '.github/workflows/native.yml']
+  push:
+    paths: ['apps/**', 'crates/**', 'Cargo.*', 'rust-toolchain.toml', 'tool/check_native.sh', 'tool/build_mobile_core.sh', '.github/workflows/native.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: native-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  native-core:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - run: rustup toolchain install 1.96.0 --profile minimal --component rustfmt,clippy
+      - run: bash tool/check_native.sh core
+  mac-and-browser:
+    runs-on: macos-15
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Install pinned build tools
+        run: |
+          rustup toolchain install 1.96.0 --profile minimal --component rustfmt,clippy --target aarch64-apple-darwin,x86_64-apple-darwin,wasm32-unknown-unknown
+          export PATH="$(dirname "$(rustup which --toolchain 1.96.0 rustc)"):$PATH"
+          cargo install wasm-bindgen-cli --version 0.2.128 --locked
+          brew install xcodegen
+          node --version
+      - run: bash tool/check_native.sh macos
+      - name: Native state tests
+        run: |
+          xcodebuild -project apps/macos/PasswordVault.xcodeproj -scheme PasswordVault -configuration Debug -derivedDataPath apps/macos/build -destination 'platform=macOS,arch=arm64' ARCHS=arm64 test
+      - run: bash tool/check_native.sh browser
+      - name: Package Mac preview
+        run: ditto -c -k --sequesterRsrc --keepParent apps/macos/build/Build/Products/Release/PasswordVault.app apps/macos/build/PasswordVault-macos-universal.zip
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: native-macos-developer-preview
+          path: apps/macos/build/PasswordVault-macos-universal.zip
+          if-no-files-found: error
+          retention-days: 14
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: lightweight-browser-developer-preview
+          path: apps/browser/dist
+          if-no-files-found: error
+          retention-days: 14
+
+  android-native:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Install native targets and Android tools
+        run: |
+          rustup toolchain install 1.96.0 --profile minimal --target aarch64-linux-android,x86_64-linux-android
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager 'platforms;android-36' 'build-tools;36.0.0' 'ndk;27.0.12077973'
+      - run: bash tool/build_mobile_core.sh android
+      - name: Build isolated preview and test applications
+        run: |
+          export JAVA_HOME="$JAVA_HOME_17_X64"
+          ./apps/android/gradlew -p apps/android :app:assembleCompact :app:assembleCompactAndroidTest :login-fixture:assembleDebug -PtestBuildType=compact -PtargetAbi=arm64-v8a
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: native-android-developer-preview
+          path: |
+            apps/android/app/build/outputs/apk/compact/*.apk
+            apps/android/app/build/outputs/apk/androidTest/compact/*.apk
+            apps/android/login-fixture/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 14
+  ios-native:
+    runs-on: macos-15
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Install native targets and project generator
+        run: |
+          rustup toolchain install 1.96.0 --profile minimal --target aarch64-apple-ios,aarch64-apple-ios-sim,x86_64-apple-ios
+          brew install xcodegen
+      - run: bash tool/build_mobile_core.sh ios
+      - name: Compile app, extension and run isolated lifecycle tests
+        run: |
+          xcodegen generate --spec apps/ios/project.yml
+          simulator_id=$(xcrun simctl list devices available -j | python3 -c 'import sys,json; d=json.load(sys.stdin); print(next(v["udid"] for k,vs in d["devices"].items() if "iOS" in k for v in vs if "iPhone" in v["name"]))')
+          xcodebuild -project apps/ios/PasswordVault.xcodeproj -scheme PasswordVault -configuration Debug -derivedDataPath apps/ios/build -destination "platform=iOS Simulator,id=$simulator_id" test
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: native-ios-simulator-preview
+          path: apps/ios/build/Build/Products/Debug-iphonesimulator/PasswordVault.app
+          if-no-files-found: error
+          retention-days: 14

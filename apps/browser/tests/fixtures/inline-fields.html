@@ -1,0 +1,6 @@
+<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>PasswordVault · 密码框交互测试</title>
+<style>body{font:16px system-ui;background:#f4f6fa;color:#1f2b40;max-width:800px;margin:40px auto}form{background:white;border:1px solid #dbe2ee;border-radius:18px;padding:26px;margin:20px 0}label{display:block;margin:12px 0}input{box-sizing:border-box;padding:12px;width:100%;border:1px solid #aab8d0;border-radius:8px;font:inherit}button{padding:10px;margin-top:12px}#later{margin-top:100px}</style>
+<h1>密码框右侧账号入口</h1><p>仅使用虚构账号；选择第二个表单不应改变第一个，也不应自动提交。</p>
+<form id="first"><h2>第一个登录表单</h2><label>账号<input id="user-a" autocomplete="username"></label><label>密码<input id="pass-a" type="password" autocomplete="current-password"></label><button>登录 A</button></form>
+<form id="second"><h2>第二个登录表单</h2><label>账号<input id="user-b" autocomplete="username"></label><label>密码<input id="pass-b" type="password" autocomplete="current-password"></label><button>登录 B</button></form>
+<div id="later"></div><script>window.submits=0;for(const form of document.forms)form.addEventListener('submit',e=>{e.preventDefault();window.submits++})</script></html>

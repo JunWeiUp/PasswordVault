@@ -27,6 +27,10 @@ docs: clarify browser storage limitations
 
 Supported types: `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `build`, `ci`, `chore`, `revert`. Use imperative descriptions; explain breaking changes in the body with `BREAKING CHANGE:`. Do not rewrite someone else's branch history without coordination. Maintainers normally squash PRs using their validated title.
 
+## Documentation
+
+Follow the [documentation structure](AGENTS.md#documentation-structure). Update the relevant product, design, architecture, component, page, or deployment guide alongside behavior changes; record progress in `TODO.md` and completed changes in `CHANGELOG.md`. Keep the English and Chinese README navigation synchronized.
+
 ## Translations
 
 Edit ARB catalogs rather than generated Dart. Keep placeholders equivalent, preserve product names, and avoid translating stored identifiers or user data. See [INTERNATIONALIZATION.md](docs/INTERNATIONALIZATION.md).

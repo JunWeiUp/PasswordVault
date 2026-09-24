@@ -35,7 +35,7 @@ def write_signing_files(path, target, data, props):
 def main():
     names = ['ANDROID_KEYSTORE_BASE64', 'ANDROID_STORE_PASSWORD', 'ANDROID_KEY_ALIAS', 'ANDROID_KEY_PASSWORD', 'RUNNER_TEMP']
     if any(not os.environ.get(key) for key in names):
-        raise SystemExit('Release signing is not configured. See docs/RELEASING.md.')
+        raise SystemExit('Release signing is not configured. See docs/DEPLOYMENT.md.')
     path = Path(os.environ['RUNNER_TEMP']) / 'passwordvault-release.jks'
     try:
         data = base64.b64decode(''.join(os.environ['ANDROID_KEYSTORE_BASE64'].split()), validate=True)

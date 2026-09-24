@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<title>PasswordVault 网页填充测试</title>
+<style>
+  body { font: 15px system-ui; max-width: 760px; margin: 40px auto; color: #243049; }
+  form, section { padding: 20px; border: 1px solid #ccd2de; border-radius: 12px; margin: 20px 0; }
+  label { display: block; margin: 10px 0; }
+  input, button { font: inherit; padding: 8px; }
+  li { margin: 10px 0; }
+</style>
+<h1>网页填充与读取测试</h1>
+<p><a href="login.html">打开模拟登录网站：测试插件添加账号与再次填充 →</a></p>
+<p>仅使用虚构账号和模拟扩展消息；在真实 DOM 上执行构建产物 content.js，不连接 Mac 资料库。</p>
+<section id="environment-error" role="alert" hidden>
+  <h2>请通过本地 HTTP 服务打开</h2>
+  <p>直接打开 HTML 文件不会运行有效的填充测试。填充脚本只处理 HTTP/HTTPS 页面，文件模式下的部分通过不能代表测试成功。</p>
+  <p>在项目根目录运行 <code>python3 -m http.server 4387 --bind 127.0.0.1 --directory apps/browser</code>，然后打开
+    <a href="http://127.0.0.1:4387/tests/fixtures/page-integration.html">本地测试页面</a>。</p>
+</section>
+<form id="unrelated"><label>其他表单 <input type="text" value="Keep unrelated form"></label></form>
+<form id="login">
+  <label>用户名 <input id="username" autocomplete="username"></label>
+  <input type="password" hidden value="Keep hidden password">
+  <label>只读密码 <input type="password" readonly value="Keep read-only password"></label>
+  <label>新密码 <input id="new-password" type="password" autocomplete="new-password" value="Keep new password"></label>
+  <label>当前密码 <input id="password" type="password" autocomplete="current-password"></label>
+</form>
+<button id="run">运行网页集成检查</button>
+<section aria-live="polite"><h2 id="status">等待运行</h2><ol id="results"></ol></section>
+<script>
+  const listeners = [];
+  const fixtureID = 'synthetic-extension';
+  window.chrome = { runtime: { id: fixtureID, onMessage: { addListener: fn => listeners.push(fn) } } };
+</script>
+<script src="../../dist/content.js"></script>
+<script src="../../dist/content.js"></script>
+<script>
+  const supportedEnvironment = ['http:', 'https:'].includes(location.protocol);
+  if (!supportedEnvironment) {
+    document.querySelector('#environment-error').hidden = false;
+    document.querySelector('#run').disabled = true;
+    document.querySelector('#status').textContent = '未运行：需要 HTTP/HTTPS 页面';
+  }
+  document.querySelector('#run').onclick = () => {
+    if (!supportedEnvironment) return;
+    if (listeners.length !== 1) {
+      document.querySelector('#status').textContent = '未运行：填充脚本未正确加载，请先构建插件并刷新页面';
+      return;
+    }
+    const results = [];
+    const check = (name, success) => results.push({ name, success: Boolean(success) });
+    const username = document.querySelector('#username');
+    const password = document.querySelector('#password');
+    username.value = ''; password.value = '';
+    let events = [], submissions = 0;
+    const onEvent = e => events.push(`${e.target.id}:${e.type}`);
+    const onSubmit = e => { e.preventDefault(); submissions++; };
+    const form = document.querySelector('#login');
+    form.addEventListener('input', onEvent);
+    form.addEventListener('change', onEvent);
+    form.addEventListener('submit', onSubmit);
+    const send = (request, sender = {id: fixtureID}) => {
+      let response;
+      listeners[0]({ origin: location.origin, ...request }, sender, value => response = value);
+      return response;
+    };
+    const fill = { action: 'vault-fill', username: 'fixture@example.test', password: 'Synthetic-only-42!' };
+    try {
+      check('重复注入不会重复注册', listeners.length === 1);
+      check('拒绝其他扩展发送者', send(fill, {id: 'other-extension'}) === undefined && password.value === '');
+      check('拒绝已变化的网页来源', send({...fill, origin: 'https://other.example.test'}) === undefined && password.value === '');
+      check('填充当前密码及同一表单用户名', send(fill)?.ok && username.value === fill.username && password.value === fill.password);
+      check('隐藏、只读、新密码及其他表单保持原值',
+        document.querySelector('input[hidden]').value === 'Keep hidden password' &&
+        document.querySelector('input[readonly]').value === 'Keep read-only password' &&
+        document.querySelector('#new-password').value === 'Keep new password' &&
+        document.querySelector('#unrelated input').value === 'Keep unrelated form');
+      check('每个填充字段均触发 input 和 change', JSON.stringify(events) === JSON.stringify(['username:input','username:change','password:input','password:change']));
+      check('不会自动提交登录表单', submissions === 0);
+      const captured = send({action: 'vault-capture'});
+      check('读取同一表单的虚构账号', captured?.ok && captured.username === fill.username && captured.password === fill.password);
+      form.hidden = true;
+      check('找不到可见密码框时明确失败', send(fill)?.ok === false);
+    } finally {
+      form.hidden = false;
+      form.removeEventListener('input', onEvent);
+      form.removeEventListener('change', onEvent);
+      form.removeEventListener('submit', onSubmit);
+    }
+    document.querySelector('#results').replaceChildren(...results.map(({name, success}) => {
+      const li = document.createElement('li'); li.textContent = `${success ? 'PASS' : 'FAIL'} ${name}`; return li;
+    }));
+    document.querySelector('#status').textContent = `${results.filter(r => r.success).length} / ${results.length} 通过`;
+  };
+</script>
+</html>
