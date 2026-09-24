@@ -1,0 +1,144 @@
+name: Native release
+on:
+  push:
+    tags: ['v*', '!v1.*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing reviewed native tag; select the same tag as workflow ref
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: native-release-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      tag: ${{ steps.release.outputs.tag }}
+      commit: ${{ steps.release.outputs.commit }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - id: release
+        env:
+          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+        run: python3 tool/validate_release_ref.py
+      - name: Validate coordinated versions and repository regressions
+        env:
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          python3 tool/native_release.py versions
+          bash tool/check.sh repo
+      - uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  checks:
+    needs: prepare
+    uses: ./.github/workflows/native.yml
+  android:
+    needs: prepare
+    runs-on: ubuntu-latest
+    environment: release
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ needs.prepare.outputs.commit }}
+          persist-credentials: false
+      - uses: ./.github/actions/ci-rust-cache
+        with:
+          component: android
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a
+      - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407
+        with:
+          packages: platform-tools
+          log-accepted-android-sdk-licenses: false
+      - name: Install pinned native targets
+        run: |
+          rustup toolchain install 1.96.0 --profile minimal --target aarch64-linux-android,x86_64-linux-android
+          sdkmanager 'platforms;android-36' 'build-tools;36.0.0' 'ndk;27.0.12077973'
+      - run: bash tool/build_mobile_core.sh android
+      - name: Configure private signing key
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: python3 tool/configure_signing.py
+      - name: Build non-debuggable signed APKs
+        run: |
+          mkdir release-input
+          for abi in arm64-v8a x86_64; do
+            ./apps/android/gradlew -p apps/android :app:assemblePreviewRelease -PtargetAbi="$abi"
+            cp apps/android/app/build/outputs/apk/previewRelease/app-previewRelease.apk "release-input/android-$abi.apk"
+          done
+      - name: Verify signatures, package identity, versions and architectures
+        env:
+          ANDROID_CERT_SHA256: ${{ secrets.ANDROID_CERT_SHA256 }}
+        run: python3 tool/native_release.py android
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: native-signed-android
+          path: release-input/*.apk
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
+      - name: Remove ephemeral signing material
+        if: always()
+        run: rm -f android/key.properties "$RUNNER_TEMP/passwordvault-release.jks"
+  publish:
+    needs: [prepare, checks, android]
+    runs-on: ubuntu-latest
+    environment: release
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ needs.prepare.outputs.commit }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          pattern: native-*
+          path: downloaded
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: lightweight-browser-developer-preview
+          path: release-input/browser
+      - name: Stage only the intended public artifacts
+        run: |
+          cp downloaded/native-signed-android/*.apk release-input/
+          cp downloaded/native-macos-developer-preview/*.zip release-input/
+          cp downloaded/native-ios-simulator-preview/*.zip release-input/
+      - name: Package source, install guide and checksums
+        env:
+          RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+        run: |
+          python3 tool/native_release.py package
+          python3 tool/native_release.py verify --inputs release_assets
+      - name: Recheck tag before publication
+        env:
+          RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+          CHECKED_COMMIT: ${{ needs.prepare.outputs.commit }}
+        run: python3 tool/validate_release_ref.py
+      - name: Publish regular GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+        run: |
+          gh release create "$RELEASE_TAG" release_assets/* --verify-tag --latest \
+            --title "PasswordVault $RELEASE_TAG" --notes-file docs/NATIVE-RELEASE-NOTES.md
+          gh release view "$RELEASE_TAG" --json isDraft,isPrerelease,url \
+            --jq 'if .isDraft or .isPrerelease then error("Expected published regular release") else .url end' >> "$GITHUB_STEP_SUMMARY"

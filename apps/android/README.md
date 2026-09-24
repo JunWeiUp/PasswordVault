@@ -1,6 +1,6 @@
 # Native Android client
 
-Kotlin/Compose, Android API 24+, Java 17, SDK 36 and NDK 27.0.12077973. Android system Autofill is available on API 26+; the post-login save activity uses API 28+. Older supported systems retain manual credential creation/copy. Release keeps `com.securepass.vault`; debug uses `.nativepreview` and never replaces the legacy production package.
+Kotlin/Compose, Android API 24+, Java 17, SDK 36 and NDK 27.0.12077973. Android system Autofill is available on API 26+; the post-login save activity uses API 28+. Older supported systems retain manual credential creation/copy. The reserved `release` variant keeps `com.securepass.vault`; debug/compact and the publicly signed `previewRelease` variant use `.nativepreview` and never replace the legacy production package. Public release APKs are non-debuggable and require the protected release certificate; local debug builds cannot be updated across a signing-key change. See [native release installation](../../docs/NATIVE-RELEASE-NOTES.md).
 
 ```sh
 rustup target add aarch64-linux-android x86_64-linux-android

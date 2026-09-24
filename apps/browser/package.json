@@ -1,10 +1,10 @@
 {
   "name": "passwordvault-browser",
-  "version": "2.0.9",
+  "version": "2.2.0",
   "private": true,
   "type": "module",
   "scripts": {
-    "release:local": "npm version patch --no-git-tag-version && npm run check && npm run build && npm test",
+    "release:local": "node scripts/release-local.mjs",
     "dev": "vite --host 127.0.0.1",
     "check": "tsc --noEmit",
     "build": "vite build && node scripts/package.mjs",

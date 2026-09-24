@@ -14,6 +14,8 @@
 
 原生客户端目前为**开发预览版**。[平台状态](#选择你的工作空间)与[安全模型](docs/SECURITY_MODEL.md)记录当前限制，独立安全审查仍待完成。
 
+**下载原生版 2.2.0：** [GitHub Release](https://github.com/JunWeiUp/PasswordVault/releases/tag/v2.2.0) · [安装方式与签名限制](docs/NATIVE-RELEASE-NOTES.md)。包含 Android、Mac 开发版、解压式插件、Web、iOS 模拟器包及源码。
+
 ## 少一点翻找，多一点从容
 
 - **随时记下想法。** 在 Mac 上像写文档一样写笔记，支持实时 Markdown、撤销/重做与自动加密保存。分类、搜索、收藏和置顶，让想法有处可寻。

@@ -2,6 +2,8 @@
 
 SwiftUI, iOS 16+, iPhone and iPad. The app and Password AutoFill extension share an App Group; both use the Rust/SQLCipher vault. No Flutter runtime is linked. Debug uses an isolated preview bundle/group; Release retains the legacy `com.example.password` application identifier.
 
+The 2.2.0 public download includes a simulator application and source, not a signed iPhone IPA. See [native release installation](../../docs/NATIVE-RELEASE-NOTES.md) for free personal provisioning, TestFlight/Ad Hoc options and remaining capability gates.
+
 ```sh
 rustup target add aarch64-apple-ios aarch64-apple-ios-sim x86_64-apple-ios
 bash tool/build_mobile_core.sh ios
