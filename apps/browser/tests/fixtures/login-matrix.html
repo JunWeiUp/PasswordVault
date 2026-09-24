@@ -1,0 +1,43 @@
+<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>PasswordVault 登录输入框测试矩阵</title>
+<style>body{font:15px/1.5 system-ui;background:#f5f6fa;color:#243047;margin:32px}main{max-width:760px}section,form,.panel{max-width:360px;background:white;padding:20px;border:1px solid #dbe2ec;border-radius:12px;margin:18px 0}label{display:block;margin:12px 0}.field{position:relative}input{width:100%;box-sizing:border-box;padding:11px;border:1px solid #bbc8df;border-radius:6px;font:inherit}.login-action,button{cursor:pointer;background:#5747df;color:white;padding:10px;border:0;border-radius:6px;margin-top:12px;text-align:center}.eye{position:absolute;right:8px;top:9px;width:24px;height:24px;cursor:pointer}iframe{width:520px;height:500px;border:1px solid #ccd4e0}input[hidden]{display:none}.secondary{background:#eff2f7;color:#46546b}</style>
+<main><h1>登录输入框测试矩阵</h1><p>仅使用虚构数据，不登录任何真实服务，也不保存输入内容。</p><div id="mount"></div><p id="state" role="status"></p></main>
+<script>
+const params=new URLSearchParams(location.search),kind=params.get('case')||'form';document.body.dataset.case=kind;
+const mount=document.querySelector('#mount');
+if(kind==='iframe'){
+ const frame=document.createElement('iframe');frame.id='login-frame';frame.src='login-matrix.html?case=div&after=remove';mount.append(frame);
+ window.addEventListener('message',event=>{if(event.origin===location.origin&&event.data==='fixture-login'){frame.remove();document.querySelector('#state').textContent='登录框已移除';history.pushState({},'',location.pathname+'?case=iframe&done=1')}});
+}else{
+ function render(suffix=''){
+ const isForm=['form','tokens','otp-before','empty','invalid','invalid-span'].includes(kind);const panel=document.createElement(isForm?'form':'div');panel.className='panel';panel.id='panel'+suffix;
+ panel.innerHTML='<label>账号<input id="user'+suffix+'" autocomplete="username" placeholder="请输入手机号码或邮箱" value="fixture'+suffix+'@example.test" required></label><label>密码<div class="field"><input id="pass'+suffix+'" type="password" autocomplete="current-password" value="Fictional-Only-207!" required><span class="eye" role="button" tabindex="0" aria-label="显示密码">◉</span></div></label>'+(isForm?'<button type="submit" id="login'+suffix+'">登录</button>':'<div class="login-action" id="login'+suffix+'" tabindex="0">登录</div>')+'<button type="button" class="secondary" id="tab'+suffix+'">密码登录</button>';
+ const user=panel.querySelector('input'),pass=panel.querySelector('[type=password]');
+ if(kind==='email'||kind==='tel'){user.type=kind;user.autocomplete='';user.placeholder='';user.value=kind==='tel'?'+15550100207':'fixture@example.test'}
+ if(kind==='tokens'){user.autocomplete='section-login username';pass.autocomplete='section-login current-password'}
+ if(kind==='revealed')pass.type='text';
+ if(kind==='toggle')pass.autocomplete='off';
+ if(kind==='new-password')pass.autocomplete='new-password';
+ if(kind==='otp'){pass.type='text';pass.autocomplete='one-time-code'}
+ if(kind==='plain'){pass.type='text';pass.autocomplete='off'}
+ if(kind==='readonly')pass.readOnly=true;
+ if(kind==='disabled')pass.disabled=true;
+ if(kind==='hidden')pass.hidden=true;
+ if(kind==='transparent')pass.parentElement.style.opacity='0';
+ if(kind==='inert')pass.parentElement.inert=true;
+ if(kind==='disabled-fieldset'){const group=document.createElement('fieldset');group.disabled=true;pass.parentElement.before(group);group.append(pass.parentElement)}
+ if(kind==='empty')user.value='';
+ if(kind==='invalid'||kind==='invalid-span'){user.type='email';user.value='not-an-email'}
+ if(kind==='invalid-span')panel.querySelector('#login').innerHTML='<span>登录</span>';
+ if(kind==='link-span')panel.querySelector('#login').innerHTML='<a href="#"><span>登录</span></a>';
+ if(kind==='tab-span'){panel.querySelector('#login').setAttribute('role','tab');panel.querySelector('#login').innerHTML='<span>登录</span>'}
+ if(kind==='ambiguous'){const extra=pass.cloneNode();extra.id='extra';panel.append(extra)}
+ if(kind==='otp-before'){const otp=document.createElement('input');otp.id='otp';otp.autocomplete='one-time-code';otp.value='123456';pass.parentElement.before(otp)}
+ if(kind==='disabled-login')panel.querySelector('.login-action').setAttribute('aria-disabled','true');
+ panel.querySelector('.eye').onclick=()=>{pass.type=pass.type==='password'?'text':'password'};
+ const login=()=>{document.body.dataset.submits=String(Number(document.body.dataset.submits||0)+1);document.querySelector('#state').textContent='已模拟提交';if(params.get('after')==='remove')parent.postMessage('fixture-login',location.origin);if(kind==='spa')setTimeout(()=>{history.pushState({},'',location.pathname+'?case=spa&done=1');document.documentElement.innerHTML='<head><title>模拟局部跳转</title></head><body><h1 id="done">两秒后页面已重绘</h1></body>'},2000)};
+ if(isForm)panel.onsubmit=e=>{e.preventDefault();login()};else{panel.querySelector('.login-action').onclick=login;panel.onkeydown=e=>{if(e.key==='Enter'&&!e.isComposing)login()}};
+ mount.append(panel);
+ }
+ if(kind==='dynamic')setTimeout(()=>render(),100);else render();if(kind==='multi')render('-second');
+}
+</script></html>

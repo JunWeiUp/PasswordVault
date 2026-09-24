@@ -1,0 +1,23 @@
+{
+  "name": "passwordvault-browser",
+  "version": "2.0.9",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "release:local": "npm version patch --no-git-tag-version && npm run check && npm run build && npm test",
+    "dev": "vite --host 127.0.0.1",
+    "check": "tsc --noEmit",
+    "build": "vite build && node scripts/package.mjs",
+    "test": "tsc src/storage.ts --outDir test-build --target ES2022 --module ESNext --moduleResolution Bundler --skipLibCheck && node --test tests/*.test.mjs"
+  },
+  "dependencies": {
+    "preact": "10.27.2"
+  },
+  "devDependencies": {
+    "@types/chrome": "0.1.24",
+    "fake-indexeddb": "^6.2.4",
+    "prettier": "3.6.2",
+    "typescript": "5.9.3",
+    "vite": "7.3.1"
+  }
+}

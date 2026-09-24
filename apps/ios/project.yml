@@ -1,0 +1,118 @@
+name: PasswordVault
+options:
+  deploymentTarget:
+    iOS: "16.0"
+configFiles:
+  Debug: Build.xcconfig
+  Release: Build.xcconfig
+settings:
+  base:
+    VAULT_APP_GROUP: group.com.securepass.vault
+    CODE_SIGN_ENTITLEMENTS: Vault.entitlements
+    SWIFT_VERSION: "5.0"
+    IPHONEOS_DEPLOYMENT_TARGET: "16.0"
+    TARGETED_DEVICE_FAMILY: "1,2"
+    CODE_SIGN_STYLE: Automatic
+    SWIFT_STRICT_CONCURRENCY: targeted
+    OTHER_LDFLAGS: ["-lresolv", "-liconv", "-framework", "Security"]
+targets:
+  PasswordVault:
+    type: application
+    platform: iOS
+    sources:
+      - Sources
+      - path: ../macos/Sources/WebDAVListing.swift
+      - path: ../macos/Sources/Models.swift
+      - path: Generated/VaultCore.swift
+      - path: Resources
+        buildPhase: resources
+    info:
+      path: Info.plist
+      properties:
+        VaultAppGroup: $(VAULT_APP_GROUP)
+        CFBundleDisplayName: PasswordVault
+        CFBundleShortVersionString: "2.1.1"
+        CFBundleVersion: "3"
+        UILaunchScreen: {}
+        NSFaceIDUsageDescription: Unlock your encrypted PasswordVault with Face ID.
+        NSLocalNetworkUsageDescription: Sync encrypted shared vaults with devices you authorize.
+        NSBonjourServices: ["_passwordvault._tcp"]
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+        NSCameraUsageDescription: Scan an authenticator setup QR code you choose.
+        UIApplicationSupportsIndirectInputEvents: true
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
+        UISupportedInterfaceOrientations~ipad: [UIInterfaceOrientationPortrait, UIInterfaceOrientationPortraitUpsideDown, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.example.password
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+      configs:
+        Debug:
+          VAULT_APP_GROUP: group.com.securepass.vault.nativepreview
+          PRODUCT_BUNDLE_IDENTIFIER: com.securepass.vault.ios.nativepreview
+    dependencies:
+      - target: PasswordVaultAutofill
+      - framework: Generated/VaultCore.xcframework
+        embed: false
+    scheme:
+      testTargets: [PasswordVaultTests, PasswordVaultUITests]
+  PasswordVaultTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - Tests
+      - path: ../macos/Tests/WebDAVListingTests.swift
+    dependencies:
+      - target: PasswordVault
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.securepass.vault.ios.tests
+        GENERATE_INFOPLIST_FILE: YES
+        CODE_SIGN_ENTITLEMENTS: ""
+
+  PasswordVaultUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources: UITests
+    dependencies:
+      - target: PasswordVault
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.securepass.vault.ios.uitests
+        GENERATE_INFOPLIST_FILE: YES
+        CODE_SIGN_ENTITLEMENTS: ""
+
+  PasswordVaultAutofill:
+    type: app-extension
+    platform: iOS
+    sources:
+      - Autofill
+      - Sources/MobileCore.swift
+      - Sources/CredentialRequestLifetime.swift
+      - path: ../macos/Sources/Models.swift
+      - Generated/VaultCore.swift
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.example.password.autofill
+        APPLICATION_EXTENSION_API_ONLY: YES
+      configs:
+        Debug:
+          PRODUCT_BUNDLE_IDENTIFIER: com.securepass.vault.ios.nativepreview.autofill
+          VAULT_APP_GROUP: group.com.securepass.vault.nativepreview
+    info:
+      path: Autofill/Info.plist
+      properties:
+        CFBundleDisplayName: PasswordVault
+        CFBundleShortVersionString: "2.1.1"
+        CFBundleVersion: "3"
+        VaultAppGroup: $(VAULT_APP_GROUP)
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.authentication-services-credential-provider-ui
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).CredentialProvider
+          NSExtensionAttributes:
+            ASCredentialProviderExtensionCapabilities:
+              ProvidesPasswords: true
+    dependencies:
+      - framework: Generated/VaultCore.xcframework
+        embed: false

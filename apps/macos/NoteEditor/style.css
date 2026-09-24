@@ -1,0 +1,29 @@
+:root { color-scheme: light dark; font: 16px -apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif; color: CanvasText; }
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; background: transparent; overflow: hidden; }
+.ProseMirror { outline: none; white-space: pre-wrap; overflow-wrap: anywhere; min-height: 360px; line-height: 1.8; padding: 3px 0 16px; }
+.ProseMirror p { margin: 6px 0 12px; }
+.ProseMirror h1 { font-size: 26px; line-height: 1.5; }
+.ProseMirror h2 { font-size: 22px; line-height: 1.5; }
+.ProseMirror h3 { font-size: 18px; }
+.ProseMirror h1, .ProseMirror h2, .ProseMirror h3 { margin: 20px 0 8px; }
+.ProseMirror > :first-child { margin-top: 0; }
+.ProseMirror ul, .ProseMirror ol { padding-left: 28px; margin: 8px 0 16px; }
+.ProseMirror li p { margin: 2px 0; }
+.ProseMirror li[data-item-type='task'] { list-style: none; position: relative; }
+.ProseMirror li[data-item-type='task']::before { content:'☐'; position:absolute; left:-24px; top:0; color:#6485ba; cursor:pointer; }
+.ProseMirror li[data-checked='true']::before { content:'☑'; }
+.ProseMirror pre { white-space:pre-wrap; background:#f2f4f7; padding:12px 16px; border-radius:8px; }
+.ProseMirror code { font: 14px ui-monospace, monospace; }
+.ProseMirror blockquote { border-left:3px solid #b0b6c0; padding-left:18px; margin-left:0; opacity:.8; }
+.ProseMirror a { color:#2662d9; text-decoration:underline; }
+.ProseMirror table { border-collapse:collapse; width:100%; table-layout:fixed; }
+.ProseMirror th, .ProseMirror td { border:1px solid #9996; padding:6px 10px; min-width:40px; }
+.ProseMirror .selectedCell { background:#8aafff33; }
+.ProseMirror span[data-type='html'] { font:13px ui-monospace,monospace; background:#8881; }
+.ProseMirror img { display:none; }
+.ProseMirror-selectednode { outline:2px solid #8cf; }
+.ProseMirror-gapcursor { display:none; pointer-events:none; position:absolute; }
+.ProseMirror-gapcursor:after { content:''; display:block; position:absolute; top:-2px; width:20px; border-top:1px solid; }
+.ProseMirror-focused .ProseMirror-gapcursor { display:block; }
+@media (prefers-color-scheme:dark) { .ProseMirror pre { background:#22252b; } .ProseMirror a { color:#7aa9ff; } }

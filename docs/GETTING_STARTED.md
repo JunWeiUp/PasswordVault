@@ -1,5 +1,8 @@
 # Getting started with PasswordVault
 
+For the new SwiftUI Mac app and lightweight extension, start with [Native V2 setup](NATIVE-MIGRATION.md). The older downloadable preview and installation steps below remain the legacy client until migration acceptance is complete.
+
+
 PasswordVault is a developer preview. Use fictional accounts and disposable secrets while evaluating it. The [security model](SECURITY_MODEL.md) explains unresolved issues with master-password storage, password changes, backup derivation, and sharing.
 
 [English overview](../README.md) · [中文介绍](../README.zh-CN.md) · [Build from source](../README.md#run-from-source)
@@ -15,7 +18,7 @@ The [existing preview release](https://github.com/JunWeiUp/PasswordVault/release
 | Browser app | The `web` ZIP or a source run | A local HTTP server or your own hosting |
 | Native iOS app | The source project | macOS, Xcode, signing, and additional device validation |
 
-The AAB is for Android distribution tooling; it is not directly installable like an APK. No native Windows, macOS, or Linux runner is included. A wide README screenshot represents responsive Flutter UI only.
+The AAB is for Android distribution tooling; it is not directly installable like an APK. The new Mac build is covered by the native guide above; Windows and Linux clients are not included. A wide README screenshot represents responsive Flutter UI only.
 
 ### Android
 
@@ -93,7 +96,9 @@ For a bug report, include the source revision or release tag, operating system, 
 
 ## Where next
 
-- [Product design](PRODUCT_DESIGN.md): navigation, interactions, and visual standards.
-- [Development](DEVELOPMENT.md): architecture, toolchain, and validation commands.
-- [Releasing](RELEASING.md): CI artifacts, private signing, package verification, and public preview releases.
+- [Product design](../DESIGN.md): visual standards and interaction principles.
+- [Page structure](PAGE-STRUCTURE.md): navigation, routes, and screen behavior.
+- [Architecture](ARCHITECTURE.md): source directories, data flow, and compatibility.
+- [Development](DEVELOPMENT.md): toolchain and validation commands.
+- [Releasing](DEPLOYMENT.md): CI artifacts, private signing, package verification, and public preview releases.
 - [Security model](SECURITY_MODEL.md) and [privacy policy](../PRIVACY.md): current limitations and data flows.

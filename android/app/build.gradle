@@ -16,7 +16,7 @@ gradle.taskGraph.whenReady { graph ->
     if (graph.allTasks.any { it.project == project && it.name.toLowerCase().contains('release') }) {
         def required = ['storeFile', 'storePassword', 'keyAlias', 'keyPassword']
         if (required.any { !keystoreProperties[it] }) {
-            throw new GradleException('Release signing is missing. Follow docs/RELEASING.md to configure android/key.properties.')
+            throw new GradleException('Release signing is missing. Follow docs/DEPLOYMENT.md to configure android/key.properties.')
         }
     }
 }

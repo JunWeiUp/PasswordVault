@@ -1,0 +1,3 @@
+The English BIP39 word list is sourced from rust-bip39 2.2.2.
+https://github.com/rust-bitcoin/rust-bip39/
+License: CC0-1.0. The standard list contains 2048 words.

@@ -55,6 +55,15 @@ android/key.properties
 local.properties
 *.key
 *.mobileprovision
+*.provisionprofile
+*.cer
+*.p8
+*.csr
+*.keychain
+*.keychain-db
+*.local.xcconfig
+xcuserdata/
+*.xcuserstate
 credentials*.json
 service-account*.json
 
@@ -102,3 +111,34 @@ coverage/
 
 __pycache__/
 android/build/
+
+# Native rewrite build outputs and local integration state
+/target/
+/apps/macos/build/
+/apps/macos/Generated/
+/apps/macos/PasswordVault.xcodeproj/
+/apps/browser/node_modules/
+/apps/browser/dist/
+/apps/browser/wasm/
+/apps/browser/test-results/
+/apps/browser/playwright-report/
+*.dmg
+*.app/
+/native-test-output/
+
+/apps/browser/wasm-test/
+/apps/browser/test-build/
+/apps/ios/Generated/
+/apps/ios/build/
+/apps/ios/PasswordVault.xcodeproj/
+/apps/android/.gradle/
+/apps/android/.kotlin/
+/apps/android/build/
+/apps/android/app/build/
+/apps/android/app/src/main/jniLibs/
+/apps/android/app/src/main/generated/
+/apps/android/login-fixture/build/
+
+/apps/macos/NoteEditor/node_modules/
+/apps/macos/Resources/NoteEditor.html
+/apps/macos/Resources/NoteEditor-LICENSES.txt
