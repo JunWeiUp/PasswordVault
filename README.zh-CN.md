@@ -127,6 +127,8 @@ Mac 应用生成于 `apps/macos/build/Build/Products/Release/PasswordVault.app`�
 
 ## 一起完善 PasswordVault
 
+普通 PR 只运行受影响平台的任务，详见 [CI 范围、缓存与完整运行说明](docs/CI.md)。
+
 使用[开发检查](docs/DEVELOPMENT.md)、[产物登记](docs/REGISTRY.md)及[发布流程](docs/DEPLOYMENT.md)。原生工作流位于 [.github/workflows/native.yml](.github/workflows/native.yml)，报告 CI 状态时以实际 PR 运行结果为准。贡献使用虚构测试数据，并遵循 [CONTRIBUTING.md](CONTRIBUTING.md)与 [AGENTS.md](AGENTS.md)。
 
 | 主题 | 文档 |

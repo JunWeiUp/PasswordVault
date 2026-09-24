@@ -1,6 +1,6 @@
 # Build and deployment
 
-PasswordVault ships as a **developer preview**. Branch CI builds downloadable artifacts; a version tag triggers the release workflow, which **publishes a regular GitHub Release marked Latest, without draft or pre-release mode**, after all checks pass. No app store deployment is configured, and passing CI does not close the [security release blockers](SECURITY_MODEL.md).
+PasswordVault ships as a **developer preview**. Pull-request and main-branch CI build affected downloadable artifacts; a version tag triggers the release workflow, which **publishes a regular GitHub Release marked Latest, without draft or pre-release mode**, after all checks pass. No app store deployment is configured, and passing CI does not close the [security release blockers](SECURITY_MODEL.md).
 
 ## Deployment targets
 
@@ -10,12 +10,10 @@ The configured delivery target is GitHub Releases for Android packages, Web asse
 
 ```mermaid
 flowchart LR
-  A[Branch push or pull request] --> B[Repository and release-tool checks]
-  A --> C[Flutter analysis and tests]
-  A --> D[Full-history secret scan]
-  B --> E[Android debug APK + Web + extension]
-  C --> E
-  D --> E
+  A[Pull request or main push] --> B[Repository checks and secret scan]
+  A --> C[Detect affected components]
+  C --> D[Relevant native or Flutter tests and builds]
+  D --> E[Platform preview artifacts]
   F[Existing tag: push or manual run] --> G[Verify tag and commit]
   G --> H[Reuse quality and security checks]
   H --> I[Protected release environment]
@@ -25,7 +23,7 @@ flowchart LR
   L --> M[Download and device smoke tests]
 ```
 
-All Flutter jobs use the version in `.flutter-version`, the committed dependency lockfile, and the same `tool/check.sh` entry points used locally. Pull requests never receive Android release credentials. CI runs on all branch pushes, pull requests into `main`/`master` (including title edits), and manual runs. Tag releases reuse the quality/security jobs and build release assets themselves instead of repeating debug builds.
+All Flutter jobs use the version in `.flutter-version`, the committed dependency lockfile, and the same `tool/check.sh` entry points used locally. Pull requests never receive Android release credentials. CI runs on pull requests into `main`/`master`, pushes to those branches, and manual runs. Feature-branch pushes do not duplicate PR runs. Title/body edits use a separate lightweight metadata workflow and never replace the code-check results. Tag releases still run the complete quality/security gates and build release assets themselves instead of repeating debug builds. See [CI selection and caching](CI.md).
 
 ## Local checks and CI artifacts
 
@@ -51,7 +49,7 @@ The Actions run summary links to these downloads. GitHub sign-in is required for
 | `coverage` | `lcov.info` from Flutter tests | 7 days |
 | `release-assets` | Signed packages, installation notes, licenses, build metadata and checksums | 7 days |
 
-A debug APK cannot update an installation signed by a different key. Keep a tested backup before changing installations. Browser builds remain experimental; use synthetic credentials. The legacy CI validates Android, Web and the Chromium extension. A separate `native.yml` workflow now builds the native Mac and lightweight browser previews; iOS device/signing validation remains pending.
+A debug APK cannot update an installation signed by a different key. Keep a tested backup before changing installations. Browser builds remain experimental; use synthetic credentials. The legacy CI validates Android, Web and the Chromium extension. A separate `native.yml` workflow selects native core, Mac, browser, Android and iOS jobs independently. Browser builds run on Linux. iOS signed-device validation remains pending.
 
 ## One-time release setup
 
