@@ -24,7 +24,7 @@ PasswordVault distributes an application, not a public component package. There 
 
 ## Distribution inventory
 
-Branch CI exposes temporary Android debug, Web, Chromium extension, and coverage artifacts. Release delivery packages three architecture-specific APKs, one AAB, Web and extension ZIPs, a signing-certificate fingerprint, `BUILD.json`, installation instructions, licenses, and `SHA256SUMS`.
+Pull-request/main CI exposes temporary artifacts for affected platforms; documentation-only changes do not rebuild clients. Manual workflows run the full build matrix. See [CI selection](CI.md). Release delivery packages three architecture-specific APKs, one AAB, Web and extension ZIPs, a signing-certificate fingerprint, `BUILD.json`, installation instructions, licenses, and `SHA256SUMS`.
 
 The public distribution target is GitHub Releases. No app-store or component-registry publication is configured. [DEPLOYMENT.md](DEPLOYMENT.md) owns signing setup, artifact retention, release commands, certificate/checksum verification, and device smoke checks. [GETTING_STARTED.md](GETTING_STARTED.md) explains installation for testers.
 
