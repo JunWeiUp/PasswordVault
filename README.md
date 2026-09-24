@@ -80,7 +80,7 @@ Standalone Web is also available with a smaller feature set. Windows and Linux h
 | **Standalone Web** | Independent encrypted vault, CRUD, TOTP, backup/import and utilities | Sharing/WebDAV/QR UI, full theme/language parity and automatic legacy OPFS migration remain incomplete |
 | **Windows / Linux desktop** | No native desktop client | Not implemented |
 
-This increment targets **Mac 2.0.9 build 13**; the browser remains **2.0.9**. Android preview is **2.1.7 / 21009**; iOS preview is **2.1.1 / 3**. Local versions and test results do not imply a public or store release. See [native migration](docs/NATIVE-MIGRATION.md) and [mobile artifacts](docs/MOBILE-IMPLEMENTATION.md#current-preview-artifacts).
+This increment targets **Mac 2.0.9 build 13**; the browser remains **2.0.9**. Android preview is **2.1.8 / 21010**; iOS preview is **2.1.1 / 3**. Local versions and test results do not imply a public or store release. See [native migration](docs/NATIVE-MIGRATION.md) and [mobile artifacts](docs/MOBILE-IMPLEMENTATION.md#current-preview-artifacts).
 
 </details>
 
