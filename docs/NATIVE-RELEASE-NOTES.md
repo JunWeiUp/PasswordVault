@@ -1,8 +1,8 @@
-# PasswordVault 2.2.0 — native clients
+# PasswordVault 2.2.1 — native clients
 
 A coordinated release of the native Mac workspace, Android app, lightweight browser extension, standalone Web app, and iOS Simulator app. Notes, accounts, authenticator codes and wallets share the Rust vault core. Mac has a live Markdown editor; Android Notes scroll as one page with a refreshed account editor.
 
-**Developer preview:** this is a regular GitHub Release, not a claim of production security acceptance. Independent security review, signed iPhone distribution and some hardware/migration gates remain open. Read [SECURITY_MODEL.md](https://github.com/JunWeiUp/PasswordVault/blob/v2.2.0/docs/SECURITY_MODEL.md) before storing important data.
+**Developer preview:** this is a regular GitHub Release, not a claim of production security acceptance. Independent security review, signed iPhone distribution and some hardware/migration gates remain open. Read [SECURITY_MODEL.md](https://github.com/JunWeiUp/PasswordVault/blob/v2.2.1/docs/SECURITY_MODEL.md) before storing important data.
 
 ## Downloads and installation
 
@@ -16,7 +16,7 @@ A coordinated release of the native Mac workspace, Android app, lightweight brow
 | `ios-simulator.zip` | A Mac with a compatible Xcode iOS Simulator. **Not an IPA; cannot install on an iPhone.** Extract; run `xcrun simctl install booted PasswordVault.app`. The bundled executable architecture/runtime determine simulator compatibility. |
 | `source.zip` | Source for all clients, including the iOS app and AutoFill extension. Follow the platform READMEs to build; device installation requires eligible provisioning. |
 
-All client versions are **2.2.0**. `BUILD.json` identifies the exact source commit, build numbers and distribution limitations. Verify downloads with `shasum -a 256 -c SHA256SUMS` after downloading the complete asset set.
+All client versions are **2.2.1**. `BUILD.json` identifies the exact source commit, build numbers and distribution limitations. Verify downloads with `shasum -a 256 -c SHA256SUMS` after downloading the complete asset set.
 
 ### Android installation identity
 
@@ -38,11 +38,11 @@ The simulator archive needs no device provisioning. For a personal iPhone, Xcode
 
 ## 中文安装说明
 
-此版本统一为 **2.2.0**，包含原生 Android、Mac 开发版、浏览器插件、独立 Web、iOS 模拟器包及源码。软件仍处于开发预览阶段，安全审计与部分真机验证尚未完成。
+此版本统一为 **2.2.1**，包含原生 Android、Mac 开发版、浏览器插件、独立 Web、iOS 模拟器包及源码。软件仍处于开发预览阶段，安全审计与部分真机验证尚未完成。
 
 - **Android**：普通手机下载 `android-arm64-v8a.apk`；x86_64 设备下载对应 APK。使用正式发布密钥和独立原生版包名，与旧 Flutter 版共存。之前的本地调试版签名不同，无法直接覆盖；先验证加密备份，切勿为安装而直接卸载唯一的资料库。
 - **Mac**：解压后放入「应用程序」，支持 Apple Silicon/Intel、macOS 13+。本包未公证，首次打开可能需要在「隐私与安全」中选择「仍要打开」。本包不保证 Touch ID 钥匙串注册可用，可用主密码或保留本地签名版。
-- **插件**：先解压，在 Chrome/Edge 扩展管理页启用开发者模式，加载含 `manifest.json` 的目录；不能直接加载 ZIP。更新后重新加载扩展，确认显示 2.2.0。连接 Mac 需先打开并解锁桌面端、完成浏览器登记。
+- **插件**：先解压，在 Chrome/Edge 扩展管理页启用开发者模式，加载含 `manifest.json` 的目录；不能直接加载 ZIP。更新后重新加载扩展，确认显示 2.2.1。连接 Mac 需先打开并解锁桌面端、完成浏览器登记。
 - **Web**：解压后用 HTTPS 或 localhost 服务打开，是独立资料库。
 - **iOS**：本次是模拟器包及源码，不能直接安装到 iPhone。真机自用可尝试 Xcode 签名；完整 AutoFill/App Group 能力仍需合适的团队授权。TestFlight、App Store、Ad Hoc 需要付费开发者团队及相应配置。
 

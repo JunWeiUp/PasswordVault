@@ -4,6 +4,8 @@ import json
 from pathlib import Path
 import plistlib
 import tempfile
+import subprocess
+from unittest import mock
 import unittest
 import zipfile
 
@@ -32,6 +34,30 @@ class NativeReleaseTests(unittest.TestCase):
             lock_path.write_text(json.dumps(lock))
             with self.assertRaises(SystemExit):
                 validate_versions(root)
+
+    def test_native_tag_uses_native_manifest_and_checked_commit(self):
+        from validate_release_ref import resolve_release
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            for name in ['native-version.json', 'apps/browser/package.json', 'apps/browser/package-lock.json',
+                         'apps/macos/Info.plist', 'apps/android/app/build.gradle.kts', 'apps/ios/project.yml']:
+                target = root / name
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes((ROOT / name).read_bytes())
+            def git(*args):
+                return subprocess.check_output(['git', *args], cwd=root, text=True, stderr=subprocess.DEVNULL).strip()
+            git('init', '-q')
+            git('config', 'user.name', 'Release Fixture')
+            git('config', 'user.email', 'fixture@example.test')
+            git('add', '.')
+            git('commit', '-qm', 'fixture')
+            tag = 'v' + json.loads((root / 'native-version.json').read_text())['version']
+            git('tag', '-a', tag, '-m', 'fixture native tag')
+            with mock.patch('validate_release_ref.ROOT', root):
+                self.assertEqual(resolve_release(tag, 'HEAD', native=True), git('rev-parse', 'HEAD'))
+                git('commit', '--allow-empty', '-qm', 'different revision')
+                with self.assertRaises(SystemExit):
+                    resolve_release(tag, 'HEAD', native=True)
 
     def test_debug_wrong_package_version_or_abi_is_rejected(self):
         data = {'version': '2.2.0', 'android_version_code': 22001}

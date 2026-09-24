@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Require an existing release tag to identify the revision checked by this run."""
+import argparse
 import os
 import subprocess
 from pathlib import Path
@@ -7,8 +8,12 @@ from pathlib import Path
 from check_repository import ROOT, validate_tag
 
 
-def resolve_release(tag, expected_commit):
-    validate_tag(tag)
+def resolve_release(tag, expected_commit, *, native=False):
+    if native:
+        from native_release import validate_versions
+        validate_versions(ROOT, tag)
+    else:
+        validate_tag(tag)
     try:
         tagged_commit = subprocess.check_output(
             ['git', 'rev-parse', '--verify', f'refs/tags/{tag}^{{commit}}'],
@@ -24,8 +29,11 @@ def resolve_release(tag, expected_commit):
 
 
 def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--native', action='store_true', help='Validate native manifests instead of legacy Flutter.')
+    args = parser.parse_args()
     tag = os.environ.get('RELEASE_TAG', '')
-    commit = resolve_release(tag, os.environ.get('CHECKED_COMMIT') or os.environ.get('GITHUB_SHA', 'HEAD'))
+    commit = resolve_release(tag, os.environ.get('CHECKED_COMMIT') or os.environ.get('GITHUB_SHA', 'HEAD'), native=args.native)
     output = os.environ.get('GITHUB_OUTPUT')
     if output:
         with Path(output).open('a', encoding='utf-8') as stream:
