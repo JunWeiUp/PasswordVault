@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <base href="/dist/"><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Isolated popup confirmation fixture</title>
+  <script src="/tests/fixtures/popup-mock.js"></script>
+  <script type="module" src="/dist/popup.js"></script>
+  <link id="popup-style" rel="stylesheet">
+  <script>
+    fetch('/dist/popup.html').then(r => r.text()).then(html => {
+      const page = new DOMParser().parseFromString(html, 'text/html');
+      document.querySelector('#popup-style').href = '/dist/' + page.querySelector('link[rel=stylesheet]').getAttribute('href').replace('./', '');
+    });
+  </script>
+</head>
+<body><div id="app"></div></body>
+</html>
