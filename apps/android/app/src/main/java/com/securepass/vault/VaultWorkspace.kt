@@ -103,7 +103,13 @@ internal fun VaultWorkspace(
                             overflow = TextOverflow.Ellipsis,
                         )
                     else if (page == "secureNote")
-                        Text(t("笔记", "Notes"), style = MaterialTheme.typography.headlineMedium)
+                        Text(
+                            t("笔记", "Notes"),
+                            style =
+                                MaterialTheme.typography.headlineSmall.copy(
+                                    fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold
+                                ),
+                        )
                     else
                         Row(
                             verticalAlignment = Alignment.CenterVertically,

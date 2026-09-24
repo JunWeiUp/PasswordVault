@@ -197,7 +197,7 @@ internal fun NoteEditor(
                 decorFitsSystemWindows = false,
             ),
     ) {
-        NoteDialogBars()
+        EditorDialogBars()
         BackHandler { if (!saving) cancel() }
         Scaffold(
             containerColor = MaterialTheme.colorScheme.background,
@@ -452,13 +452,17 @@ private fun noteFieldColors() =
     )
 
 @Composable
-private fun NoteDialogBars() {
+internal fun EditorDialogBars() {
     val view = LocalView.current
     val background = MaterialTheme.colorScheme.background
     SideEffect {
         val window = (view.parent as? DialogWindowProvider)?.window ?: return@SideEffect
         window.statusBarColor = background.toArgb()
         window.navigationBarColor = background.toArgb()
+        if (android.os.Build.VERSION.SDK_INT >= 29) {
+            window.isStatusBarContrastEnforced = false
+            window.isNavigationBarContrastEnforced = false
+        }
         androidx.core.view.WindowCompat.getInsetsController(window, view).apply {
             isAppearanceLightStatusBars = background.luminance() > 0.5f
             isAppearanceLightNavigationBars = background.luminance() > 0.5f
