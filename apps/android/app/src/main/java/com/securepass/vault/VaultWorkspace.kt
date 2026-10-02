@@ -67,12 +67,7 @@ internal fun VaultWorkspace(
             Icons.Outlined.Description,
             Icons.Outlined.Tune,
         )
-    val secondary =
-        mapOf(
-            "trash" to t("回收站", "Trash"),
-            "webdav" to "WebDAV",
-            "sharing" to t("共享资料库", "Shared vaults"),
-        )
+    val secondary = mapOf("trash" to t("回收站", "Trash"), "webdav" to "WebDAV")
     val collectionStates = remember { mutableMapOf<String, CollectionUiState>() }
     val current = state.entries.firstOrNull { it.optString("id") == selected }
     fun back() {
@@ -173,16 +168,11 @@ internal fun VaultWorkspace(
                 }
         },
         floatingActionButton = {
-            val targetVault =
-                collectionStates[page]?.vaultFilter?.value.orEmpty().let {
-                    if (it == "*") "" else it
-                }
             if (
                 page in destinations &&
                     page != "settings" &&
                     current == null &&
-                    collectionStates[page]?.selecting?.value != true &&
-                    vault.canEdit(JSONObject().put("sharedVaultId", targetVault))
+                    collectionStates[page]?.selecting?.value != true
             )
                 FloatingActionButton(
                     onClick = {
@@ -190,8 +180,6 @@ internal fun VaultWorkspace(
                         val preferences = collectionStates.getOrPut(page) { CollectionUiState() }
                         editing =
                             VaultRepository.blank(page).apply {
-                                if (preferences.vaultFilter.value != "*")
-                                    put("sharedVaultId", preferences.vaultFilter.value)
                                 put("category", preferences.category.value)
                             }
                     },
@@ -261,9 +249,7 @@ internal fun VaultWorkspace(
                             language,
                             { page = "trash" },
                             { page = "webdav" },
-                            { page = "sharing" },
                         )
-                    page == "sharing" -> SharingScreen(vault, state, t)
                     page == "webdav" -> WebDavScreen(vault, state, t)
                     else ->
                         key(page) {

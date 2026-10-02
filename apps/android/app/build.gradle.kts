@@ -90,7 +90,6 @@ dependencies {
     implementation("androidx.camera:camera-view:1.4.2")
     implementation("androidx.concurrent:concurrent-futures-ktx:1.2.0")
     implementation("io.noties.markwon:core:4.6.2")
-    implementation("org.java-websocket:Java-WebSocket:1.5.7")
     implementation("com.google.zxing:core:3.5.3")
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")

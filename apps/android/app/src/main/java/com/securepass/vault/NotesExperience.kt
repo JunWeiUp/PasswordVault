@@ -111,7 +111,7 @@ internal fun NoteEditor(
     var body by remember { mutableStateOf(TextFieldValue(original.optString("note"))) }
     var category by remember { mutableStateOf(original.optString("category")) }
     var tags by remember { mutableStateOf(entryTags(original).joinToString(", ")) }
-    var shared by remember { mutableStateOf(original.optString("sharedVaultId")) }
+    val shared = original.optString("sharedVaultId")
     var information by remember { mutableStateOf(false) }
     var preview by remember { mutableStateOf(false) }
     var saving by remember { mutableStateOf(false) }
@@ -140,7 +140,6 @@ internal fun NoteEditor(
             body.text != original.optString("note") ||
             category != original.optString("category") ||
             tags != entryTags(original).joinToString(", ") ||
-            shared != original.optString("sharedVaultId") ||
             vault.state.value.recoveredDraft != null
     val canSave = title.isNotBlank() || body.text.isNotBlank()
     fun cancel() {
@@ -357,49 +356,6 @@ internal fun NoteEditor(
                             },
                             enabled = !saving,
                         )
-                        if (vault.state.value.sharedVaults.isNotEmpty()) {
-                            Text(t("所属资料库", "Vault"))
-                            FilterChip(
-                                selected = shared.isEmpty(),
-                                onClick = {
-                                    shared = ""
-                                    track()
-                                },
-                                label = { Text(t("个人资料库", "Personal vault")) },
-                                enabled = !saving,
-                            )
-                            vault.state.value.sharedVaults.forEach { item ->
-                                FilterChip(
-                                    selected = shared == item.optString("id"),
-                                    onClick = {
-                                        shared = item.optString("id")
-                                        track()
-                                    },
-                                    label = {
-                                        Text(
-                                            item.optString("name") +
-                                                if (
-                                                    vault.canEdit(
-                                                        JSONObject()
-                                                            .put(
-                                                                "sharedVaultId",
-                                                                item.optString("id"),
-                                                            )
-                                                    )
-                                                )
-                                                    ""
-                                                else t(" · 只读", " · Read only")
-                                        )
-                                    },
-                                    enabled =
-                                        !saving &&
-                                            vault.canEdit(
-                                                JSONObject()
-                                                    .put("sharedVaultId", item.optString("id"))
-                                            ),
-                                )
-                            }
-                        }
                     }
                 },
                 confirmButton = {

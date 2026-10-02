@@ -192,7 +192,7 @@ class LegacyEditingTest {
     }
 
     @Test
-    fun longSelectionAndEmptySharedFilterKeepCollectionUsable() = runBlocking {
+    fun longSelectionKeepsImportedSharedMetadataWithoutSharingControls() = runBlocking {
         val id = UUID.randomUUID().toString()
         val directory = File(context.cacheDir, "ui-test-$id")
         var repo = VaultRepository(context, directory)
@@ -225,11 +225,9 @@ class LegacyEditingTest {
             assertTrue(device.wait(Until.hasObject(By.text("解锁资料库")), 10000))
             device.findObject(By.clazz("android.widget.EditText")).text = "1"
             device.wait(Until.findObject(By.text("解锁").enabled(true)), 5000).click()
-            assertTrue(device.wait(Until.hasObject(By.text("全部资料库")), 10000))
-            click("全部资料库")
-            click("空共享库")
-            click("清除筛选")
-            assertTrue(device.hasObject(By.text("全部资料库")))
+            assertTrue(device.wait(Until.hasObject(By.textStartsWith("滚动账号")), 10000))
+            assertFalse(device.hasObject(By.text("全部资料库")))
+            assertFalse(device.hasObject(By.text("空共享库")))
             val sort = device.findObject(By.desc("排序")).visibleBounds
             device.click(sort.centerX(), sort.centerY())
             click("按标题")
@@ -245,6 +243,7 @@ class LegacyEditingTest {
             device.findObject(By.text("确认")).click()
             assertTrue(device.wait(Until.hasObject(By.text("已完成 2 / 2 项")), 10000))
             repo = live(scenario)
+            assertEquals("空共享库", repo.state.value.sharedVaults.single().getString("name"))
             val changed = repo.state.value.entries.filter { "批量保留" in entryTags(it) }
             assertEquals(setOf("滚动账号00", "滚动账号20"), changed.map { it.getString("title") }.toSet())
             assertEquals(

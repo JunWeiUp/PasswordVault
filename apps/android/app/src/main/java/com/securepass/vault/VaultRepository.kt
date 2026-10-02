@@ -1,11 +1,17 @@
 package com.securepass.vault
 
 import android.app.Application
+import android.app.KeyguardManager
+import android.content.BroadcastReceiver
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
+import androidx.core.content.ContextCompat
 import com.securepass.vault.core.VaultSession
 import java.io.File
 import java.time.Instant
@@ -41,24 +47,36 @@ data class VaultState(
 class VaultRepository(
     private val context: Context,
     private val directory: File = File(context.noBackupFilesDir, "vault-v2"),
-    private val clock: () -> Long = { System.currentTimeMillis() },
+    private val clock: () -> Long = { SystemClock.elapsedRealtime() },
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val mutex = Mutex()
     private val legacySource = File(context.applicationInfo.dataDir, "app_flutter/db.sqlite")
-    val sync by lazy { LocalSync(this, context) }
     private var closing: Job? = null
     private var session: VaultSession? = null
     private val mutable = MutableStateFlow(VaultState())
     val state = mutable.asStateFlow()
     @Volatile private var epoch = 0
     private var volatileRecovery: String? = null
-    var systemFileFlow = false
-    var pendingDraft: String? = null
-    private var lastActivity = clock()
+    @Volatile var pendingDraft: String? = null
+    private val draftFileLock = Any()
+    @Volatile private var lastActivity = clock()
     private var copied: ClipData? = null
 
+    private val screenLockReceiver =
+        object : BroadcastReceiver() {
+            override fun onReceive(context: Context, intent: Intent) {
+                if (intent.action == Intent.ACTION_SCREEN_OFF) lock()
+            }
+        }
+
     init {
+        ContextCompat.registerReceiver(
+            context.applicationContext,
+            screenLockReceiver,
+            IntentFilter(Intent.ACTION_SCREEN_OFF),
+            ContextCompat.RECEIVER_NOT_EXPORTED,
+        )
         scope.launch {
             mutex.withLock {
                 try {
@@ -117,7 +135,7 @@ class VaultRepository(
                 session = null
                 mutable.value = VaultState()
                 scope.cancel()
-                sync.stop()
+                runCatching { context.applicationContext.unregisterReceiver(screenLockReceiver) }
             }
         }
     }
@@ -138,6 +156,58 @@ class VaultRepository(
                     s.settings.optLong("autoLockMinutes", 60).coerceAtLeast(1) * 60_000
         )
             lock()
+    }
+
+    fun foreground() {
+        if (context.getSystemService(KeyguardManager::class.java)?.isDeviceLocked == true) lock()
+        else checkIdle()
+    }
+
+    /** Keep the in-process session until idle expiry; backgrounding is not an unlock. */
+    fun background(): Job {
+        checkIdle()
+        val generation = epoch
+        val pending = pendingDraft
+        return scope.launch {
+            mutex.withLock {
+                synchronized(draftFileLock) {
+                    // A save/discard or a later lock must not resurrect an old draft.
+                    if (
+                        state.value.unlocked &&
+                            generation == epoch &&
+                            pending != null &&
+                            pendingDraft == pending
+                    ) {
+                        try {
+                            persistDraft(pending)
+                        } catch (_: Exception) {
+                            mutable.update {
+                                it.copy(
+                                    error =
+                                        "草稿暂时加密保留在内存，请勿退出，返回后重试 / Encrypted draft remains in memory; return and retry before quitting"
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private fun persistDraft(pending: String) {
+        val sealed =
+            raw("seal-drafts", JSONObject().put("items", JSONArray().put(JSONObject(pending))))
+        volatileRecovery = sealed.toString()
+        val atomic = android.util.AtomicFile(File(directory, "mobile-draft.sealed"))
+        val stream = atomic.startWrite()
+        try {
+            stream.write(sealed.toString().toByteArray())
+            atomic.finishWrite(stream)
+            volatileRecovery = null
+        } catch (e: Exception) {
+            atomic.failWrite(stream)
+            throw e
+        }
     }
 
     fun canEdit(item: JSONObject): Boolean {
@@ -241,7 +311,6 @@ class VaultRepository(
     }
 
     fun lock() {
-        sync.stop()
         epoch++
         mutable.value =
             mutable.value.copy(
@@ -261,25 +330,7 @@ class VaultRepository(
             scope.launch {
                 mutex.withLock {
                     try {
-                        if (pending != null) {
-                            val sealed =
-                                raw(
-                                    "seal-drafts",
-                                    JSONObject().put("items", JSONArray().put(JSONObject(pending))),
-                                )
-                            volatileRecovery = sealed.toString()
-                            val atomic =
-                                android.util.AtomicFile(File(directory, "mobile-draft.sealed"))
-                            val stream = atomic.startWrite()
-                            try {
-                                stream.write(sealed.toString().toByteArray())
-                                atomic.finishWrite(stream)
-                                volatileRecovery = null
-                            } catch (e: Exception) {
-                                atomic.failWrite(stream)
-                                throw e
-                            }
-                        }
+                        if (pending != null) synchronized(draftFileLock) { persistDraft(pending) }
                     } catch (_: Exception) {
                         mutable.value =
                             mutable.value.copy(
@@ -315,10 +366,12 @@ class VaultRepository(
     }
 
     fun discardDraft() {
-        volatileRecovery = null
-        pendingDraft = null
-        mutable.value = mutable.value.copy(recoveredDraft = null)
-        File(directory, "mobile-draft.sealed").delete()
+        synchronized(draftFileLock) {
+            volatileRecovery = null
+            pendingDraft = null
+            mutable.value = mutable.value.copy(recoveredDraft = null)
+            File(directory, "mobile-draft.sealed").delete()
+        }
     }
 
     suspend fun command(op: String, values: JSONObject = JSONObject()): JSONObject =
@@ -403,7 +456,10 @@ class VaultRepository(
                         recoverDraft()
                     } else raw("lock")
                 }
-                if (generation == epoch) mutable.value = mutable.value.copy(unlocked = true)
+                if (generation == epoch) {
+                    mutable.value = mutable.value.copy(unlocked = true)
+                    activity()
+                }
             } finally {
                 key.fill(0)
             }
