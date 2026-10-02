@@ -1,10 +1,15 @@
 # Changelog
 
+## Unreleased
+
+- Android retains its main session across app switches until the configured idle timeout, checks expiry on return and uses monotonic elapsed time. Screen/manual locking remains immediate.
+- Checkpoint unfinished Android edits as encrypted drafts when backgrounded, with recovery and discard handling.
+- Remove Android shared-vault navigation, assignment/filtering, invitations/members, LAN discovery/sync and the WebSocket dependency. Retain existing records, read-only permissions and backup metadata.
+
 ## 2.2.1 — first published coordinated native release
 
 - Validate native release tags against native manifests instead of the legacy Flutter version. Native and legacy releases keep separate version gates.
 - Supersede the unpublished 2.2.0 tag, which was stopped by validation before any public assets were created. The original tag remains unchanged.
-
 
 ## 2.2.0 — coordinated native release
 
@@ -13,7 +18,6 @@
 - Validate coordinated client versions, release identity, Apple archive permissions, APK metadata and complete asset checksums before publishing.
 - Include refreshed Android Notes/account detail interfaces and whole-page Notes scrolling from the merged native updates.
 - Document unsigned distribution boundaries: Mac is ad-hoc signed and not notarized; iOS device distribution is not included. Security and hardware acceptance gates remain open.
-
 
 ## Native Android 2.1.8 preview
 
@@ -150,7 +154,6 @@
 - Add a SwiftUI macOS app following the selected Native Notes direction and a universal Rust/SQLCipher core with encrypted notes, credentials, TOTP, backups, sharing, and recovery drafts.
 - Add a lightweight TypeScript/Preact MV3 extension and standalone browser vault with authenticated encrypted storage and on-demand page integration.
 - Add native/WASM security tests, Swift state tests, reproducible build scripts, and a capability/validation matrix. Keep the legacy clients during the remaining platform migration.
-
 
 User-facing changes are recorded in English. Versions follow Semantic Versioning; build numbers are recorded in `pubspec.yaml`.
 

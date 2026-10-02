@@ -47,6 +47,7 @@ class MainActivity : FragmentActivity() {
                     )[QaVaultModel::class.java]
                     .repository
             } else (application as VaultApplication).vault
+        vault.foreground()
         if (
             !(BuildConfig.DEBUG && testId != null && intent.getBooleanExtra("qaScreenshots", false))
         )
@@ -56,17 +57,18 @@ class MainActivity : FragmentActivity() {
 
     override fun onStart() {
         super.onStart()
-        vault.checkIdle()
+        vault.foreground()
     }
 
     override fun onUserInteraction() {
         super.onUserInteraction()
+        vault.checkIdle()
         vault.activity()
     }
 
     override fun onStop() {
         super.onStop()
-        if (!isChangingConfigurations && !vault.systemFileFlow) vault.lock()
+        if (!isChangingConfigurations) vault.background()
     }
 }
 

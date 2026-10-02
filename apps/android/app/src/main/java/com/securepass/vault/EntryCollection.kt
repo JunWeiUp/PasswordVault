@@ -54,7 +54,6 @@ internal class CollectionUiState {
     val category = mutableStateOf("")
     val tag = mutableStateOf("")
     val favorites = mutableStateOf(false)
-    val vaultFilter = mutableStateOf("*")
     val selecting = mutableStateOf(false)
     val selectedIds = mutableStateOf(setOf<String>())
     val grid = mutableStateOf(true)
@@ -136,9 +135,7 @@ internal fun EntryCollection(
     val filtered =
         source
             .filter { item ->
-                (ui.vaultFilter.value == "*" ||
-                    item.optString("sharedVaultId") == ui.vaultFilter.value) &&
-                    (category.isEmpty() || item.optString("category") == category) &&
+                (category.isEmpty() || item.optString("category") == category) &&
                     (tag.isEmpty() || tag in entryTags(item)) &&
                     (!favorites || item.optBoolean("isFavorite")) &&
                     (search.isBlank() ||
@@ -166,7 +163,7 @@ internal fun EntryCollection(
     val compact =
         WindowInsets.ime.getBottom(LocalDensity.current) > 0 ||
             LocalConfiguration.current.screenHeightDp < 500
-    val inlineNoteTools = notes && !compact && !ui.selecting.value && state.sharedVaults.isEmpty()
+    val inlineNoteTools = notes && !compact && !ui.selecting.value
     val headerInset = if (notes) 0.dp else 20.dp
     val header: @Composable () -> Unit = {
         Column {
@@ -517,7 +514,6 @@ internal fun EntryCollection(
                         category = ""
                         tag = ""
                         favorites = false
-                        ui.vaultFilter.value = "*"
                         ui.selectedIds.value = emptySet()
                     }
                 ) {

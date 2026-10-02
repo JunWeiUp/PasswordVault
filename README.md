@@ -110,6 +110,8 @@ Keep the unpacked directory and extension identity stable. Every delivered exten
 
 ### Android and iOS
 
+Current Android source keeps the main session unlocked during brief app switches until idle expiry and removes shared-vault management/LAN sync. Screen/manual lock, encrypted drafts and existing backup data are retained. These changes are not yet in the 2.2.1 downloads.
+
 Follow the dedicated [Android build guide](apps/android/README.md) or [iOS build guide](apps/ios/README.md). Preview identities are separate from legacy production installations. Do not uninstall an existing vault to work around a signing mismatch.
 
 ## Your data stays yours

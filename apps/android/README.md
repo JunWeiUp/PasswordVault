@@ -21,3 +21,13 @@ adb shell am instrument -w com.securepass.vault.nativepreview.test/androidx.test
 `AutofillFlowTest` temporarily changes the emulator's Autofill provider and restores its previous value. It preserves an existing preview vault with a different password by skipping that test. `login-fixture` is a separate test application with no network or automatic form submission; it is not included in the vault APK.
 
 Biometric authentication, old signed-app upgrade continuity, physical-camera capture and manufacturer-specific Autofill behavior still need device acceptance. Do not uninstall an existing production vault to work around a signing mismatch. See [mobile acceptance](../../docs/MOBILE-IMPLEMENTATION.md).
+
+## Session behavior and sharing
+
+The main workspace retains its in-process unlocked session across app switches until the configured idle timeout (1, 5, 15 or 60 minutes; default 60). Returning checks expiry before rendering and does not extend the deadline. Monotonic elapsed time includes sleep. Screen/device lock and manual Lock remain immediate; process restart requires authentication. The separate system Autofill authorization activity retains its lock-on-close policy. The master password is not persisted.
+
+Backgrounding checkpoints unfinished edits as encrypted drafts. Completed checkpoints recover after process death; failed writes report an error and retain encrypted recovery in memory, so quitting before a successful write can still lose changes. Screenshots and app-switcher previews remain protected.
+
+Android no longer offers shared-vault creation, invitations, members, nearby discovery or LAN sync. Shared-vault filters/assignment controls and the WebSocket transport dependency are removed. Existing encrypted records, ownership metadata and backup compatibility are retained; imported read-only records remain read-only. Other clients and other devices' copies are not modified.
+
+Validation: an isolated ARM64 emulator passes `BackgroundSessionTest`, `DraftAndIdleTest`, `CoreLifecycleTest`, `MigrationBehaviorTest` and `LegacyEditingTest#longSelectionKeepsImportedSharedMetadataWithoutSharingControls` (10 tests). Coverage includes Home/return, Activity recreation, screen-off locking, idle expiry, biometric deadline reset, encrypted draft restart/discard, legacy metadata and read-only permissions. This does not replace manufacturer-specific device acceptance.

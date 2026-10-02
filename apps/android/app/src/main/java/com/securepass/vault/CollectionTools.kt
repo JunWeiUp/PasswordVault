@@ -50,7 +50,6 @@ internal suspend fun applyCollectionBatch(
 
 internal class CollectionToolsState {
     val menu = mutableStateOf(false)
-    val filterMenu = mutableStateOf(false)
     val operation = mutableStateOf<String?>(null)
     val value = mutableStateOf("")
     val busy = mutableStateOf(false)
@@ -76,9 +75,7 @@ internal fun CollectionTools(
 ) {
     var selecting by ui.selecting
     var ids by ui.selectedIds
-    var filter by ui.vaultFilter
     var menu by ui.tools.menu
-    var filterMenu by ui.tools.filterMenu
     var operation by ui.tools.operation
     var value by ui.tools.value
     var busy by ui.tools.busy
@@ -92,43 +89,7 @@ internal fun CollectionTools(
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            if (state.sharedVaults.isNotEmpty())
-                Box(Modifier.weight(1f)) {
-                    TextButton(onClick = { filterMenu = true }) {
-                        Icon(Icons.Outlined.FolderShared, null, Modifier.size(18.dp))
-                        Text(
-                            when (filter) {
-                                "*" -> t("全部资料库", "All vaults")
-                                "" -> t("个人资料库", "Personal vault")
-                                else ->
-                                    state.sharedVaults
-                                        .firstOrNull { it.optString("id") == filter }
-                                        ?.optString("name")
-                                        .orEmpty()
-                            }
-                        )
-                    }
-                    DropdownMenu(filterMenu, { filterMenu = false }) {
-                        (listOf(
-                                "*" to t("全部资料库", "All vaults"),
-                                "" to t("个人资料库", "Personal vault"),
-                            ) +
-                                state.sharedVaults.map {
-                                    it.optString("id") to it.optString("name")
-                                })
-                            .forEach { (id, name) ->
-                                DropdownMenuItem(
-                                    text = { Text(name) },
-                                    onClick = {
-                                        filter = id
-                                        ids = emptySet()
-                                        filterMenu = false
-                                    },
-                                )
-                            }
-                    }
-                }
-            else if (!compactActions) Spacer(Modifier.weight(1f))
+            if (!compactActions) Spacer(Modifier.weight(1f))
             if (!compactActions)
                 TextButton(
                     enabled = !busy,
@@ -340,7 +301,6 @@ internal fun CollectionTools(
                                 }
                                 var count = 0
                                 for (entry in parsed) {
-                                    if (filter != "*") entry.put("sharedVaultId", filter)
                                     if (!vault.save(entry)) break
                                     count++
                                 }
