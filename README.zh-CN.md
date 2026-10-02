@@ -14,7 +14,7 @@
 
 原生客户端目前为**开发预览版**。[平台状态](#选择你的工作空间)与[安全模型](docs/SECURITY_MODEL.md)记录当前限制，独立安全审查仍待完成。
 
-**下载原生版 2.2.1：** [GitHub Release](https://github.com/JunWeiUp/PasswordVault/releases/tag/v2.2.1) · [安装方式与签名限制](docs/NATIVE-RELEASE-NOTES.md)。包含 Android、Mac 开发版、解压式插件、Web、iOS 模拟器包及源码。
+**下载原生版 2.2.2：** [GitHub Release](https://github.com/JunWeiUp/PasswordVault/releases/tag/v2.2.2) · [安装方式与签名限制](docs/NATIVE-RELEASE-NOTES.md)。包含 Android、Mac 开发版、解压式插件、Web、iOS 模拟器包及源码。
 
 ## 少一点翻找，多一点从容
 
@@ -110,7 +110,7 @@ Mac 应用生成于 `apps/macos/build/Build/Products/Release/PasswordVault.app`�
 
 ### Android 与 iOS
 
-当前 Android 源码支持在空闲锁定时间内切换应用后直接返回，并移除共享资料库管理与局域网同步；保留锁屏/手动锁定、加密草稿和已有备份数据。这些改动尚未包含在 2.2.1 下载包中。
+当前 Android 源码支持在空闲锁定时间内切换应用后直接返回，并移除共享资料库管理与局域网同步；保留锁屏/手动锁定、加密草稿和已有备份数据。这些改动包含在 2.2.2 中。
 
 分别按 [Android 构建指南](apps/android/README.md)或 [iOS 构建指南](apps/ios/README.md)操作。预览标识与旧生产安装分开，不要卸载已有资料库来绕过签名不匹配。
 

@@ -55,7 +55,20 @@ class NativeReleaseTests(unittest.TestCase):
             git('tag', '-a', tag, '-m', 'fixture native tag')
             with mock.patch('validate_release_ref.ROOT', root):
                 self.assertEqual(resolve_release(tag, 'HEAD', native=True), git('rev-parse', 'HEAD'))
+                data = json.loads((root / 'native-version.json').read_text())
+                device_tag = f'{tag}-android.{data["android_version_code"]}'
+                with self.assertRaises(SystemExit):
+                    resolve_release(device_tag, 'HEAD', android_device=True)  # Missing tag.
+                git('tag', '-a', device_tag, '-m', 'fixture device tag')
+                self.assertEqual(resolve_release(device_tag, 'HEAD', android_device=True), git('rev-parse', 'HEAD'))
+                for wrong_tag in (tag, device_tag + '1', 'v99.0.0-android.1'):
+                    with self.assertRaises(SystemExit):
+                        resolve_release(wrong_tag, 'HEAD', android_device=True)
+                with self.assertRaises(SystemExit):
+                    resolve_release(device_tag, 'HEAD', native=True)  # Cannot publish as a coordinated release.
                 git('commit', '--allow-empty', '-qm', 'different revision')
+                with self.assertRaises(SystemExit):
+                    resolve_release(device_tag, 'HEAD', android_device=True)
                 with self.assertRaises(SystemExit):
                     resolve_release(tag, 'HEAD', native=True)
 

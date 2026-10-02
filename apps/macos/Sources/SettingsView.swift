@@ -117,9 +117,16 @@ struct SecuritySettingsView: View {
           }
         }.labelsHidden().frame(width: 135)
       }
-      SettingsRow(title: store.t("系统锁屏或睡眠时", "When the system locks or sleeps"), subtitle: "") {
-        Text(store.t("立即锁定", "Lock immediately")).foregroundStyle(.secondary)
-      }
+      systemLockRow(
+        .screenLock, title: store.t("系统锁屏时", "When the screen locks"),
+        subtitle: store.t("也适用于切换系统用户。", "Also applies when switching system users."))
+      systemLockRow(
+        .sleep, title: store.t("进入睡眠时", "When the Mac sleeps"),
+        subtitle: store.t("若同时锁屏，也会按上方设置处理。", "If the screen also locks, its setting applies too."))
+      Text(store.t(
+        "选择不锁定时，资料库保持解锁；闲置锁定仍按设定时间生效。磁盘中的数据始终加密保存。",
+        "Don't lock keeps the vault unlocked; the idle timeout still applies. Data on disk stays encrypted."
+      )).font(.caption).foregroundStyle(.secondary)
       Divider().padding(.vertical, 6)
       Text(store.t("锁定后的显示", "While locked")).font(.headline)
       SettingsRow(
@@ -127,6 +134,22 @@ struct SecuritySettingsView: View {
         subtitle: store.t("解锁后继续查看和编辑。", "Unlock to view and edit again.")
       ) { Text(store.t("全部隐藏", "Fully hidden")).foregroundStyle(.secondary) }
       Button(store.t("锁定资料库", "Lock vault"), action: store.lock).controlSize(.large)
+    }
+  }
+  private func systemLockRow(
+    _ event: AppStore.SystemLockEvent, title: String, subtitle: String
+  ) -> some View {
+    SettingsRow(title: title, subtitle: subtitle) {
+      Picker(title, selection: Binding(
+        get: { store.locksOnSystemEvent(event) },
+        set: { value in
+          store.settings[event.settingKey] = .bool(value)
+          Task { await store.saveSettings() }
+        }
+      )) {
+        Text(store.t("立即锁定", "Lock immediately")).tag(true)
+        Text(store.t("不锁定", "Don't lock")).tag(false)
+      }.labelsHidden().frame(width: 155)
     }
   }
   private var appearanceForm: some View {
