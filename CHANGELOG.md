@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add protected Android-only signed device artifacts with exact tag/revision validation and checksums; device build 22003 includes the background-session and sharing changes without republishing other clients.
+
 - Android retains its main session across app switches until the configured idle timeout, checks expiry on return and uses monotonic elapsed time. Screen/manual locking remains immediate.
 - Checkpoint unfinished Android edits as encrypted drafts when backgrounded, with recovery and discard handling.
 - Remove Android shared-vault navigation, assignment/filtering, invitations/members, LAN discovery/sync and the WebSocket dependency. Retain existing records, read-only permissions and backup metadata.

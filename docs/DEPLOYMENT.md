@@ -135,3 +135,9 @@ Verify signatures and the expected certificate before distribution. `RELEASE_TAG
 ## Native V2 development delivery
 
 The new Mac app and lightweight browser package are local developer artifacts described in [NATIVE-MIGRATION.md](NATIVE-MIGRATION.md). They are not uploaded by the legacy Flutter release job. Do not relabel them as a production release: Developer ID signing/notarization, Touch ID and Chrome/Edge integration acceptance, old-data migration rehearsals, and independent security review remain pending. Re-register the native host after moving the Mac app. Standalone Web needs HTTPS outside loopback; configure CORS explicitly when its WebDAV UI is migrated. No Cloudflare deployment is currently configured.
+
+## Signed Android device updates
+
+For an Android-only install, increment `android_version_code` in `native-version.json` and the Android manifest configuration, then create a new immutable `v<version>-android.<versionCode>` tag. The dedicated `android-device.yml` workflow checks exact tag/commit and coordinated metadata, scans source, runs repository/core checks, builds both non-debuggable APKs and verifies the reviewed signing certificate using the existing protected `release` environment. It uploads seven-day APK artifacts with checksums and a source commit; it does not publish a GitHub Release or rebuild Apple/browser clients. The coordinated release workflow excludes these device tags. Manual retries must select that exact tag. Never relax environment policies or export signing keys for local installation.
+
+Before ADB update, compare the downloaded artifact checksums, package/version/ABI and signer with the installed app. Use `adb -s <device> install -r <apk>`, preserve the vault, and verify the installed APK hash. Never uninstall a vault to resolve a signer mismatch.
