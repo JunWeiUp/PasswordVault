@@ -152,30 +152,6 @@ internal fun LegacyCredentialForm(
         ) {
             set("category", it)
         }
-        if (vault.state.value.sharedVaults.isNotEmpty()) {
-            Text(t("所属资料库", "Vault"), style = MaterialTheme.typography.labelLarge)
-            FilterChip(
-                selected = draft.optString("sharedVaultId").isEmpty(),
-                onClick = { set("sharedVaultId", "") },
-                enabled = enabled,
-                label = { Text(t("个人资料库", "Personal vault")) },
-            )
-            vault.state.value.sharedVaults.forEach { shared ->
-                val writable =
-                    vault.canEdit(JSONObject().put("sharedVaultId", shared.optString("id")))
-                FilterChip(
-                    selected = draft.optString("sharedVaultId") == shared.optString("id"),
-                    onClick = { set("sharedVaultId", shared.optString("id")) },
-                    enabled = enabled && writable,
-                    label = {
-                        Text(
-                            shared.optString("name") +
-                                if (writable) "" else t(" · 只读", " · Read only")
-                        )
-                    },
-                )
-            }
-        }
     }
     if (kind in listOf("password", "totp")) {
         EditorFormSection {

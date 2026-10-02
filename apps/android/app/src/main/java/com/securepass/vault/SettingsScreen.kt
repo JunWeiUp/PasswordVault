@@ -23,7 +23,6 @@ fun SettingsScreen(
     language: () -> Unit,
     trash: () -> Unit,
     webdav: () -> Unit,
-    sharing: () -> Unit,
 ) {
     val context = LocalContext.current
     val biometric = remember { BiometricVault(context as androidx.fragment.app.FragmentActivity) }
@@ -54,7 +53,6 @@ fun SettingsScreen(
         rememberLauncherForActivityResult(
             ActivityResultContracts.CreateDocument("application/octet-stream")
         ) { uri ->
-            vault.systemFileFlow = false
             val bytes = backup
             backup = null
             if (uri != null && bytes != null)
@@ -77,7 +75,6 @@ fun SettingsScreen(
         }
     val restore =
         rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-            vault.systemFileFlow = false
             if (uri != null) {
                 val selectedFormat = importFormat
                 val selectedPassword = backupPassword
@@ -155,7 +152,6 @@ fun SettingsScreen(
                                         .getString("content")
                                         .toByteArray()
                                 exportWasPlain = true
-                                vault.systemFileFlow = true
                                 export.launch("PasswordVault.$kind")
                             } catch (_: Exception) {
                                 vault.report()
@@ -181,8 +177,8 @@ fun SettingsScreen(
             Text(t("安全", "Security"), style = MaterialTheme.typography.titleLarge)
             Text(
                 t(
-                    "切到后台立即锁定；禁止截图，复制内容 30 秒后清除。",
-                    "Locks in the background, blocks screenshots, and clears copied content after 30 seconds.",
+                    "切换应用后，在设定的空闲时间内可直接返回；锁屏立即锁定。禁止截图，复制内容 30 秒后清除。",
+                    "Return without unlocking before the idle timeout. Screen lock locks immediately. Screenshots are blocked; copied content clears after 30 seconds.",
                 )
             )
             BiometricSettings(biometric, vault, t)
@@ -284,7 +280,6 @@ fun SettingsScreen(
                                     .getString("content")
                                     .toByteArray()
                             exportWasPlain = false
-                            vault.systemFileFlow = true
                             export.launch("PasswordVault.pvbackup")
                         } catch (_: Exception) {
                             vault.report()
@@ -311,7 +306,6 @@ fun SettingsScreen(
                                     .getString("content")
                                     .toByteArray()
                             exportWasPlain = false
-                            vault.systemFileFlow = true
                             export.launch("PasswordVault.csv.pvbackup")
                         } catch (_: Exception) {
                             vault.report()
@@ -343,7 +337,6 @@ fun SettingsScreen(
             OutlinedButton(
                 enabled = !working,
                 onClick = {
-                    vault.systemFileFlow = true
                     restore.launch(
                         arrayOf("application/json", "application/octet-stream", "text/*")
                     )
@@ -367,7 +360,6 @@ fun SettingsScreen(
                 }
             }
             message?.let { Text(it) }
-            OutlinedButton(onClick = sharing) { Text(t("共享资料库", "Shared vaults")) }
             OutlinedButton(onClick = webdav) { Text("WebDAV") }
             OutlinedButton(onClick = trash) { Text(t("回收站", "Trash")) }
             HorizontalDivider()

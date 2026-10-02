@@ -117,6 +117,12 @@ The Mac Notes heading has **+** to add a category and **−** to remove the sele
 
 Settings navigation responds across each entire row. Expanded Tools has a visible container boundary and indented children, while Settings remains a separate destination. The shared native-button wrapper supplies hover feedback without replacing keyboard activation or system pressed states. WebDAV Restore opens a per-file password sheet; legacy encrypted filenames explain that the original legacy master password is required. Restore passphrases do not replace the separate new-backup passphrase.
 
+## Current Android session and navigation
+
+The main workspace uses its configured idle deadline across foreground/background transitions; screen/device lock and manual locking remain immediate. An expired deadline is checked before rendering the returning workspace. Background draft checkpoints remain encrypted. A process restart requires unlocking.
+
+Shared-vault navigation, membership, invitations, discovery and sync are removed from Android. Collections show retained records without shared-vault filters; new records are personal. Editors no longer assign shared vaults. Existing records and backup metadata stay intact, including read-only restrictions. The earlier migration sections below are superseded by these sharing changes.
+
 ## Native Android 2.1.3
 
 - Phone bottom navigation and wide-screen rail follow the legacy order: Accounts, Codes, Wallets, Notes, Settings. Account collections restore category/tag filters, favorite filtering, sorting, copy and contextual menus in bordered cards.
