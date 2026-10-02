@@ -22,7 +22,7 @@ android {
         applicationId = "com.securepass.vault"
         minSdk = 24
         targetSdk = 36
-        versionCode = 22002
+        versionCode = 22003
         versionName = "2.2.1"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         testProguardFile("test-proguard-rules.pro")
