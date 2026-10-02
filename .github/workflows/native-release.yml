@@ -1,7 +1,7 @@
 name: Native release
 on:
   push:
-    tags: ['v*', '!v1.*']
+    tags: ['v*', '!v1.*', '!v*-android.*']
   workflow_dispatch:
     inputs:
       tag:

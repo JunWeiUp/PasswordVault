@@ -57,7 +57,7 @@ All 32 Swift tests passed, including Unicode/selection preservation, cross-parag
 
 ## Historical Mac 2.0.5 idle and preview acceptance
 
-The encrypted `settings.macNeverIdleLock` Boolean disables only the Mac idle timer. Keep the shared `autoLockMinutes` numeric setting intact: other clients do not interpret zero consistently. Selecting a finite Mac timeout clears the Boolean. Manual lock and existing screen-lock/sleep observers remain active.
+The encrypted `settings.macNeverIdleLock` Boolean disables only the Mac idle timer. Keep the shared `autoLockMinutes` numeric setting intact: other clients do not interpret zero consistently. Selecting a finite Mac timeout clears the Boolean. Manual locking remains active. Screen-lock/session and sleep observers now use independent encrypted preferences, both defaulting to immediate locking; see [Mac automatic locking](MAC-AUTO-LOCK.md).
 
 In this historical increment, note preview used a native multiline editor for the active paragraph and preserved Markdown source through the encrypted debounce/recovery path. That paragraph editor was subsequently replaced. Editable titles retained the note format; both preview and full editing checked shared-note permissions, and Trash remained read-only. The idle-lock setting described above remains applicable.
 
@@ -186,7 +186,7 @@ The old reminder could disappear when a single-page site replaced the document r
 
 Real ego lite checks reproduced the disappearing banner on 2.0.3 and verified the same two-second SPA scenario on 2.0.4, as well as full-page delayed navigation, decline then reload, confirmation/save after redirect, cross-host cancellation, and an empty extension Errors view. The fixture now includes a two-second SPA root-replacement option.
 
-New vault defaults and UI fallbacks use 60 minutes; existing configured values remain user-controlled, with a new 1-hour picker option. The browser idle detector also uses one hour. A successful authenticated native fill/save refreshes Mac activity; background matching/status polling does not. System lock/sleep and explicit locking still lock immediately. The user-requested current Mac vault was set to 1 hour through the settings UI.
+New vault defaults and UI fallbacks use 60 minutes; existing configured values remain user-controlled, with a new 1-hour picker option. The browser idle detector also uses one hour. A successful authenticated native fill/save refreshes Mac activity; background matching/status polling does not. System lock/sleep default to immediate locking and now have [independent Mac preferences](MAC-AUTO-LOCK.md); explicit locking remains immediate. The user-requested current Mac vault was set to 1 hour through the settings UI.
 
 All entry detail types show Delete directly. Active entries move to Trash after confirmation and can be restored; trashed entries expose a separate permanent-delete confirmation. Synthetic tests cover notes, passwords, TOTP and wallets. The visible note confirmation was checked and cancelled against the installed app; no real item was deleted during QA.
 
