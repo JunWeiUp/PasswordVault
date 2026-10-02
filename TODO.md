@@ -1,7 +1,8 @@
 # TODO and progress
 
-- Native 2.2.1 delivery: coordinated Android/Mac/browser/Web/iOS Simulator artifacts, protected Android signing, source archive and checksummed installation notes. Apple notarization/signed-device distribution and independent security review remain open; see [release notes](docs/NATIVE-RELEASE-NOTES.md).
+- Android source: brief app switches honor idle timeout with encrypted draft checkpoints; shared-vault UI/transport removed. Lifecycle, encrypted-draft, migration and collection regressions pass on an isolated ARM64 emulator (10 tests). Next: prepare an officially signed update and repeat OEM device acceptance.
 
+- Native 2.2.1 delivery: coordinated Android/Mac/browser/Web/iOS Simulator artifacts, protected Android signing, source archive and checksummed installation notes. Apple notarization/signed-device distribution and independent security review remain open; see [release notes](docs/NATIVE-RELEASE-NOTES.md).
 
 This is a prioritized work list, not a release-date promise. Completed source work is recorded in [CHANGELOG.md](CHANGELOG.md); production blockers remain tracked in [SECURITY_MODEL.md](docs/SECURITY_MODEL.md).
 

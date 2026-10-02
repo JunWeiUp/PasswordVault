@@ -54,7 +54,6 @@ fun QrImport(
     }
     val photo =
         rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-            vault.systemFileFlow = false
             if (uri != null)
                 scope.launch {
                     try {
@@ -96,13 +95,7 @@ fun QrImport(
             { cameraOpen = false },
         )
     Row {
-        TextButton(
-            enabled = enabled,
-            onClick = {
-                vault.systemFileFlow = true
-                photo.launch(arrayOf("image/*"))
-            },
-        ) {
+        TextButton(enabled = enabled, onClick = { photo.launch(arrayOf("image/*")) }) {
             Text(t("导入二维码图片", "Import QR image"))
         }
         TextButton(enabled = enabled, onClick = { cameraOpen = true }) {
