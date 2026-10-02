@@ -57,7 +57,7 @@ dependencies:
   bip32: ^2.0.0
   local_auth: ^2.3.0
   webdav_client: ^1.2.2
-  csv: ^6.0.0
+  csv: ^8.0.0
   hex: ^0.2.0
   intl: ^0.20.2
   nsd: 4.0.0
