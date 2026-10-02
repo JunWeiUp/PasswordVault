@@ -14,7 +14,7 @@
 
 Native clients are in **developer preview**. [Platform availability](#choose-your-workspace) and the [security model](docs/SECURITY_MODEL.md) describe current limits; an independent security review is still pending.
 
-**Download native 2.2.1:** [GitHub Release](https://github.com/JunWeiUp/PasswordVault/releases/tag/v2.2.1) · [Installation and signing limits](docs/NATIVE-RELEASE-NOTES.md). Includes Android, Mac development build, unpacked extension, Web, iOS Simulator and source.
+**Download native 2.2.2:** [GitHub Release](https://github.com/JunWeiUp/PasswordVault/releases/tag/v2.2.2) · [Installation and signing limits](docs/NATIVE-RELEASE-NOTES.md). Includes Android, Mac development build, unpacked extension, Web, iOS Simulator and source.
 
 ## Less searching. More doing.
 
@@ -110,7 +110,7 @@ Keep the unpacked directory and extension identity stable. Every delivered exten
 
 ### Android and iOS
 
-Current Android source keeps the main session unlocked during brief app switches until idle expiry and removes shared-vault management/LAN sync. Screen/manual lock, encrypted drafts and existing backup data are retained. These changes are not yet in the 2.2.1 downloads.
+Current Android source keeps the main session unlocked during brief app switches until idle expiry and removes shared-vault management/LAN sync. Screen/manual lock, encrypted drafts and existing backup data are retained. These changes are included in 2.2.2.
 
 Follow the dedicated [Android build guide](apps/android/README.md) or [iOS build guide](apps/ios/README.md). Preview identities are separate from legacy production installations. Do not uninstall an existing vault to work around a signing mismatch.
 
