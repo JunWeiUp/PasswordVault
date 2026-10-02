@@ -7,6 +7,7 @@
 - Android retains its main session across app switches until the configured idle timeout, checks expiry on return and uses monotonic elapsed time. Screen/manual locking remains immediate.
 - Checkpoint unfinished Android edits as encrypted drafts when backgrounded, with recovery and discard handling.
 - Remove Android shared-vault navigation, assignment/filtering, invitations/members, LAN discovery/sync and the WebSocket dependency. Retain existing records, read-only permissions and backup metadata.
+- Integrate independent Mac screen-lock/session and sleep preferences, preserving immediate-lock defaults and encrypted settings. The local 2.2.1 build 17 retains the existing biometric signing identity; it is not a new public release.
 
 ## 2.2.1 — first published coordinated native release
 
