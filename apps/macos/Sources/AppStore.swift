@@ -54,7 +54,11 @@ final class AppStore: ObservableObject {
   private var started = false
   lazy var localSync = LocalSyncService(store: self)
 
-  init(directory: URL) {
+  init(
+    directory: URL,
+    screenNotifications: NotificationCenter = DistributedNotificationCenter.default(),
+    workspaceNotifications: NotificationCenter = NSWorkspace.shared.notificationCenter
+  ) {
     self.directory = directory
     biometricAccount = BiometricStore.account(for: directory)
     biometricEnabled = UserDefaults.standard.bool(forKey: "biometricEnabled." + biometricAccount)
@@ -79,16 +83,40 @@ final class AppStore: ObservableObject {
     {
       monitors.append(monitor)
     }
-    DistributedNotificationCenter.default().publisher(
+    screenNotifications.publisher(
       for: NSNotification.Name("com.apple.screenIsLocked")
     )
-    .receive(on: RunLoop.main).sink { [weak self] _ in self?.lock() }.store(in: &cancellables)
-    for name in [NSWorkspace.willSleepNotification, NSWorkspace.sessionDidResignActiveNotification]
-    {
-      NSWorkspace.shared.notificationCenter.publisher(for: name).receive(on: RunLoop.main).sink {
-        [weak self] _ in self?.lock()
+    .receive(on: RunLoop.main).sink { [weak self] _ in
+      self?.handleSystemLockEvent(.screenLock)
+    }.store(in: &cancellables)
+    workspaceNotifications.publisher(for: NSWorkspace.willSleepNotification)
+      .receive(on: RunLoop.main).sink { [weak self] _ in
+        self?.handleSystemLockEvent(.sleep)
       }.store(in: &cancellables)
+    workspaceNotifications.publisher(for: NSWorkspace.sessionDidResignActiveNotification)
+      .receive(on: RunLoop.main).sink { [weak self] _ in
+        self?.handleSystemLockEvent(.screenLock)
+      }.store(in: &cancellables)
+  }
+
+  enum SystemLockEvent: CaseIterable {
+    case screenLock, sleep
+
+    var settingKey: String {
+      switch self {
+      case .screenLock: return "macLockOnScreenLock"
+      case .sleep: return "macLockOnSleep"
+      }
     }
+  }
+
+  func locksOnSystemEvent(_ event: SystemLockEvent) -> Bool {
+    // Missing or malformed legacy/imported values retain the existing locking behavior.
+    settings[event.settingKey] != .bool(false)
+  }
+
+  func handleSystemLockEvent(_ event: SystemLockEvent) {
+    if locksOnSystemEvent(event) { lock() }
   }
 
   var chinese: Bool { language == "zh" }
