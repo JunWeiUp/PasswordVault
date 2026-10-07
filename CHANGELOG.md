@@ -1,5 +1,11 @@
 # Changelog
 
+## Native 2.2.3 — Mac browser launch fix
+
+- Wait for Launch Services to finish opening the Mac app before replying to the browser native message. Previously the helper could report success and exit before the asynchronous launch completed.
+- Return a connection error on launch failure or timeout. Add disposable-app regression checks for cold launch, reopening, invalid extension origins and failed launches.
+- Coordinate client package versions at 2.2.3; Android, iOS and browser behavior is unchanged.
+
 ## 2.2.2 — mobile sessions and Mac locking
 
 - Add protected Android-only signed device artifacts with exact tag/revision validation and checksums; device build 22003 includes the background-session and sharing changes without republishing other clients.
