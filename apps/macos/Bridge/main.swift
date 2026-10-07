@@ -20,6 +20,25 @@ func respond(_ object: [String: Any]) {
   FileHandle.standardOutput.write(data)
 }
 
+func openApplication(_ application: URL) -> Bool {
+  // sendNativeMessage may close stdin/terminate this helper after its first reply.
+  // Keep it alive until Launch Services completes, pumping AppKit's run loop.
+  let completed = DispatchSemaphore(value: 0)
+  var opened = false
+  NSWorkspace.shared.openApplication(
+    at: application, configuration: NSWorkspace.OpenConfiguration()
+  ) { runningApplication, error in
+    opened = runningApplication != nil && error == nil
+    completed.signal()
+  }
+  let deadline = Date().addingTimeInterval(15)
+  while completed.wait(timeout: .now()) != .success {
+    guard Date() < deadline else { return false }
+    RunLoop.current.run(until: Date().addingTimeInterval(0.02))
+  }
+  return opened
+}
+
 signal(SIGPIPE, SIG_IGN)
 
 let executable = URL(fileURLWithPath: CommandLine.arguments[0]).resolvingSymlinksInPath()
@@ -44,9 +63,11 @@ while let prefix = readExactly(.standardInput, 4) {
     break
   }
   if request["op"] as? String == "open" {
-    NSWorkspace.shared.openApplication(
-      at: application, configuration: NSWorkspace.OpenConfiguration())
-    respond(["ok": true])
+    if openApplication(application) {
+      respond(["ok": true])
+    } else {
+      respond(["ok": false, "error": "native-unavailable"])
+    }
     continue
   }
   let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
