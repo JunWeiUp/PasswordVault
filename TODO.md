@@ -8,6 +8,7 @@ This is a prioritized work list, not a release-date promise. Completed source wo
 
 ## Native migration
 
+- [x] Fix the browser's Open Mac action when the app is not running; verify short-lived native-host cold launch and failure handling with a disposable app (`python3 tool/test_native_launch.py`).
 - [x] Mac direct creation and in-place account/authenticator/wallet editing; continuous rendered Markdown editing with scoped regression coverage. See [Mac field parity](docs/MAC-MOBILE-PARITY.md).
 - [x] Integrate locally bundled Milkdown in WKWebView, with list continuation, caret/history, encrypted save/lock/source handover and scoped native-window acceptance. See [editor evidence](docs/MARKDOWN-EDITOR-EVALUATION.md); physical input methods, accessibility and older/Intel hardware remain separate gates.
 
