@@ -14,7 +14,7 @@
 
 原生客户端目前为**开发预览版**。[平台状态](#选择你的工作空间)与[安全模型](docs/SECURITY_MODEL.md)记录当前限制，独立安全审查仍待完成。
 
-**下载原生版 2.2.2：** [GitHub Release](https://github.com/JunWeiUp/PasswordVault/releases/tag/v2.2.2) · [安装方式与签名限制](docs/NATIVE-RELEASE-NOTES.md)。包含 Android、Mac 开发版、解压式插件、Web、iOS 模拟器包及源码。
+**下载原生版 2.2.3：** [GitHub Release](https://github.com/JunWeiUp/PasswordVault/releases/tag/v2.2.3) · [安装方式与签名限制](docs/NATIVE-RELEASE-NOTES.md)。包含 Android、Mac 开发版、解压式插件、Web、iOS 模拟器包及源码。
 
 ## 少一点翻找，多一点从容
 
@@ -82,7 +82,7 @@
 | **独立 Web** | 独立加密资料库、增删改查、TOTP、备份/导入和工具 | 共享/WebDAV/QR 界面、完整主题/语言对齐及旧 OPFS 自动迁移尚未完成 |
 | **Windows / Linux 桌面** | 无原生桌面客户端 | 尚未实现 |
 
-本轮目标为 **Mac 2.0.9 build 13**，浏览器保持 **2.0.9**。Android 预览为 **2.1.8 / 21010**，iOS 预览为 **2.1.1 / 3**。本地版本和测试结果不代表已公开发布或上架，详见[原生迁移](docs/NATIVE-MIGRATION.md)及[移动端产物](docs/MOBILE-IMPLEMENTATION.md#current-preview-artifacts)。
+本次统一版本为 **2.2.3**：Mac build **19**、浏览器 **2.2.3**、Android build **22005**、iOS build **7**。此次修复插件无法唤起未运行的 Mac 应用的问题。测试结果不代表已上架应用商店或通过生产安全验收，详见[原生迁移](docs/NATIVE-MIGRATION.md)及[移动端产物](docs/MOBILE-IMPLEMENTATION.md#current-preview-artifacts)。
 
 </details>
 
@@ -110,7 +110,7 @@ Mac 应用生成于 `apps/macos/build/Build/Products/Release/PasswordVault.app`�
 
 ### Android 与 iOS
 
-当前 Android 源码支持在空闲锁定时间内切换应用后直接返回，并移除共享资料库管理与局域网同步；保留锁屏/手动锁定、加密草稿和已有备份数据。这些改动包含在 2.2.2 中。
+当前 Android 源码支持在空闲锁定时间内切换应用后直接返回，并移除共享资料库管理与局域网同步；保留锁屏/手动锁定、加密草稿和已有备份数据。这些改动包含在 2.2.3 中。
 
 分别按 [Android 构建指南](apps/android/README.md)或 [iOS 构建指南](apps/ios/README.md)操作。预览标识与旧生产安装分开，不要卸载已有资料库来绕过签名不匹配。
 

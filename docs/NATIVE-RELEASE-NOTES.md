@@ -1,15 +1,14 @@
-# PasswordVault 2.2.2 — native clients
+# PasswordVault 2.2.3 — native clients
 
 A coordinated release of the native Mac workspace, Android app, lightweight browser extension, standalone Web app, and iOS Simulator app. Notes, accounts, authenticator codes and wallets share the Rust vault core. Mac has a live Markdown editor; Android Notes scroll as one page with a refreshed account editor.
 
-**Developer preview:** this is a regular GitHub Release, not a claim of production security acceptance. Independent security review, signed iPhone distribution and some hardware/migration gates remain open. Read [SECURITY_MODEL.md](https://github.com/JunWeiUp/PasswordVault/blob/v2.2.2/docs/SECURITY_MODEL.md) before storing important data.
+**Developer preview:** this is a regular GitHub Release, not a claim of production security acceptance. Independent security review, signed iPhone distribution and some hardware/migration gates remain open. Read [SECURITY_MODEL.md](https://github.com/JunWeiUp/PasswordVault/blob/v2.2.3/docs/SECURITY_MODEL.md) before storing important data.
 
-## Changes in 2.2.2
+## Changes in 2.2.3
 
-- Android keeps its main workspace unlocked across brief app switches until the configured idle deadline, while screen/manual locking remains immediate. Background edits are checkpointed as encrypted drafts; process restart still requires authentication.
-- Android shared-vault management, invitations and LAN synchronization are removed. Existing records, encrypted backups and historical read-only permissions remain intact. Mac and iOS sharing behavior is unchanged.
-- Mac adds separate screen-lock/session-switch and sleep preferences, both defaulting to immediate locking. Idle locking remains independent; preferences are stored inside the encrypted vault.
-- Add protected, versioned Android device-build artifacts without publishing unrelated platforms. The coordinated 2.2.2 release still includes every native client.
+- Fix the extension's **Open Mac app** button when PasswordVault is not running. The native host now waits for the macOS launch result before replying, instead of reporting success and exiting too soon.
+- Failed or timed-out launches return a connection error. Existing browser registration and vault unlocking are still required; opening the app does not bypass authentication.
+- Include regression coverage for cold launch, reopening, invalid extension origins and failed launches using a disposable app. Other clients receive coordinated version updates without behavior changes.
 
 ## Downloads and installation
 
@@ -23,7 +22,7 @@ A coordinated release of the native Mac workspace, Android app, lightweight brow
 | `ios-simulator.zip` | A Mac with a compatible Xcode iOS Simulator. **Not an IPA; cannot install on an iPhone.** Extract; run `xcrun simctl install booted PasswordVault.app`. The bundled executable architecture/runtime determine simulator compatibility. |
 | `source.zip` | Source for all clients, including the iOS app and AutoFill extension. Follow the platform READMEs to build; device installation requires eligible provisioning. |
 
-All client versions are **2.2.2**. `BUILD.json` identifies the exact source commit, build numbers and distribution limitations. Verify downloads with `shasum -a 256 -c SHA256SUMS` after downloading the complete asset set.
+All client versions are **2.2.3**. `BUILD.json` identifies the exact source commit, build numbers and distribution limitations. Verify downloads with `shasum -a 256 -c SHA256SUMS` after downloading the complete asset set.
 
 ### Android installation identity
 
@@ -47,11 +46,11 @@ The simulator archive needs no device provisioning. For a personal iPhone, Xcode
 
 本次更新：Android 短暂切后台不再反复要求解锁，仍按空闲时间、锁屏与手动锁定执行；移除 Android 共享资料库管理和局域网同步，保留已有资料与备份兼容。Mac 新增锁屏／切换用户、睡眠的独立锁定选项，默认仍立即锁定。
 
-此版本统一为 **2.2.2**，包含原生 Android、Mac 开发版、浏览器插件、独立 Web、iOS 模拟器包及源码。软件仍处于开发预览阶段，安全审计与部分真机验证尚未完成。
+此版本统一为 **2.2.3**，包含原生 Android、Mac 开发版、浏览器插件、独立 Web、iOS 模拟器包及源码。软件仍处于开发预览阶段，安全审计与部分真机验证尚未完成。
 
 - **Android**：普通手机下载 `android-arm64-v8a.apk`；x86_64 设备下载对应 APK。使用正式发布密钥和独立原生版包名，与旧 Flutter 版共存。之前的本地调试版签名不同，无法直接覆盖；先验证加密备份，切勿为安装而直接卸载唯一的资料库。
 - **Mac**：解压后放入「应用程序」，支持 Apple Silicon/Intel、macOS 13+。本包未公证，首次打开可能需要在「隐私与安全」中选择「仍要打开」。本包不保证 Touch ID 钥匙串注册可用，可用主密码或保留本地签名版。
-- **插件**：先解压，在 Chrome/Edge 扩展管理页启用开发者模式，加载含 `manifest.json` 的目录；不能直接加载 ZIP。更新后重新加载扩展，确认显示 2.2.2。连接 Mac 需先打开并解锁桌面端、完成浏览器登记。
+- **插件**：先解压，在 Chrome/Edge 扩展管理页启用开发者模式，加载含 `manifest.json` 的目录；不能直接加载 ZIP。更新后重新加载扩展，确认显示 2.2.3。连接 Mac 需先打开并解锁桌面端、完成浏览器登记。
 - **Web**：解压后用 HTTPS 或 localhost 服务打开，是独立资料库。
 - **iOS**：本次是模拟器包及源码，不能直接安装到 iPhone。真机自用可尝试 Xcode 签名；完整 AutoFill/App Group 能力仍需合适的团队授权。TestFlight、App Store、Ad Hoc 需要付费开发者团队及相应配置。
 

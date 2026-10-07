@@ -4,6 +4,12 @@
 
 Use [the native guide](NATIVE-MIGRATION.md#build-and-launch) for Rust 1.96.0, Xcode/XcodeGen, Node.js 22.12+, and wasm-bindgen 0.2.128. Run `bash tool/check_native.sh core|macos|browser|all`. Swift tests use the Xcode scheme shown in that guide. Source-generated bindings, local app bundles, and JavaScript build output are ignored. Commit Cargo.lock and package-lock.json.
 
+### Native browser launch regression
+
+Run `python3 tool/test_native_launch.py` in a logged-in macOS GUI session with Xcode command-line tools. It compiles the actual helper and a disposable app in a temporary directory, sends a framed native message with stdin already closed, and checks cold launch, reopening without a second process, invalid-origin rejection and Launch Services failure. No vault is accessed. Use `--bridge-source <path>` to compare an older helper; the previous implementation incorrectly returned success without launching the fixture.
+
+The helper must wait for the `NSWorkspace.openApplication` completion before replying, while servicing its run loop. A 15-second bound returns `native-unavailable` on timeout; native OS diagnostics and local paths are not sent to the extension. This validates the native host lifecycle, not browser registration, Touch ID or all supported macOS versions.
+
 ### Local Mac note editor
 
 The Markdown component is built from `apps/macos/NoteEditor`, with Milkdown **7.22.2**, esbuild and a committed npm lockfile. Build-time npm installation may access the registry; the resulting editor runs from bundled resources without runtime network access. The Mac check already runs these steps before XcodeGen and compilation:

@@ -14,7 +14,7 @@
 
 Native clients are in **developer preview**. [Platform availability](#choose-your-workspace) and the [security model](docs/SECURITY_MODEL.md) describe current limits; an independent security review is still pending.
 
-**Download native 2.2.2:** [GitHub Release](https://github.com/JunWeiUp/PasswordVault/releases/tag/v2.2.2) · [Installation and signing limits](docs/NATIVE-RELEASE-NOTES.md). Includes Android, Mac development build, unpacked extension, Web, iOS Simulator and source.
+**Download native 2.2.3:** [GitHub Release](https://github.com/JunWeiUp/PasswordVault/releases/tag/v2.2.3) · [Installation and signing limits](docs/NATIVE-RELEASE-NOTES.md). Includes Android, Mac development build, unpacked extension, Web, iOS Simulator and source.
 
 ## Less searching. More doing.
 
@@ -82,7 +82,7 @@ Standalone Web is also available with a smaller feature set. Windows and Linux h
 | **Standalone Web** | Independent encrypted vault, CRUD, TOTP, backup/import and utilities | Sharing/WebDAV/QR UI, full theme/language parity and automatic legacy OPFS migration remain incomplete |
 | **Windows / Linux desktop** | No native desktop client | Not implemented |
 
-This increment targets **Mac 2.0.9 build 13**; the browser remains **2.0.9**. Android preview is **2.1.8 / 21010**; iOS preview is **2.1.1 / 3**. Local versions and test results do not imply a public or store release. See [native migration](docs/NATIVE-MIGRATION.md) and [mobile artifacts](docs/MOBILE-IMPLEMENTATION.md#current-preview-artifacts).
+The coordinated release is **2.2.3**: Mac build **19**, browser **2.2.3**, Android build **22005**, and iOS build **7**. This update fixes opening a stopped Mac app from the extension. Local test results do not imply app-store availability or production security acceptance. See [native migration](docs/NATIVE-MIGRATION.md) and [mobile artifacts](docs/MOBILE-IMPLEMENTATION.md#current-preview-artifacts).
 
 </details>
 
@@ -110,7 +110,7 @@ Keep the unpacked directory and extension identity stable. Every delivered exten
 
 ### Android and iOS
 
-Current Android source keeps the main session unlocked during brief app switches until idle expiry and removes shared-vault management/LAN sync. Screen/manual lock, encrypted drafts and existing backup data are retained. These changes are included in 2.2.2.
+Current Android source keeps the main session unlocked during brief app switches until idle expiry and removes shared-vault management/LAN sync. Screen/manual lock, encrypted drafts and existing backup data are retained. These changes are included in 2.2.3.
 
 Follow the dedicated [Android build guide](apps/android/README.md) or [iOS build guide](apps/ios/README.md). Preview identities are separate from legacy production installations. Do not uninstall an existing vault to work around a signing mismatch.
 
