@@ -82,7 +82,7 @@ jobs:
           lipo "$app/Contents/MacOS/PasswordVaultBridge" -verify_arch arm64 x86_64
           codesign --verify --deep --strict "$app"
           ditto -c -k --sequesterRsrc --keepParent "$app" apps/macos/build/PasswordVault-macos-universal.zip
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: native-macos-developer-preview
           path: apps/macos/build/PasswordVault-macos-universal.zip
@@ -120,7 +120,7 @@ jobs:
       - name: Build isolated preview and test applications
         run: |
           ./apps/android/gradlew -p apps/android :app:assembleCompact :app:assembleCompactAndroidTest :login-fixture:assembleDebug -PtestBuildType=compact -PtargetAbi=arm64-v8a
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: native-android-developer-preview
           path: |
@@ -160,7 +160,7 @@ jobs:
           xcodebuild -project apps/ios/PasswordVault.xcodeproj -scheme PasswordVault -configuration Debug -derivedDataPath apps/ios/build -destination "platform=iOS Simulator,id=$simulator_id" test
       - name: Preserve failed iOS test diagnostics
         if: failure()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: native-ios-test-diagnostics
           path: apps/ios/build/Logs/Test/*.xcresult
@@ -168,7 +168,7 @@ jobs:
           retention-days: 7
       - name: Package simulator application preserving executable permissions
         run: ditto -c -k --sequesterRsrc --keepParent apps/ios/build/Build/Products/Debug-iphonesimulator/PasswordVault.app apps/ios/build/PasswordVault-ios-simulator.zip
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: native-ios-simulator-preview
           path: apps/ios/build/PasswordVault-ios-simulator.zip
@@ -206,7 +206,7 @@ jobs:
           export PATH="$toolchain_bin:$PATH"
           cargo install wasm-bindgen-cli --version 0.2.128 --locked
       - run: bash tool/check_native.sh browser
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: lightweight-browser-developer-preview
           path: apps/browser/dist
