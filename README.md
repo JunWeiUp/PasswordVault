@@ -14,7 +14,7 @@
 
 Native clients are in **developer preview**. [Platform availability](#choose-your-workspace) and the [security model](docs/SECURITY_MODEL.md) describe current limits; an independent security review is still pending.
 
-**Download native 2.2.3:** [GitHub Release](https://github.com/JunWeiUp/PasswordVault/releases/tag/v2.2.3) · [Installation and signing limits](docs/NATIVE-RELEASE-NOTES.md). Includes Android, Mac development build, unpacked extension, Web, iOS Simulator and source.
+**Download native 2.2.11:** [GitHub Release](https://github.com/JunWeiUp/PasswordVault/releases/tag/v2.2.11) · [Installation and signing limits](docs/NATIVE-RELEASE-NOTES.md). Includes Android, Mac development build, unpacked extension, Web, iOS Simulator and source.
 
 ## Less searching. More doing.
 
@@ -59,7 +59,7 @@ Choose a saved account next to a supported password field. Review a detected log
 
 The lightweight Chromium extension connects to Mac or uses its own **separate encrypted vault**. It has no Flutter or CanvasKit runtime. [Explore browser setup →](docs/NATIVE-MIGRATION.md#build-and-launch) Use **Add account/password** in the popup to save credentials for the current website even without a login form. Native mode also supports [offline login/signup saving and later Mac synchronization](docs/BROWSER-OFFLINE-SAVE.md).
 
-Browser 2.2.10 / Mac 2.0.12 can show and fill current-site accounts while Mac is quit, with a numeric toolbar badge and masked passwords. Verify the Mac master password in the extension; the visible **Automatically unlock Mac on launch** option also enables startup unlock. Components run only on demand. Existing save-only grants require reauthorization. [Setup and limits →](docs/BROWSER-AUTHORIZATION.md) The popup header shows the extension version and an Open Mac shortcut, with a GitHub download link when the native connection is missing.
+Browser 2.2.11 / Mac 2.2.11 can show and fill current-site accounts while Mac is quit, with a numeric toolbar badge and masked passwords. Verify the Mac master password in the extension; the visible **Automatically unlock Mac on launch** option also enables startup unlock. Components run only on demand. Existing save-only grants require reauthorization. [Setup and limits →](docs/BROWSER-AUTHORIZATION.md) The popup header shows the extension version and an Open Mac shortcut, with a GitHub download link when the native connection is missing.
 
 ## Choose your workspace
 
@@ -84,7 +84,7 @@ Standalone Web is also available with a smaller feature set. Windows and Linux h
 | **Standalone Web** | Independent encrypted vault, CRUD, TOTP, backup/import and utilities | Sharing/WebDAV/QR UI, full theme/language parity and automatic legacy OPFS migration remain incomplete |
 | **Windows / Linux desktop** | No native desktop client | Not implemented |
 
-The coordinated release is **2.2.3**: Mac build **19**, browser **2.2.3**, Android build **22005**, and iOS build **7**. This update fixes opening a stopped Mac app from the extension. Local test results do not imply app-store availability or production security acceptance. See [native migration](docs/NATIVE-MIGRATION.md) and [mobile artifacts](docs/MOBILE-IMPLEMENTATION.md#current-preview-artifacts).
+The coordinated release is **2.2.11**: Mac build **20**, browser **2.2.11**, Android build **22006**, and iOS build **8**. This update adds browser offline saving, authorized account access and optional Mac startup unlock. Local test results do not imply app-store availability or production security acceptance. See [native migration](docs/NATIVE-MIGRATION.md) and [mobile artifacts](docs/MOBILE-IMPLEMENTATION.md#current-preview-artifacts).
 
 </details>
 
@@ -112,7 +112,7 @@ Keep the unpacked directory and extension identity stable. Every delivered exten
 
 ### Android and iOS
 
-Current Android source keeps the main session unlocked during brief app switches until idle expiry and removes shared-vault management/LAN sync. Screen/manual lock, encrypted drafts and existing backup data are retained. These changes are included in 2.2.3.
+Current Android source keeps the main session unlocked during brief app switches until idle expiry and removes shared-vault management/LAN sync. Screen/manual lock, encrypted drafts and existing backup data are retained. These changes are included in 2.2.11.
 
 Follow the dedicated [Android build guide](apps/android/README.md) or [iOS build guide](apps/ios/README.md). Preview identities are separate from legacy production installations. Do not uninstall an existing vault to work around a signing mismatch.
 
