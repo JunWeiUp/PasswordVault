@@ -57,7 +57,9 @@ Native mobile previews bring notes, accounts, codes and wallets into a touch-fri
 
 Choose a saved account next to a supported password field. Review a detected login before saving it, or open an existing account in Mac to edit its details. Filling never submits the form for you.
 
-The lightweight Chromium extension connects to Mac or uses its own **separate encrypted vault**. It has no Flutter or CanvasKit runtime. [Explore browser setup →](docs/NATIVE-MIGRATION.md#build-and-launch)
+The lightweight Chromium extension connects to Mac or uses its own **separate encrypted vault**. It has no Flutter or CanvasKit runtime. [Explore browser setup →](docs/NATIVE-MIGRATION.md#build-and-launch) Use **Add account/password** in the popup to save credentials for the current website even without a login form. Native mode also supports [offline login/signup saving and later Mac synchronization](docs/BROWSER-OFFLINE-SAVE.md).
+
+Browser 2.2.10 / Mac 2.0.12 can show and fill current-site accounts while Mac is quit, with a numeric toolbar badge and masked passwords. Verify the Mac master password in the extension; the visible **Automatically unlock Mac on launch** option also enables startup unlock. Components run only on demand. Existing save-only grants require reauthorization. [Setup and limits →](docs/BROWSER-AUTHORIZATION.md) The popup header shows the extension version and an Open Mac shortcut, with a GitHub download link when the native connection is missing.
 
 ## Choose your workspace
 

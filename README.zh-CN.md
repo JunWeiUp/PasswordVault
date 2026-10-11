@@ -57,7 +57,9 @@
 
 在支持的密码框旁选择已保存的账号；检测到登录后，核对资料再保存。需要修改时，从插件直接打开 Mac 中的对应账号。填充后由你决定是否提交表单。
 
-轻量 Chromium 插件可以连接 Mac，也可以创建**数据分开的独立加密资料库**，不包含 Flutter 或 CanvasKit 运行时。[查看浏览器配置 →](docs/NATIVE-MIGRATION.md#build-and-launch)
+轻量 Chromium 插件可以连接 Mac，也可以创建**数据分开的独立加密资料库**，不包含 Flutter 或 CanvasKit 运行时。[查看浏览器配置 →](docs/NATIVE-MIGRATION.md#build-and-launch) 点击插件中的**添加账号密码**即可为当前网站手动保存账号，无需网页上有登录表单。连接 Mac 模式支持[离线保存登录/注册账号，连接后自动同步](docs/BROWSER-OFFLINE-SAVE.md)。
+
+浏览器 2.2.10 / Mac 2.0.12 支持直接显示、查看和填充当前网站账号，图标角标显示数量，Mac 无需保持打开。在插件中验证 Mac 主密码，勾选**打开 Mac 时自动解锁**即可启用启动解锁。组件仍按需运行；旧的仅保存授权需要重新确认。[配置与使用边界 →](docs/BROWSER-AUTHORIZATION.md) 插件顶部显示版本号和打开 Mac 入口；未检测到本机连接时提供 GitHub 下载链接及登记提示。
 
 ## 选择你的工作空间
 

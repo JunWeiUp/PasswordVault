@@ -8,6 +8,16 @@ This is a prioritized work list, not a release-date promise. Completed source wo
 
 ## Native migration
 
+- [x] Browser 2.2.9 / Mac 2.0.12: explicit site-account reads/fill, masked password reveal, numeric badge and optional one-shot Mac startup unlock; old save-only grants retain their scope. See [authorization and acceptance](docs/BROWSER-AUTHORIZATION.md).
+
+- [x] Browser 2.2.8 / Mac 2.0.11: password-configured background account saving with the main app quit; on-demand helper, Keychain capability, exclusive ownership, transactional retry receipts and conditional alarms. Fixture tests and measured memory are in [background saving](docs/BROWSER-OFFLINE-SAVE.md).
+- [ ] Complete background-save acceptance on macOS 13/Intel and each supported Chromium browser, including signed upgrades and login-Keychain lock/unlock; do not infer those from local helper/DOM tests.
+
+- [x] Browser 2.2.5 manual account/password creation for the current website, with required fields, navigation cleanup and origin/mode checks.
+
+- [x] Browser 2.2.4 offline encrypted save queue, signup capture and paired/unlocked desktop retry; synthetic failure-path and DOM coverage. Real desktop end-to-end acceptance remains separate.
+
+
 - [x] Fix the browser's Open Mac action when the app is not running; verify short-lived native-host cold launch and failure handling with a disposable app (`python3 tool/test_native_launch.py`).
 - [x] Mac direct creation and in-place account/authenticator/wallet editing; continuous rendered Markdown editing with scoped regression coverage. See [Mac field parity](docs/MAC-MOBILE-PARITY.md).
 - [x] Integrate locally bundled Milkdown in WKWebView, with list continuation, caret/history, encrypted save/lock/source handover and scoped native-window acceptance. See [editor evidence](docs/MARKDOWN-EDITOR-EVALUATION.md); physical input methods, accessibility and older/Intel hardware remain separate gates.

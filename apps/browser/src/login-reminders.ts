@@ -55,7 +55,7 @@ function renderBadge(tabId: number) {
   const hasPending = !!waiting && waiting.expires > Date.now();
   const text = hasPending
     ? "+"
-    : site && (site.count > 0 || site.hasPassword)
+    : site
       ? site.count > 99
         ? "99+"
         : String(site.count)
@@ -272,7 +272,8 @@ export async function handleLoginPage(
     request.password.length > 4096
   )
     throw new Error("invalid");
-  // Do not retain page credentials if the vault is locked or unavailable.
+  // Native mode may return no matches while offline; confirmation candidates
+  // remain ephemeral and are distinct from already-saved desktop credentials.
   try {
     const accounts = await core({ op: "matches", origin });
     ensureCurrent();

@@ -1,3 +1,5 @@
+export const MAC_DOWNLOAD_URL = "https://github.com/JunWeiUp/PasswordVault/releases";
+
 export type NativeState = {
   available?: boolean;
   unlocked?: boolean;
@@ -22,8 +24,10 @@ export function connectionPresentation(state: NativeState) {
       "native-host-forbidden",
     ].includes(state.connectionError ?? "");
     return {
-      title: needsRegistration ? "先登记浏览器连接" : "尚未连接到 Mac",
-      message: needsRegistration
+      title: state.connectionError === "native-host-missing" ? "未检测到 Mac 连接" : needsRegistration ? "先登记浏览器连接" : "尚未连接到 Mac",
+      message: state.connectionError === "native-host-missing"
+        ? "尚未安装 Mac 应用？请前往 GitHub 下载。已安装请在「设置 → 浏览器」登记连接。"
+        : needsRegistration
         ? "在 Mac 应用的「设置 → 浏览器」中登记连接，支持 Chrome、Edge 和 Edge Beta。"
         : "请打开 PasswordVault。若应用已打开，请重新登记连接后再检测。",
       canOpen: !needsRegistration,

@@ -1,5 +1,34 @@
 # Changelog
 
+The browser popup now displays its package version beside the name and provides a Mac launch icon. Missing native connections offer GitHub downloads and registration guidance without assuming the app is uninstalled.
+
+## Native browser 2.2.9 / Mac 2.0.12
+
+- Authorize current-site account lookup, password reveal and fill with the Mac app quit. Show numeric site badges and clear revealed passwords on blur, navigation, lock and timeout.
+- Add an explicit Mac startup-unlock checkbox. Verify the desktop parent and signed helper, consume a one-use startup challenge, and fall back to the password screen for missing/revoked grants. Preserve manual/system lock within the current app process.
+- Keep legacy grants save-only, support independent startup revocation, and retain on-demand native processes without loading browser WASM. See [authorization boundaries](docs/BROWSER-AUTHORIZATION.md).
+
+## Native browser 2.2.8 / Mac 2.0.11
+
+- Configure background account saving with the Mac master password in the extension; save while the Mac main app is quit or locked using a helper-owned login-Keychain capability. Existing-account reads/fills retain desktop unlock and pairing.
+- Reuse the short-lived native host and exclusive core lock; add atomic save receipts, password-change/revocation invalidation, and retry without duplicate records or resurrection after deletion.
+- Schedule retry alarms only while records are pending; avoid loading browser WASM or the Mac UI for sync. Document synthetic process-memory measurements and remaining platform gates in [background saving](docs/BROWSER-OFFLINE-SAVE.md).
+
+## Native browser 2.2.5
+
+- Add an explicit current-website account/password form without requiring a login form on the page. Reuse encrypted offline staging or the unlocked independent vault, retain drafts on save failure, and reject changed origins or vault modes.
+
+## Native browser 2.2.4
+
+- Save confirmed login and signup credentials while Mac is offline, locked or unpaired. Stage encrypted records locally and retry after pairing/unlock, including from a background alarm.
+- Recognize new-password fields and matching confirmation fields (including AIACC's signup form); reject ambiguous/password-change forms. Preserve explicit confirmation and origin checks.
+- Retain failed deliveries, compare exact credentials before retrying, and remove local records only after desktop acknowledgement. Device-key staging has a different security boundary from the master-password vault; see docs/BROWSER-OFFLINE-SAVE.md.
+
+## Unreleased — Mac browser launch fix
+
+- Wait for Launch Services to finish opening the Mac app before replying to the browser's native message. Previously the helper could report success and exit before the asynchronous launch completed.
+- Return a connection error on launch failure or timeout. Add disposable-app regression checks for cold launch, reopening, invalid extension origins and failed launches.
+
 ## Native 2.2.3 — Mac browser launch fix
 
 - Wait for Launch Services to finish opening the Mac app before replying to the browser native message. Previously the helper could report success and exit before the asynchronous launch completed.

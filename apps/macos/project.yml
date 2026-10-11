@@ -66,8 +66,14 @@ targets:
   PasswordVaultBridge:
     type: tool
     platform: macOS
-    sources: Bridge
+    sources:
+      - Bridge
+      - path: Generated
+        excludes: ["*.h", "*.modulemap"]
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.securepass.vault.macos.bridge
         PRODUCT_NAME: PasswordVaultBridge
+        SWIFT_OBJC_BRIDGING_HEADER: Generated/VaultCoreFFI.h
+        HEADER_SEARCH_PATHS: "$(PROJECT_DIR)/Generated"
+        OTHER_LDFLAGS: ["$(PROJECT_DIR)/../../target/universal/libvault_core.a", "-lresolv", "-liconv", "-framework", "Security"]

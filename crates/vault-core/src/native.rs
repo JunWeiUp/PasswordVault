@@ -2,6 +2,7 @@ use crate::*;
 use fs2::FileExt;
 use rusqlite::{Connection, OpenFlags};
 use serde_json::{json, Value};
+use sha2::{Digest, Sha256};
 use std::{
     fs::{self, File, OpenOptions},
     io::Write,
@@ -381,6 +382,12 @@ impl DiskVault {
                 )?;
                 self.mutate(|doc| Ok(json!({"imported":doc.merge(incoming)?})))
             }
+            "revoke-background" => {
+                self.open()?;
+                let base = self.directory.parent().ok_or(VaultError::Storage)?;
+                revoke_background_grants(base.to_string_lossy().into_owned())?;
+                Ok(json!({"ok":true}))
+            }
             "change-password" => {
                 let open = self.open()?;
                 let validated = open.header.unlock(string("currentPassword")?)?;
@@ -430,6 +437,188 @@ impl DiskVault {
     }
 }
 
+// A native-only Keychain capability. Never return this material through a browser message.
+// Bind it to both the password envelope and a revocation epoch; rotating either invalidates it.
+fn sync_fingerprint(base: &Path) -> Result<Vec<u8>> {
+    let header = storage(fs::read(base.join("vault/header.json")))?;
+    let epoch = match fs::read(base.join("background-sync-epoch")) {
+        Ok(bytes) => bytes,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Vec::new(),
+        Err(_) => return Err(VaultError::Storage),
+    };
+    let mut hash = Sha256::new();
+    hash.update(b"PasswordVault background save v1");
+    hash.update(&header);
+    hash.update(&epoch);
+    Ok(hash.finalize().to_vec())
+}
+
+#[uniffi::export]
+pub fn create_background_grant(directory: String, password: String) -> Result<Vec<u8>> {
+    let password = Zeroizing::new(password);
+    let base = Path::new(&directory);
+    let before = sync_fingerprint(base)?;
+    let bytes = storage(fs::read(base.join("vault/header.json")))?;
+    let header: Header = serde_json::from_slice(&bytes).map_err(|_| VaultError::InvalidData)?;
+    let root = header.unlock(&password)?;
+    if before != sync_fingerprint(base)? {
+        return Err(VaultError::Authentication);
+    }
+    let mut grant = before;
+    grant.extend_from_slice(root.as_ref());
+    Ok(grant)
+}
+
+#[uniffi::export]
+pub fn background_grant_valid(directory: String, grant: Vec<u8>) -> Result<bool> {
+    let grant = Zeroizing::new(grant);
+    Ok(grant.len() == 64 && grant[..32] == sync_fingerprint(Path::new(&directory))?)
+}
+
+#[uniffi::export]
+pub fn revoke_background_grants(directory: String) -> Result<()> {
+    atomic_write(
+        &Path::new(&directory).join("background-sync-epoch"),
+        &random_bytes::<32>(),
+    )
+}
+
+impl DiskVault {
+    fn validate_native_grant(&self, grant: &[u8]) -> Result<()> {
+        let base = self.directory.parent().ok_or(VaultError::Storage)?;
+        if grant.len() != 64
+            || grant[..32] != sync_fingerprint(base)?
+            || self
+                .unlocked
+                .as_ref()
+                .is_some_and(|open| open.root.as_ref() != &grant[32..])
+        {
+            return Err(VaultError::Authentication);
+        }
+        Ok(())
+    }
+    fn background_save(&mut self, grant: &[u8], request: &Value) -> Result<Value> {
+        let base = self.directory.parent().ok_or(VaultError::Storage)?;
+        if grant.len() != 64 || grant[..32] != sync_fingerprint(base)? {
+            return Err(VaultError::Authentication);
+        }
+        // Only an append operation; no general command dispatch and no reads returned.
+        let origin = request["origin"].as_str().ok_or(VaultError::InvalidData)?;
+        let url = url::Url::parse(origin).map_err(|_| VaultError::InvalidData)?;
+        if !["http", "https"].contains(&url.scheme())
+            || url.host_str().is_none()
+            || !url.username().is_empty()
+            || url.password().is_some()
+            || (url.path() != "/" && !url.path().is_empty())
+            || url.query().is_some()
+            || url.fragment().is_some()
+        {
+            return Err(VaultError::InvalidData);
+        }
+        let username = request["username"]
+            .as_str()
+            .ok_or(VaultError::InvalidData)?;
+        let password = request["password"]
+            .as_str()
+            .ok_or(VaultError::InvalidData)?;
+        let id = request["id"].as_str().ok_or(VaultError::InvalidData)?;
+        if username.is_empty()
+            || password.is_empty()
+            || username.len() > 4096
+            || password.len() > 4096
+            || (id.len() != 36
+                || !id.bytes().enumerate().all(|(i, b)| {
+                    if [8, 13, 18, 23].contains(&i) {
+                        b == b'-'
+                    } else {
+                        b.is_ascii_hexdigit()
+                    }
+                }))
+        {
+            return Err(VaultError::InvalidData);
+        }
+        if self
+            .unlocked
+            .as_ref()
+            .is_some_and(|open| open.root.as_ref() != &grant[32..])
+        {
+            return Err(VaultError::Authentication);
+        }
+        let was_locked = self.unlocked.is_none();
+        if was_locked {
+            let root = Zeroizing::new(
+                grant[32..]
+                    .try_into()
+                    .map_err(|_| VaultError::Authentication)?,
+            );
+            self.unlock_key(root, self.header()?)?;
+        }
+        let result = (|| {
+            let open = self.open()?;
+            storage(open.connection.execute_batch(
+                "CREATE TABLE IF NOT EXISTS browser_sync_receipts(id TEXT PRIMARY KEY)",
+            ))?;
+            let already: bool = storage(open.connection.query_row(
+                "SELECT EXISTS(SELECT 1 FROM browser_sync_receipts WHERE id=?1)",
+                [id],
+                |r| r.get(0),
+            ))?;
+            if already {
+                return Ok(json!({"saved":true}));
+            }
+            let mut doc = open.document.clone();
+            let item_id = format!("browser-sync-{id}");
+            let mut duplicate = doc.items.iter().any(|item| item["id"] == item_id);
+            let matches = matching_accounts(&doc.items, origin)?;
+            for account in matches.as_array().ok_or(VaultError::InvalidData)? {
+                if account["username"] == username {
+                    let mut existing = fill_account(
+                        &doc.items,
+                        origin,
+                        account["id"].as_str().ok_or(VaultError::InvalidData)?,
+                        account["accountId"].as_str(),
+                    )?;
+                    duplicate |=
+                        existing["username"] == username && existing["password"] == password;
+                    wipe_value(&mut existing);
+                }
+            }
+            if !duplicate {
+                let seconds = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map_err(|_| VaultError::Storage)?
+                    .as_secs();
+                let now = chrono::DateTime::from_timestamp(seconds as i64, 0)
+                    .ok_or(VaultError::Storage)?
+                    .to_rfc3339();
+                doc.upsert(
+                    json!({"id":item_id, "type":"password", "title":url.host_str(),
+                    "username":username, "password":password, "url":origin,
+                    "createdAt":now, "updatedAt":now, "isDeleted":false}),
+                )?;
+            }
+            let bytes =
+                Zeroizing::new(serde_json::to_vec(&doc).map_err(|_| VaultError::InvalidData)?);
+            let sealed = seal(
+                &subkey(&open.root, b"document"),
+                &bytes,
+                open.header.vault_id.as_bytes(),
+            )?;
+            let encrypted = serde_json::to_vec(&sealed).map_err(|_| VaultError::InvalidData)?;
+            let tx = storage(open.connection.transaction())?;
+            storage(tx.execute("UPDATE vault_state SET payload=?1 WHERE id=1", [encrypted]))?;
+            storage(tx.execute("INSERT INTO browser_sync_receipts(id) VALUES(?1)", [id]))?;
+            storage(tx.commit())?;
+            open.document = doc;
+            Ok(json!({"saved":true}))
+        })();
+        if was_locked {
+            self.lock();
+        }
+        result
+    }
+}
+
 fn wipe_value(value: &mut Value) {
     match value {
         Value::String(s) => s.zeroize(),
@@ -467,6 +656,74 @@ impl VaultSession {
         wipe_value(&mut parsed);
         serde_json::to_string(&result?).map_err(|_| VaultError::InvalidData)
     }
+    /// Native-only: the helper must verify explicit read authorization before calling this API.
+    pub fn authorized_browser_command(&self, grant: Vec<u8>, request: String) -> Result<String> {
+        let grant = Zeroizing::new(grant);
+        let input = Zeroizing::new(request);
+        if input.len() > 32768 {
+            return Err(VaultError::InvalidData);
+        }
+        let mut parsed: Value =
+            serde_json::from_str(&input).map_err(|_| VaultError::InvalidData)?;
+        if !matches!(parsed["op"].as_str(), Some("matches" | "fill")) {
+            wipe_value(&mut parsed);
+            return Err(VaultError::Unsupported);
+        }
+        let mut inner = self.inner.lock().map_err(|_| VaultError::Storage)?;
+        inner.validate_native_grant(&grant)?;
+        let was_locked = inner.unlocked.is_none();
+        if was_locked {
+            let root = Zeroizing::new(
+                grant[32..]
+                    .try_into()
+                    .map_err(|_| VaultError::Authentication)?,
+            );
+            let header = inner.header()?;
+            inner.unlock_key(root, header)?;
+        }
+        let result = inner.command(&parsed);
+        wipe_value(&mut parsed);
+        if was_locked {
+            inner.lock();
+        }
+        let mut result = result?;
+        let output = serde_json::to_string(&result).map_err(|_| VaultError::InvalidData);
+        wipe_value(&mut result);
+        output
+    }
+
+    /// Only the authenticated desktop-startup handshake may call this API.
+    pub fn unlock_desktop_grant(&self, grant: Vec<u8>) -> Result<()> {
+        let grant = Zeroizing::new(grant);
+        let mut inner = self.inner.lock().map_err(|_| VaultError::Storage)?;
+        inner.validate_native_grant(&grant)?;
+        let root = Zeroizing::new(
+            grant[32..]
+                .try_into()
+                .map_err(|_| VaultError::Authentication)?,
+        );
+        let header = inner.header()?;
+        inner.unlock_key(root, header)
+    }
+
+    /// Native-only append API. Grant bytes must stay in the native Keychain/IPC boundary.
+    pub fn background_save(&self, grant: Vec<u8>, request: String) -> Result<String> {
+        let grant = Zeroizing::new(grant);
+        let input = Zeroizing::new(request);
+        if input.len() > 32768 {
+            return Err(VaultError::InvalidData);
+        }
+        let mut parsed: Value =
+            serde_json::from_str(&input).map_err(|_| VaultError::InvalidData)?;
+        let result = self
+            .inner
+            .lock()
+            .map_err(|_| VaultError::Storage)?
+            .background_save(&grant, &parsed);
+        wipe_value(&mut parsed);
+        serde_json::to_string(&result?).map_err(|_| VaultError::InvalidData)
+    }
+
     /// Only for a native platform Keychain entry with biometric access control.
     /// This API must never be exposed to browser messages.
     pub fn biometric_key(&self) -> Result<Vec<u8>> {
@@ -488,5 +745,44 @@ impl VaultSession {
         let mut inner = self.inner.lock().map_err(|_| VaultError::Storage)?;
         let header = inner.header()?;
         inner.unlock_key(root, header)
+    }
+}
+
+#[cfg(test)]
+mod background_transaction_tests {
+    use super::*;
+    #[test]
+    fn receipt_failure_rolls_back_the_document_and_retry_succeeds() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut vault = DiskVault::new(dir.path()).unwrap();
+        vault.create("Synthetic transaction fixture").unwrap();
+        let grant = create_background_grant(
+            dir.path().to_string_lossy().into(),
+            "Synthetic transaction fixture".into(),
+        )
+        .unwrap();
+        let conn = &vault.open().unwrap().connection;
+        conn.execute_batch(
+            "CREATE TABLE browser_sync_receipts(id TEXT PRIMARY KEY);
+            CREATE TRIGGER reject_receipt BEFORE INSERT ON browser_sync_receipts
+            BEGIN SELECT RAISE(ABORT, 'synthetic write failure'); END;",
+        )
+        .unwrap();
+        let request = json!({"id":"44444444-4444-4444-a444-444444444444",
+            "origin":"https://fixture.test","username":"fixture","password":"fictional"});
+        assert!(vault.background_save(&grant, &request).is_err());
+        assert!(vault.open().unwrap().document.items.is_empty());
+        let open = vault.open().unwrap();
+        assert!(
+            load_document(&open.connection, &open.root, &open.header.vault_id)
+                .unwrap()
+                .items
+                .is_empty()
+        );
+        open.connection
+            .execute_batch("DROP TRIGGER reject_receipt")
+            .unwrap();
+        vault.background_save(&grant, &request).unwrap();
+        assert_eq!(vault.open().unwrap().document.items.len(), 1);
     }
 }
