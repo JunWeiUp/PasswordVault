@@ -989,3 +989,29 @@ summary {
   padding: 6px 9px;
   color: var(--blue);
 }
+
+.connection-panel form {
+  display: grid;
+  gap: 8px;
+}
+
+.authorization-option { display: flex; align-items: center; gap: 8px; }
+.authorization-option input[type="checkbox"] { width: auto; margin: 0; }
+.match-row { flex-wrap: wrap; }
+.account-secret { flex: 0 0 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 0 12px 8px; }
+.account-secret code { flex: 1; min-width: 0; overflow-wrap: anywhere; white-space: pre-wrap; }
+.account-secret small { flex-basis: 100%; color: var(--danger, #b3261e); }
+
+.popup .brand-version {
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0;
+  color: var(--muted);
+  background: #eef1f5;
+  border-radius: 4px;
+  padding: 3px 5px;
+}
+.popup .mac-launch { display: inline-flex; align-items: center; padding: 6px; }
+.mac-download-notice { background: #eef5ff; border-radius: 7px; padding: 10px; margin-bottom: 12px; font-size: 12px; }
+.mac-download-notice p { margin: 0 0 6px; }
+.mac-download-notice .text-button { float: right; }

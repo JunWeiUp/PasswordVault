@@ -96,3 +96,31 @@ This is a narrow renderer measurement, not total extension/process/GPU memory or
 The used JavaScript heap was approximately 20.9 MiB versus 1.0 MiB. A separate observation of the installed native-mode popup showed approximately 1.3 MiB used JavaScript heap before explicit GC; its state and measurement procedure differ, so it is not part of the paired comparison.
 
 The legacy screenshot capture timed out, but its accessibility tree confirmed the create-password interface and the expected Dart/CanvasKit resources loaded. This measurement uses the old extension's UI assets over HTTP; it excludes its installed background worker, real vault workload, total renderer/GPU allocations, and the new Mac process. Do not use it to claim a percentage reduction in total product memory. A full comparison still requires identical populated fixtures, repeated runs, renderer/process attribution, and import/password-change scenarios. Temporary benchmark pages and servers were closed after sampling.
+
+## Browser 2.2.4: offline and signup saving
+
+- `bash tool/check_native.sh browser` and `bash tool/check.sh repo` passed. Browser suite: 32 tests, including persisted encrypted queue restart/tampering/failure retention, unavailable/locked capture and retry deduplication.
+- Ego DOM checks passed: 8 existing popup scenarios, 5 signup scenarios (`signup-scenarios.mjs`) and 3 offline popup scenarios (`runOffline` in `popup-scenarios.mjs`). Signup uses a synthetic form matching the inspected AIACC username/password/confirmPassword structure; no real registration was submitted.
+- Updated the existing unpacked extension and reloaded ego; runtime manifest reports 2.2.4 and the `offline-sync` alarm is registered. Native status is reachable/paired/unlocked; no synthetic credentials were written to the real desktop vault. Full offline-to-real-native-host delivery and Edge/Chrome reload remain separate user/platform acceptance.
+- Device-key staging is not master-password protection; see [offline-save behavior and limits](BROWSER-OFFLINE-SAVE.md).
+
+## Browser 2.2.5 — manual current-site accounts
+
+- `npm --prefix apps/browser run release:local`, `bash tool/check_native.sh browser`, and `bash tool/check.sh repo` pass (33 browser tests).
+- `runManualAdd` in `apps/browser/tests/popup-scenarios.mjs` passes for native/offline and independent mock modes: required empty fields, draft retention through polling/save failure, retry payload bound to the site, cancellation and navigation cleanup. The eight existing confirmation DOM scenarios also pass at 380×600.
+- Updated `native-test-output/dist` and reloaded ego lite; extension management reports 2.2.5. These checks use fictional credentials and a simulated bridge; real Mac persistence and Edge/Chrome reload remain separate acceptance steps.
+
+## Browser 2.2.8 / Mac 2.0.11 background account saving
+
+- Rust: 30 tests pass, including new cold-start/locked-state append, strict-input, tampered/revoked grant, password-change, duplicate/conflict, deletion-retry and atomic receipt-failure rollback coverage; Clippy and formatting pass.
+- Swift: 66 tests pass. Three helper/Keychain integration tests use disposable vaults, exercise absent and locked desktop owners, reject browser-supplied grants, deny a different executable silent Keychain access, reopen durable records and measure a 1,000-account fixture. The helper explicitly disables legacy Keychain interaction to prevent unexpected system prompts.
+- Browser: 35 tests pass; native check, release build and repository checks pass. Real 380×600 mock-bridge DOM scenarios cover confirmation (8), manual addition (2), offline flow (3), existing-account navigation (5), and background setup/revocation (3). Retry status stays compact during confirmation so long origins/errors do not hide save/cancel.
+- Local delivery: Mac 2.0.11 build 15 installed with the existing ad-hoc development signing mode; encrypted vault files were unchanged during replacement. The original unpacked directory was updated, and ego lite reloaded/verified 2.2.8. The installed extension discovered background-sync support with the main Mac app quit, and an empty queue had no sync alarms. No real master password was supplied or real account written during acceptance.
+- Memory evidence and platform limits: [background saving](BROWSER-OFFLINE-SAVE.md). Installed Chrome/Edge credential delivery, physical login-Keychain locking, macOS 13/Intel and stable production signing/upgrades remain separate gates. Other open browsers need their own extension reload.
+
+
+## Browser 2.2.9 / Mac 2.0.12 account access and startup unlock
+
+31 Rust, 69 Swift and 37 browser tests pass, with 26 scoped real-DOM fixture scenarios. The real native helper/Keychain tests verify reads while the main app is absent, automatic startup unlock, unchanged UI lock during later reads, save-only/revoked denial, one-use challenge/replay rejection and a manual-lock race. A separate launcher fixture rejects desktop mode from a non-desktop parent. UI fixtures verify masked account rows, explicit reveal, late-response discard and current-site counts. Setup requires fresh explicit authorization; no real master password or account is used in automation. See [setup and remaining platform gates](BROWSER-AUTHORIZATION.md).
+
+Local delivery for this increment: Mac 2.0.12 build 16 was installed with the prior ad-hoc development signing mode, preserving the encrypted vault files and retaining the old application. The original unpacked extension directory was updated; ego lite reloaded and reported 2.2.9, the new explicit authorization form, and no sync alarm for an empty queue. Real-profile grant reauthorization is left to the user; the agent did not enter a real master password or inspect real accounts. Other browsers need their own extension/page reload.

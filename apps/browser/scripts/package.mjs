@@ -29,7 +29,7 @@ const manifest = {
     "Private notes and credentials. Connect to Mac or use an independent encrypted vault.",
   minimum_chrome_version: "120",
   key: identity.publicKey,
-  permissions: ["storage", "activeTab", "scripting", "nativeMessaging", "idle"],
+  permissions: ["storage", "activeTab", "scripting", "nativeMessaging", "idle", "alarms"],
   host_permissions: ["https://*/*", "http://*/*"],
   content_scripts: [
     {

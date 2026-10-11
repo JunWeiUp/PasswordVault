@@ -63,6 +63,10 @@ For WebDAV, browsers enforce CORS. Configure your server to allow your chosen or
 
 Follow the [data compatibility rules](ARCHITECTURE.md#data-compatibility). Regenerate the database and localizations before analysis, and include migration/failure-path tests when changing storage or encryption. Package and runtime asset validation is documented in [REGISTRY.md](REGISTRY.md).
 
+### Background browser saving
+
+After running the native core/macOS/browser checks, run the Debug Swift scheme with the background-sync tests enabled. BackgroundSyncTests invokes the actual helper with a fixture-only socket environment override, stores only synthetic capabilities in the login Keychain, deletes them afterwards, and records per-helper process peaks with /usr/bin/time. The full scheme now includes 69 tests, including explicit read/startup scopes and lock-race cancellation. Use runBackgroundSync and the existing popup scenario exports for DOM acceptance; disable HTTP cache on the QA page when rebuilding the unhashed popup module. Never supply a real vault master password to automation. The release helper ignores the fixture socket override.
+
 ## CI scope and performance
 
 [CI selection and caching](CI.md) explains which platform checks run for a change, how to request a complete run, and why release checks remain complete. Local default mobile builds still compile all supported ABIs; CI selects only the Android APK ABI and host iOS simulator architecture while retaining the iOS device-library build.

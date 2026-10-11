@@ -1,5 +1,11 @@
 # Page structure
 
+The browser popup header displays the package version and a Mac launch icon in both vault modes. Launching Mac does not switch modes. Missing native connections link to GitHub Releases; installation and registration cannot be distinguished by the browser alone.
+
+Browser 2.2.9 prioritizes the current-site account list and numeric count. Authorized account rows fill directly, with a masked password line and explicit reveal; authorization management is folded above the list and reminder preferences follow it. The password form explicitly requests read/save scope and offers a startup-unlock checkbox. Mac 2.0.12 attempts that unlock only during cold start, retaining the normal password screen on failure. [Details](BROWSER-AUTHORIZATION.md).
+
+Browser 2.2.8 adds a native-mode **Background save** password form, configured/disabled states, masked input cleared after submission, and conditional retry feedback. Existing account read/fill connection instructions are collapsed separately. Mac 2.0.11 adds **Revoke all background save authorizations** in Settings → Browser; UI lock preserves this explicit append-only permission. See [setup and limits](BROWSER-OFFLINE-SAVE.md).
+
 Native Mac 2.0.7 retains **Settings → Security → Idle lock → Never** and uses one continuous rendered editor that hides recognized Markdown syntax. **Edit / Preview** share the same typography, and clicking Preview enters Edit directly. Click anywhere in the body and type, select across paragraphs, or use **⌘Z / ⇧⌘Z** and the Edit menu. The source view remains available for plain Markdown editing. Titles and body changes save automatically; undo/redo also enter the save queue. Switching notes or locking clears that editor's undo history; shared read-only notes and Trash stay read-only.
 
 Browser 2.0.9 offers the password-field menu on HTTP(S) pages and same-origin embedded login pages. Click the PasswordVault field button and select an account; no form is submitted. Formless login panels may pair one nearby, explicitly labelled account field with one password field, but ambiguous layouts only fill the chosen password. Navigation, field replacement and changed account-field identity cancel pending fills. Showing/hiding an identified password retains its button. Cross-origin frames and closed shadow roots remain unsupported. Login submissions inside a same-origin frame or an unambiguous form-less panel now produce a main-page save reminder. Clicking Review opens the trusted extension review; Dismiss clears pending data and cancels in-flight capture. Native form validation runs before capture, including clicks on nested button text. No login is automatically submitted or saved. Pending confirmation appears directly below the website, before reminder settings and the folded saved-account list. Account and password are editable; an accessible eye button reveals/conceals the password. Cancel save and Save remain visible at the standard 380×600 popup size, including two-line origins and errors. Leaving the window, changing pending records, saving or cancelling conceals the password. Polling retains local edits until the pending record changes or expires.
@@ -148,3 +154,11 @@ Security shows biometric On/Off state, a separate renewal action, pending verifi
 - Legacy/provider CSV aliases and short rows are preserved. Plain export requires confirmation; new encrypted CSV uses the native encryption envelope. Full encrypted backups preserve richer migration metadata.
 
 See [legacy parity evidence and remaining device gates](ANDROID-LEGACY-PARITY.md).
+
+### Offline browser capture
+
+Native-mode popup retains capture confirmation and manual page capture while the desktop connection panel shows offline/locked/unpaired status. It reports staged-count/sync-failure state; successful offline saves explicitly say they are local and awaiting paired/unlocked Mac synchronization. See [offline save](BROWSER-OFFLINE-SAVE.md).
+
+### Browser current-website creation
+
+The popup offers **添加账号密码** above saved accounts when no capture is being reviewed. It opens empty required username/password fields bound to the displayed HTTP(S) origin. Save uses the existing native encrypted offline queue or unlocked independent vault. Polling preserves edits; cancel, site changes, mode changes and explicit locking clear the draft. Closing the popup discards unsaved manual input. Saving rejects a changed origin/mode and invalid credential lengths. Page-form capture remains separately available.

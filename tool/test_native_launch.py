@@ -81,13 +81,24 @@ NSApplication.shared.run()
 ''')
         helper = binaries / "PasswordVaultBridge"
         subprocess.run(["xcrun", "swiftc", str(fixture), "-o", str(binaries / "LaunchFixture")], check=True)
-        subprocess.run(["xcrun", "swiftc", str(args.bridge_source), "-o", str(helper)], check=True)
+        sources = [str(args.bridge_source)]
+        links = []
+        if "BackgroundSync." in args.bridge_source.read_text():
+            generated = ROOT / "apps/macos/Generated"
+            library = ROOT / "target/universal/libvault_core.a"
+            assert library.exists(), "Run bash tool/check_native.sh macos first"
+            sources += [str(ROOT / "apps/macos/Bridge/DesktopPeer.swift"), str(ROOT / "apps/macos/Bridge/BackgroundSync.swift"), str(generated / "VaultCore.swift")]
+            links = ["-import-objc-header", str(generated / "VaultCoreFFI.h"),
+                     str(library), "-lresolv", "-liconv", "-framework", "Security"]
+        subprocess.run(["xcrun", "swiftc", *sources, *links, "-o", str(helper)], check=True)
         pid = None
         try:
             assert request(helper, "open", "chrome-extension://invalid/") == {
                 "ok": False, "error": "invalid-origin"}
             assert not (root / "launched").exists(), "Invalid origin launched app"
             print("PASS: invalid extension origin rejected", flush=True)
+            assert request(helper, "desktop-auto-unlock", "--desktop-unlock") == {"ok": False, "error": "invalid-origin"}
+            print("PASS: non-desktop parent cannot invoke startup-unlock mode", flush=True)
             response = request(helper, "open")
             assert response == {"ok": True}, response
             pid = int(await_file(root / "launched"))

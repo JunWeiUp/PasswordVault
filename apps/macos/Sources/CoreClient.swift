@@ -34,6 +34,20 @@ actor CoreClient {
     return failed ? recovery : nil
   }
 
+  func backgroundSave(grant: Data, request: [String: JSONValue]) throws -> JSONValue {
+    let bytes = try JSONEncoder().encode(request)
+    let response = try session.backgroundSave(grant: grant, request: String(decoding: bytes, as: UTF8.self))
+    return try JSONDecoder().decode(JSONValue.self, from: Data(response.utf8))
+  }
+
+  func authorizedBrowserCommand(grant: Data, request: [String: JSONValue]) throws -> JSONValue {
+    let bytes = try JSONEncoder().encode(request)
+    let response = try session.authorizedBrowserCommand(grant: grant, request: String(decoding: bytes, as: UTF8.self))
+    return try JSONDecoder().decode(JSONValue.self, from: Data(response.utf8))
+  }
+
+  func unlockDesktopGrant(_ grant: Data) throws { try session.unlockDesktopGrant(grant: grant) }
+
   func biometricKey() throws -> Data { Data(try session.biometricKey()) }
   func unlockBiometric(_ key: Data) throws { try session.unlockBiometric(key: key) }
 }

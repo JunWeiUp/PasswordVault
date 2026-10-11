@@ -14,7 +14,7 @@
 
 原生客户端目前为**开发预览版**。[平台状态](#选择你的工作空间)与[安全模型](docs/SECURITY_MODEL.md)记录当前限制，独立安全审查仍待完成。
 
-**下载原生版 2.2.3：** [GitHub Release](https://github.com/JunWeiUp/PasswordVault/releases/tag/v2.2.3) · [安装方式与签名限制](docs/NATIVE-RELEASE-NOTES.md)。包含 Android、Mac 开发版、解压式插件、Web、iOS 模拟器包及源码。
+**下载原生版 2.2.11：** [GitHub Release](https://github.com/JunWeiUp/PasswordVault/releases/tag/v2.2.11) · [安装方式与签名限制](docs/NATIVE-RELEASE-NOTES.md)。包含 Android、Mac 开发版、解压式插件、Web、iOS 模拟器包及源码。
 
 ## 少一点翻找，多一点从容
 
@@ -57,7 +57,9 @@
 
 在支持的密码框旁选择已保存的账号；检测到登录后，核对资料再保存。需要修改时，从插件直接打开 Mac 中的对应账号。填充后由你决定是否提交表单。
 
-轻量 Chromium 插件可以连接 Mac，也可以创建**数据分开的独立加密资料库**，不包含 Flutter 或 CanvasKit 运行时。[查看浏览器配置 →](docs/NATIVE-MIGRATION.md#build-and-launch)
+轻量 Chromium 插件可以连接 Mac，也可以创建**数据分开的独立加密资料库**，不包含 Flutter 或 CanvasKit 运行时。[查看浏览器配置 →](docs/NATIVE-MIGRATION.md#build-and-launch) 点击插件中的**添加账号密码**即可为当前网站手动保存账号，无需网页上有登录表单。连接 Mac 模式支持[离线保存登录/注册账号，连接后自动同步](docs/BROWSER-OFFLINE-SAVE.md)。
+
+浏览器 2.2.11 / Mac 2.2.11 支持直接显示、查看和填充当前网站账号，图标角标显示数量，Mac 无需保持打开。在插件中验证 Mac 主密码，勾选**打开 Mac 时自动解锁**即可启用启动解锁。组件仍按需运行；旧的仅保存授权需要重新确认。[配置与使用边界 →](docs/BROWSER-AUTHORIZATION.md) 插件顶部显示版本号和打开 Mac 入口；未检测到本机连接时提供 GitHub 下载链接及登记提示。
 
 ## 选择你的工作空间
 
@@ -82,7 +84,7 @@
 | **独立 Web** | 独立加密资料库、增删改查、TOTP、备份/导入和工具 | 共享/WebDAV/QR 界面、完整主题/语言对齐及旧 OPFS 自动迁移尚未完成 |
 | **Windows / Linux 桌面** | 无原生桌面客户端 | 尚未实现 |
 
-本次统一版本为 **2.2.3**：Mac build **19**、浏览器 **2.2.3**、Android build **22005**、iOS build **7**。此次修复插件无法唤起未运行的 Mac 应用的问题。测试结果不代表已上架应用商店或通过生产安全验收，详见[原生迁移](docs/NATIVE-MIGRATION.md)及[移动端产物](docs/MOBILE-IMPLEMENTATION.md#current-preview-artifacts)。
+本次统一版本为 **2.2.11**：Mac build **20**、浏览器 **2.2.11**、Android build **22006**、iOS build **8**。此次新增浏览器离线保存、授权读取账号和可选 Mac 启动自动解锁。测试结果不代表已上架应用商店或通过生产安全验收，详见[原生迁移](docs/NATIVE-MIGRATION.md)及[移动端产物](docs/MOBILE-IMPLEMENTATION.md#current-preview-artifacts)。
 
 </details>
 
@@ -110,7 +112,7 @@ Mac 应用生成于 `apps/macos/build/Build/Products/Release/PasswordVault.app`�
 
 ### Android 与 iOS
 
-当前 Android 源码支持在空闲锁定时间内切换应用后直接返回，并移除共享资料库管理与局域网同步；保留锁屏/手动锁定、加密草稿和已有备份数据。这些改动包含在 2.2.3 中。
+当前 Android 源码支持在空闲锁定时间内切换应用后直接返回，并移除共享资料库管理与局域网同步；保留锁屏/手动锁定、加密草稿和已有备份数据。这些改动包含在 2.2.11 中。
 
 分别按 [Android 构建指南](apps/android/README.md)或 [iOS 构建指南](apps/ios/README.md)操作。预览标识与旧生产安装分开，不要卸载已有资料库来绕过签名不匹配。
 
