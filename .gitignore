@@ -113,7 +113,7 @@ __pycache__/
 android/build/
 
 # Native rewrite build outputs and local integration state
-/target/
+/target
 /apps/macos/build/
 /apps/macos/Generated/
 /apps/macos/PasswordVault.xcodeproj/

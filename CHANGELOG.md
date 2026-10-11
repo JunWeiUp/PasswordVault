@@ -1,5 +1,10 @@
 # Changelog
 
+## Native 2.2.11 — browser authorization and offline accounts
+
+- Publish offline account saving, authorized site reads/fill, numeric badges, optional Mac startup unlock, and the popup version/Mac launch shortcut developed in the local increments below.
+- Coordinate all client versions at 2.2.11 (Mac 20, Android 22006, iOS 8); preserve the latest main-branch fixes and release checks.
+
 The browser popup now displays its package version beside the name and provides a Mac launch icon. Missing native connections offer GitHub downloads and registration guidance without assuming the app is uninstalled.
 
 ## Native browser 2.2.9 / Mac 2.0.12

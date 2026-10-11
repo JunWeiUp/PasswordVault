@@ -1,14 +1,16 @@
-# PasswordVault 2.2.3 — native clients
+# PasswordVault 2.2.11 — native clients
 
 A coordinated release of the native Mac workspace, Android app, lightweight browser extension, standalone Web app, and iOS Simulator app. Notes, accounts, authenticator codes and wallets share the Rust vault core. Mac has a live Markdown editor; Android Notes scroll as one page with a refreshed account editor.
 
-**Developer preview:** this is a regular GitHub Release, not a claim of production security acceptance. Independent security review, signed iPhone distribution and some hardware/migration gates remain open. Read [SECURITY_MODEL.md](https://github.com/JunWeiUp/PasswordVault/blob/v2.2.3/docs/SECURITY_MODEL.md) before storing important data.
+**Developer preview:** this is a regular GitHub Release, not a claim of production security acceptance. Independent security review, signed iPhone distribution and some hardware/migration gates remain open. Read [SECURITY_MODEL.md](https://github.com/JunWeiUp/PasswordVault/blob/v2.2.11/docs/SECURITY_MODEL.md) before storing important data.
 
-## Changes in 2.2.3
+## Changes in 2.2.11
 
-- Fix the extension's **Open Mac app** button when PasswordVault is not running. The native host now waits for the macOS launch result before replying, instead of reporting success and exiting too soon.
-- Failed or timed-out launches return a connection error. Existing browser registration and vault unlocking are still required; opening the app does not bypass authentication.
-- Include regression coverage for cold launch, reopening, invalid extension origins and failed launches using a disposable app. Other clients receive coordinated version updates without behavior changes.
+- Save confirmed login/signup credentials while the Mac app is quit. Encrypted offline staging retries only while items remain pending, with atomic delivery receipts to avoid duplicates.
+- Authorize current-site account lookup, masked password reveal and fill using the Mac master password in the extension. The toolbar shows the available account count.
+- Opt into Mac startup unlock during authorization. Legacy save-only grants retain their scope; manual/system locks remain effective during the running session.
+- Show the extension version and a Mac launch icon in the popup header. Missing native connections offer GitHub downloads and registration guidance.
+- Keep native helpers short-lived. Android and iOS receive coordinated version updates with their existing session and data behavior preserved.
 
 ## Downloads and installation
 
@@ -22,7 +24,7 @@ A coordinated release of the native Mac workspace, Android app, lightweight brow
 | `ios-simulator.zip` | A Mac with a compatible Xcode iOS Simulator. **Not an IPA; cannot install on an iPhone.** Extract; run `xcrun simctl install booted PasswordVault.app`. The bundled executable architecture/runtime determine simulator compatibility. |
 | `source.zip` | Source for all clients, including the iOS app and AutoFill extension. Follow the platform READMEs to build; device installation requires eligible provisioning. |
 
-All client versions are **2.2.3**. `BUILD.json` identifies the exact source commit, build numbers and distribution limitations. Verify downloads with `shasum -a 256 -c SHA256SUMS` after downloading the complete asset set.
+All client versions are **2.2.11**. `BUILD.json` identifies the exact source commit, build numbers and distribution limitations. Verify downloads with `shasum -a 256 -c SHA256SUMS` after downloading the complete asset set.
 
 ### Android installation identity
 
@@ -36,7 +38,7 @@ The downloadable development app is ad-hoc signed, not Developer ID signed/notar
 
 **Touch ID/keychain enrollment is not promised in this public ad-hoc build.** Use the master password, or build locally with an eligible Apple Development signing configuration as described in the Mac guide. Users of a locally signed Touch ID build should retain it until they have confirmed master-password access; changing signing identity can affect keychain access. Existing vault data is not removed by installing the application.
 
-For browser connection, open and unlock Mac, then register the extension/browser in Mac settings. The browser extension supports a separate independent vault as well; it does not automatically merge data.
+For first browser connection, register the extension/browser in Mac settings. After entering the Mac master password in the extension, authorized saving and current-site account access work while the main app is quit. Startup unlock is optional. Reauthorize after a helper signing change; old grants remain save-only. See [browser authorization](https://github.com/JunWeiUp/PasswordVault/blob/v2.2.11/docs/BROWSER-AUTHORIZATION.md). The browser extension supports a separate independent vault as well; it does not automatically merge data.
 
 ### iPhone installation options
 
@@ -44,13 +46,13 @@ The simulator archive needs no device provisioning. For a personal iPhone, Xcode
 
 ## 中文安装说明
 
-本次更新：Android 短暂切后台不再反复要求解锁，仍按空闲时间、锁屏与手动锁定执行；移除 Android 共享资料库管理和局域网同步，保留已有资料与备份兼容。Mac 新增锁屏／切换用户、睡眠的独立锁定选项，默认仍立即锁定。
+本次更新：插件支持 Mac 退出时保存、授权读取和填充当前网站账号，显示数量角标；可选择 Mac 启动自动解锁。顶部新增版本号与打开 Mac 入口，未检测到连接时提供 GitHub 下载与登记提示。原有 Android/iOS 功能保留。
 
-此版本统一为 **2.2.3**，包含原生 Android、Mac 开发版、浏览器插件、独立 Web、iOS 模拟器包及源码。软件仍处于开发预览阶段，安全审计与部分真机验证尚未完成。
+此版本统一为 **2.2.11**，包含原生 Android、Mac 开发版、浏览器插件、独立 Web、iOS 模拟器包及源码。软件仍处于开发预览阶段，安全审计与部分真机验证尚未完成。
 
 - **Android**：普通手机下载 `android-arm64-v8a.apk`；x86_64 设备下载对应 APK。使用正式发布密钥和独立原生版包名，与旧 Flutter 版共存。之前的本地调试版签名不同，无法直接覆盖；先验证加密备份，切勿为安装而直接卸载唯一的资料库。
 - **Mac**：解压后放入「应用程序」，支持 Apple Silicon/Intel、macOS 13+。本包未公证，首次打开可能需要在「隐私与安全」中选择「仍要打开」。本包不保证 Touch ID 钥匙串注册可用，可用主密码或保留本地签名版。
-- **插件**：先解压，在 Chrome/Edge 扩展管理页启用开发者模式，加载含 `manifest.json` 的目录；不能直接加载 ZIP。更新后重新加载扩展，确认显示 2.2.3。连接 Mac 需先打开并解锁桌面端、完成浏览器登记。
+- **插件**：先解压，在 Chrome/Edge 扩展管理页启用开发者模式，加载含 `manifest.json` 的目录；不能直接加载 ZIP。更新后重新加载扩展，确认显示 2.2.11。首次需完成浏览器登记；在插件输入 Mac 主密码授权后，Mac 退出时也可保存和读取本站账号，可选择启动自动解锁。更新 helper 签名后需重新授权。
 - **Web**：解压后用 HTTPS 或 localhost 服务打开，是独立资料库。
 - **iOS**：本次是模拟器包及源码，不能直接安装到 iPhone。真机自用可尝试 Xcode 签名；完整 AutoFill/App Group 能力仍需合适的团队授权。TestFlight、App Store、Ad Hoc 需要付费开发者团队及相应配置。
 
