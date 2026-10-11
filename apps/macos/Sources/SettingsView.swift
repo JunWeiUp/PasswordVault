@@ -79,22 +79,6 @@ struct SecuritySettingsView: View {
       ) {
         Button(store.t("修改主密码…", "Change password…")) { changePassword = true }
       }
-      SettingsRow(
-        title: store.t("使用 Touch ID", "Use Touch ID"),
-        subtitle: store.t("仅在这台 Mac 上启用快捷解锁。", "Quick unlock on this Mac only.")
-      ) {
-        Toggle(
-          "Touch ID",
-          isOn: Binding(
-            get: { store.biometricEnabled },
-            set: { value in Task { await store.setBiometricEnabled(value) } })
-        ).labelsHidden().toggleStyle(.switch).disabled(store.biometricBusy)
-      }
-      Text(
-        store.t(
-          "Touch ID 不可用时，仍可使用主密码。",
-          "Your master password remains available if Touch ID is unavailable.")
-      ).font(.caption).foregroundStyle(.secondary)
       Divider().padding(.vertical, 6)
       Text(store.t("自动锁定", "Automatic locking")).font(.headline)
       SettingsRow(

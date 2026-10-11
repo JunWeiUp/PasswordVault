@@ -52,6 +52,7 @@ final class AppStore: ObservableObject {
   private var cancellables: Set<AnyCancellable> = []
   private var browserBridge: NativeBrowserBridge?
   private var started = false
+  private var browserStartupNonce: String?
   lazy var localSync = LocalSyncService(store: self)
 
   init(
@@ -178,6 +179,17 @@ final class AppStore: ObservableObject {
     // Reopening a SwiftUI window reruns its task. Keep the existing bridge listener.
     guard !started else { return }
     started = true
+    if core == nil {
+      for _ in 0..<30 {
+        do {
+          core = try CoreClient(directory: directory)
+          error = nil
+          break
+        } catch VaultError.InUse {
+          try? await Task.sleep(nanoseconds: 100_000_000)
+        } catch { break }
+      }
+    }
     guard let core else {
       ready = true
       return
@@ -186,8 +198,38 @@ final class AppStore: ObservableObject {
       let status = try await core.call(["op": .string("status")])
       exists = status.object["exists"]?.bool ?? false
     } catch { report(error) }
-    ready = true
     browserBridge = try? NativeBrowserBridge(store: self)
+    if exists && !unlocked && browserBridge != nil {
+      busy = true
+      let nonce = UUID().uuidString
+      browserStartupNonce = nonce
+      _ = await DesktopAuthorizationClient.request(directory: directory, nonce: nonce)
+      browserStartupNonce = nil
+      busy = locking
+    }
+    ready = true
+  }
+
+  func acceptDesktopStartupUnlock(grant: Data, nonce: String) async throws {
+    guard browserStartupNonce == nonce, !nonce.isEmpty, !unlocked, !locking, let core else {
+      throw VaultError.Authentication
+    }
+    browserStartupNonce = nil
+    let generation = epoch
+    do {
+      try await core.unlockDesktopGrant(grant)
+      guard epoch == generation else { throw VaultError.Locked }
+      await restoreDrafts()
+      let doc = try await core.document()
+      guard epoch == generation else { throw VaultError.Locked }
+      apply(doc)
+      unlocked = true
+      lastActivity = Date()
+      selectedID = visibleItems.first?.id
+    } catch {
+      _ = try? await core.call(["op": .string("lock")])
+      throw error
+    }
   }
 
   func authenticate(password: String, create: Bool) async {
@@ -276,6 +318,7 @@ final class AppStore: ObservableObject {
   }
 
   func lock() {
+    browserStartupNonce = nil
     guard !locking, unlocked || busy else { return }
     locking = true
     epoch += 1

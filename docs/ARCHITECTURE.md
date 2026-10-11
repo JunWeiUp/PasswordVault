@@ -75,3 +75,18 @@ When updating Drift/sqlite3, run `python3 tool/update_sqlite_wasm.py` to downloa
 ## Native mobile clients
 
 `apps/ios` contains the SwiftUI app and Credential Provider extension sharing an App Group. Background lock closes the exclusive core session before an extension can open it. `apps/android` contains Compose UI, a Keystore adapter, Autofill service/authentication activity and a separate login QA module. Generated UniFFI bindings and ABI-specific libraries are rebuilt with `tool/build_mobile_core.sh`; they are ignored build products. Both clients use the existing Rust vault/backup/share schema. See [mobile acceptance](MOBILE-IMPLEMENTATION.md) for migration and platform gates.
+
+### Browser offline credential staging
+
+Background saving uses the existing short-lived native messaging helper, not a resident daemon. It verifies the Mac master password against the existing header and stores a native-only root capability in its login-Keychain entry, bound to the header fingerprint and a revocation epoch. The extension stores only a random capability identifier. The helper strips any browser-supplied native grant before constructing its authenticated IPC envelope.
+
+With the desktop active, the signature-checked socket routes append-only requests through its CoreClient actor and Rust session mutex. With no desktop socket, the helper opens a short-lived VaultSession under the same exclusive process lock. Lock contention retains the browser queue for retry; desktop startup also retries briefly. No process independently opens a second writable session. A locked desktop session temporarily opens the core for this append and relocks before returning; the UI and read/fill APIs remain locked.
+
+Confirmed captures stay in the AES-GCM IndexedDB queue until the native durable acknowledgement. The envelope ID becomes an idempotency key in a SQLCipher receipt table committed in the same transaction as the encrypted document; even a retry after deletion cannot resurrect an acknowledged record. Exact existing credentials are skipped, differing passwords append separate items. Without background authorization, the prior paired/unlocked delivery remains available. A one-minute MV3 alarm exists only while native-mode records are queued. Status checks do not instantiate the database core or run Argon2. See [background saving](BROWSER-OFFLINE-SAVE.md).
+
+
+### Scoped browser access and desktop startup
+
+Browser 2.2.9 / Mac 2.0.12 adds explicit read/startup scope flags to the helper-owned Keychain envelope; raw legacy grants decode as save-only. A separate Keychain index points to the most recently enabled startup owner. Matches/fill use a narrow native API that restores a previously locked core after each call, while the existing append path and durable receipts are unchanged.
+
+At cold start, AppStore creates an in-memory, single-use nonce and invokes the helper's desktop-only mode. The helper verifies the parent's desktop code signature and returns the grant only over the signed-peer socket. Browser-mode requests cannot enter that operation. AppStore consumes the nonce once; lock clears it and increments the existing lifecycle epoch. Reopening a window or status polling never starts a second attempt. See [authorization protocol and evidence](BROWSER-AUTHORIZATION.md).

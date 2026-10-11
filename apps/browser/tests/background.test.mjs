@@ -1,3 +1,4 @@
+import "fake-indexeddb/auto";
 import test from "node:test";
 import assert from "node:assert/strict";
 const extension = "imoadebbgajpakiddkjpfgapbadkedop";
@@ -17,6 +18,7 @@ const badges = [];
 let accountCount = 1;
 const createdTabs = [];
 const nativeCalls = [];
+const activeAlarms = new Set();
 const pageCalls = [];
 let nativeFailure;
 let nativeStatus = { ok: true, unlocked: true, paired: true };
@@ -28,6 +30,7 @@ globalThis.fetch = () => {
   throw new Error("Native mode must not fetch WASM");
 };
 globalThis.chrome = {
+  alarms: {clear: (name) => activeAlarms.delete(name), create: (name) => activeAlarms.add(name), onAlarm: {addListener: () => {}}},
   runtime: {
     id: extension,
     getURL: (path) => `chrome-extension://${extension}/${path}`,
@@ -38,6 +41,7 @@ globalThis.chrome = {
       if (nativeFailure) throw new Error(nativeFailure);
       if (request.op === "status") return nativeStatus;
       if (operationFailure) return { ok: false, error: operationFailure };
+      if (request.op === "sync-save") return {ok:true,data:{saved:true}};
       if (request.op === "pair")
         return { ok: true, token: "New synthetic pairing capability" };
       if (request.op === "matches")
@@ -124,6 +128,7 @@ globalThis.chrome = {
   },
 };
 await import("../dist/background.js");
+test.beforeEach(() => { delete session.nativeReadsLocked; });
 const send = (request, sender = ui) =>
   new Promise((resolve) => listener(request, sender, resolve));
 test("worker rejects page senders and unknown extension pages", async () => {
@@ -221,7 +226,7 @@ test("revoked native authorization clears the stale capability and permits pairi
   nativeStatus = { ok: true, unlocked: true, paired: true };
   assert.equal((await send({ action: "status" })).data.paired, true);
   operationFailure = "unpaired";
-  assert.equal((await send({ action: "matches" })).error, "unpaired");
+  assert.deepEqual((await send({ action: "matches" })).data.accounts, []);
   assert.equal(stored.token, undefined);
   operationFailure = undefined;
 });
@@ -308,17 +313,14 @@ test("pending credentials stay ephemeral and are only exposed to the trusted pop
   assert.equal(badges.at(-1).text, "1");
 });
 
-test("existing credentials suppress reminders; locking, navigation and expiry discard pending credentials", async () => {
+test("existing credentials suppress reminders; native lock allows capture, navigation and expiry discard it", async () => {
   duplicate = true;
   assert.deepEqual((await send(submitted, page)).data, { duplicate: true });
   duplicate = false;
   await send(submitted, page);
   operationFailure = "locked";
-  assert.deepEqual((await send({ action: "login-pending" }, page)).data, {
-    enabled: true,
-    pending: false,
-  });
-  assert.equal((await send(submitted, page)).error, "locked");
+  assert.equal((await send({ action: "login-pending" }, page)).data.pending, true);
+  assert.equal((await send(submitted, page)).data.pending, true);
   operationFailure = undefined;
   await send(submitted, page);
   tabURL = "https://elsewhere.test/";
@@ -369,7 +371,7 @@ test("turning off one site persists an exception without disabling other sites",
 test("icon badges count website accounts, show zero for empty password forms, and prioritize pending logins", async () => {
   accountCount = 0;
   await send({ action: "login-pending", hasPassword: false }, page);
-  assert.equal(badges.at(-1).text, "");
+  assert.equal(badges.at(-1).text, "0");
   await send({ action: "login-pending", hasPassword: true }, page);
   assert.equal(badges.at(-1).text, "0");
   accountCount = 3;
@@ -390,7 +392,7 @@ test("icon badges count website accounts, show zero for empty password forms, an
   assert.equal(badges.at(-1).text, "99+");
   operationFailure = "locked";
   await send({ action: "login-pending" }, page);
-  assert.equal(badges.at(-1).text, "");
+  assert.equal(badges.at(-1).text, "0");
   operationFailure = undefined;
   accountCount = 1;
 });
@@ -642,4 +644,116 @@ test("native edit routes metadata only and rejects stale or unscoped requests", 
   stored.mode = "independent";
   assert.equal((await send(request)).error, "native-app");
   stored.mode = "native";
+});
+
+test("offline confirmed capture survives status checks and sync retries without duplicate saves", async () => {
+  tabURL = "https://example.com/login";
+  nativeFailure = "Native host not found";
+  assert.equal((await send(submitted, page)).data.pending, true);
+  assert.equal((await send({action:"status"})).data.available, false);
+  const pending = (await send({action:"matches"})).data.pending;
+  assert.equal(pending.username, submitted.username);
+  const saved = await send({action:"save-captured", ...pending});
+  assert.equal(saved.data.queued, true);
+  assert.equal((await send({action:"status"})).data.queued, 1);
+  nativeFailure = undefined;
+  nativeStatus = {ok:true,unlocked:false,paired:true};
+  const before = nativeCalls.filter(r=>r.op==='save').length;
+  assert.equal((await send({action:"status"})).data.queued, 1);
+  assert.equal(nativeCalls.filter(r=>r.op==='save').length,before);
+  nativeStatus = {ok:true,unlocked:true,paired:true};
+  operationFailure = 'failed';
+  assert.equal((await send({action:"status"})).data.syncError, true);
+  operationFailure = undefined;
+  duplicate = true; // Desktop already persisted it before a lost acknowledgement.
+  assert.equal((await send({action:"status"})).data.queued, 0);
+  assert.equal(nativeCalls.filter(r=>r.op==='save').length,before);
+  duplicate = false;
+  assert.equal((await send({action:"status"})).data.queued, 0);
+});
+
+test("manual add rejects changed website, mode, blank and oversized credentials without saving", async () => {
+  const request = {action:'save-captured', tabId:7, origin:'https://example.com', mode:'native', username:'manual@example.test', password:'Synthetic-only!'};
+  tabURL = 'https://example.com/home';
+  const before = nativeCalls.filter(c => c.op === 'save').length;
+  assert.equal((await send({...request, origin:'https://elsewhere.example.test'})).error, 'changed-origin');
+  assert.equal((await send({...request, mode:'independent'})).error, 'changed-mode');
+  for (const fields of [{username:' '}, {password:''}, {password:'密'.repeat(1400)}])
+    assert.equal((await send({...request, ...fields})).error, 'invalid-credential');
+  tabURL = 'chrome://extensions';
+  assert.equal((await send(request)).error, 'invalid-origin');
+  tabURL = 'https://example.com/login';
+  assert.equal(nativeCalls.filter(c => c.op === 'save').length, before);
+});
+
+test("background-save configuration is trusted-UI only, opaque and independent of desktop unlock", async () => {
+  stored.mode = "native"; nativeFailure = undefined; operationFailure = undefined;
+  tabURL = "https://example.com/login";
+  nativeStatus = { ok: true, unlocked: false, paired: false, syncSupported: true, syncReady: true };
+  const before = nativeCalls.length;
+  assert.equal((await send({action:"configure-sync", password:"synthetic-master"}, page)).error,"forbidden");
+  assert.equal(nativeCalls.length,before);
+  assert.equal((await send({action:"configure-sync",password:"synthetic-master"})).ok,true);
+  assert.match(stored.syncToken,/^[a-f0-9]{64}$/);
+  assert.equal(JSON.stringify(stored).includes("synthetic-master"),false);
+  const configured = nativeCalls.findLast(r=>r.op==="configure-sync");
+  assert.equal(configured.password,"synthetic-master");
+  assert.equal(configured.syncToken,stored.syncToken);
+  const result = await send({action:"save-captured",tabId:7,origin:"https://example.com",username:"background-fixture",password:"background-fictional"});
+  assert.equal(result.data.queued,false);
+  const sent = nativeCalls.findLast(r=>r.op==="sync-save");
+  assert.match(sent.id,/^[a-f0-9-]{36}$/);
+  assert.equal(sent.username,"background-fixture");
+  assert.equal((await send({action:"status"})).data.syncReady,true);
+  assert.equal(fetches,0);
+  assert.equal((await send({action:"disable-sync"})).ok,true);
+  assert.equal(stored.syncToken,undefined);
+  nativeStatus={ok:true,unlocked:true,paired:true};
+});
+
+test("background delivery retains an unacknowledged record and reuses its request ID", async () => {
+  stored.mode="native"; nativeStatus={ok:true,unlocked:false,paired:false,syncReady:true};
+  operationFailure="sync-busy";
+  const saved=await send({action:"save-captured",tabId:7,origin:"https://example.com",username:"retry-background",password:"synthetic"});
+  assert.equal(saved.data.queued,true);
+  assert.equal(activeAlarms.has("offline-sync"),true);
+  const first=nativeCalls.findLast(r=>r.op==="sync-save");
+  operationFailure=undefined;
+  assert.equal((await send({action:"status"})).data.queued,0);
+  assert.equal(nativeCalls.findLast(r=>r.op==="sync-save").id,first.id);
+  assert.equal(activeAlarms.has("offline-sync"),false);
+  nativeStatus={ok:true,unlocked:true,paired:true};
+});
+
+test("password-authorized native accounts appear with a count while Mac UI is closed", async () => {
+  stored.mode="native";tabURL="https://example.com/login";accountCount=2;
+  nativeStatus={ok:true,unlocked:false,paired:false,syncReady:true,readReady:true,autoUnlockReady:true};
+  const state=(await send({action:"status"})).data;
+  assert.equal(state.unlocked,true);assert.equal(state.readReady,true);assert.equal(state.desktopUnlocked,false);
+  const accounts=(await send({action:"matches",tabId:7})).data.accounts;
+  assert.equal(accounts.length,2);assert.equal(badges.at(-1).text,"2");
+  const revealed=await send({action:"reveal-account",origin:"https://example.com",tabId:7,id:"fixture"});
+  assert.equal(revealed.data.password,"synthetic-only");
+  assert.equal((await send({action:"reveal-account",origin:"https://example.com",tabId:7,id:"fixture"},page)).error,"forbidden");
+  assert.equal((await send({action:"reveal-account",origin:"https://other.test",tabId:7,id:"fixture"})).error,"changed-origin");
+  let reads=0;getTabHook=async()=>{if(++reads===2)tabURL="https://other.test/";};
+  assert.equal((await send({action:"reveal-account",origin:"https://example.com",tabId:7,id:"fixture"})).error,"changed-origin");
+  getTabHook=undefined;tabURL="https://example.com/login";
+  await send({action:"lock"});
+  assert.equal((await send({action:"reveal-account",origin:"https://example.com",tabId:7,id:"fixture"})).error,"locked");
+  assert.equal((await send({action:"status"})).data.readReady,false);
+  assert.equal(fetches,0);
+  nativeStatus={ok:true,unlocked:true,paired:true};accountCount=1;
+});
+
+test("new scopes require explicit flags and reauthentication clears the browser session lock", async()=>{
+  stored.mode="native";session.nativeReadsLocked=true;
+  const result=await send({action:"configure-sync",password:"Synthetic new scope",allowRead:true,autoUnlock:true});
+  assert.equal(result.ok,true);
+  const request=nativeCalls.findLast(value=>value.op==="configure-sync");
+  assert.equal(request.allowRead,true);assert.equal(request.autoUnlock,true);
+  assert.equal(session.nativeReadsLocked,undefined);
+  assert.equal(JSON.stringify(stored).includes("Synthetic new scope"),false);
+  assert.equal((await send({action:"disable-auto-unlock"})).ok,true);
+  assert.equal(nativeCalls.at(-1).op,"disable-auto-unlock");
 });

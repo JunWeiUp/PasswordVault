@@ -1,6 +1,7 @@
 import AppKit
 import Darwin
 import Foundation
+import Security
 
 func readExactly(_ file: FileHandle, _ count: Int) -> Data? {
   var data = Data()
@@ -40,15 +41,19 @@ func openApplication(_ application: URL) -> Bool {
 }
 
 signal(SIGPIPE, SIG_IGN)
+// Legacy login-Keychain APIs do not consistently honor kSecUseAuthenticationUI.
+// This is a background helper: never open a system password/ACL dialog.
+SecKeychainSetUserInteractionAllowed(false)
 
 let executable = URL(fileURLWithPath: CommandLine.arguments[0]).resolvingSymlinksInPath()
 let application = executable.deletingLastPathComponent().deletingLastPathComponent()
   .deletingLastPathComponent()
+let desktopInvocation = CommandLine.arguments.count == 2 && CommandLine.arguments[1] == "--desktop-unlock"
 let identityURL = application.appendingPathComponent("Contents/Resources/BrowserIdentity.json")
 guard let identityData = try? Data(contentsOf: identityURL),
   let identity = try? JSONSerialization.jsonObject(with: identityData) as? [String: String],
   let extensionID = identity["extensionId"], CommandLine.arguments.count >= 2,
-  CommandLine.arguments[1] == "chrome-extension://\(extensionID)/"
+  (CommandLine.arguments[1] == "chrome-extension://\(extensionID)/" || (desktopInvocation && validDesktopParent(application: application)))
 else {
   respond(["ok": false, "error": "invalid-origin"])
   exit(1)
@@ -57,10 +62,23 @@ else {
 while let prefix = readExactly(.standardInput, 4) {
   let length = prefix.withUnsafeBytes { $0.loadUnaligned(as: UInt32.self).littleEndian }
   guard length > 0, length <= 65536, let input = readExactly(.standardInput, Int(length)),
-    let request = try? JSONSerialization.jsonObject(with: input) as? [String: Any]
+    var request = try? JSONSerialization.jsonObject(with: input) as? [String: Any]
   else {
     respond(["ok": false, "error": "invalid-request"])
     break
+  }
+  // Browser input cannot supply native-only authorization material.
+  request.removeValue(forKey: "_backgroundGrant")
+  guard request["version"] as? Int == 2 else {
+    respond(["ok": false, "error": "invalid-request"]); continue
+  }
+  if desktopInvocation {
+    guard request["op"] as? String == "desktop-auto-unlock",
+      let nonce = request["nonce"] as? String, UUID(uuidString: nonce) != nil else {
+      respond(["ok": false, "error": "invalid-request"]); continue
+    }
+  } else if ["desktop-auto-unlock", "authorized-matches", "authorized-fill"].contains(request["op"] as? String ?? "") {
+    respond(["ok": false, "error": "unsupported"]); continue
   }
   if request["op"] as? String == "open" {
     if openApplication(application) {
@@ -77,6 +95,51 @@ while let prefix = readExactly(.standardInput, 4) {
       path = fixture
     }
   #endif
+  let directory = URL(fileURLWithPath: path).deletingLastPathComponent()
+  var op = request["op"] as? String ?? ""
+  let syncToken = request["syncToken"] as? String ?? ""
+  if op == "configure-sync" || op == "disable-sync" || op == "disable-auto-unlock" {
+    do {
+      if op == "configure-sync" {
+        guard let password = request["password"] as? String, !password.isEmpty,
+          password.utf8.count <= 4096 else { throw VaultError.InvalidData }
+        try BackgroundSync.configure(directory: directory, extensionID: extensionID,
+          token: syncToken, password: password, allowRead: request["allowRead"] as? Bool == true,
+          autoUnlock: request["autoUnlock"] as? Bool == true)
+      } else if op == "disable-auto-unlock" {
+        try BackgroundSync.disableDesktop(directory: directory, extensionID: extensionID, token: syncToken)
+      } else {
+        try BackgroundSync.revoke(directory: directory, extensionID: extensionID, token: syncToken)
+      }
+      respond(["ok": true])
+    } catch VaultError.Authentication { respond(["ok": false, "error": "authentication"])
+    } catch { respond(["ok": false, "error": "sync-keychain"]) }
+    continue
+  }
+  var grant: Data?
+  var allowRead = false
+  var autoUnlockReady = false
+  if desktopInvocation {
+    grant = try? BackgroundSync.desktopGrant(directory: directory, extensionID: extensionID)
+  } else if ["status", "sync-save", "matches", "fill"].contains(op) {
+    if let auth = try? BackgroundSync.authorization(directory: directory, extensionID: extensionID, token: syncToken) {
+      grant = auth.grant
+      allowRead = auth.allowRead
+      if op == "status" {
+        autoUnlockReady = auth.autoUnlock
+          && BackgroundSync.desktopOwner(directory: directory, extensionID: extensionID, token: syncToken)
+      }
+    }
+  }
+  defer { if grant != nil { grant!.resetBytes(in: 0..<grant!.count) } }
+  if ["matches", "fill"].contains(op), allowRead {
+    op = "authorized-" + op
+    request["op"] = op
+  }
+  if ["sync-save", "authorized-matches", "authorized-fill", "desktop-auto-unlock"].contains(op) {
+    guard let grant else { respond(["ok": false, "error": "sync-authorization"]); continue }
+    request["_backgroundGrant"] = grant.base64EncodedString()
+  }
   guard path.utf8.count < 104 else {
     respond(["ok": false, "error": "unavailable"])
     continue
@@ -101,11 +164,34 @@ while let prefix = readExactly(.standardInput, 4) {
   }
   guard connected == 0 else {
     close(socketFD)
-    respond(["ok": false, "error": "not-running"])
+    if op == "status" {
+      respond(["ok": true, "unlocked": false, "paired": false,
+        "syncSupported": true, "syncReady": grant != nil, "readReady": allowRead,
+        "autoUnlockReady": autoUnlockReady])
+    } else if ["sync-save", "authorized-matches", "authorized-fill"].contains(op), let grant {
+      do {
+        // Exclusive core lock prevents racing a desktop launch or another helper.
+        // The session dies before acknowledging; no resident database/key cache.
+        let data: String = try autoreleasepool {
+          let session = try VaultSession(directory: directory.path)
+          var query = request.filter { $0.key != "_backgroundGrant" }
+          if op.hasPrefix("authorized-") { query["op"] = String(op.dropFirst("authorized-".count)) }
+          let payload = try JSONSerialization.data(withJSONObject: query)
+          let input = String(decoding: payload, as: UTF8.self)
+          return op == "sync-save"
+            ? try session.backgroundSave(grant: grant, request: input)
+            : try session.authorizedBrowserCommand(grant: grant, request: input)
+        }
+        let result = try JSONSerialization.jsonObject(with: Data(data.utf8))
+        respond(["ok": true, "data": result])
+      } catch VaultError.InUse { respond(["ok": false, "error": "sync-busy"])
+      } catch VaultError.Authentication { respond(["ok": false, "error": "sync-authorization"])
+      } catch { respond(["ok": false, "error": "failed"]) }
+    } else { respond(["ok": false, "error": "not-running"]) }
     continue
   }
   let handle = FileHandle(fileDescriptor: socketFD, closeOnDealloc: true)
-  let envelope: [String: Any] = ["extensionOrigin": CommandLine.arguments[1], "request": request]
+  let envelope: [String: Any] = ["extensionOrigin": "chrome-extension://\(extensionID)/", "request": request]
   guard let payload = try? JSONSerialization.data(withJSONObject: envelope) else {
     respond(["ok": false, "error": "invalid-request"])
     continue
@@ -117,8 +203,14 @@ while let prefix = readExactly(.standardInput, 4) {
     guard let prefix = readExactly(handle, 4) else { throw NSError(domain: "Bridge", code: 1) }
     let length = prefix.withUnsafeBytes { $0.loadUnaligned(as: UInt32.self).littleEndian }
     guard length <= 1_000_000, let response = readExactly(handle, Int(length)),
-      let object = try JSONSerialization.jsonObject(with: response) as? [String: Any]
+      var object = try JSONSerialization.jsonObject(with: response) as? [String: Any]
     else { throw NSError(domain: "Bridge", code: 2) }
+    if op == "status" {
+      object["syncSupported"] = true
+      object["syncReady"] = grant != nil
+      object["readReady"] = allowRead
+      object["autoUnlockReady"] = autoUnlockReady
+    }
     respond(object)
   } catch { respond(["ok": false, "error": "unavailable"]) }
   try? handle.close()

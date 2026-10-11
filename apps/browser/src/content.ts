@@ -36,6 +36,22 @@
         ),
       ).filter(visible)[0];
     if (request.action === "vault-capture") {
+      const group = passwords.filter((p) => p.form === password.form);
+      if (
+        !password.value ||
+        group.length > 2 ||
+        (group.length === 2 &&
+          (password.autocomplete.includes("current-password") ||
+            !(
+              /confirm|repeat|确认|重复/i.test(
+                [group[1].name, group[1].id, group[1].placeholder].join(" "),
+              ) || group.every((p) => p.autocomplete.includes("new-password"))
+            ) ||
+            group[1].value !== password.value))
+      ) {
+        respond({ ok: false });
+        return;
+      }
       respond({
         ok: true,
         username: username?.value ?? "",

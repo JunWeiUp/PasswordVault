@@ -123,7 +123,7 @@
       return;
     if (activeNotice?.id === notice.id && banner?.isConnected) return;
     showBanner(
-      "检测到登录提交。是否保存这次填写的账号？请确认登录成功后再保存。",
+      "检测到登录或注册提交。是否保存这次填写的账号？请确认成功后再保存。",
       true,
       notice,
     );
@@ -148,7 +148,7 @@
       showBanner("请先打开并解锁 PasswordVault，再提交登录以保存账号。", false);
   });
   let hasPassword = !!document.querySelector(
-    'input[type="password"], input[autocomplete~="current-password"]',
+    'input[type="password"], input[autocomplete~="current-password"], input[autocomplete~="new-password"]',
   );
   const refreshStatus = () =>
     send({ action: "login-pending", hasPassword }).then((result) => {
@@ -179,11 +179,7 @@
     [input.id, input.name, input.autocomplete].join("\u0000");
   const passwordField = (input: HTMLInputElement) => {
     const tokens = input.autocomplete.toLowerCase().split(/\s+/);
-    if (
-      tokens.some((token) =>
-        ["new-password", "one-time-code", "username"].includes(token),
-      )
-    )
+    if (tokens.some((token) => ["one-time-code", "username"].includes(token)))
       return false;
     if (input.type === "password") {
       knownPasswords.set(input, signature(input));
@@ -192,6 +188,7 @@
     return (
       input.type === "text" &&
       (tokens.includes("current-password") ||
+        tokens.includes("new-password") ||
         knownPasswords.get(input) === signature(input))
     );
   };
@@ -252,8 +249,28 @@
       scope.querySelectorAll<HTMLInputElement>("input"),
     ).filter(visible);
     const passwords = inputs.filter(passwordField);
-    if (passwords.length !== 1) return;
+    if (!passwords.length || passwords.length > 2) return;
     const password = passwords[0];
+    if (passwords.length === 2) {
+      const confirmation = passwords[1];
+      const hints = [
+        confirmation.name,
+        confirmation.id,
+        confirmation.placeholder,
+        confirmation.getAttribute("aria-label"),
+      ].join(" ");
+      // Registration only: never mistake old/new-password change forms for signup.
+      if (
+        password.autocomplete.includes("current-password") ||
+        !(
+          /confirm|repeat|确认|重复/i.test(hints) ||
+          passwords.every((p) => p.autocomplete.includes("new-password"))
+        ) ||
+        !password.value ||
+        confirmation.value !== password.value
+      )
+        return;
+    }
     const preceding = inputs.filter(
       (input) =>
         input !== password &&
@@ -298,11 +315,11 @@
     ) {
       const fields = fieldsIn(scope, true);
       if (fields) return fields;
-      // Never climb past a group with multiple possible password destinations.
+      // Never climb past a group larger than a signup password/confirmation pair.
       if (
         Array.from(scope.querySelectorAll<HTMLInputElement>("input")).filter(
           (input) => visible(input) && passwordField(input),
-        ).length > 1
+        ).length > 2
       )
         return;
     }
@@ -362,7 +379,7 @@
         : target.textContent) ??
       ""
     ).trim();
-    return /^(?:登\s*[录入陆]|立即登录|登录并继续|登录\s*[/／]\s*注册|log\s*in|sign\s*in|continue|继续)$/i.test(
+    return /^(?:登\s*[录入陆]|立即登录|登录并继续|登录\s*[/／]\s*注册|log\s*in|sign\s*in|sign\s*up|register|create\s+(?:an?\s+)?account|注\s*册|立即注册|创建(?:一个)?(?:账户|账号)|continue|继续)$/i.test(
       label,
     );
   }

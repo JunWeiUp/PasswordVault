@@ -204,6 +204,44 @@ final class NativeBrowserBridge: @unchecked Sendable {
         ),
       ])
     }
+    if op == "desktop-auto-unlock" {
+      guard let encoded = request["_backgroundGrant"]?.string,
+        var grant = Data(base64Encoded: encoded), let nonce = request["nonce"]?.string else {
+        return failure("sync-authorization")
+      }
+      defer { grant.resetBytes(in: 0..<grant.count) }
+      do {
+        try await store.acceptDesktopStartupUnlock(grant: grant, nonce: nonce)
+        return .object(["ok": .bool(true)])
+      } catch { return failure("sync-authorization") }
+    }
+    if op == "authorized-matches" || op == "authorized-fill" {
+      guard let encoded = request["_backgroundGrant"]?.string,
+        var grant = Data(base64Encoded: encoded), let core = store.core else {
+        return failure("sync-authorization")
+      }
+      defer { grant.resetBytes(in: 0..<grant.count) }
+      do {
+        var query = request
+        query["op"] = .string(op == "authorized-matches" ? "matches" : "fill")
+        query.removeValue(forKey: "_backgroundGrant")
+        let result = try await core.authorizedBrowserCommand(grant: grant, request: query)
+        return .object(["ok": .bool(true), "data": result])
+      } catch { return failure("sync-authorization") }
+    }
+    if op == "sync-save" {
+      guard let encoded = request["_backgroundGrant"]?.string,
+        var grant = Data(base64Encoded: encoded), let core = store.core else {
+        return failure("sync-authorization")
+      }
+      defer { grant.resetBytes(in: 0..<grant.count) }
+      do {
+        let result = try await core.backgroundSave(grant: grant, request: request)
+        await store.refresh()
+        return .object(["ok": .bool(true), "data": result])
+      } catch VaultError.Authentication { return failure("sync-authorization")
+      } catch { return failure("failed") }
+    }
     guard store.unlocked else { return failure("locked") }
     if op == "pair" {
       guard !pairingInProgress else { return failure("pairing-busy") }
@@ -360,12 +398,29 @@ struct BrowserSettingsView: View {
         )
       ).fixedSize(horizontal: false, vertical: true)
       Divider()
+      Text(store.t("后台保存授权", "Background save authorization")).font(.headline)
+      Text(store.t("在插件中用主密码配置后，即使主应用退出，也能保存新账号。旧授权仅允许保存；新版可另行授权读取账号和启动自动解锁。撤销会使这些授权全部失效。",
+        "Configured extensions can save new accounts while the app is quit. Older authorizations remain save-only; new setup may grant account reads and startup unlock. Revoking invalidates every scope."))
+        .fixedSize(horizontal: false, vertical: true)
+      Button(store.t("撤销全部浏览器资料库授权", "Revoke all browser vault authorizations"), role: .destructive) {
+        Task {
+          do {
+            _ = try await store.perform(["op": .string("revoke-background")])
+            store.showToast(store.t("后台保存授权已撤销", "Background save authorizations revoked"))
+          } catch { store.report(error) }
+        }
+      }
+      Divider()
       Text(store.t("已配对扩展", "Paired extensions")).font(.headline)
       let count = NativeBrowserBridge.pairingCount(settings: store.settings)
       Text(store.t("\(count) 个连接", "\(count) connection(s)")).foregroundStyle(.secondary)
       Button(store.t("撤销全部浏览器连接", "Revoke all browser connections"), role: .destructive) {
-        store.settings["browserPairings"] = .object([:])
-        Task { await store.saveSettings() }
+        Task {
+          do { _ = try await store.perform(["op": .string("revoke-background")]) }
+          catch { store.report(error); return }
+          store.settings["browserPairings"] = .object([:])
+          await store.saveSettings()
+        }
       }.disabled(count == 0)
     }
   }
