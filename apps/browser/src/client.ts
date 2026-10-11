@@ -70,8 +70,14 @@ export function errorText(error: unknown) {
   return (
     (
       {
+        "sync-keychain": "无法保存后台授权，请检查 Mac 登录钥匙串是否已解锁。",
+        "sync-authorization": "后台保存授权已失效，请重新输入 Mac 主密码配置。",
+        "sync-busy": "Mac 正在切换资料库连接，账号已暂存，稍后自动重试。",
+        "changed-mode": "资料库模式已切换，请重新添加账号。",
+        "invalid-credential": "请填写账号和密码，每项不能超过 4096 字节。",
         "invalid-entry": "该账号已变更或不属于当前网站，请刷新后重试。",
         unsupported: "请更新 Mac 应用后重试。",
+        "offline-full": "离线暂存已满，请连接并解锁 Mac 完成同步后重试。",
         locked: "资料库已锁定，请重新解锁。",
         "site-permission": "未获得此网站的访问权限，仍可手动读取并保存账号。",
         authentication: "密码不正确，或文件已损坏。",

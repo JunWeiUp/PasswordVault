@@ -1,4 +1,4 @@
-import { connectionPresentation, type NativeState } from "./native-connection";
+import { MAC_DOWNLOAD_URL, connectionPresentation, type NativeState } from "./native-connection";
 
 export function NativeConnectionPanel({
   state,
@@ -18,6 +18,9 @@ export function NativeConnectionPanel({
     <section class="connection-panel" aria-busy={busy}>
       <h2>{view.title}</h2>
       <p>{view.message}</p>
+      {state.available === false && state.connectionError !== "native-host-forbidden" && (
+        <p><a href={MAC_DOWNLOAD_URL} target="_blank" rel="noopener noreferrer">前往 GitHub 下载 Mac 应用 ↗</a></p>
+      )}
       {view.canPair && (
         <button class="primary wide" disabled={busy} onClick={onPair}>
           {busy ? "请在 Mac 上确认…" : "发起连接"}

@@ -1,3 +1,9 @@
+import {
+  enqueue,
+  queuedCount,
+  syncQueue,
+  type QueuedLogin,
+} from "./offline-queue";
 import { handleInline, clearInlineOffers } from "./inline-fill";
 import { nativeTransportError } from "./native-connection";
 import { readStorage } from "./storage";
@@ -18,23 +24,25 @@ import {
 const HOST = "com.securepass.vault.native_v2";
 let core: typeof import("./core") | undefined;
 let serial: Promise<unknown> = Promise.resolve();
+let readGeneration = 0;
 async function mode(): Promise<string> {
   return (await chrome.storage.local.get("mode")).mode ?? "native";
 }
 async function native(request: Record<string, unknown>) {
   const { token } = await chrome.storage.local.get("token");
+  const { syncToken } = await chrome.storage.local.get("syncToken");
   let response;
   try {
     response = await chrome.runtime.sendNativeMessage(HOST, {
       version: 2,
       token,
+      syncToken,
       ...request,
     });
   } catch (error) {
     throw new Error(nativeTransportError(error));
   }
   if (!response?.ok) {
-    if (["locked", "unpaired"].includes(response?.error)) clearAllPending();
     clearInlineOffers();
     if (response?.error === "unpaired")
       await chrome.storage.local.remove("token");
@@ -51,9 +59,84 @@ async function currentTab(id?: number) {
   return { id: tab.id, origin: webOrigin(tab.url) };
 }
 async function requestCore(request: Request) {
-  if ((await mode()) === "native") return (await native(request)).data;
+  if ((await mode()) === "native") {
+    const generation = readGeneration;
+    if (["matches", "fill"].includes(request.op) &&
+        (await chrome.storage.session.get("nativeReadsLocked")).nativeReadsLocked)
+      throw new Error("locked");
+    const result = (await native(request)).data;
+    if (generation !== readGeneration) {
+      if (result && typeof result === "object") { result.password = ""; result.username = ""; }
+      throw new Error("locked");
+    }
+    return result;
+  }
   if (!core || core.locked()) throw new Error("locked");
   return core.command(request);
+}
+const offlineErrors = new Set([
+  "locked",
+  "unpaired",
+  "native-unavailable",
+  "not-running",
+  "native-host-missing",
+  "native-host-forbidden",
+]);
+async function reminderCore(request: Request) {
+  try {
+    return await requestCore(request);
+  } catch (error) {
+    if (
+      request.op === "matches" &&
+      (await mode()) === "native" &&
+      error instanceof Error &&
+      offlineErrors.has(error.message)
+    )
+      return [];
+    throw error;
+  }
+}
+async function deliverQueued(login: QueuedLogin) {
+  // Compare exact credentials before retrying: a lost acknowledgement must not
+  // create a duplicate. A changed password is preserved as a separate record.
+  const accounts = (await native({ op: "matches", origin: login.origin })).data;
+  for (const account of accounts.filter(
+    (a: any) => a.username === login.username,
+  )) {
+    const existing = (
+      await native({
+        op: "fill",
+        origin: login.origin,
+        id: account.id,
+        accountId: account.accountId,
+      })
+    ).data;
+    const same =
+      existing.username === login.username &&
+      existing.password === login.password;
+    existing.password = "";
+    if (same) return;
+  }
+  await native({ op: "save", ...login });
+}
+async function updateSyncAlarm() {
+  if ((await mode()) === "native" && (await queuedCount()) > 0)
+    await chrome.alarms.create("offline-sync", { periodInMinutes: 1 });
+  else await chrome.alarms.clear("offline-sync");
+}
+async function synchronize() {
+  if ((await mode()) !== "native" || !(await queuedCount())) {
+    await updateSyncAlarm();
+    return;
+  }
+  const s = await native({ op: "status" });
+  if (s.syncReady === true) {
+    await syncQueue(async (login, id) => {
+      const result = await native({ op: "sync-save", ...login, id });
+      if (result.data?.saved !== true) throw new Error("failed");
+    });
+  } else if (s.unlocked && s.paired === true) await syncQueue(deliverQueued);
+  await updateSyncAlarm();
 }
 async function handle(request: Record<string, any>) {
   switch (request.action) {
@@ -62,29 +145,45 @@ async function handle(request: Record<string, any>) {
       if (chosen === "native") {
         try {
           const s = await native({ op: "status" });
-          if (!s.unlocked || s.paired === false) {
-            clearAllPending();
+          const readsLocked = (await chrome.storage.session.get("nativeReadsLocked")).nativeReadsLocked === true;
+          const readReady = s.readReady === true && !readsLocked;
+          if ((!s.unlocked || s.paired === false) && !readReady) {
             clearInlineOffers();
           }
           if (s.unlocked && s.paired === false)
             await chrome.storage.local.remove("token");
+          let syncError = false;
+          if (s.syncReady === true || (s.unlocked && s.paired === true)) {
+            try {
+              await synchronize();
+            } catch {
+              syncError = true;
+            }
+          }
           return {
+            queued: await queuedCount(),
+            syncError,
+            syncSupported: s.syncSupported === true,
+            syncReady: s.syncReady === true,
+            readReady, readsLocked,
+            autoUnlockReady: s.autoUnlockReady === true,
+            desktopUnlocked: s.unlocked === true,
             mode: chosen,
             available: true,
-            unlocked: s.unlocked === true,
-            paired:
-              typeof s.paired === "boolean"
+            unlocked: !readsLocked && (s.unlocked === true || readReady),
+            paired: readReady ||
+              (typeof s.paired === "boolean"
                 ? s.paired
-                : !!(await chrome.storage.local.get("token")).token,
+                : !!(await chrome.storage.local.get("token")).token),
           };
         } catch (error) {
-          clearAllPending();
           clearInlineOffers();
           return {
             mode: chosen,
             unlocked: false,
             paired: false,
             available: false,
+            queued: await queuedCount(),
             connectionError:
               error instanceof Error ? error.message : "native-unavailable",
           };
@@ -103,6 +202,51 @@ async function handle(request: Record<string, any>) {
       clearAllPending();
       clearInlineOffers();
       await chrome.storage.local.set({ mode: request.mode });
+      await updateSyncAlarm();
+      return {};
+    case "configure-sync": {
+      if ((await mode()) !== "native" || typeof request.password !== "string" ||
+          !request.password || new TextEncoder().encode(request.password).length > 4096)
+        throw new Error("invalid-credential");
+      const { syncToken: previousToken } = await chrome.storage.local.get("syncToken");
+      const syncToken = Array.from(crypto.getRandomValues(new Uint8Array(32)),
+        (byte) => byte.toString(16).padStart(2, "0")).join("");
+      // Fresh identity also permits reauthorization after an ad-hoc signing change.
+      // Store before transport: a lost success reply must remain recoverable.
+      await chrome.storage.local.set({ syncToken });
+      try {
+        await native({ op: "configure-sync", password: request.password,
+          allowRead: request.allowRead === true, autoUnlock: request.autoUnlock === true });
+        await chrome.storage.session.remove("nativeReadsLocked");
+      } catch (error) {
+        if (error instanceof Error && ["authentication", "sync-keychain"].includes(error.message)) {
+          if (previousToken) await chrome.storage.local.set({ syncToken: previousToken });
+          else await chrome.storage.local.remove("syncToken");
+        }
+        throw error;
+      } finally { request.password = ""; }
+      if (previousToken) {
+        try { await native({ op: "disable-sync", syncToken: previousToken }); }
+        catch { /* a previous signing identity may no longer have Keychain access */ }
+      }
+      await synchronize();
+      try {
+        const tab = await currentTab();
+        const accounts = await reminderCore({op:"matches",origin:tab.origin});
+        setAccountBadge(tab.id,tab.origin,accounts.length);
+      } catch { /* unsupported active pages have no site badge */ }
+      return {};
+    }
+    case "disable-auto-unlock":
+      if ((await mode()) !== "native") throw new Error("native-app");
+      await native({op:"disable-auto-unlock"});
+      return {};
+    case "disable-sync":
+      if ((await mode()) !== "native") throw new Error("native-app");
+      await native({ op: "disable-sync" });
+      await chrome.storage.local.remove("syncToken");
+      readGeneration++;
+      clearInlineOffers();
       return {};
     case "pair": {
       const r = await native({ op: "pair" });
@@ -134,15 +278,24 @@ async function handle(request: Record<string, any>) {
     case "lock":
       clearAllPending();
       clearInlineOffers();
-      if ((await mode()) === "native") await native({ op: "lock" });
-      else core?.lock();
+      if ((await mode()) === "native") {
+        readGeneration++;
+        await chrome.storage.session.set({nativeReadsLocked:true});
+        try { await native({op:"lock"}); }
+        catch (error) {
+          if (!(error instanceof Error) || !offlineErrors.has(error.message)) throw error;
+        }
+      } else core?.lock();
       return {};
     case "command":
       if ((await mode()) !== "independent") throw new Error("native-app");
       return requestCore(request.request);
     case "matches": {
       const tab = await currentTab(request.tabId);
-      const accounts = await requestCore({ op: "matches", origin: tab.origin });
+      const accounts = await reminderCore({
+        op: "matches",
+        origin: tab.origin,
+      });
       setAccountBadge(tab.id, tab.origin, accounts.length);
       const pending = pendingLogin(tab.id, tab.origin);
       return {
@@ -198,6 +351,21 @@ async function handle(request: Record<string, any>) {
       });
       return {};
     }
+    case "reveal-account": {
+      const generation = readGeneration;
+      const tab = await currentTab(request.tabId);
+      if (tab.origin !== request.origin) throw new Error("changed-origin");
+      if (typeof request.id !== "string" || !request.id || request.id.length > 4096 ||
+          (request.accountId !== undefined && typeof request.accountId !== "string"))
+        throw new Error("invalid-entry");
+      const credential = await requestCore({op:"fill",origin:tab.origin,id:request.id,accountId:request.accountId});
+      try {
+        const current = await currentTab(tab.id);
+        if (current.origin !== tab.origin) throw new Error("changed-origin");
+        if (generation !== readGeneration) throw new Error("locked");
+        return {username:credential.username,password:credential.password};
+      } finally { credential.password=""; credential.username=""; }
+    }
     case "fill": {
       const tab = await currentTab(request.tabId);
       if (tab.origin !== request.origin) throw new Error("changed-origin");
@@ -242,22 +410,34 @@ async function handle(request: Record<string, any>) {
     }
     case "save-captured": {
       const tab = await currentTab(request.tabId);
+      if (tab.origin !== request.origin) throw new Error("changed-origin");
+      if (request.mode && request.mode !== (await mode()))
+        throw new Error("changed-mode");
       if (
-        tab.origin !== request.origin ||
         typeof request.username !== "string" ||
         typeof request.password !== "string" ||
-        request.password.length > 4096 ||
-        request.username.length > 4096
+        !request.password ||
+        !request.username.trim() ||
+        new TextEncoder().encode(request.password).length > 4096 ||
+        new TextEncoder().encode(request.username).length > 4096
       )
-        throw new Error("invalid");
-      if ((await mode()) === "native")
-        await native({
-          op: "save",
+        throw new Error("invalid-credential");
+      let queued = false;
+      if ((await mode()) === "native") {
+        // Persist before attempting transport: timeouts may follow a successful save.
+        await enqueue({
           origin: tab.origin,
           username: request.username,
           password: request.password,
         });
-      else
+        await updateSyncAlarm();
+        try {
+          await synchronize();
+        } catch {
+          /* retained for retry */
+        }
+        queued = (await queuedCount()) > 0;
+      } else
         await requestCore({
           op: "save",
           item: {
@@ -280,7 +460,7 @@ async function handle(request: Record<string, any>) {
       } catch {
         clearAccountBadge(tab.id);
       }
-      return {};
+      return { queued };
     }
     default:
       throw new Error("unsupported");
@@ -316,18 +496,19 @@ chrome.runtime.onMessage.addListener((request, sender, respond) => {
         (request.action === "configure-reminder" &&
           request.enabled === false)));
   if (!pageAction && !inlineAction && request.action === "lock") {
+    readGeneration++;
     clearAllPending();
     clearInlineOffers();
   }
   const work = bypassSerial
     ? pageAction
-      ? handleLoginPage(request, sender, requestCore, captureEpoch)
+      ? handleLoginPage(request, sender, reminderCore, captureEpoch)
       : handle(request)
     : serial.then(() =>
         inlineAction
           ? handleInline(request, sender, requestCore)
           : pageAction
-            ? handleLoginPage(request, sender, requestCore, captureEpoch)
+            ? handleLoginPage(request, sender, reminderCore, captureEpoch)
             : handle(request),
       );
   if (!bypassSerial) serial = work.catch(() => {});
@@ -344,6 +525,8 @@ chrome.runtime.onMessage.addListener((request, sender, respond) => {
 chrome.idle.onStateChanged.addListener((state) => {
   if (state !== "active") {
     core?.lock();
+    readGeneration++;
+    void chrome.storage.session.set({nativeReadsLocked:true});
     clearAllPending();
     clearInlineOffers();
   }
@@ -353,7 +536,10 @@ chrome.tabs.onActivated.addListener(({ tabId }) => {
   const work = serial.then(async () => {
     try {
       const tab = await currentTab(tabId);
-      const accounts = await requestCore({ op: "matches", origin: tab.origin });
+      const accounts = await reminderCore({
+        op: "matches",
+        origin: tab.origin,
+      });
       setAccountBadge(tabId, tab.origin, accounts.length);
     } catch {
       clearAccountBadge(tabId);
@@ -371,4 +557,12 @@ chrome.runtime.onInstalled.addListener(() => {
       if (ids.length) return chrome.scripting.unregisterContentScripts({ ids });
     })
     .catch(() => {});
+});
+
+// Alarms wake suspended MV3 workers; syncing does not depend on an open popup.
+void updateSyncAlarm().catch(() => {});
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name !== "offline-sync") return;
+  const work = serial.then(synchronize);
+  serial = work.catch(() => {});
 });

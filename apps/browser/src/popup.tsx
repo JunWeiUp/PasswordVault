@@ -1,7 +1,10 @@
 import { render } from "preact";
 import { useEffect, useState, useRef } from "preact/hooks";
 import { authenticate, errorText, message, status, lock } from "./client";
+import { AccountSecret } from "./AccountSecret";
+import { BackgroundSyncPanel } from "./BackgroundSyncPanel";
 import { NativeConnectionPanel } from "./NativeConnectionPanel";
+import { MAC_DOWNLOAD_URL } from "./native-connection";
 import "./style.css";
 import { version } from "../package.json";
 function Popup() {
@@ -12,6 +15,7 @@ function Popup() {
       : undefined;
   const [state, setState] = useState<any>();
   const [error, setError] = useState("");
+  const [macOpenFailed, setMacOpenFailed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [password, setPassword] = useState("");
   const [matches, setMatches] = useState<any>();
@@ -29,7 +33,7 @@ function Popup() {
       if (generation !== revision.current) return;
       setState(s);
       setMatchesError("");
-      if (s.unlocked && (s.mode !== "native" || s.paired)) {
+      if (s.mode === "native" || s.unlocked) {
         try {
           const found = await message({
             action: "matches",
@@ -38,7 +42,12 @@ function Popup() {
           if (generation !== revision.current) return;
           setMatches(found);
           setCaptured((old: any) => {
-            if (old && (old.origin !== found.origin || old.tabId !== found.id))
+            if (
+              old &&
+              (old.origin !== found.origin ||
+                old.tabId !== found.id ||
+                (old.mode && old.mode !== s.mode))
+            )
               return found.pending;
             if (old?.expires && old.id !== found.pending?.id)
               return found.pending;
@@ -95,6 +104,18 @@ function Popup() {
       setError("");
     }
   }, [captured?.id, captured?.origin, captured?.tabId]);
+  const openMac = () => run(async () => {
+    setMacOpenFailed(false);
+    try {
+      await message({ action: "open-native" });
+    } catch (e) {
+      if (e instanceof Error && ["native-host-missing", "native-unavailable"].includes(e.message)) {
+        setMacOpenFailed(true);
+        return;
+      }
+      throw e;
+    }
+  });
   const manage = () =>
     chrome.tabs.create({ url: chrome.runtime.getURL("index.html") });
   return (
@@ -104,10 +125,21 @@ function Popup() {
           <img src="./brand.png" alt="" width="30" height="30" />
         </span>
         <strong>PasswordVault</strong>
-        <button class="icon-button" title="打开资料库" onClick={manage}>
-          ↗
+        <span class="brand-version" aria-label={`插件版本 ${version}`}>v{version}</span>
+        <button class="icon-button mac-launch" title="打开 Mac 应用" aria-label="打开 Mac 应用" disabled={busy} onClick={openMac}>
+          <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="3" y="3" width="18" height="13" rx="2" />
+            <path d="M9 21h6M12 16v5M8 12l8-6M11 6h5v5" />
+          </svg>
         </button>
       </header>
+      {macOpenFailed && (
+        <aside class="mac-download-notice" role="status">
+          <p>未能打开 Mac 应用。尚未安装？请前往 GitHub 下载；已安装请在「设置 → 浏览器」重新登记连接。</p>
+          <a href={MAC_DOWNLOAD_URL} target="_blank" rel="noopener noreferrer">前往 GitHub 下载 ↗</a>
+          <button class="text-button" onClick={() => setMacOpenFailed(false)} aria-label="关闭下载提示">关闭</button>
+        </aside>
+      )}
       {sourceTabId !== undefined && (
         <button
           class="text-button"
@@ -137,6 +169,11 @@ function Popup() {
           独立资料库
         </button>
       </div>
+      {error && !captured && (
+        <p class="error" role="alert">
+          {error}
+        </p>
+      )}
       {!state ? (
         <section class="popup-empty">
           <p class="muted">{error ? "暂时无法读取连接状态" : "正在连接…"}</p>
@@ -146,16 +183,7 @@ function Popup() {
             </button>
           )}
         </section>
-      ) : state.mode === "native" &&
-        (!state.available || !state.unlocked || !state.paired) ? (
-        <NativeConnectionPanel
-          state={state}
-          busy={busy}
-          onOpen={() => run(() => message({ action: "open-native" }))}
-          onPair={() => run(() => message({ action: "pair" }))}
-          onRefresh={() => run(async () => {})}
-        />
-      ) : !state.unlocked ? (
+      ) : state.mode !== "native" && !state.unlocked ? (
         <form
           onSubmit={(e) => {
             e.preventDefault();
@@ -191,13 +219,74 @@ function Popup() {
         </form>
       ) : (
         <>
+          {state.mode === "native" &&
+            (!state.available || !state.unlocked || !state.paired) && !state.syncSupported && !captured && (
+              <NativeConnectionPanel
+                state={state}
+                busy={busy}
+                onOpen={openMac}
+                onPair={() => run(() => message({ action: "pair" }))}
+                onRefresh={() => run(async () => {})}
+              />
+            )}
+          {state.mode === "native" && state.syncSupported && !captured && (
+            <BackgroundSyncPanel ready={state.syncReady} readReady={state.readReady} readsLocked={state.readsLocked}
+              autoUnlockReady={state.autoUnlockReady} busy={busy}
+              onConfigure={(password, autoUnlock) => run(() => message({ action: "configure-sync", password, allowRead:true, autoUnlock }))}
+              onDisableAuto={() => run(() => message({action:"disable-auto-unlock"}))}
+              onDisable={() => run(() => message({ action: "disable-sync" }))} />
+          )}
+          {state.mode === "native" && state.syncSupported && !captured && (!state.unlocked || !state.paired) && (
+            <details>
+              <summary>读取和填充已有账号</summary>
+              <NativeConnectionPanel state={state} busy={busy}
+                onOpen={openMac}
+                onPair={() => run(() => message({ action: "pair" }))}
+                onRefresh={() => run(async () => {})} />
+            </details>
+          )}
+          {state.mode === "native" && (
+            <p class="muted" role="status">
+              {captured ? (state.queued ? `已暂存 ${state.queued} 个账号，确认后加入同步队列。` : state.syncReady ? "后台保存已开启。" : "支持离线保存，账号会加密暂存。") : state.queued
+                ? `已在此浏览器暂存 ${state.queued} 个账号，${state.syncReady ? "将自动同步到 Mac。" : "配置后台保存或连接并解锁 Mac 后自动同步。"}`
+                : state.readReady ? "可直接查看和填充本站账号。" : state.syncReady ? "后台保存已就绪，Mac 应用退出后仍可同步。" : "支持离线保存，配置后台保存或连接并解锁 Mac 后自动同步。"}
+              {state.syncError && "同步未完成，将自动重试。"}
+            </p>
+          )}
           <div class="section-title">
             <span>当前网站</span>
-            <button class="text-button" onClick={() => run(lock)}>
+            <button
+              class="text-button"
+              onClick={() =>
+                run(async () => {
+                  await lock();
+                  setCaptured(undefined);
+                })
+              }
+            >
               锁定
             </button>
           </div>
           <p class="origin">{matches?.origin ?? "请打开一个网站"}</p>
+          {!captured && (
+            <button
+              class="primary wide"
+              disabled={busy || !matches}
+              onClick={() => {
+                revision.current++;
+                setCaptured({
+                  tabId: matches.id,
+                  origin: matches.origin,
+                  mode: state.mode,
+                  manual: true,
+                  username: "",
+                  password: "",
+                });
+              }}
+            >
+              添加账号密码
+            </button>
+          )}
           {captured && (
             <CaptureConfirmation
               key={`${captured.tabId}:${captured.origin}:${captured.id ?? "manual"}`}
@@ -207,9 +296,16 @@ function Popup() {
               onChange={setCaptured}
               onSave={() =>
                 run(async () => {
-                  await message({ action: "save-captured", ...captured });
+                  const result = await message({
+                    action: "save-captured",
+                    ...captured,
+                  });
                   setCaptured(undefined);
-                  setNotice("账号已保存，可以清空网页表单后测试填充。");
+                  setNotice(
+                    result.queued
+                      ? "已加密暂存在此浏览器，后台保存可用时自动重试。"
+                      : "账号已保存。",
+                  );
                 })
               }
               onCancel={() =>
@@ -227,6 +323,102 @@ function Popup() {
               }
             />
           )}
+          {notice && <p role="status">{notice}</p>}
+          {matchesError && (
+            <p class="empty-small" role="status">
+              {matchesError}
+            </p>
+          )}
+          <details
+            class="site-accounts"
+            open={!captured}
+            key={captured ? "pending-accounts" : "accounts"}
+          >
+            <summary>已保存账号（{matches?.accounts?.length ?? 0}）</summary>
+            <div class="match-list">
+              {matches?.accounts?.length
+                ? matches.accounts.map((account: any) => (
+                    <div
+                      class="match-row"
+                      key={account.id + (account.accountId ?? "")}
+                    >
+                      <button
+                        class="match"
+                        disabled={busy}
+                        title={
+                          state.mode === "native" && !state.readReady ? "在 Mac 中编辑" : "填充账号"
+                        }
+                        aria-label={`${state.mode === "native" && !state.readReady ? "在 Mac 中编辑" : "填充账号"}：${account.title} ${account.username || ""}`}
+                        onClick={() =>
+                          run(async () => {
+                            if (state.mode === "native" && !state.readReady) {
+                              await message({
+                                action: "edit-native-entry",
+                                tabId: matches.id,
+                                origin: matches.origin,
+                                id: account.id,
+                                accountId: account.accountId,
+                              });
+                              setNotice("已在 Mac 中打开该账号，可继续编辑。");
+                            } else {
+                              await message({
+                                action: "fill",
+                                tabId: matches.id,
+                                origin: matches.origin,
+                                id: account.id,
+                                accountId: account.accountId,
+                              });
+                              if (sourceTabId !== undefined)
+                                await chrome.tabs.update(sourceTabId, {
+                                  active: true,
+                                });
+                              window.close();
+                            }
+                          })
+                        }
+                      >
+                        <span class="record-symbol">⌘</span>
+                        <span>
+                          <strong>{account.title}</strong>
+                          <small>{account.username || "未填写账号"}</small>
+                          {state.mode === "native" && !state.readReady && (
+                            <small class="edit-in-mac">在 Mac 中编辑 ↗</small>
+                          )}
+                        </span>
+                      </button>
+                      {state.mode === "native" && (
+                        <button
+                          class="match-fill"
+                          disabled={busy}
+                          aria-label={`填充账号：${account.title} ${account.username || ""}`}
+                          onClick={() =>
+                            run(async () => {
+                              await message({
+                                action: "fill",
+                                tabId: matches.id,
+                                origin: matches.origin,
+                                id: account.id,
+                                accountId: account.accountId,
+                              });
+                              if (sourceTabId !== undefined)
+                                await chrome.tabs.update(sourceTabId, {
+                                  active: true,
+                                });
+                              window.close();
+                            })
+                          }
+                        >
+                          填充
+                        </button>
+                      )}
+                      <AccountSecret account={account} origin={matches.origin} tabId={matches.id} disabled={busy} />
+                    </div>
+                  ))
+                : !matchesError && (
+                    <p class="empty-small">此网站还没有保存的账号</p>
+                  )}
+            </div>
+          </details>
           {matches && (
             <div class="reminder-setting">
               <button
@@ -257,101 +449,6 @@ function Popup() {
               </small>
             </div>
           )}
-          {notice && <p role="status">{notice}</p>}
-          {matchesError && (
-            <p class="empty-small" role="status">
-              {matchesError}
-            </p>
-          )}
-          <details
-            class="site-accounts"
-            open={!captured}
-            key={captured ? "pending-accounts" : "accounts"}
-          >
-            <summary>已保存账号（{matches?.accounts?.length ?? 0}）</summary>
-            <div class="match-list">
-              {matches?.accounts?.length
-                ? matches.accounts.map((account: any) => (
-                    <div
-                      class="match-row"
-                      key={account.id + (account.accountId ?? "")}
-                    >
-                      <button
-                        class="match"
-                        disabled={busy}
-                        title={
-                          state.mode === "native" ? "在 Mac 中编辑" : "填充账号"
-                        }
-                        aria-label={`${state.mode === "native" ? "在 Mac 中编辑" : "填充账号"}：${account.title} ${account.username || ""}`}
-                        onClick={() =>
-                          run(async () => {
-                            if (state.mode === "native") {
-                              await message({
-                                action: "edit-native-entry",
-                                tabId: matches.id,
-                                origin: matches.origin,
-                                id: account.id,
-                                accountId: account.accountId,
-                              });
-                              setNotice("已在 Mac 中打开该账号，可继续编辑。");
-                            } else {
-                              await message({
-                                action: "fill",
-                                tabId: matches.id,
-                                origin: matches.origin,
-                                id: account.id,
-                                accountId: account.accountId,
-                              });
-                              if (sourceTabId !== undefined)
-                                await chrome.tabs.update(sourceTabId, {
-                                  active: true,
-                                });
-                              window.close();
-                            }
-                          })
-                        }
-                      >
-                        <span class="record-symbol">⌘</span>
-                        <span>
-                          <strong>{account.title}</strong>
-                          <small>{account.username || "未填写账号"}</small>
-                          {state.mode === "native" && (
-                            <small class="edit-in-mac">在 Mac 中编辑 ↗</small>
-                          )}
-                        </span>
-                      </button>
-                      {state.mode === "native" && (
-                        <button
-                          class="match-fill"
-                          disabled={busy}
-                          aria-label={`填充账号：${account.title} ${account.username || ""}`}
-                          onClick={() =>
-                            run(async () => {
-                              await message({
-                                action: "fill",
-                                tabId: matches.id,
-                                origin: matches.origin,
-                                id: account.id,
-                                accountId: account.accountId,
-                              });
-                              if (sourceTabId !== undefined)
-                                await chrome.tabs.update(sourceTabId, {
-                                  active: true,
-                                });
-                              window.close();
-                            })
-                          }
-                        >
-                          填充
-                        </button>
-                      )}
-                    </div>
-                  ))
-                : !matchesError && (
-                    <p class="empty-small">此网站还没有保存的账号</p>
-                  )}
-            </div>
-          </details>
           {!captured && (
             <button
               class="wide"
@@ -369,13 +466,8 @@ function Popup() {
           )}
         </>
       )}
-      {error && !captured && (
-        <p class="error" role="alert">
-          {error}
-        </p>
-      )}
       <footer class="popup-footer">
-        <span>v{version} · 自动锁定</span>
+        <span>自动锁定</span>
         <button class="text-button" onClick={manage}>
           管理资料库 ↗
         </button>
@@ -415,21 +507,25 @@ function CaptureConfirmation({
     <form
       ref={form}
       class="capture"
-      aria-label="确认保存账号"
+      aria-label={captured.manual ? "添加账号密码" : "确认保存账号"}
       onSubmit={(event) => {
         event.preventDefault();
         setRevealed(false);
         onSave();
       }}
     >
-      <h3>确认保存账号</h3>
+      <h3>{captured.manual ? "添加账号密码" : "确认保存账号"}</h3>
       <p class="muted capture-hint">
-        可修改后保存。
+        {captured.manual ? "为当前网站填写账号和密码。" : "可修改后保存。"}
+        离线暂存使用此浏览器的设备密钥加密。
         {captured.expires ? "待保存信息将在两分钟后清除。" : "确认后加密保存。"}
       </p>
       <label htmlFor="capture-username">账号</label>
       <input
         id="capture-username"
+        required
+        maxLength={4096}
+        autoFocus={captured.manual}
         autoComplete="off"
         spellcheck={false}
         disabled={busy}
@@ -442,6 +538,8 @@ function CaptureConfirmation({
       <div class="capture-secret">
         <input
           id="capture-password"
+          required
+          maxLength={4096}
           type={revealed ? "text" : "password"}
           autoComplete="off"
           spellcheck={false}

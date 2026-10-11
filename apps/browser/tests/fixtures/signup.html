@@ -1,0 +1,7 @@
+<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>Synthetic signup capture</title>
+<style>body{font:16px system-ui;margin:30px}input,button{display:block;margin:16px;padding:10px}</style>
+<form><input name="username" placeholder="用户名" value="fictional@example.test"><input name="password" type="password" placeholder="密码" value="Fictional-signup-only"><input name="confirmPassword" type="password" placeholder="确认密码" value="Fictional-signup-only"><button>创建账户</button></form>
+<script>
+window.qa={requests:[]};window.chrome={runtime:{id:'synthetic-signup',onMessage:{addListener(){}},async sendMessage(r){qa.requests.push({...r});return {ok:true,data:r.action==='login-pending'?{enabled:true,pending:false}:{pending:false}}}}};
+document.querySelector('form').onsubmit=e=>e.preventDefault();
+</script><script src="../../dist/login-observer.js"></script></html>

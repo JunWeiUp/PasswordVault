@@ -1,6 +1,6 @@
 // Fictional in-memory bridge. Never sends a request to the installed extension.
 window.qa = {
-  reads: 0, saved: [], dismissed: [], edited: [], filled: [], failSave: false,
+  reads: 0, revealed: [], saved: [], dismissed: [], edited: [], filled: [], failSave: false,
   state: { mode: 'native', available: true, unlocked: true, paired: true },
   origin: 'https://accounts.example.test',
   pending: { id: 'fixture-1', tabId: 123, origin: 'https://accounts.example.test', username: 'fixture@example.test', password: 'Fictional-only-208!', expires: Date.now() + 120000 },
@@ -10,6 +10,19 @@ window.chrome = {
     id: 'synthetic-popup-test', getURL: path => path,
     async sendMessage(request) {
       const qa = window.qa;
+      if (request.action === 'open-native') {qa.opened=(qa.opened||0)+1;return qa.openError ? {ok:false,error:qa.openError} : {ok:true,data:{}};}
+      if (request.action === 'configure-sync') {
+        if (request.password !== 'Fictional-master-2026!') return {ok:false,error:'authentication'};
+        qa.state.syncReady = true;
+        qa.state.readReady = request.allowRead === true;
+        qa.state.autoUnlockReady = request.autoUnlock === true;
+        qa.state.unlocked = qa.state.readReady;
+        qa.state.paired = qa.state.readReady;
+        return {ok:true,data:{}};
+      }
+      if (request.action === 'disable-sync') { qa.state.syncReady=false;qa.state.readReady=false;qa.state.autoUnlockReady=false;return {ok:true,data:{}}; }
+      if (request.action === 'disable-auto-unlock') {qa.state.autoUnlockReady=false;return {ok:true,data:{}};}
+      if (request.action === 'reveal-account') {qa.revealed.push(request);if(qa.delayReveal)await new Promise(resolve=>qa.releaseReveal=resolve);return {ok:true,data:{username:'fictional',password:'Fictional-existing-account!'}};}
       if (request.action === 'status') return { ok: true, data: qa.state };
       if (request.action === 'matches') {
         qa.reads++;
