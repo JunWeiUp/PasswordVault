@@ -162,3 +162,7 @@ Native-mode popup retains capture confirmation and manual page capture while the
 ### Browser current-website creation
 
 The popup offers **添加账号密码** above saved accounts when no capture is being reviewed. It opens empty required username/password fields bound to the displayed HTTP(S) origin. Save uses the existing native encrypted offline queue or unlocked independent vault. Polling preserves edits; cancel, site changes, mode changes and explicit locking clear the draft. Closing the popup discards unsaved manual input. Saving rejects a changed origin/mode and invalid credential lengths. Page-form capture remains separately available.
+
+## Mac rich personal notes
+
+Personal notes open directly in the local Tiptap editor. The title and body share the outer page scrollbar; formatting, insert, find and contextual tools operate without replacing selection/history. Preview is read-only. Images/files import through the encrypted native core; Save as and lossy Markdown export are explicit. Mobile/Web show protected summaries. See [complete behavior](RICH-NOTES.md).

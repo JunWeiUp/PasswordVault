@@ -4,13 +4,13 @@ import XCTest
 @testable import PasswordVault
 
 @MainActor
-final class MilkdownEditorTests: XCTestCase {
+final class NoteEditorLifecycleTests: XCTestCase {
   private let pass = "Synthetic editor lifecycle fixture"
   private func fixture(_ source: String) async throws -> (AppStore, VaultItem, URL) {
     let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     let store = AppStore(directory: folder)
     await store.authenticate(password: pass, create: true)
-    var note = VaultItem.blank(type: "secureNote", title: "Synthetic Milkdown")
+    var note = VaultItem.blank(type: "secureNote", title: "Synthetic editor")
     note.note = source; note.set("noteFormat", "markdown")
     try await store.saveRecord(note)
     return (store, note, folder)

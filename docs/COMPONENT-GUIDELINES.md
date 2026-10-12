@@ -43,15 +43,19 @@ Run the applicable [development checks](DEVELOPMENT.md). For changed interaction
 
 Use macOS 13-compatible SwiftUI controls and ObservableObject state. Keep blocking cryptography/database work inside CoreClient's actor. Hide sensitive editors immediately on lock, drain their final snapshot, then discard editor DOM/undo state. Guard async results against a changed lock generation. Preserve unknown record fields. Use system fonts, accessible labels, native keyboard actions, and the selected Native Notes spacing/colors. The Chromium client uses Preact DOM controls, safe text rendering, and separate popup/workspace bundles without a Flutter runtime. The Mac Markdown surface is a deliberately scoped local WKWebView component, not the application's storage or navigation shell.
 
-### Markdown editor component
+### Rich-note editor component
 
-- Keep the pinned Milkdown/ProseMirror document model and history in `apps/macos/NoteEditor`; use CommonMark/GFM editing behavior for lists, task items, tables and code. Do not emulate hidden Markdown by zero-width editable characters or a second offset mapper.
+- Keep the pinned Tiptap/ProseMirror document model and history in `apps/macos/NoteEditor`; use structured rich editing behavior for lists, task items, tables and code. Do not emulate hidden Markdown by zero-width editable characters or a second offset mapper.
 - Use the nonpersistent WebKit configuration and generated CSP. No CDN, remote font/image, analytics, arbitrary navigation or JavaScript persistent-storage path belongs in this editor. Pass text as a structured JavaScript argument, never as executable HTML/string interpolation. Native cryptography and vault credentials remain outside the page.
 - Bind messages to the live note session and revision. Enforce read-only/Trash restrictions in both the editor and AppStore. Reject stale, wrong-session or post-lock writes; do not rely on a disabled web control as authorization.
-- Preserve caret, active composition and history during autosave/configuration echoes. Ordinary preview clicks enter editing without opening links. Route native Undo/Redo to ProseMirror history, and validate actual keyboard and menu behavior.
-- Source mode is a handover, not an immediate view toggle: await the closing snapshot before creating a writable source editor. Preserve a completed close result until all store consumers finish; retirement and locking may overlap.
+- Preserve caret, active composition and history during autosave/configuration echoes. Preview remains read-only; ordinary text/link clicks never open external links. Route native Undo/Redo to ProseMirror history, and validate actual keyboard and menu behavior.
+- Legacy source mode is a handover, not an immediate view toggle; rich notes export Markdown instead: await the closing snapshot before creating a writable source editor. Preserve a completed close result until all store consumers finish; retirement and locking may overlap.
 - Loading, snapshot or web-process failure retains the acknowledged source and shows a recoverable failure. Never publish an empty fallback as user input or report a complete export after an unconfirmed snapshot.
 - Keep one outer scroll surface and localized editor labels; verify minimum window size, long text, both appearances and Chinese input in real WKWebView. Previous editor scores and pure browser fixtures do not establish this component's acceptance.
 
 
 Native macOS menu actions must use `.buttonStyle(.automatic)` inside `Menu` and `contextMenu` content. The app-wide `VaultButtonStyle` is a primitive button style intended for visible controls and hover feedback; inheriting it into AppKit menu items can leave every action disabled. Verify menu actions with actual pointer selection, including an unselected row and Trash restoration, instead of relying only on compilation.
+
+## Rich editor components
+
+Use Tiptap commands and ProseMirror transactions for structured editing. Keep the native bridge scoped to a note/session, never expose keys or general core commands, and never load external editor assets. Keep toolbar keyboard focus, active/disabled states and responsive wrapping functional. See [rich notes](RICH-NOTES.md).

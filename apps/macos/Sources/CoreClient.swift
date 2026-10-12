@@ -8,9 +8,24 @@ actor CoreClient {
   }
 
   func call(_ request: [String: JSONValue]) throws -> JSONValue {
+    var request = request
+    request["richNotes"] = .bool(true)
     let bytes = try JSONEncoder().encode(request)
     let response = try session.command(request: String(decoding: bytes, as: UTF8.self))
     return try JSONDecoder().decode(JSONValue.self, from: Data(response.utf8))
+  }
+
+  func importAttachment(noteID: String, name: String, mime: String, data: Data) throws -> JSONValue
+  {
+    let result = try session.importNoteAttachment(
+      noteId: noteID, name: name, mime: mime, data: data)
+    return try JSONDecoder().decode(JSONValue.self, from: Data(result.utf8))
+  }
+  func readAttachment(noteID: String, id: String) throws -> Data {
+    try session.readNoteAttachment(noteId: noteID, id: id)
+  }
+  func discardAttachment(noteID: String, id: String) throws {
+    try session.discardNoteAttachment(noteId: noteID, id: id)
   }
 
   func document() throws -> VaultDocument {
@@ -36,13 +51,15 @@ actor CoreClient {
 
   func backgroundSave(grant: Data, request: [String: JSONValue]) throws -> JSONValue {
     let bytes = try JSONEncoder().encode(request)
-    let response = try session.backgroundSave(grant: grant, request: String(decoding: bytes, as: UTF8.self))
+    let response = try session.backgroundSave(
+      grant: grant, request: String(decoding: bytes, as: UTF8.self))
     return try JSONDecoder().decode(JSONValue.self, from: Data(response.utf8))
   }
 
   func authorizedBrowserCommand(grant: Data, request: [String: JSONValue]) throws -> JSONValue {
     let bytes = try JSONEncoder().encode(request)
-    let response = try session.authorizedBrowserCommand(grant: grant, request: String(decoding: bytes, as: UTF8.self))
+    let response = try session.authorizedBrowserCommand(
+      grant: grant, request: String(decoding: bytes, as: UTF8.self))
     return try JSONDecoder().decode(JSONValue.self, from: Data(response.utf8))
   }
 

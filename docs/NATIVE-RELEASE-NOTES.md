@@ -1,16 +1,20 @@
-# PasswordVault 2.2.11 — native clients
+# PasswordVault 2.3.0 — native clients
 
-A coordinated release of the native Mac workspace, Android app, lightweight browser extension, standalone Web app, and iOS Simulator app. Notes, accounts, authenticator codes and wallets share the Rust vault core. Mac has a live Markdown editor; Android Notes scroll as one page with a refreshed account editor.
+A coordinated release of the native Mac workspace, Android app, lightweight browser extension, standalone Web app, and iOS Simulator app. Notes, accounts, authenticator codes and wallets share the Rust vault core. Mac now has an offline rich-text editor with encrypted images and attachments; mobile and Web clients protect these new notes with read-only text summaries.
 
-**Developer preview:** this is a regular GitHub Release, not a claim of production security acceptance. Independent security review, signed iPhone distribution and some hardware/migration gates remain open. Read [SECURITY_MODEL.md](https://github.com/JunWeiUp/PasswordVault/blob/v2.2.11/docs/SECURITY_MODEL.md) before storing important data.
+**Developer preview:** this is a regular GitHub Release, not a claim of production security acceptance. Independent security review, signed iPhone distribution and some hardware/migration gates remain open. Read [SECURITY_MODEL.md](https://github.com/JunWeiUp/PasswordVault/blob/v2.3.0/docs/SECURITY_MODEL.md) before storing important data.
 
-## Changes in 2.2.11
+## Changes in 2.3.0
 
-- Save confirmed login/signup credentials while the Mac app is quit. Encrypted offline staging retries only while items remain pending, with atomic delivery receipts to avoid duplicates.
-- Authorize current-site account lookup, masked password reveal and fill using the Mac master password in the extension. The toolbar shows the available account count.
-- Opt into Mac startup unlock during authorization. Legacy save-only grants retain their scope; manual/system locks remain effective during the running session.
-- Show the extension version and a Mac launch icon in the popup header. Missing native connections offer GitHub downloads and registration guidance.
-- Keep native helpers short-lived. Android and iOS receive coordinated version updates with their existing session and data behavior preserved.
+- Replace the Mac note editor with local Tiptap: headings, lists/tasks, tables, links, search/replace, undo/redo, images and file attachments. A visible toolbar and anchored color palettes make tools discoverable.
+- Preserve typing focus across Return/autosave and whole-page wheel/trackpad scrolling with the title. Preview is read-only.
+- Encrypt rich JSON, retained legacy originals and attachment metadata/bytes. Limits: 25 MiB per attachment and 250 MiB retained attachments per note.
+- Include all attachments in authenticated V3 local/WebDAV backups, with validation and atomic restoration. An encrypted pre-upgrade snapshot is made before enabling the new format.
+- Protect rich notes from incomplete editing/export on mobile and Web. Older programs reject upgraded vaults; use this release's Mac app for full rich-note editing and backups.
+
+**Upgrade/rollback:** keep a verified encrypted backup before upgrading. The new format becomes active on first rich edit or attachment import. Rollback requires the complete pre-upgrade encrypted snapshot and its original password; do not open the upgraded database in an old client. Shared notes retain the legacy editor. See [rich-note format and limits](https://github.com/JunWeiUp/PasswordVault/blob/v2.3.0/docs/RICH-NOTES.md).
+
+Local validation includes Rust encryption/backup failure tests, native editor lifecycle tests, 300 continuous Return/input cycles, window scrolling and color-selection regressions, plus browser and mobile builds. Physical Chinese IME candidate flows, macOS 13/Intel hardware and Touch ID remain separate acceptance gates.
 
 ## Downloads and installation
 
@@ -24,7 +28,7 @@ A coordinated release of the native Mac workspace, Android app, lightweight brow
 | `ios-simulator.zip` | A Mac with a compatible Xcode iOS Simulator. **Not an IPA; cannot install on an iPhone.** Extract; run `xcrun simctl install booted PasswordVault.app`. The bundled executable architecture/runtime determine simulator compatibility. |
 | `source.zip` | Source for all clients, including the iOS app and AutoFill extension. Follow the platform READMEs to build; device installation requires eligible provisioning. |
 
-All client versions are **2.2.11**. `BUILD.json` identifies the exact source commit, build numbers and distribution limitations. Verify downloads with `shasum -a 256 -c SHA256SUMS` after downloading the complete asset set.
+All client versions are **2.3.0**. `BUILD.json` identifies the exact source commit, build numbers and distribution limitations. Verify downloads with `shasum -a 256 -c SHA256SUMS` after downloading the complete asset set.
 
 ### Android installation identity
 
@@ -38,7 +42,7 @@ The downloadable development app is ad-hoc signed, not Developer ID signed/notar
 
 **Touch ID/keychain enrollment is not promised in this public ad-hoc build.** Use the master password, or build locally with an eligible Apple Development signing configuration as described in the Mac guide. Users of a locally signed Touch ID build should retain it until they have confirmed master-password access; changing signing identity can affect keychain access. Existing vault data is not removed by installing the application.
 
-For first browser connection, register the extension/browser in Mac settings. After entering the Mac master password in the extension, authorized saving and current-site account access work while the main app is quit. Startup unlock is optional. Reauthorize after a helper signing change; old grants remain save-only. See [browser authorization](https://github.com/JunWeiUp/PasswordVault/blob/v2.2.11/docs/BROWSER-AUTHORIZATION.md). The browser extension supports a separate independent vault as well; it does not automatically merge data.
+For first browser connection, register the extension/browser in Mac settings. After entering the Mac master password in the extension, authorized saving and current-site account access work while the main app is quit. Startup unlock is optional. Reauthorize after a helper signing change; old grants remain save-only. See [browser authorization](https://github.com/JunWeiUp/PasswordVault/blob/v2.3.0/docs/BROWSER-AUTHORIZATION.md). The browser extension supports a separate independent vault as well; it does not automatically merge data.
 
 ### iPhone installation options
 
@@ -46,13 +50,15 @@ The simulator archive needs no device provisioning. For a personal iPhone, Xcode
 
 ## 中文安装说明
 
-本次更新：插件支持 Mac 退出时保存、授权读取和填充当前网站账号，显示数量角标；可选择 Mac 启动自动解锁。顶部新增版本号与打开 Mac 入口，未检测到连接时提供 GitHub 下载与登记提示。原有 Android/iOS 功能保留。
+本次更新：Mac 改为完整图文编辑器，支持常显工具栏、列表/任务、表格、查找替换、图片和附件；修复回车焦点、整页滚轮滚动和颜色弹窗定位。图文与附件统一加密，完整加密备份包含附件。手机与 Web 对新笔记仅显示只读摘要，完整编辑和备份请使用本版 Mac。
 
-此版本统一为 **2.2.11**，包含原生 Android、Mac 开发版、浏览器插件、独立 Web、iOS 模拟器包及源码。软件仍处于开发预览阶段，安全审计与部分真机验证尚未完成。
+**升级提示**：首次图文编辑或导入附件前保留加密升级快照；旧程序不能安全打开升级后的资料库。回退请恢复完整升级前快照并使用当时的密码，不能直接用旧版覆盖新库。单附件上限 25 MiB，每篇合计 250 MiB。真实中文输入法候选、macOS 13/Intel 实机与 Touch ID 仍有待验收项目。
+
+此版本统一为 **2.3.0**，包含原生 Android、Mac 开发版、浏览器插件、独立 Web、iOS 模拟器包及源码。软件仍处于开发预览阶段，安全审计与部分真机验证尚未完成。
 
 - **Android**：普通手机下载 `android-arm64-v8a.apk`；x86_64 设备下载对应 APK。使用正式发布密钥和独立原生版包名，与旧 Flutter 版共存。之前的本地调试版签名不同，无法直接覆盖；先验证加密备份，切勿为安装而直接卸载唯一的资料库。
 - **Mac**：解压后放入「应用程序」，支持 Apple Silicon/Intel、macOS 13+。本包未公证，首次打开可能需要在「隐私与安全」中选择「仍要打开」。本包不保证 Touch ID 钥匙串注册可用，可用主密码或保留本地签名版。
-- **插件**：先解压，在 Chrome/Edge 扩展管理页启用开发者模式，加载含 `manifest.json` 的目录；不能直接加载 ZIP。更新后重新加载扩展，确认显示 2.2.11。首次需完成浏览器登记；在插件输入 Mac 主密码授权后，Mac 退出时也可保存和读取本站账号，可选择启动自动解锁。更新 helper 签名后需重新授权。
+- **插件**：先解压，在 Chrome/Edge 扩展管理页启用开发者模式，加载含 `manifest.json` 的目录；不能直接加载 ZIP。更新后重新加载扩展，确认显示 2.3.0。首次需完成浏览器登记；在插件输入 Mac 主密码授权后，Mac 退出时也可保存和读取本站账号，可选择启动自动解锁。更新 helper 签名后需重新授权。
 - **Web**：解压后用 HTTPS 或 localhost 服务打开，是独立资料库。
 - **iOS**：本次是模拟器包及源码，不能直接安装到 iPhone。真机自用可尝试 Xcode 签名；完整 AutoFill/App Group 能力仍需合适的团队授权。TestFlight、App Store、Ad Hoc 需要付费开发者团队及相应配置。
 

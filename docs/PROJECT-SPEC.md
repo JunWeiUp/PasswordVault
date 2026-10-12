@@ -8,7 +8,7 @@ The product aims to keep related credentials together, make search and everyday 
 
 ## Native migration scope
 
-The approved target is SwiftUI on Mac/iOS, Kotlin/Compose on Android, and a lightweight standalone Web/Chromium client with a shared Rust core. Mac and extension come first. macOS 13+ (arm64/x86_64), iOS 16+, and Android 7+ are targets; only the Mac and browser source increment exists today. Mac defaults to Simplified Chinese and supports English. Notes are text/Markdown without attachments. The selected design is [Native Notes](design/macos-native/README.md).
+The approved target is SwiftUI on Mac/iOS, Kotlin/Compose on Android, and a lightweight standalone Web/Chromium client with a shared Rust core. Mac and extension come first. macOS 13+ (arm64/x86_64), iOS 16+, and Android 7+ are targets; only the Mac and browser source increment exists today. Mac defaults to Simplified Chinese and supports English. Mac personal notes support rich text, images and encrypted file attachments; mobile/Web protect the new format as read-only summaries. Shared notes retain text compatibility. See [rich notes](RICH-NOTES.md). The selected design is [Native Notes](design/macos-native/README.md).
 
 Current Android source removes shared-vault management, invitations and LAN synchronization. Existing records and encrypted backup metadata remain readable, with historical read-only permissions retained. App switches preserve the main session until idle expiry; screen/manual locking and process-restart authentication remain in place. See [mobile implementation](MOBILE-IMPLEMENTATION.md).
 

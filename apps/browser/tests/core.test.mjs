@@ -184,3 +184,24 @@ test("extension pages avoid Chromium cross-world modulepreload warnings", async 
     assert.equal(html.includes('rel="modulepreload"'), false);
   }
 });
+
+test("rich notes cannot be downgraded or imported without their encrypted attachments", () => {
+  const { vault } = open();
+  const item = {
+    id: "rich-note",
+    type: "secureNote",
+    title: "Fixture",
+    note: "summary",
+    noteFormat: "rich-v1",
+    noteDocument: { type: "doc", content: [{ type: "paragraph" }] },
+  };
+  assert.throws(() => call(vault, { op: "save", item, richNotes: true }));
+  assert.throws(() =>
+    call(vault, {
+      op: "import",
+      content: JSON.stringify({ formatVersion: 3, items: [item] }),
+    }),
+  );
+  assert.deepEqual(call(vault, { op: "list" }).items, []);
+  vault.free();
+});

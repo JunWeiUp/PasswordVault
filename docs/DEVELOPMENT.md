@@ -12,7 +12,7 @@ The helper must wait for the `NSWorkspace.openApplication` completion before rep
 
 ### Local Mac note editor
 
-The Markdown component is built from `apps/macos/NoteEditor`, with Milkdown **7.22.2**, esbuild and a committed npm lockfile. Build-time npm installation may access the registry; the resulting editor runs from bundled resources without runtime network access. The Mac check already runs these steps before XcodeGen and compilation:
+The rich-note component is built from `apps/macos/NoteEditor`, with Tiptap **3.31.4**, esbuild and a committed npm lockfile. Build-time npm installation may access the registry; the resulting editor runs from bundled resources without runtime network access. The Mac check already runs these steps before XcodeGen and compilation:
 
 ```bash
 npm --prefix apps/macos/NoteEditor ci --ignore-scripts
@@ -25,12 +25,13 @@ The build emits ignored `apps/macos/Resources/NoteEditor.html` and `NoteEditor-L
 
 ```bash
 xcodebuild -project apps/macos/PasswordVault.xcodeproj -scheme PasswordVault \
-  -configuration Debug -derivedDataPath native-test-output/milkdown-tests \
+  -configuration Debug -derivedDataPath native-test-output/rich-note-tests \
   -destination 'platform=macOS,arch=arm64' ARCHS=arm64 \
-  -only-testing:PasswordVaultTests/MilkdownEditorTests test
+  -only-testing:PasswordVaultTests/NoteEditorLifecycleTests \
+  -only-testing:PasswordVaultTests/RichNoteTests test
 ```
 
-Use only disposable synthetic vaults. Exercise final input followed by lock/reopen, overlapping retirement/lock, rendered-to-source handover and failed handover, stale messages, read-only/Trash, unchanged-source opening, metadata writes, load/process failure, HTML/network restrictions, and actual ProseMirror list/undo behavior. Record native keyboard/Chinese composition, source round trips, long-document scrolling, minimum-window and appearance checks separately. A failing case remains open until diagnosed and rerun; a build or partial suite is not full acceptance. The Milkdown increment is currently undergoing this validation, so do not reuse prior NSTextView test counts or scores.
+Use only disposable synthetic vaults. Exercise final input followed by lock/reopen, overlapping retirement/lock, rendered-to-source handover and failed handover, stale messages, read-only/Trash, unchanged-source opening, metadata writes, load/process failure, HTML/network restrictions, and actual ProseMirror list/undo behavior. Record native keyboard/Chinese composition, source round trips, long-document scrolling, minimum-window and appearance checks separately. A failing case remains open until diagnosed and rerun; a build or partial suite is not full acceptance. Do not reuse prior Milkdown/NSTextView acceptance scores for this increment.
 
 ## Legacy toolchain
 
@@ -70,3 +71,7 @@ After running the native core/macOS/browser checks, run the Debug Swift scheme w
 ## CI scope and performance
 
 [CI selection and caching](CI.md) explains which platform checks run for a change, how to request a complete run, and why release checks remain complete. Local default mobile builds still compile all supported ABIs; CI selects only the Android APK ABI and host iOS simulator architecture while retaining the iOS device-library build.
+
+## Rich-note regression gates
+
+Run `bash tool/check_native.sh core|macos|browser` separately and the documented Debug Swift test command. `RichNoteTests` must run inside the full native window for Return/focus checks. Rebuild the editor resources before testing. Use only disposable fixtures. See [data/backup cases and remaining hardware gates](RICH-NOTES.md).

@@ -211,6 +211,7 @@ class VaultRepository(
     }
 
     fun canEdit(item: JSONObject): Boolean {
+        if (item.optString("noteFormat") == "rich-v1") return false
         val shared = item.optString("sharedVaultId")
         if (shared.isEmpty()) return true
         val own =

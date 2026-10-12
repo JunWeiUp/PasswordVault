@@ -141,3 +141,7 @@ The new Mac app and lightweight browser package are local developer artifacts de
 For an Android-only install, increment `android_version_code` in `native-version.json` and the Android manifest configuration, then create a new immutable `v<version>-android.<versionCode>` tag. The dedicated `android-device.yml` workflow checks exact tag/commit and coordinated metadata, scans source, runs repository/core checks, builds both non-debuggable APKs and verifies the reviewed signing certificate using the existing protected `release` environment. It uploads seven-day APK artifacts with checksums and a source commit; it does not publish a GitHub Release or rebuild Apple/browser clients. The coordinated release workflow excludes these device tags. Manual retries must select that exact tag. Never relax environment policies or export signing keys for local installation.
 
 Before ADB update, compare the downloaded artifact checksums, package/version/ABI and signer with the installed app. Use `adb -s <device> install -r <apk>`, preserve the vault, and verify the installed APK hash. Never uninstall a vault to resolve a signer mismatch.
+
+## Rich-note preview compatibility
+
+Version 2.3.0 introduces encrypted document format 3 and complete V3 attachment archives. Old binaries reject upgraded vaults. Retain the automatic encrypted pre-upgrade snapshot and publish matching compatibility-protection clients. A signed local preview is not a public release or notarization. See [migration and restore instructions](RICH-NOTES.md).

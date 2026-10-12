@@ -47,10 +47,14 @@ The public distribution target is GitHub Releases. No app-store or component-reg
 
 | Input | Bundled output | Required verification |
 | --- | --- | --- |
-| `apps/macos/NoteEditor/editor.js`, `style.css`, `build.mjs`, `package.json`, `package-lock.json` | `apps/macos/Resources/NoteEditor.html` | Locked Milkdown 7.22.2 build, script-hash CSP, no external runtime assets; real WKWebView lifecycle/interaction tests |
+| `apps/macos/NoteEditor/editor.js`, `style.css`, `build.mjs`, `package.json`, `package-lock.json` | `apps/macos/Resources/NoteEditor.html` | Locked Tiptap 3.31.4 build, script-hash CSP, no external runtime assets; real WKWebView lifecycle/interaction tests |
 | Licenses of packages present in the esbuild dependency graph | `apps/macos/Resources/NoteEditor-LICENSES.txt` | Build fails on a missing bundled dependency license; include the notices in the Mac resource bundle |
 | `Sources/MarkdownNoteEditor.swift` and AppStore note leases | Native WebKit/SwiftUI host and encrypted save handover | Session/permission checks, final snapshots, source-mode handover, lock/retirement races and failure paths |
 
 The HTML and generated notice file are ignored build products. Commit their source inputs and npm lockfile, not `node_modules`, machine-local paths or note data. XcodeGen includes `Resources` in the app bundle, so generate these files before project generation and check their presence in the signed artifact. Editor JavaScript is bundled as an IIFE for Safari 16; do not distribute source maps or fetch editor code from a CDN. Note text is injected only into the running nonpersistent web view, never into a packaged resource.
 
-The current editor increment targets **Mac 2.0.9 build 13**; the browser package remains **2.0.9** because this editor change does not modify its deliverable. These are candidate/version metadata, not a claim that acceptance, installation, notarization or public distribution is complete. Record final test and isolated-window results before advancing the release status.
+The current editor increment targets **2.3.0 preview**, Mac build **21**, with compatibility protection in the other clients. Build metadata is not evidence of installation, notarization or public release.
+
+## Rich editor bundle
+
+Mac embeds the locked Tiptap editor and generated dependency notices. Attachment bytes are user vault data, never build artifacts. See [rich-note format and backup artifacts](RICH-NOTES.md).

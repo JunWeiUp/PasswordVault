@@ -1,5 +1,7 @@
 # WYSIWYG Markdown editor evaluation
 
+Historical evaluation: superseded in the 2.3.0 preview by [Tiptap rich notes and encrypted attachments](RICH-NOTES.md).
+
 Status: integrated into the **Mac 2.0.9 build 13** developer preview; the browser remains 2.0.9. The prototype findings below are retained separately from the WKWebView integration evidence.
 
 The requested behavior is a rendered Markdown surface that is directly editable, continues lists on Return, exits an empty list item on Return, and preserves a local caret while editing earlier paragraphs. The previous native implementation manually replaced attributed text and mapped source/rendered offsets without a dedicated Return/list command. The replacement uses ProseMirror transactions for these operations.

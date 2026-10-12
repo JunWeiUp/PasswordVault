@@ -156,6 +156,19 @@ impl BrowserVault {
 impl BrowserVault {
     fn execute(&mut self, request: &Value) -> Result<Value> {
         let text = |key: &str| request[key].as_str().ok_or(VaultError::InvalidData);
+        if self.document.format_version >= 3
+            && [
+                "export",
+                "export-plain",
+                "import",
+                "sync-request",
+                "sync-respond",
+                "sync-apply",
+            ]
+            .contains(&text("op")?)
+        {
+            return Err(VaultError::Unsupported);
+        }
         match text("op")? {
             "list" => Ok(json!(self.document)),
             "category-add" => Ok(json!({"name":self.document.add_note_category(text("name")?)?})),
@@ -163,6 +176,15 @@ impl BrowserVault {
                 json!({"updated":self.document.remove_note_category(text("name")?,text("time")?)?}),
             ),
             "save" => {
+                if request["item"]["noteFormat"] == "rich-v1"
+                    || self
+                        .document
+                        .items
+                        .iter()
+                        .any(|n| n["id"] == request["item"]["id"] && n["noteFormat"] == "rich-v1")
+                {
+                    return Err(VaultError::Unsupported);
+                }
                 authorize_item_write(&self.document, &request["item"])?;
                 if let Some(old) = self
                     .document
@@ -208,6 +230,9 @@ impl BrowserVault {
                     request["password"].as_str().unwrap_or(""),
                     request["kind"].as_str().unwrap_or("json"),
                 )?;
+                if incoming.format_version >= 3 {
+                    return Err(VaultError::Unsupported);
+                }
                 let mut next = self.document.clone();
                 let count = next.merge(incoming)?;
                 self.document = next;
