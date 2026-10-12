@@ -15,8 +15,8 @@ struct BackupView: View {
           Text(store.t("备份与导入", "Backups & import")).font(.system(size: 30, weight: .semibold))
           Text(
             store.t(
-              "加密备份包含笔记、账号、验证码、钱包和回收站记录。",
-              "Encrypted backups include notes, accounts, codes, wallets, and Trash.")
+              "加密备份包含笔记原件、图片、附件、账号、验证码、钱包和回收站记录。",
+              "Encrypted backups include original notes, images, attachments, accounts, codes, wallets, and Trash.")
           ).foregroundStyle(.secondary)
           Divider()
           SettingsRow(
@@ -49,9 +49,12 @@ struct BackupView: View {
               "Anyone with a plaintext file can read it. Export one only when needed to migrate to another tool."
             )
           ).foregroundStyle(.secondary)
+          if store.items.contains(where: { $0.isRichNote }) {
+            Text(store.t("图文笔记请使用完整加密备份；Markdown 可在笔记的插入菜单导出，附件可单独另存。", "Use a complete encrypted backup for rich notes. Export Markdown from the note Insert menu, and save attachments individually.")).foregroundStyle(.secondary)
+          }
           HStack {
-            Button(store.t("导出明文 JSON…", "Export plaintext JSON…")) { operation = .plain("json") }
-            Button(store.t("导出明文 CSV…", "Export plaintext CSV…")) { operation = .plain("csv") }
+            Button(store.t("导出明文 JSON…", "Export plaintext JSON…")) { operation = .plain("json") }.disabled(store.items.contains(where: { $0.isRichNote }))
+            Button(store.t("导出明文 CSV…", "Export plaintext CSV…")) { operation = .plain("csv") }.disabled(store.items.contains(where: { $0.isRichNote }))
           }
         }.padding(36).frame(maxWidth: 880, alignment: .leading)
       }
@@ -146,7 +149,7 @@ private struct BackupOperationView: View {
       switch operation {
       case .importFile(let url):
         let size = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
-        guard size <= 64 * 1024 * 1024 else { throw VaultError.InvalidData }
+        guard size <= 1024 * 1024 * 1024 else { throw VaultError.InvalidData }
         let content = try String(contentsOf: url, encoding: .utf8)
         let kind =
           url.lastPathComponent.hasSuffix(".csv.enc")

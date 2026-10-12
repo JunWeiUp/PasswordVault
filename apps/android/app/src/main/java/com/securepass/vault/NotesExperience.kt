@@ -91,7 +91,8 @@ internal fun NoteReader(
                             entryTags(item).joinToString(" · ").ifEmpty { t("无", "None") }
                     )
                     Text(t("修改时间：", "Updated: ") + noteDate(item))
-                    if (!vault.canEdit(item)) Text(t("此共享笔记为只读", "This shared note is read only"))
+                    if (item.optString("noteFormat") == "rich-v1") Text(t("此图文笔记仅显示文字摘要。请在 Mac 编辑和备份。", "Text summary only. Edit and back up this rich note on Mac."))
+                    else if (!vault.canEdit(item)) Text(t("此共享笔记为只读", "This shared note is read only"))
                 }
             },
             confirmButton = { TextButton(onClick = { info = false }) { Text(t("完成", "Done")) } },

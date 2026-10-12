@@ -71,7 +71,7 @@ final class WebDAVClient: NSObject, URLSessionTaskDelegate, @unchecked Sendable 
     }
     var data = Data()
     for try await byte in stream {
-      guard data.count < 64 * 1024 * 1024 else { throw VaultError.InvalidData }
+      guard data.count < 1024 * 1024 * 1024 else { throw VaultError.InvalidData }
       data.append(byte)
     }
     return data

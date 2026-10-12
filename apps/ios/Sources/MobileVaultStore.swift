@@ -68,6 +68,7 @@ final class MobileVaultStore: ObservableObject {
     await closing?.value
   }
   func canEdit(_ item: VaultItem) -> Bool {
+    if item.string("noteFormat") == "rich-v1" { return false }
     let shared = item.string("sharedVaultId")
     if shared.isEmpty { return true }
     let own = settings["sharingIdentity"]?.object["publicKey"]?.string ?? ""
