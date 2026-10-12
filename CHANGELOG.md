@@ -1,6 +1,6 @@
 # Changelog
 
-## Native 2.3.0 — encrypted rich notes (developer preview)
+## Native 2.3.0 — encrypted rich notes (development preview)
 
 - Replace the Mac personal-note editor with local Tiptap, full formatting, tables, search/replace, images and encrypted file attachments. Preserve whole-page scrolling and native focus across Return/autosave.
 - Add versioned JSON notes, retained legacy originals, encrypted pre-upgrade snapshots, authenticated attachment storage and complete V3 local/WebDAV archives. Protect rich notes on other clients.
