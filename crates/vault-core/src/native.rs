@@ -1,4 +1,5 @@
 use crate::*;
+mod notes;
 use fs2::FileExt;
 use rusqlite::{Connection, OpenFlags};
 use serde_json::{json, Value};
@@ -83,15 +84,24 @@ fn save_document(
     vault_id: &str,
     doc: &Document,
 ) -> Result<()> {
-    let bytes = Zeroizing::new(serde_json::to_vec(doc).map_err(|_| VaultError::InvalidData)?);
-    let key = subkey(root, b"document");
-    let sealed = seal(&key, &bytes, vault_id.as_bytes())?;
-    let encrypted = serde_json::to_vec(&sealed).map_err(|_| VaultError::InvalidData)?;
     let tx = storage(conn.transaction())?;
-    storage(tx.execute("INSERT INTO vault_state(id,payload) VALUES(1,?1) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload",[encrypted]))?;
+    save_document_row(&tx, root, vault_id, doc)?;
     storage(tx.commit())?;
     Ok(())
 }
+fn save_document_row(
+    conn: &Connection,
+    root: &[u8; 32],
+    vault_id: &str,
+    doc: &Document,
+) -> Result<()> {
+    let bytes = Zeroizing::new(serde_json::to_vec(doc).map_err(|_| VaultError::InvalidData)?);
+    let sealed = seal(&subkey(root, b"document"), &bytes, vault_id.as_bytes())?;
+    let encrypted = serde_json::to_vec(&sealed).map_err(|_| VaultError::InvalidData)?;
+    storage(conn.execute("INSERT INTO vault_state(id,payload) VALUES(1,?1) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload",[encrypted]))?;
+    Ok(())
+}
+
 fn load_document(conn: &Connection, root: &[u8; 32], vault_id: &str) -> Result<Document> {
     let bytes: Vec<u8> = storage(conn.query_row(
         "SELECT payload FROM vault_state WHERE id=1",
@@ -210,6 +220,15 @@ impl DiskVault {
     fn command(&mut self, request: &Value) -> Result<Value> {
         let op = request["op"].as_str().ok_or(VaultError::InvalidData)?;
         let string = |key: &str| request[key].as_str().ok_or(VaultError::InvalidData);
+        if self
+            .unlocked
+            .as_ref()
+            .is_some_and(|o| o.document.format_version >= 3)
+            && request["richNotes"] != true
+            && ["import", "restore-drafts", "remove"].contains(&op)
+        {
+            return Err(VaultError::Unsupported);
+        }
         match op {
             "status" => Ok(
                 json!({"exists":self.directory.exists(),"unlocked":self.unlocked.is_some(),"version":2}),
@@ -219,11 +238,24 @@ impl DiskVault {
                 Ok(json!({"ok":true}))
             }
             "create-from-backup" => {
+                if string("content")?.contains("\"PasswordVaultArchive\"") {
+                    if request["richNotes"] != true {
+                        return Err(VaultError::Unsupported);
+                    }
+                    return self.import_archive(
+                        string("content")?,
+                        request["backupPassword"].as_str().unwrap_or(""),
+                        Some(string("password")?),
+                    );
+                }
                 let document = import_document(
                     string("content")?,
                     request["backupPassword"].as_str().unwrap_or(""),
                     request["kind"].as_str().unwrap_or("json"),
                 )?;
+                if document.format_version >= 3 {
+                    return Err(VaultError::Unsupported);
+                }
                 let count = document.items.len();
                 self.create_document(string("password")?, document)?;
                 Ok(json!({"imported": count}))
@@ -247,31 +279,27 @@ impl DiskVault {
                 Ok(json!({"ok":true}))
             }
             "list" => Ok(json!(self.open()?.document)),
+            "collect-note-attachments" if request["richNotes"] == true => {
+                self.collect_note_attachments()
+            }
             "category-add" => {
                 self.mutate(|doc| Ok(json!({"name":doc.add_note_category(string("name")?)?})))
             }
             "category-remove" => self.mutate(|doc| {
                 Ok(json!({"updated":doc.remove_note_category(string("name")?,string("time")?)?}))
             }),
-            "save" => self.mutate(|doc| {
-                authorize_item_write(doc, &request["item"])?;
-                if let Some(old) = doc.items.iter().find(|v| v["id"] == request["item"]["id"]) {
-                    authorize_item_write(doc, old)?;
-                }
-                doc.upsert(request["item"].clone())?;
-                Ok(json!({"ok":true}))
-            }),
-            "remove" => self.mutate(|doc| {
-                let id = string("id")?;
-                if let Some(old) = doc.items.iter().find(|v| v["id"] == id) {
-                    authorize_item_write(doc, old)?;
-                    if old["sharedVaultId"].as_str().is_some_and(|s| !s.is_empty()) {
-                        return Err(VaultError::Unsupported);
+            "save" => {
+                self.validate_note_save(request)?;
+                self.mutate(|doc| {
+                    authorize_item_write(doc, &request["item"])?;
+                    if let Some(old) = doc.items.iter().find(|v| v["id"] == request["item"]["id"]) {
+                        authorize_item_write(doc, old)?;
                     }
-                }
-                doc.items.retain(|v| v["id"] != id);
-                Ok(json!({"ok":true}))
-            }),
+                    doc.upsert(request["item"].clone())?;
+                    Ok(json!({"ok":true}))
+                })
+            }
+            "remove" => self.remove_note_record(string("id")?),
             "seal-drafts" => {
                 let open = self.open()?;
                 let bytes = Zeroizing::new(
@@ -305,6 +333,11 @@ impl DiskVault {
                 )?;
                 let items: Vec<Value> =
                     serde_json::from_slice(&bytes).map_err(|_| VaultError::InvalidData)?;
+                for item in &items {
+                    self.validate_note_save(
+                        &json!({"item":item,"richNotes":request["richNotes"]}),
+                    )?;
+                }
                 self.mutate(|doc| {
                     for item in items {
                         authorize_item_write(doc, &item)?;
@@ -349,6 +382,12 @@ impl DiskVault {
                 )
             }),
             "export" => {
+                if self.open()?.document.format_version >= 3 {
+                    if request["richNotes"] != true {
+                        return Err(VaultError::Unsupported);
+                    }
+                    return Ok(json!({"content":self.archive(string("password")?)?}));
+                }
                 let data = Zeroizing::new(
                     serde_json::to_vec(&self.open()?.document)
                         .map_err(|_| VaultError::InvalidData)?,
@@ -356,6 +395,9 @@ impl DiskVault {
                 Ok(json!({"content":encrypt_backup(&data,string("password")?)?}))
             }
             "export-csv-backup" => {
+                if self.open()?.document.format_version >= 3 {
+                    return Err(VaultError::Unsupported);
+                }
                 let csv = Zeroizing::new(export_csv(&self.open()?.document)?);
                 let envelope: Value =
                     serde_json::from_str(&encrypt_backup(csv.as_bytes(), string("password")?)?)
@@ -365,6 +407,9 @@ impl DiskVault {
                 )
             }
             "export-plain" => {
+                if self.open()?.document.format_version >= 3 {
+                    return Err(VaultError::Unsupported);
+                }
                 let doc = &self.open()?.document;
                 let content = if request["kind"] == "csv" {
                     export_csv(doc)?
@@ -375,11 +420,24 @@ impl DiskVault {
             }
             "import" => {
                 self.open()?;
+                if string("content")?.contains("\"PasswordVaultArchive\"") {
+                    if request["richNotes"] != true {
+                        return Err(VaultError::Unsupported);
+                    }
+                    return self.import_archive(
+                        string("content")?,
+                        request["password"].as_str().unwrap_or(""),
+                        None,
+                    );
+                }
                 let incoming = import_document(
                     string("content")?,
                     request["password"].as_str().unwrap_or(""),
                     request["kind"].as_str().unwrap_or("json"),
                 )?;
+                if incoming.format_version >= 3 {
+                    return Err(VaultError::Unsupported);
+                }
                 self.mutate(|doc| Ok(json!({"imported":doc.merge(incoming)?})))
             }
             "revoke-background" => {
@@ -643,7 +701,7 @@ impl VaultSession {
     }
     pub fn command(&self, request: String) -> Result<String> {
         let input = Zeroizing::new(request);
-        if input.len() > MAX_INPUT * 2 {
+        if input.len() > notes::ARCHIVE_LIMIT {
             return Err(VaultError::InvalidData);
         }
         let mut parsed: Value =

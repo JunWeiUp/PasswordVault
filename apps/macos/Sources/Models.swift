@@ -75,6 +75,27 @@ struct VaultItem: Codable, Identifiable, Hashable {
     get { string("note") }
     set { fields["note"] = .string(newValue) }
   }
+  var isRichNote: Bool { string("noteFormat") == "rich-v1" }
+  var editorSource: String {
+    get {
+      guard isRichNote, let document = fields["noteDocument"] else { return note }
+      let encoder = JSONEncoder(); encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
+      let payload: JSONValue = .object(["format": .string("rich-v1"), "document": document, "text": .string(note)])
+      return (try? encoder.encode(payload)).map { String(decoding: $0, as: UTF8.self) } ?? ""
+    }
+    set {
+      if let payload = try? JSONDecoder().decode(JSONValue.self, from: Data(newValue.utf8)),
+         payload.object["format"]?.string == "rich-v1", let document = payload.object["document"],
+         document.object["type"]?.string == "doc" {
+        if !isRichNote && fields["noteOriginal"] == nil {
+          fields["noteOriginal"] = .object(["format": .string(string("noteFormat")), "source": .string(note)])
+        }
+        fields["noteDocument"] = document
+        set("noteFormat", "rich-v1")
+        note = payload.object["text"]?.string ?? ""
+      } else { note = newValue }
+    }
+  }
   var username: String {
     get { string("username") }
     set { fields["username"] = .string(newValue) }

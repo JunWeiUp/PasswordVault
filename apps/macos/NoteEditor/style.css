@@ -1,29 +1,437 @@
-:root { color-scheme: light dark; font: 16px -apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif; color: CanvasText; }
-* { box-sizing: border-box; }
-html, body { margin: 0; padding: 0; background: transparent; overflow: hidden; }
-.ProseMirror { outline: none; white-space: pre-wrap; overflow-wrap: anywhere; min-height: 360px; line-height: 1.8; padding: 3px 0 16px; }
-.ProseMirror p { margin: 6px 0 12px; }
-.ProseMirror h1 { font-size: 26px; line-height: 1.5; }
-.ProseMirror h2 { font-size: 22px; line-height: 1.5; }
-.ProseMirror h3 { font-size: 18px; }
-.ProseMirror h1, .ProseMirror h2, .ProseMirror h3 { margin: 20px 0 8px; }
-.ProseMirror > :first-child { margin-top: 0; }
-.ProseMirror ul, .ProseMirror ol { padding-left: 28px; margin: 8px 0 16px; }
-.ProseMirror li p { margin: 2px 0; }
-.ProseMirror li[data-item-type='task'] { list-style: none; position: relative; }
-.ProseMirror li[data-item-type='task']::before { content:'☐'; position:absolute; left:-24px; top:0; color:#6485ba; cursor:pointer; }
-.ProseMirror li[data-checked='true']::before { content:'☑'; }
-.ProseMirror pre { white-space:pre-wrap; background:#f2f4f7; padding:12px 16px; border-radius:8px; }
-.ProseMirror code { font: 14px ui-monospace, monospace; }
-.ProseMirror blockquote { border-left:3px solid #b0b6c0; padding-left:18px; margin-left:0; opacity:.8; }
-.ProseMirror a { color:#2662d9; text-decoration:underline; }
-.ProseMirror table { border-collapse:collapse; width:100%; table-layout:fixed; }
-.ProseMirror th, .ProseMirror td { border:1px solid #9996; padding:6px 10px; min-width:40px; }
-.ProseMirror .selectedCell { background:#8aafff33; }
-.ProseMirror span[data-type='html'] { font:13px ui-monospace,monospace; background:#8881; }
-.ProseMirror img { display:none; }
-.ProseMirror-selectednode { outline:2px solid #8cf; }
-.ProseMirror-gapcursor { display:none; pointer-events:none; position:absolute; }
-.ProseMirror-gapcursor:after { content:''; display:block; position:absolute; top:-2px; width:20px; border-top:1px solid; }
-.ProseMirror-focused .ProseMirror-gapcursor { display:block; }
-@media (prefers-color-scheme:dark) { .ProseMirror pre { background:#22252b; } .ProseMirror a { color:#7aa9ff; } }
+:root {
+  color-scheme: light dark;
+  font:
+    15px -apple-system,
+    BlinkMacSystemFont,
+    "PingFang SC",
+    sans-serif;
+  color: CanvasText;
+  --accent: #315ce7;
+  --line: #8883;
+  --panel: Canvas;
+}
+* {
+  box-sizing: border-box;
+}
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  overflow: hidden;
+}
+[hidden] {
+  display: none !important;
+}
+button,
+input,
+select,
+summary {
+  font: inherit;
+}
+button,
+select,
+summary {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+  color: CanvasText;
+  padding: 5px 8px;
+  cursor: pointer;
+}
+button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+button[aria-pressed="true"] {
+  color: var(--accent);
+  background: #315ce719;
+}
+button:hover:not(:disabled),
+summary:hover {
+  background: #8881;
+}
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.toolbar,
+.context,
+.findbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 12px;
+}
+.toolbar {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #88808;
+  font-size: 12px;
+}
+.toolbar-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+.toolbar-row + .toolbar-row {
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+}
+.toolbar-label {
+  color: GrayText;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+}
+.toolbar .toolgroup {
+  flex-wrap: wrap;
+  align-items: center;
+}
+.toolbar .color-tools label {
+  display: inline-flex;
+  gap: 3px;
+  align-items: center;
+  white-space: nowrap;
+}
+.toolbar .color-tools input[type="color"] {
+  width: 24px;
+  height: 24px;
+}
+.toolbar button,
+.toolbar select,
+.toolbar summary {
+  min-height: 28px;
+}
+.toolbar [data-action="toggleBold"] {
+  font-weight: 700;
+}
+.toolbar [data-action="toggleItalic"] {
+  font-style: italic;
+}
+.toolbar [data-action="toggleUnderline"] {
+  text-decoration: underline;
+}
+.toolbar [data-action="toggleStrike"] {
+  text-decoration: line-through;
+}
+.toolgroup {
+  display: inline-flex;
+  gap: 3px;
+}
+.toolbar details {
+  position: relative;
+}
+.toolmenu {
+  position: absolute;
+  left: 0;
+  top: 34px;
+  z-index: 20;
+  background: var(--panel);
+  box-shadow: 0 6px 24px #0003;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  width: 290px;
+  max-height: 330px;
+  overflow: auto;
+}
+.toolbar details:last-of-type .toolmenu {
+  left: auto;
+  right: 0;
+}
+.toolmenu label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+}
+input[type="color"] {
+  width: 38px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+}
+.context span {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.findbar input,
+.notice input {
+  min-width: 90px;
+  width: 150px;
+  background: var(--panel);
+  color: CanvasText;
+  border: 1px solid var(--line);
+  padding: 6px;
+  border-radius: 5px;
+}
+.notice {
+  padding: 10px;
+  border-radius: 7px;
+  background: #d99b201a;
+  margin-bottom: 12px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.bubble {
+  position: absolute;
+  z-index: 30;
+  display: flex;
+  gap: 4px;
+  background: var(--panel);
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  box-shadow: 0 3px 12px #0002;
+}
+.stats {
+  color: GrayText;
+  font-size: 12px;
+  border-top: 1px solid var(--line);
+  padding: 12px 0 24px;
+}
+.ProseMirror {
+  outline: none;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  min-height: 360px;
+  line-height: 1.8;
+  padding: 3px 0 24px;
+  caret-color: CanvasText;
+}
+.ProseMirror p {
+  margin: 6px 0 12px;
+}
+.ProseMirror h1 {
+  font-size: 28px;
+}
+.ProseMirror h2 {
+  font-size: 23px;
+}
+.ProseMirror h3 {
+  font-size: 19px;
+}
+.ProseMirror h1,
+.ProseMirror h2,
+.ProseMirror h3 {
+  line-height: 1.5;
+  margin: 20px 0 8px;
+}
+.ProseMirror > :first-child {
+  margin-top: 0;
+}
+.ProseMirror ul,
+.ProseMirror ol {
+  padding-left: 28px;
+  margin: 8px 0 16px;
+}
+.ProseMirror li p {
+  margin: 2px 0;
+}
+.ProseMirror ul[data-type="taskList"] {
+  list-style: none;
+  padding-left: 0;
+}
+.ProseMirror li[data-type="taskItem"] {
+  display: flex;
+  gap: 10px;
+}
+.ProseMirror li[data-type="taskItem"] > div {
+  flex: 1;
+}
+.ProseMirror li[data-type="taskItem"] input {
+  accent-color: var(--accent);
+}
+.ProseMirror pre {
+  white-space: pre-wrap;
+  background: #8881;
+  padding: 12px 16px;
+  border-radius: 8px;
+}
+.ProseMirror code {
+  font:
+    14px ui-monospace,
+    monospace;
+}
+.ProseMirror blockquote {
+  border-left: 3px solid #8893a9;
+  padding-left: 18px;
+  margin-left: 0;
+}
+.ProseMirror a {
+  color: var(--accent);
+  text-decoration: underline;
+}
+.ProseMirror table {
+  border-collapse: collapse;
+  width: 100%;
+  table-layout: fixed;
+}
+.ProseMirror th,
+.ProseMirror td {
+  border: 1px solid #8886;
+  padding: 6px 10px;
+  min-width: 40px;
+  position: relative;
+  vertical-align: top;
+}
+.ProseMirror th {
+  background: #8881;
+}
+.ProseMirror .selectedCell:after {
+  background: #315ce722;
+  position: absolute;
+  inset: 0;
+  content: "";
+  pointer-events: none;
+}
+.column-resize-handle {
+  position: absolute;
+  right: -2px;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: #315ce7;
+  pointer-events: none;
+}
+.resize-cursor {
+  cursor: col-resize;
+}
+.tableWrapper {
+  overflow-x: auto;
+}
+.ProseMirror figure {
+  margin: 16px 0;
+}
+.ProseMirror img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border-radius: 6px;
+}
+.ProseMirror figcaption {
+  font-size: 13px;
+  color: GrayText;
+  white-space: pre-wrap;
+}
+.attachment {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px 16px;
+  white-space: normal;
+  background: #88808;
+}
+.attachment span {
+  color: GrayText;
+  font-size: 13px;
+}
+.ProseMirror-selectednode {
+  outline: 2px solid var(--accent);
+}
+.search-match {
+  background: #ffd95c88;
+}
+.ProseMirror-gapcursor {
+  display: none;
+  pointer-events: none;
+  position: absolute;
+}
+.ProseMirror-gapcursor:after {
+  content: "";
+  display: block;
+  position: absolute;
+  top: -2px;
+  width: 20px;
+  border-top: 1px solid;
+}
+.ProseMirror-focused .ProseMirror-gapcursor {
+  display: block;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --accent: #a8beff;
+  }
+}
+
+.color-picker {
+  position: relative;
+  display: inline-flex;
+}
+.color-picker > button::after {
+  content: "";
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  margin-left: 6px;
+  vertical-align: -2px;
+  border: 1px solid #8888;
+  border-radius: 3px;
+  background: var(--swatch);
+}
+.color-panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 40;
+  width: 236px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+  box-shadow: 0 8px 24px #0004;
+}
+.color-swatches {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 7px;
+}
+.toolbar .color-swatch {
+  min-height: 28px;
+  height: 28px;
+  padding: 0;
+  font-size: 0;
+  border: 1px solid #8888;
+}
+.color-swatch:hover {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.color-custom {
+  display: flex;
+  gap: 6px;
+  margin: 12px 0 8px;
+}
+.color-custom input {
+  min-width: 0;
+  width: 132px;
+  padding: 5px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  color: CanvasText;
+  background: var(--panel);
+}
+.color-custom input[aria-invalid="true"] {
+  border-color: #d33;
+}

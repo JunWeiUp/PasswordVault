@@ -18,7 +18,7 @@ Native clients are in **developer preview**. [Platform availability](#choose-you
 
 ## Less searching. More doing.
 
-- **Write freely.** On Mac, notes feel like documents, with live Markdown, undo/redo and encrypted autosave. Organize with folders, search, favorites and pins.
+- **Write freely.** On Mac, notes feel like documents, with rich formatting, tables, images, attachments, undo/redo and encrypted autosave. Organize with folders, search, favorites and pins.
 - **Keep the details together.** Passwords, additional logins, authenticator codes and wallet records, with the fields you actually need.
 - **Get back to your day.** Choose an account beside a supported password field. Review new logins before saving them, and edit existing ones on Mac.
 
@@ -28,9 +28,11 @@ Deleted something? Recover it from Trash. Moving your data? Create an encrypted 
 
 ### A desktop workspace with room to think
 
-A familiar three-column Mac layout keeps folders, notes and your document in view. Headings, lists and tasks take shape as you type, with Markdown source one step away.
+A familiar three-column Mac layout keeps folders, notes and your document in view. Headings, lists and tasks take shape as you type. Personal notes add contextual table/image tools and encrypted attachments; Markdown export is explicitly lossy. See [rich-note compatibility and backup](docs/RICH-NOTES.md).
 
-![PasswordVault Mac workspace showing English fictional notes in the live Markdown editor](docs/design/macos-native/current-notes-en.png)
+*The screenshot below shows the earlier Markdown workspace; 2.3.0 adds the rich editing toolbar described above.*
+
+![Earlier Mac workspace with fictional notes](docs/design/macos-native/current-notes-en.png)
 
 <details>
 <summary><strong>Look inside an account</strong> — passwords, additional logins and linked codes</summary>
@@ -77,7 +79,7 @@ Standalone Web is also available with a smaller feature set. Windows and Linux h
 
 | Client | Current scope | Validation and delivery |
 | --- | --- | --- |
-| **macOS 13+** | SwiftUI desktop app; universal Apple Silicon/Intel build; local Milkdown editor | Development build. Current checks cover 57 Swift tests and isolated UI editing, lists, undo/redo source handover and long-document caret scrolling. Physical IME coverage, macOS 13/Intel hardware and distribution signing/notarization remain open |
+| **macOS 13+** | SwiftUI desktop app; universal Apple Silicon/Intel build; local Tiptap rich editor | Development build. Checks include native-window continuous Return/focus tests, formatting, encrypted images and archive failure paths. Physical IME coverage, macOS 13/Intel hardware and distribution signing/notarization remain open |
 | **Android 7.0+** | Kotlin/Compose preview; account/code/wallet workflows aligned with the legacy app, separate Notes design | Emulator UI plus scoped physical non-UI checks. Camera/fingerprint, older devices and original production-signing-key upgrades remain gated. System Autofill requires Android 8+ |
 | **iOS 16+ / iPadOS 16+** | SwiftUI app and Password AutoFill extension | Simulator flows and device-architecture compilation pass. Eligible team provisioning, signed-device installation and hardware acceptance remain open |
 | **Chromium extension** | Lightweight MV3; Mac connection and independent vault; explicit fill/save | Scoped Edge/ego lite, DOM and signed-helper checks. Broader Google Chrome/site coverage remains open; unpacked installation |
@@ -123,7 +125,7 @@ Native vaults encrypt notes, accounts, codes, wallet records and settings on dis
 <details>
 <summary>Encryption, security boundaries and remaining work</summary>
 
-Native V2 uses SQLCipher/authenticated document encryption, salted Argon2id root-key wrapping and authenticated browser ciphertext. Local notes and server credentials use the same encrypted vault path. The Milkdown page has no remote editor assets or persistent web-data store; its CSP blocks network content. Decrypted content still exists in memory while unlocked, and explicit plaintext exports remain plaintext.
+Native V2 uses SQLCipher/authenticated document encryption, salted Argon2id root-key wrapping and authenticated browser ciphertext. Local notes and server credentials use the same encrypted vault path. The Tiptap page has no remote editor assets or persistent web-data store; its CSP blocks network content and allows only session-bound native image resources. Rich notes use a versioned JSON document and complete attachment archives. Decrypted content still exists in memory while unlocked, and explicit plaintext exports remain plaintext.
 
 Implemented features, automated checks and manual acceptance are recorded separately. Remaining work includes full process/GPU memory comparisons, standalone Web parity, unsupported desktop SQLite/Web OPFS and legacy-sharing migration, broader hardware/accessibility/server checks, production signing and independent security review. A smaller extension package is not proof of lower total process memory.
 

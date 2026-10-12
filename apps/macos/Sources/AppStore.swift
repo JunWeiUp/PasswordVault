@@ -40,6 +40,7 @@ final class AppStore: ObservableObject {
   private var clipboardGeneration: Int?
   private var lastActivity = Date()
   private var pending: [String: VaultItem] = [:]
+  private var pendingNoteFocusID: String?
   private var noteEditors: [UUID: any NoteEditorLease] = [:]
   private var retiringEditors: [UUID: Task<Void, Never>] = [:]
   private var editorCaptureFailures: Set<String> = []
@@ -79,6 +80,7 @@ final class AppStore: ObservableObject {
       ],
       handler: { [weak self] event in
         self?.lastActivity = Date()
+        if event.type == .leftMouseDown || event.type == .rightMouseDown || (event.type == .keyDown && [48, 53].contains(event.keyCode)) { self?.cancelNoteFocus() }
         return event
       })
     {
@@ -220,6 +222,7 @@ final class AppStore: ObservableObject {
       try await core.unlockDesktopGrant(grant)
       guard epoch == generation else { throw VaultError.Locked }
       await restoreDrafts()
+      if recoveryDraft == nil { _ = try? await core.call(["op": .string("collect-note-attachments")]) }
       let doc = try await core.document()
       guard epoch == generation else { throw VaultError.Locked }
       apply(doc)
@@ -253,6 +256,7 @@ final class AppStore: ObservableObject {
         return
       }
       await restoreDrafts()
+      if recoveryDraft == nil { _ = try? await core.call(["op": .string("collect-note-attachments")]) }
       let doc = try await core.document()
       guard generation == epoch else { return }
       apply(doc)
@@ -283,6 +287,7 @@ final class AppStore: ObservableObject {
         return
       }
       await restoreDrafts()
+      if recoveryDraft == nil { _ = try? await core.call(["op": .string("collect-note-attachments")]) }
       let doc = try await core.document()
       guard generation == epoch else { return }
       apply(doc)
@@ -321,6 +326,7 @@ final class AppStore: ObservableObject {
     browserStartupNonce = nil
     guard !locking, unlocked || busy else { return }
     locking = true
+    cancelNoteFocus()
     epoch += 1
     busy = true
     saveTask?.cancel()
@@ -359,8 +365,8 @@ final class AppStore: ObservableObject {
       for (_, baseline, acknowledged, capture) in closingEditors {
         switch await capture.value {
         case .success(let text):
-          if var item = baseline, item.note == acknowledged, text != item.note {
-            item.note = text
+          if var item = baseline, item.editorSource == acknowledged, text != item.editorSource {
+            item.editorSource = text
             item.set("updatedAt", ISO8601DateFormatter().string(from: Date()))
             changes[item.id] = item
           }
@@ -448,6 +454,18 @@ final class AppStore: ObservableObject {
     }
   }
 
+  private func cancelNoteFocus() {
+    pendingNoteFocusID = nil
+    for editor in noteEditors.values { (editor as? NoteEditorSession)?.cancelFocus() }
+  }
+  func focusNoteBody(_ itemID: String) {
+    notePreviewModes[itemID] = false
+    pendingNoteFocusID = itemID
+    for editor in noteEditors.values where editor.itemID == itemID {
+      if let session = editor as? NoteEditorSession { pendingNoteFocusID = nil; session.focusBody() }
+    }
+  }
+
   func prepareNoteEditor(_ lease: any NoteEditorLease) async -> String? {
     let generation = epoch
     for old in Array(noteEditors.values) where old.itemID == lease.itemID && old.id != lease.id {
@@ -457,14 +475,17 @@ final class AppStore: ObservableObject {
     guard generation == epoch, unlocked, !lease.isClosing,
       let item = items.first(where: { $0.id == lease.itemID }) else { return nil }
     noteEditors[lease.id] = lease
-    return item.note
+    if pendingNoteFocusID == lease.itemID, selectedID == lease.itemID {
+      pendingNoteFocusID = nil; (lease as? NoteEditorSession)?.focusBody()
+    }
+    return item.editorSource
   }
 
   @discardableResult
   func receiveNoteEditorChange(_ lease: any NoteEditorLease, text: String) -> Bool {
     guard unlocked, noteEditors[lease.id] != nil, !lease.isClosing,
       var item = items.first(where: { $0.id == lease.itemID }), canEdit(item) else { return false }
-    if item.note != text { item.note = text; editEntry(item) }
+    if item.editorSource != text { item.editorSource = text; editEntry(item) }
     return true
   }
 
@@ -472,7 +493,7 @@ final class AppStore: ObservableObject {
     guard retiringEditors[lease.id] == nil else { return }
     guard noteEditors[lease.id] != nil else { _ = lease.capture(closing: true); return }
     let generation = epoch
-    let baseline = items.first(where: { $0.id == lease.itemID })?.note
+    let baseline = items.first(where: { $0.id == lease.itemID })?.editorSource
     let acknowledged = lease.source
     let capture = lease.capture(closing: true)
     retiringEditors[lease.id] = Task { [weak self] in
@@ -482,8 +503,8 @@ final class AppStore: ObservableObject {
       guard generation == epoch, unlocked else { return }
       if case .success = result { editorCaptureFailures.remove(lease.itemID) }
       if case .success(let text) = result, baseline == acknowledged,
-        var item = items.first(where: { $0.id == lease.itemID }), item.note == baseline, canEdit(item), item.note != text {
-        item.note = text; editEntry(item)
+        var item = items.first(where: { $0.id == lease.itemID }), item.editorSource == baseline, canEdit(item), item.editorSource != text {
+        item.editorSource = text; editEntry(item)
       } else if case .failure = result {
         editorCaptureFailures.insert(lease.itemID)
         saveFailed = true
@@ -508,14 +529,14 @@ final class AppStore: ObservableObject {
     let generation = epoch
     for task in Array(retiringEditors.values) { await task.value }
     for lease in Array(noteEditors.values) where !lease.isClosing {
-      let baseline = items.first(where: { $0.id == lease.itemID })?.note
+      let baseline = items.first(where: { $0.id == lease.itemID })?.editorSource
       let acknowledged = lease.source
       let result = await lease.capture(closing: false).value
       guard generation == epoch, unlocked else { return }
       if case .success = result { editorCaptureFailures.remove(lease.itemID) }
       if case .success(let text) = result, baseline == acknowledged,
-        var item = items.first(where: { $0.id == lease.itemID }), item.note == baseline, canEdit(item), item.note != text {
-        item.note = text; editEntry(item)
+        var item = items.first(where: { $0.id == lease.itemID }), item.editorSource == baseline, canEdit(item), item.editorSource != text {
+        item.editorSource = text; editEntry(item)
       } else if case .failure = result { editorCaptureFailures.insert(lease.itemID); saveFailed = true }
     }
   }
@@ -525,6 +546,8 @@ final class AppStore: ObservableObject {
   }
 
   func endEntryEditing(_ id: String) {
+    if pendingNoteFocusID == id { pendingNoteFocusID = nil }
+    for editor in noteEditors.values where editor.itemID == id { (editor as? NoteEditorSession)?.cancelFocus() }
     editBaselines.removeValue(forKey: id)
     editTimes.removeValue(forKey: id)
   }
@@ -594,7 +617,7 @@ final class AppStore: ObservableObject {
 
   func saveRecord(_ item: VaultItem) async throws {
     guard let core, unlocked else { throw VaultError.Locked }
-    let originalNote = items.first(where: { $0.id == item.id })?.note
+    let originalNote = items.first(where: { $0.id == item.id })?.editorSource
     let scheduledSave = saveTask
     scheduledSave?.cancel()
     await scheduledSave?.value
@@ -603,7 +626,7 @@ final class AppStore: ObservableObject {
     revisions[item.id, default: 0] += 1
     let revision = revisions[item.id]!
     var updated = item
-    if item.type == "secureNote", item.note == originalNote, let latest = items.first(where: { $0.id == item.id }) { updated.note = latest.note }
+    if item.type == "secureNote", item.editorSource == originalNote, let latest = items.first(where: { $0.id == item.id }) { updated.editorSource = latest.editorSource }
     updated.set("updatedAt", ISO8601DateFormatter().string(from: Date()))
     _ = try await core.call(["op": .string("save"), "item": try .from(updated)])
     guard generation == epoch else { throw VaultError.Locked }

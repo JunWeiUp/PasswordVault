@@ -1,5 +1,8 @@
 # TODO and progress
 
+- [x] Mac Tiptap rich-note editing, encrypted attachments, V3 archives and other-client protection; [implementation and gates](docs/RICH-NOTES.md).
+- [ ] Physical Chinese IME candidate confirmation, VoiceOver, macOS 13/Intel and large-backup peak-memory acceptance for rich notes.
+
 - Android source: brief app switches honor idle timeout with encrypted draft checkpoints; shared-vault UI/transport removed. Lifecycle, encrypted-draft, migration and collection regressions pass on an isolated ARM64 emulator (10 tests). The protected 22003 device artifact passed signed-APK smoke flows; 2.2.2 uses build 22004. Broader OEM acceptance remains separate.
 
 - Native 2.2.2 delivery: coordinated Android/Mac/browser/Web/iOS Simulator artifacts, protected Android signing, source archive and checksummed installation notes. Apple notarization/signed-device distribution and independent security review remain open; see [release notes](docs/NATIVE-RELEASE-NOTES.md).
