@@ -511,6 +511,7 @@ function App() {
                   </span>
                   <div class="actions">
                     <button
+                      disabled={item.noteFormat === "rich-v1"}
                       title="收藏"
                       aria-pressed={!!item.isFavorite}
                       onClick={() =>
@@ -521,10 +522,11 @@ function App() {
                     >
                       {item.isFavorite ? "★" : "☆"}
                     </button>
-                    <button onClick={() => setEditing({ ...item })}>
+                    <button disabled={item.noteFormat === "rich-v1"} onClick={() => setEditing({ ...item })}>
                       编辑
                     </button>
                     <button
+                      disabled={item.noteFormat === "rich-v1"}
                       onClick={() =>
                         run(() =>
                           save({
@@ -546,6 +548,7 @@ function App() {
                     {item.isFavorite ? "已收藏 · " : ""}已保存
                   </div>
                   <h1>{item.title}</h1>
+                  {item.noteFormat === "rich-v1" && <p role="status">此图文笔记仅显示文字摘要。请在 Mac 编辑和备份，避免丢失格式或附件。</p>}
                   <p class="metadata">
                     {item.updatedAt
                       ? new Date(item.updatedAt).toLocaleString("zh-CN")

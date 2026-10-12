@@ -28,6 +28,15 @@ fun EntryEditor(
     restoredDraft: Boolean = false,
     close: () -> Unit,
 ) {
+    if (original.optString("noteFormat") == "rich-v1") {
+        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp)) {
+            Text(original.optString("title"), style = MaterialTheme.typography.headlineSmall)
+            Text(t("此图文笔记仅显示文字摘要。请在 Mac 编辑和备份，避免丢失格式或附件。", "Text summary only. Edit and back up on Mac to preserve formatting and attachments."))
+            Text(original.optString("note"))
+            TextButton(onClick = close) { Text(t("返回", "Back")) }
+        }
+        return
+    }
     if (original.optString("type") == "secureNote") {
         NoteEditor(original, vault, t, restoredDraft, close)
         return

@@ -1,5 +1,14 @@
 # Changelog
 
+## Native 2.3.0 — encrypted rich notes (unreleased preview)
+
+- Replace the Mac personal-note editor with local Tiptap, full formatting, tables, search/replace, images and encrypted file attachments. Preserve whole-page scrolling and native focus across Return/autosave.
+- Add versioned JSON notes, retained legacy originals, encrypted pre-upgrade snapshots, authenticated attachment storage and complete V3 local/WebDAV archives. Protect rich notes on other clients.
+- Anchor text/highlight color palettes directly below their buttons, with preset/HEX colors and reset, avoiding the displaced native WebKit color popup.
+- Expose everyday Mac note tools in labeled text/insert rows: formatting, colors, lists, links, tables, images and attachments; wrap controls in narrow windows and retain contextual disabled/active states.
+- Forward vertical wheel/trackpad input from the embedded Mac editor to the whole-page scroll container without moving the selection; retain menu scrolling and horizontal table gestures.
+- Add native-window keyboard, image resource/lock and archive failure-path regressions. See [scope and remaining gates](docs/RICH-NOTES.md).
+
 ## Native 2.2.11 — browser authorization and offline accounts
 
 - Publish offline account saving, authorized site reads/fill, numeric badges, optional Mac startup unlock, and the popup version/Mac launch shortcut developed in the local increments below.

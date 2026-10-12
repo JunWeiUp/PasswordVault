@@ -67,10 +67,15 @@ struct MobileEntryDetail: View {
           }
           if !item.note.isEmpty {
             Section(store.t("备注", "Notes")) {
-              MobileMarkdown(source: item.note)
+              if item.string("noteFormat") == "rich-v1" { Text(item.note).textSelection(.enabled) }
+              else { MobileMarkdown(source: item.note) }
             }
           }
-          if !store.canEdit(item) {
+          if item.string("noteFormat") == "rich-v1" {
+            Text(store.t("此图文笔记仅显示文字摘要。请在 Mac 编辑和备份，避免丢失格式或附件。", "Text summary only. Edit and back up this rich note on Mac to preserve formatting and attachments."))
+              .foregroundStyle(.secondary)
+          }
+          if !store.canEdit(item) && item.string("noteFormat") != "rich-v1" {
             Section { Text(store.t("此共享条目为只读。", "This shared entry is read-only.")) }
           }
           if store.canEdit(item) {

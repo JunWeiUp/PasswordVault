@@ -43,9 +43,9 @@ Normal data lives in the user's Application Support `PasswordVaultNative` direct
 
 For builds that must not replace a running development app, set `PASSWORDVAULT_DERIVED_DATA` to a separate ignored output directory when running `tool/check_native.sh macos`.
 
-## Current note editor: Milkdown
+## Current note editor: Tiptap rich notes
 
-The replacement keeps the SwiftUI workspace and existing Rust-backed encrypted save/recovery path. Assets and licenses are bundled locally, with a nonpersistent WebView and no network resources. The 57-test Mac suite and isolated-window observations cover lists, caret/history, simulated Chinese composition, source/lock handover, read-only rejection and content boundaries. See [scoped evidence and remaining gates](MARKDOWN-EDITOR-EVALUATION.md). Physical IME, process-termination recovery and older/Intel hardware remain unverified.
+The replacement keeps the SwiftUI workspace and encrypted save/recovery path, with Tiptap 3.31.4, native attachment storage and complete V3 encrypted backups. Full-window keyboard tests cover continuous Return, native focus ownership and caret visibility. Physical input methods and older/Intel hardware remain separate gates. See [rich notes](RICH-NOTES.md); the [previous Milkdown evaluation](MARKDOWN-EDITOR-EVALUATION.md) is historical.
 
 ## Historical Mac 2.0.6 continuous note editing
 

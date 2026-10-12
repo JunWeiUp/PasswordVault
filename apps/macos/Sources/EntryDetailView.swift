@@ -7,7 +7,7 @@ struct EntryDetailView: View {
   @State private var switchingSource = false
   @State private var editorGeneration = UUID()
   private var preview: Bool {
-    get { store.notePreviewModes[item.id] ?? true }
+    get { store.notePreviewModes[item.id] ?? false }
     nonmutating set { store.notePreviewModes[item.id] = newValue }
   }
   @State private var showNoteInfo = false
@@ -46,6 +46,11 @@ struct EntryDetailView: View {
             TextField(store.t("标题", "Title"), text: noteBinding("title")).font(
               .system(size: 30, weight: .semibold)
             ).textFieldStyle(.plain).focused($noteTitleFocused)
+              .onSubmit {
+                guard item.type == "secureNote" else { return }
+                preview = false; noteTitleFocused = false
+                store.focusNoteBody(item.id)
+              }
           } else {
             Text(item.title).font(.system(size: 30, weight: .semibold)).textSelection(.enabled)
           }
@@ -53,10 +58,11 @@ struct EntryDetailView: View {
             if showSource && store.canEdit(item) {
               TextEditor(text: noteBinding("note", markdown: true)).font(.system(size: 16, design: .monospaced)).scrollContentBackground(.hidden).frame(minHeight: 550)
             } else {
-              if item.string("noteFormat") == "markdown" {
-                MarkdownNoteEditor(item: item, editing: !preview, beginEditing: { preview = false }).id(editorGeneration)
+              if !item.string("sharedVaultId").isEmpty {
+                Text(store.t("共享笔记保留文字格式；图文编辑适用于个人笔记。", "Shared notes retain text format; rich editing is available for personal notes.")).font(.caption).foregroundStyle(.secondary)
+                TextEditor(text: noteBinding("note")).font(.system(size: 16)).scrollContentBackground(.hidden).frame(minHeight: 550).disabled(!store.canEdit(item) || preview)
               } else {
-                EditableNotePreview(text: noteBinding("note"), markdown: false, chinese: store.chinese, editing: !preview, canEdit: store.canEdit(item), beginEditing: { preview = false })
+                MarkdownNoteEditor(item: item, editing: !preview, beginEditing: { preview = false }).id(editorGeneration)
               }
             }
           } else {
@@ -219,7 +225,7 @@ struct EntryDetailView: View {
   private var entryActionsMenu: some View {
     Menu {
       Group {
-        if item.type == "secureNote" && store.canEdit(item) {
+        if item.type == "secureNote" && store.canEdit(item) && !item.isRichNote {
           Button(store.t(showSource ? "返回笔记" : "Markdown 源码", showSource ? "Back to note" : "Markdown source")) {
             if showSource { showSource = false; preview = false }
             else {

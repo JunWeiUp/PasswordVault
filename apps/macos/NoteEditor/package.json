@@ -1,9 +1,27 @@
 {
   "name": "passwordvault-note-editor",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "private": true,
   "type": "module",
-  "scripts": { "build": "node build.mjs" },
-  "dependencies": { "@milkdown/kit": "7.22.2" },
-  "devDependencies": { "esbuild": "0.27.7" }
+  "scripts": {
+    "build": "node build.mjs"
+  },
+  "dependencies": {
+    "@tiptap/core": "3.31.4",
+    "@tiptap/pm": "3.31.4",
+    "@tiptap/starter-kit": "3.31.4",
+    "@tiptap/extension-text-style": "3.31.4",
+    "@tiptap/extension-color": "3.31.4",
+    "@tiptap/extension-highlight": "3.31.4",
+    "@tiptap/extension-text-align": "3.31.4",
+    "@tiptap/extension-table": "3.31.4",
+    "@tiptap/extension-task-list": "3.31.4",
+    "@tiptap/extension-task-item": "3.31.4",
+    "@tiptap/extension-image": "3.31.4",
+    "@tiptap/markdown": "3.31.4",
+    "dompurify": "3.3.3"
+  },
+  "devDependencies": {
+    "esbuild": "0.27.7"
+  }
 }

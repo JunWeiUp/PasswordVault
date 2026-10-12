@@ -54,7 +54,10 @@ impl Document {
             }
             serde_json::from_value(value).map_err(|_| VaultError::InvalidData)?
         };
-        if result.format_version != 2 || result.items.len() > 100_000 {
+        if ![2, 3].contains(&result.format_version) || result.items.len() > 100_000 {
+            return Err(VaultError::Unsupported);
+        }
+        if result.format_version < 3 && result.items.iter().any(|n| n["noteFormat"] == "rich-v1") {
             return Err(VaultError::Unsupported);
         }
         let mut ids = HashSet::new();
@@ -68,6 +71,13 @@ impl Document {
     }
     pub fn upsert(&mut self, mut item: Value) -> Result<()> {
         normalize_item(&mut item)?;
+        if item["noteFormat"] == "rich-v1" {
+            if item["noteDocument"]["type"] != "doc" || !item["noteDocument"]["content"].is_array()
+            {
+                return Err(VaultError::InvalidData);
+            }
+            self.format_version = 3;
+        }
         if item["type"] == "secureNote" {
             let mut categories = self.note_categories();
             if let Some(name) = item["category"].as_str().filter(|s| !s.is_empty()) {
@@ -83,6 +93,7 @@ impl Document {
         Ok(())
     }
     pub fn merge(&mut self, incoming: Document) -> Result<usize> {
+        self.format_version = self.format_version.max(incoming.format_version);
         // A restore must preserve the identity that can unwrap shared-vault keys.
         // Never silently combine two unrelated identities into unusable shared metadata.
         if let Some(identity) = incoming.settings.get("sharingIdentity") {
@@ -250,6 +261,20 @@ pub fn normalize_item(item: &mut Value) -> Result<()> {
         }
     }
     obj.entry("noteFormat").or_insert(json!("plain"));
+    if obj["noteFormat"] == "rich-v1"
+        && obj
+            .get("sharedVaultId")
+            .and_then(Value::as_str)
+            .is_some_and(|s| !s.is_empty())
+    {
+        return Err(VaultError::Unsupported);
+    }
+    if obj["noteFormat"]
+        .as_str()
+        .is_some_and(|s| s.starts_with("rich-") && s != "rich-v1")
+    {
+        return Err(VaultError::Unsupported);
+    }
     obj.entry("username").or_insert(json!(""));
     obj.entry("isDeleted").or_insert(json!(false));
     obj.entry("isFavorite").or_insert(json!(false));
