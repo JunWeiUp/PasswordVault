@@ -1,5 +1,10 @@
 # Changelog
 
+## Native 2.3.1 — remove shared-vault controls
+
+- Remove shared-vault management, invitations and LAN sync from Mac and iOS, matching the earlier Android removal. Existing shared records, backup metadata and read-only permissions remain.
+- Coordinate client versions at 2.3.1 (Mac 25, Android 23001, iOS 10).
+
 ## Native 2.3.0 — encrypted rich notes (development preview)
 
 - Replace the Mac personal-note editor with local Tiptap, full formatting, tables, search/replace, images and encrypted file attachments. Preserve whole-page scrolling and native focus across Return/autosave.

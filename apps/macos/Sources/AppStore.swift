@@ -13,7 +13,6 @@ final class AppStore: ObservableObject {
   @Published var saveFailed = false
   @Published var items: [VaultItem] = []
   @Published var settings: [String: JSONValue] = [:]
-  @Published var sharedVaults: [JSONValue] = []
   @Published var sharedMembers: [JSONValue] = []
   @Published var destination: Destination = .notes
   @Published var selectedID: String?
@@ -54,7 +53,6 @@ final class AppStore: ObservableObject {
   private var browserBridge: NativeBrowserBridge?
   private var started = false
   private var browserStartupNonce: String?
-  lazy var localSync = LocalSyncService(store: self)
 
   init(
     directory: URL,
@@ -345,10 +343,8 @@ final class AppStore: ObservableObject {
     clearClipboard()
     unlocked = false
     items = []
-    sharedVaults = []
     sharedMembers = []
     settings = [:]
-    localSync.stop()
     selectedID = nil
     authenticationError = nil
     saveFailed = false
@@ -791,7 +787,6 @@ final class AppStore: ObservableObject {
     }
     items = doc.items
     settings = doc.settings
-    sharedVaults = doc.sharedVaults
     sharedMembers = doc.sharedMembers
     if let chosen = settings["language"]?.string, ["zh", "en"].contains(chosen) {
       language = chosen

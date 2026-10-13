@@ -81,7 +81,6 @@ struct MobileSettingsView: View {
       }
       Section(store.t("资料管理", "Your data")) {
         NavigationLink(store.t("备份与导入", "Backups & import")) { MobileBackupView() }
-        NavigationLink(store.t("共享资料库", "Shared vaults")) { MobileSharingView(service: store.sync) }
         NavigationLink("WebDAV") { MobileWebDAVView() }
         NavigationLink(store.t("回收站", "Trash")) { MobileEntryList(destination: .trash) }
         DisclosureGroup(store.t("笔记分类", "Note categories")) {
