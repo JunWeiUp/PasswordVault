@@ -22,8 +22,8 @@ android {
         applicationId = "com.securepass.vault"
         minSdk = 24
         targetSdk = 36
-        versionCode = 23000
-        versionName = "2.3.0"
+        versionCode = 23001
+        versionName = "2.3.1"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         testProguardFile("test-proguard-rules.pro")
         ndk {
@@ -105,7 +105,7 @@ dependencies {
     androidTestImplementation("com.squareup.okhttp3:okhttp-tls:4.12.0")
     androidTestImplementation("androidx.test.ext:junit:1.3.0")
     androidTestImplementation("androidx.test:runner:1.7.0")
-    androidTestImplementation("androidx.test.uiautomator:uiautomator:2.3.0")
+    androidTestImplementation("androidx.test.uiautomator:uiautomator:2.3.1")
 }
 
 // Fail closed: never publish an unsigned or debug-signed native release.

@@ -33,14 +33,6 @@ struct MobileEntryEditor: View {
           TextField(store.t("标题", "Title"), text: field("title")).accessibilityIdentifier(
             "entry.title")
           TextField(store.t("分类", "Category"), text: field("category"))
-          if !store.sharedVaults.isEmpty {
-            Picker(store.t("所属资料库", "Vault"), selection: field("sharedVaultId")) {
-              Text(store.t("个人资料库", "Personal vault")).tag("")
-              ForEach(store.sharedVaults, id: \.self) {
-                Text($0.object["name"]?.string ?? "").tag($0.object["id"]?.string ?? "")
-              }
-            }
-          }
           TextField(store.t("标签，逗号分隔", "Tags, comma separated"), text: $tags)
         }
         if draft.type == "password" {

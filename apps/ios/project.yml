@@ -31,14 +31,10 @@ targets:
       properties:
         VaultAppGroup: $(VAULT_APP_GROUP)
         CFBundleDisplayName: PasswordVault
-        CFBundleShortVersionString: "2.3.0"
-        CFBundleVersion: "9"
+        CFBundleShortVersionString: "2.3.1"
+        CFBundleVersion: "10"
         UILaunchScreen: {}
         NSFaceIDUsageDescription: Unlock your encrypted PasswordVault with Face ID.
-        NSLocalNetworkUsageDescription: Sync encrypted shared vaults with devices you authorize.
-        NSBonjourServices: ["_passwordvault._tcp"]
-        NSAppTransportSecurity:
-          NSAllowsLocalNetworking: true
         NSCameraUsageDescription: Scan an authenticator setup QR code you choose.
         UIApplicationSupportsIndirectInputEvents: true
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
@@ -104,8 +100,8 @@ targets:
       path: Autofill/Info.plist
       properties:
         CFBundleDisplayName: PasswordVault
-        CFBundleShortVersionString: "2.3.0"
-        CFBundleVersion: "9"
+        CFBundleShortVersionString: "2.3.1"
+        CFBundleVersion: "10"
         VaultAppGroup: $(VAULT_APP_GROUP)
         NSExtension:
           NSExtensionPointIdentifier: com.apple.authentication-services-credential-provider-ui

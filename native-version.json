@@ -1,6 +1,6 @@
 {
-  "version": "2.3.0",
-  "android_version_code": 23000,
-  "macos_build": 24,
-  "ios_build": 9
+  "version": "2.3.1",
+  "android_version_code": 23001,
+  "macos_build": 25,
+  "ios_build": 10
 }
