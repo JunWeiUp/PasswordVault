@@ -167,6 +167,8 @@ enum Destination: String, CaseIterable, Identifiable {
     default: return nil
     }
   }
+  /// Tools still shown in the Mac sidebar. Shared-vault management stays in the enum so older navigation values decode, but it is no longer offered.
+  static let sidebarTools: [Destination] = [.generator, .audit, .backups, .trash]
   var symbol: String {
     switch self {
     case .notes: return "doc.text"

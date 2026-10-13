@@ -114,7 +114,7 @@ Mac 应用生成于 `apps/macos/build/Build/Products/Release/PasswordVault.app`�
 
 ### Android 与 iOS
 
-当前 Android 源码支持在空闲锁定时间内切换应用后直接返回，并移除共享资料库管理与局域网同步；保留锁屏/手动锁定、加密草稿和已有备份数据。这些改动包含在 2.2.11 中。
+当前 Android 源码支持在空闲锁定时间内切换应用后直接返回。Android、Mac 和 iOS 都已去掉共享资料库管理与局域网同步；已有共享记录、备份信息和只读限制仍保留。锁屏、手动锁定、加密草稿和已有备份数据也保留。
 
 分别按 [Android 构建指南](apps/android/README.md)或 [iOS 构建指南](apps/ios/README.md)操作。预览标识与旧生产安装分开，不要卸载已有资料库来绕过签名不匹配。
 

@@ -12,6 +12,10 @@ final class ModelTests: XCTestCase {
     XCTAssertEqual(decoded.object["futureField"]?.object["value"], .bool(true))
     XCTAssertEqual(decoded.object["title"], .string("After"))
   }
+  func testMacSidebarOmitsSharedVaults() {
+    XCTAssertEqual(Destination.sidebarTools, [.generator, .audit, .backups, .trash])
+    XCTAssertFalse(Destination.sidebarTools.contains(.sharing))
+  }
   func testWebdavRejectsInsecureRemoteAndPathTraversal() {
     XCTAssertThrowsError(
       try WebDAVClient(

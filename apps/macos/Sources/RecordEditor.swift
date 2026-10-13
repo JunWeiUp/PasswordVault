@@ -52,12 +52,6 @@ struct RecordEditor: View {
               .vaultHoverFeedback()
           }
           TextField(store.t("标签（逗号分隔）", "Tags (comma separated)"), text: $tags)
-          Picker(store.t("所属资料库", "Vault"), selection: binding("sharedVaultId")) {
-            Text(store.t("个人资料库", "Personal vault")).tag("")
-            ForEach(store.sharedVaults, id: \.self) { vault in
-              Text(vault.object["name"]?.string ?? "").tag(vault.object["id"]?.string ?? "")
-            }
-          }
         }
         if draft.type == "password" {
           Section(store.t("账号信息", "Credentials")) {

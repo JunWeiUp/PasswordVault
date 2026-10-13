@@ -319,14 +319,6 @@ struct EntryMetadata: View {
           ForEach(Array(Set(["社交媒体", "财务", "工作", "购物", "娱乐", "加密资产", "笔记"] + store.items.map(\.category))).filter { !$0.isEmpty }.sorted(), id: \.self) { value in Button(value) { field("category").wrappedValue = value } }
         }.buttonStyle(.automatic).disabled(!editable)
       }
-      Picker(store.t("所属资料库", "Vault"), selection: field("sharedVaultId")) {
-        Text(store.t("个人资料库", "Personal vault")).tag("")
-        ForEach(store.sharedVaults, id: \.self) { vault in
-          let id = vault.object["id"]?.string ?? ""
-          let writable = canMove(to: id)
-          Text((vault.object["name"]?.string ?? "") + (writable ? "" : store.t(" · 只读", " · Read only"))).tag(id).disabled(!writable)
-        }
-      }.disabled(!editable)
       if !current.tags.isEmpty {
         LazyVGrid(columns: [GridItem(.adaptive(minimum: 100))], alignment: .leading) {
           ForEach(current.tags, id: \.self) { value in
@@ -348,7 +340,6 @@ struct EntryMetadata: View {
       }.disabled(!editable)
     }
   }
-  private func canMove(to id: String) -> Bool { var target = current; target.set("sharedVaultId", id); return store.canEdit(target) }
   private func addTag() { let value = tag.trimmingCharacters(in: .whitespacesAndNewlines); if !value.isEmpty && !current.tags.contains(value) { update { $0.tags.append(value) } }; tag = "" }
 }
 

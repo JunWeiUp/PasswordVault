@@ -91,7 +91,7 @@ private struct SidebarView: View {
           if toolsExpanded {
             Divider().padding(.horizontal, 12)
             VStack(spacing: 2) {
-              ForEach([Destination.generator, .audit, .backups, .sharing, .trash]) { destination in
+              ForEach(Destination.sidebarTools) { destination in
                 SidebarRow(
                   title: destination.title(chinese: store.chinese), symbol: destination.symbol,
                   selected: store.destination == destination, compact: true
@@ -340,7 +340,6 @@ private struct DetailContainer: View {
       case .generator: GeneratorView()
       case .audit: PasswordAuditView()
       case .backups: BackupView()
-      case .sharing: SharingView(service: store.localSync)
       default:
         if let item = store.selected {
           EntryDetailView(item: item).id(item.id)

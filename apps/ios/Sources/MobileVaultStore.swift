@@ -19,9 +19,7 @@ final class MobileVaultStore: ObservableObject {
   @Published var ready = false
   @Published var busy = false
   @Published var items: [VaultItem] = []
-  @Published var sharedVaults: [JSONValue] = []
   @Published var sharedMembers: [JSONValue] = []
-  lazy var sync = MobileLocalSyncService(store: self)
   @Published var settings: [String: JSONValue] = [:]
   @Published var error: String?
   @Published var notice: String?
@@ -143,7 +141,6 @@ final class MobileVaultStore: ObservableObject {
       }
       items = document.items
       settings = document.settings
-      sharedVaults = document.sharedVaults
       sharedMembers = document.sharedMembers
       exists = true
       legacyAvailable = false
@@ -187,7 +184,6 @@ final class MobileVaultStore: ObservableObject {
       }
       items = document.items
       settings = document.settings
-      sharedVaults = document.sharedVaults
       sharedMembers = document.sharedMembers
       exists = true
       legacyAvailable = false
@@ -196,8 +192,6 @@ final class MobileVaultStore: ObservableObject {
     } catch { report(error) }
   }
   func lock() {
-    sync.stop()
-    sharedVaults = []
     sharedMembers = []
     epoch += 1
     unlocked = false
@@ -262,7 +256,6 @@ final class MobileVaultStore: ObservableObject {
       }
       items = document.items
       settings = document.settings
-      sharedVaults = document.sharedVaults
       sharedMembers = document.sharedMembers
       unlocked = true
       activity()
@@ -316,7 +309,6 @@ final class MobileVaultStore: ObservableObject {
     guard generation == epoch, unlocked else { throw VaultError.Locked }
     items = document.items
     settings = document.settings
-    sharedVaults = document.sharedVaults
     sharedMembers = document.sharedMembers
   }
   @discardableResult
