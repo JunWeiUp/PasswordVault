@@ -47,3 +47,11 @@ Production now enables `passwordvault` self-service alongside all three existing
 Mac 2.3.1 build 26 and Mi10 2.3.1-preview build 23002 were installed and launched. The previous applications and encrypted data were backed up; four Mi10 persistent data files matched byte-for-byte after installation. Mac retains its existing ad-hoc signing mode. Actual camera pairing and Touch ID remain separate hardware acceptance checks.
 
 The 250 phone was updated in place to officially signed 2.3.1 build 23002 and launched. [Device signing workflow](https://github.com/JunWeiUp/PasswordVault/actions/runs/39119191412) succeeded for commit `482e2f1`; source revision, checksums, package, 16 KB ZIP alignment and matching installed certificate were verified before `adb install -r`. No public Release was created. Its non-debuggable private vault was not read or reset.
+
+## Presence fix and isolated test host
+
+The prior clients gated their WebSocket connection on vault pairing and unpaused synchronization; new group members therefore stayed offline, and the roster was only a snapshot. Mac/iOS and Android now connect unlocked, valid group members independently of vault authorization and refresh presence every five seconds. Unpaired/paused clients do not invoke vault export, receive or file-inbox operations. Disconnects clear online indicators; legacy credential behavior is retained.
+
+Five Swift group tests passed from a copied `/tmp` source/build tree under the separate `PasswordVault QA` identity. The presence regression covers automatic join, both members online without initialized replication, pause, lock/offline and unlock/reconnect. An isolated Android emulator test also exercises the application adapter and real production WSS using disposable group members, then disbands the group. Mac Release, iOS simulator and Android compact builds pass. Repository checks pass.
+
+The initial in-repository XCTest host caused a Documents access prompt. It was stopped, and `tool/test_macos_isolated.sh` now copies the required sources/resources/archive into `/tmp`, changes the test bundle identity/display name and keeps test vaults temporary. No TCC reset or broad Documents authorization is needed. Intentional user-selected imports/exports remain governed by macOS file-access permissions.

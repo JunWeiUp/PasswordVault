@@ -52,3 +52,7 @@ See [validation](PERSONAL-RELAY-VALIDATION.md) for executed checks and remaining
 ## Automatic admission and compact invitation compatibility
 
 All members must run an SDK that verifies delegated admission entries before automatic invitations are used. Older manual JSON invitations remain readable; missing `mode` means manual and is never silently upgraded. New QR codes use `common-relay://…/i/…#…`: the server stores an authenticated encrypted invitation packet, while its decryption key stays in the fragment. Resolution validates endpoint, invitation ID, application scope and expiry before creating a durable join request. Admission remains restricted to one ordinary member and does not grant vault synchronization authority. Swift and Java snapshots include the latest upstream automatic/compact invitation implementation plus durable preparation and `group.changed` forwarding; Java request timeouts remain compatible with API 26.
+
+## Presence and vault authorization
+
+A verified device-group member connects to the relay while its vault is unlocked, including before vault authorization and while vault synchronization is paused. The member list refreshes online presence every five seconds and clears local online indicators on disconnect/lock. Group membership alone never initializes replication, exports records, reads the file inbox or accepts vault updates. The status distinguishes relay connectivity from missing vault authorization and paused synchronization. Legacy manually provisioned connections retain their paired/unpaused requirement.

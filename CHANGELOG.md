@@ -1,5 +1,9 @@
 # Changelog
 
+## Device update 2.3.1 — relay presence fix
+
+- Mac build 27 and Android build 23003 connect enrolled device groups before vault authorization, keep presence during sync pause, and refresh online status every five seconds. Vault data access still requires explicit authorization and an unlocked, unpaused client.
+
 ## Device update 2.3.1 — relay device groups
 
 - Device build identifiers: Mac 26 and Android 23002; iOS remains build 10.

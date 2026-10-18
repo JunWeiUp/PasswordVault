@@ -50,8 +50,8 @@ internal fun RelaySettingsScreen(vault: VaultRepository, t: (String,String)->Str
     }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text(t("中继同步", "Relay sync"), style = MaterialTheme.typography.headlineSmall)
-        if (state.paired) Text(localized(state.status))
-        else Text(t("先创建或加入设备组，再授权密码库同步。资料在设备间加密传输。", "Create or join a device group, then authorize vault sync. Data travels encrypted between devices."))
+        if (state.paired || state.managed) Text(localized(state.status))
+        if (!state.paired) Text(t("先创建或加入设备组，再授权密码库同步。资料在设备间加密传输。", "Create or join a device group, then authorize vault sync. Data travels encrypted between devices."))
         state.error?.let { Text(localized(it), color = MaterialTheme.colorScheme.error) }
         if (importError) Text(t("凭据文件无法读取或过大", "Credential file unreadable or too large"), color = MaterialTheme.colorScheme.error)
         if (state.paired) {

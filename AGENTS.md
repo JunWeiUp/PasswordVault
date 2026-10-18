@@ -42,3 +42,7 @@ Keep source directories aligned with the Flutter toolchain. Security, privacy, i
 Every delivered browser-extension update must increment `apps/browser/package.json` and its lockfile version. Use `npm run release:local` to increment the patch version and validate/build; verify the loaded extension version after refreshing it. The manifest and popup version must come from package metadata, never independent hardcoded values.
 
 New native code lives in `apps/macos`, `apps/browser`, and `crates/vault-core`. Use the pinned Rust toolchain and `bash tool/check_native.sh core|macos|browser`; see `docs/NATIVE-MIGRATION.md` for Swift tests and fixture setup. Preserve the legacy Flutter clients until the parity gates pass. Do not test against a real vault or report compilation as Touch ID, device, browser integration, or production-security acceptance.
+
+## Isolated macOS tests
+
+Run XCTest with `bash tool/test_macos_isolated.sh` (optional `-only-testing:…` arguments). It copies source/build prerequisites to `/tmp` and uses a distinct QA bundle ID/display name. Never launch test applications from a Documents-based repository, and never reset TCC or grant broad Documents access to make tests pass.
