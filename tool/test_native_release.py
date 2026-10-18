@@ -1,6 +1,7 @@
 """Failure-path coverage for native public release validation."""
 import copy
 import json
+import os
 from pathlib import Path
 import plistlib
 import tempfile
@@ -13,6 +14,41 @@ from native_release import ROOT, validate_versions, verify_android_metadata, ver
 
 
 class NativeReleaseTests(unittest.TestCase):
+    def test_macos_build_with_and_without_private_signing_config(self):
+        # Execute the real script with inert build tools, including on the
+        # system Bash 3.2 used by hosted Mac runners. No real vault or keychain.
+        with tempfile.TemporaryDirectory(prefix='pv signing fixture ') as temp:
+            root = Path(temp)
+            (root / 'tool').mkdir()
+            (root / 'tool/check_native.sh').write_bytes((ROOT / 'tool/check_native.sh').read_bytes())
+            tools = root / 'bin'
+            tools.mkdir()
+            for name in ['cargo', 'npm', 'lipo', 'xcodegen']:
+                path = tools / name
+                path.write_text('#!/bin/sh\nexit 0\n')
+                path.chmod(0o755)
+            rustup = tools / 'rustup'
+            rustup.write_text('#!/bin/sh\nprintf \'%s/rustc\\n\' "$(dirname "$0")"\n')
+            rustup.chmod(0o755)
+            builder = tools / 'xcodebuild'
+            builder.write_text('#!/bin/sh\nprintf \'%s\\n\' "$@" > "$PV_TEST_ARGUMENTS"\n')
+            builder.chmod(0o755)
+            capture = root / 'arguments.txt'
+            env = {**os.environ, 'PATH': str(tools) + os.pathsep + os.defpath,
+                   'PV_TEST_ARGUMENTS': str(capture)}
+            config = root / 'apps/macos/Signing.local.xcconfig'
+            for signed in [False, True]:
+                if signed:
+                    config.parent.mkdir(parents=True)
+                    config.write_text('// fictional signing configuration\n')
+                subprocess.run(['/bin/bash', 'tool/check_native.sh', 'macos'], cwd=root, env=env,
+                               check=True, capture_output=True, text=True)
+                args = capture.read_text().splitlines()
+                self.assertEqual('-xcconfig' in args, signed)
+                if signed:
+                    self.assertEqual(args[args.index('-xcconfig') + 1], 'apps/macos/Signing.local.xcconfig')
+                self.assertEqual(args[-1], 'build')
+
     def test_coordinated_versions_and_wrong_tag(self):
         data = validate_versions(ROOT)
         validate_versions(ROOT, 'v' + data['version'])

@@ -26,12 +26,10 @@ The Mac build produces a universal arm64/x86_64 app with a macOS 13 deployment t
 For Swift state/model tests:
 
 ```bash
-xcodebuild -project apps/macos/PasswordVault.xcodeproj -scheme PasswordVault \
-  -configuration Debug -derivedDataPath apps/macos/build \
-  -destination 'platform=macOS,arch=arm64' ARCHS=arm64 test
+bash tool/test_macos_isolated.sh
 ```
 
-The Xcode test host uses an isolated temporary directory. To manually test with synthetic notes, create a **new empty** temporary folder and run the seed example; it refuses to overwrite an existing vault. The example's disposable password is in its source. Use a short `/tmp/` path for native-bridge testing because Unix-domain socket paths are limited in length.
+The test script copies the required source/resources and native archive into `/tmp`, builds a distinct `PasswordVault QA` app (`com.securepass.vault.qa`) there, and retains the result bundle in that temporary tree. The Xcode test host uses an isolated temporary vault. Do not launch XCTest directly from a Documents-based build directory; macOS may request Documents access under the application name. To manually test with synthetic notes, create a **new empty** temporary folder and run the seed example; it refuses to overwrite an existing vault. The example's disposable password is in its source. Use a short `/tmp/` path for native-bridge testing because Unix-domain socket paths are limited in length.
 
 ```bash
 cargo run -p vault-core --example seed_demo -- /tmp/passwordvault-demo

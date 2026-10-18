@@ -1,0 +1,31 @@
+{
+  "invitation": {
+    "version": 1,
+    "mode": "auto",
+    "url": "wss://eglish.top/relay/v1/ws",
+    "app": "clipy",
+    "group": "vectors",
+    "id": "abababababababababababababababab",
+    "expires": 2000000000,
+    "secret": "public-test-invitation",
+    "manager": {
+      "device": "mac",
+      "name": "Mac",
+      "public_key": "a4e09292b651c278b9772c569f5fa9bb13d906b46ab68c9df9dc2b4409f8a209",
+      "signing_key": "d1e7f9e4365972235e13fce337c8009f88e92e00d172eeac7f3d099bbe01593a",
+      "manager": true
+    },
+    "grant": {
+      "payload": "eyJ2ZXJzaW9uIjoxLCJwdXJwb3NlIjoiY29tbW9uLXJlbGF5L2FkbWlzc2lvbi92MSIsIm1vZGUiOiJhdXRvIiwiYXBwIjoiY2xpcHkiLCJncm91cCI6InZlY3RvcnMiLCJpbnZpdGF0aW9uIjoiYWJhYmFiYWJhYmFiYWJhYmFiYWJhYmFiYWJhYmFiYWIiLCJleHBpcmVzIjoyMDAwMDAwMDAwLCJzZWNyZXRfaGFzaCI6IjNiNGQxYWVjZmYwNTc0YWY4Yjk4ZjlmZjg1ZmExZGFiYTBhOTU1YzdmYWNkNTVmOWZmMjg2ZjIwMjA4YjlhZmIiLCJkZWxlZ2F0ZV9rZXkiOiI3YWZlODdkZWRjYjkyZmZkMmFhNzBhNTM2ZjhkYTdlZmVhNjM5MjQyZDg5MzIwMjE5MDQyN2M5MWUyNTU1OWUwIiwiYW5jaG9yX3JldmlzaW9uIjoxLCJhbmNob3JfaGFzaCI6IjM0M2UzMWYxODZjOWVkNzZmMTgwZGFlMTJkZmNmNDdiYjk3ZDI1MTg0MWRjZTY4MTY5OTg0YzRjODhiMDU0MjgifQ==",
+      "signature": "4bff1211278ec54abb7b912b8d54fddac4b438e954795cad4217c8e5352041caca75e7afd334adf9a3b329a7b295c2e0d6fc79a8f2c98bac98c07d625e078204",
+      "signer": "mac"
+    },
+    "delegate_secret": "7171717171717171717171717171717171717171717171717171717171717171"
+  },
+  "key": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+  "nonce": "000102030405060708090a0b0c0d0e0f1011121314151617",
+  "packet": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYX8SvP5Rlyi1kR96ItdWvI0CXdTiq1uct/1R61D0StOuIg1Sms6QcFzXTNCvk6qYyT5reUrGrZm3TQ+YHtEwnFbk8oBvTc4e1tkD1O02wI45So6ZB3Jyyyz2KX86KjHOagzOL+2f9xSp27ArxrV0+IjK14cfQzoGhKWBmidbfQOm9PpVH1/FbxGbKwf+0csHvNquZ6nxm38d5Q66Dg1epY4y5tzngJCpzkFW5cV8G0704j2VeUyJ9hsY8Cv5SX4Gg6+FdBJkMCAQOz74jpizrO3dvPEWH5e8Gh+8oC9mVw8gTswH7ZocgKjWRdDFYsRsS645OOvKBTvG2j/21+DXbWOmfHqyuWgy5NhnFGiOlscx1FD1qXJ9eeXT+da54xoCRFsLLdcKZjc8FzglniQ9uccRDMwS/jDH2Bmt3AlnjdaEsYbnprCmvk7L5CRV6DvdRi2RImEO1HDsDtc3BLbbLw0jIyzHYbWgYlOJ5qdWp0yw/UJEVDJbIo8OY7rqsa5PFvEA54i8v6Nw+SG8suvisNobvMlqEL8nl2Scn5ibBzsk4u1d8i8TCmzurOeSlT6iWbW70BB2zvuPZhGHupOaCzUsiUCVfkBaikkNPIFyBGv1PZhLD1pdnNKeAkK/MW+Yej4idFRLF4hRhsuk3hoA3VfdDEl05eq+tbpeV/tKqEdC75HaH+ptslDcANiSOFsry9pceaCbCjTWjfZTF+ln5/B6dHYYFjiMgNR1qQ+TiZAxd0EmWapDakKFXOGwAEh2KNRy31Zyf9uglKCMHFZVWW+w4G9Stb8zDyzCEF4wd7Nqc7N9dbnX+PpetkZ5if0laWsKuH9D+qWiq0pwc8mHA8G3qDRYR6IToPQ3EKOCHx5HGxwXTt/vGmnfKlVeylv0frBUa9HYhwYBgkYllUbibm9EY2nqMs26TrKf+oYLwycP67hoCwZ8crlwvl92YwkAGuLPVwyys+x1zvI28ZkrdQ6XW+1sPvzYbiCJvkx+loKqR//wN0LugKy3LRuEKV9mTNh5c5gkI470flNhM+gCFtB8/1Kq+BRFzjzS2v9YipWOXPTb+gvvCmodgMG2xb3HS1zZ9V3bF6W6RZFyVYCsOydgbej7hIbY9eczqS/eIaRwlK7pjXNtwCwLqqnE+WjwX4NaHwRvHASLmsYtxd9QK/jWtyJT3sX9ei9MDw2/elQUX8u1e7LTvvE8BvMPV7xduUH4v97PoIHsDMVLvoNRP60+9mhNvBNDcw+ymxDB0vdicyMR9QgxuHHSSZ9CcCMdbLAYL7wmTOgI8QVkb0Gdc7gLmwo6QS7cHL/jczGtp9gavZENB7JhyxlsORhLKFfZyTGpf9IDli00nwQY/ZshtgbQOxkT02IbzxUMsrA6trWoMcVI/G29NgtD8U5lHE3lkatagAMRoWrefBqOwOghNr3b7Ybok+VVzCeXgmodR5ts4/r33mLDHRYsMmnjaR47iiNJKlbp6XQBeah2r/UyiQb1EyNtAO0RtZfDf+494PCX0FIOrz2daFUYrU7BBFl6hDbXfdhoNhS5hyXTITsLNgnXxxaqOV4frEOCP9JKptxWuCMecipA9GNbGJsM4MGJzIlQjSB+xTk3vnxNuSxg6p9CcuRY9MaP9vNJmXE6ZiZww0nz6RSn/4AMTilUthXILC8mLeSoiJhyOmmnvrrGoNwD4ck6xsMYVNcw0QVqmKM/XVq8HDmqTHIDP2kTHw2iYhlGahwKMIWYg43/18aruUcQ41m4PpngiX3SnRDxc0yMEjfh84s+X7wg==",
+  "read_token": "27a75453c98235c285720cab530d7682a5715a2c995d89198d4d231ed52d74e7",
+  "link": "common-relay://eglish.top/i/q6urq6urq6urq6urq6urqw#AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+  "link_length": 94
+}

@@ -51,6 +51,7 @@ internal fun LiveQrScanner(
     t: (String, String) -> String,
     result: (String) -> Unit,
     close: () -> Unit,
+    rawPayload: Boolean = false,
 ) {
     val context = LocalContext.current
     val owner = LocalLifecycleOwner.current
@@ -150,7 +151,7 @@ internal fun LiveQrScanner(
                                                         if (session.owns(token))
                                                             scope.launch {
                                                                 try {
-                                                                    vault.command(
+                                                                    if (!rawPayload) vault.command(
                                                                         "parse-totp",
                                                                         JSONObject().put("uri", uri),
                                                                     )

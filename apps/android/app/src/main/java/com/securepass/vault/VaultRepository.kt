@@ -49,6 +49,7 @@ class VaultRepository(
     private val directory: File = File(context.noBackupFilesDir, "vault-v2"),
     private val clock: () -> Long = { SystemClock.elapsedRealtime() },
 ) {
+    internal val relay by lazy { PersonalRelay(directory, this) }
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val mutex = Mutex()
     private val legacySource = File(context.applicationInfo.dataDir, "app_flutter/db.sqlite")
@@ -71,6 +72,7 @@ class VaultRepository(
         }
 
     init {
+        scope.launch { state.collect { relay.setUnlocked(it.unlocked) } }
         ContextCompat.registerReceiver(
             context.applicationContext,
             screenLockReceiver,
@@ -124,6 +126,7 @@ class VaultRepository(
     }
 
     suspend fun close() {
+        relay.close()
         closing?.join()
         mutex.withLock {
             try {
@@ -378,10 +381,11 @@ class VaultRepository(
     suspend fun command(op: String, values: JSONObject = JSONObject()): JSONObject =
         mutex.withLock {
             check(mutable.value.unlocked) { "Locked" }
+            check(pendingDraft == null || op !in listOf("relay-init", "relay-receive")) { "Finish editing before applying sync" }
             val generation = epoch
             val result = withContext(Dispatchers.IO) { raw(op, values) }
             check(generation == epoch && mutable.value.unlocked) { "Locked" }
-            if (op !in listOf("totp", "status", "matches", "sync-respond")) activity()
+            if (!op.startsWith("relay-") && op !in listOf("totp", "status", "matches", "sync-respond")) activity()
             result
         }
 

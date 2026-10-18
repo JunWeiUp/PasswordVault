@@ -14,7 +14,7 @@
 
 原生客户端目前为**开发预览版**。[平台状态](#选择你的工作空间)与[安全模型](docs/SECURITY_MODEL.md)记录当前限制，独立安全审查仍待完成。
 
-**下载原生版 2.2.11：** [GitHub Release](https://github.com/JunWeiUp/PasswordVault/releases/tag/v2.2.11) · [安装方式与签名限制](docs/NATIVE-RELEASE-NOTES.md)。包含 Android、Mac 开发版、解压式插件、Web、iOS 模拟器包及源码。
+**下载原生版 2.3.2：** [GitHub Release](https://github.com/JunWeiUp/PasswordVault/releases/tag/v2.3.2) · [安装方式与签名限制](docs/NATIVE-RELEASE-NOTES.md)。包含 Android、Mac 开发版、解压式插件、Web、iOS 模拟器包及源码。
 
 ## 少一点翻找，多一点从容
 
@@ -68,7 +68,7 @@
 | 平台 | 当前可用形式 | 使用入口 |
 | --- | --- | --- |
 | **Mac · macOS 13+** | 原生桌面预览版，笔记编辑与浏览器连接 | [Mac 配置](docs/NATIVE-MIGRATION.md#build-and-launch) |
-| **Android · 7.0+** | 原生移动预览版；Android 8+ 支持系统自动填充 | [Android 指南](apps/android/README.md) |
+| **Android · 8.0+** | 原生移动预览版；Android 8+ 支持系统自动填充 | [Android 指南](apps/android/README.md) |
 | **iPhone / iPad · iOS 16+** | 原生模拟器预览；签名设备分发待完成 | [iOS 指南](apps/ios/README.md) |
 | **Chromium 浏览器** | 解压安装插件，连接 Mac 或创建独立资料库 | [插件配置](#快速开始) |
 
@@ -80,13 +80,13 @@
 | 客户端 | 当前能力 | 验证与交付状态 |
 | --- | --- | --- |
 | **macOS 13+** | SwiftUI 桌面应用，Apple Silicon/Intel 通用构建，本地 Tiptap 图文编辑器 | 开发版本。检查包含完整窗口连续回车与焦点、格式编辑、加密图片和备份失败路径。实体输入法覆盖、macOS 13/Intel 硬件、发行签名和公证仍待完成 |
-| **Android 7.0+** | Kotlin/Compose 预览；账号/验证码/钱包对齐旧版操作，笔记采用独立设计 | 已有模拟器 UI 和限定实机非 UI 检查；相机/指纹、旧设备与原生产签名升级仍待验收。系统自动填充需要 Android 8+ |
+| **Android 8.0+** | Kotlin/Compose 预览；账号/验证码/钱包对齐旧版操作，笔记采用独立设计 | 已有模拟器 UI 和限定实机非 UI 检查；相机/指纹、旧设备与原生产签名升级仍待验收。系统自动填充需要 Android 8+ |
 | **iOS 16+ / iPadOS 16+** | SwiftUI 应用与 Password AutoFill 扩展 | 模拟器流程及设备架构编译通过；合格团队配置、签名设备安装和硬件验收仍未完成 |
 | **Chromium 扩展** | 轻量 MV3，Mac 连接和独立资料库，明确选择后填充/保存 | 已有限定 Edge/ego lite、DOM 和签名 helper 检查；更广的 Google Chrome/网站覆盖待完成，采用解压安装 |
 | **独立 Web** | 独立加密资料库、增删改查、TOTP、备份/导入和工具 | 共享/WebDAV/QR 界面、完整主题/语言对齐及旧 OPFS 自动迁移尚未完成 |
 | **Windows / Linux 桌面** | 无原生桌面客户端 | 尚未实现 |
 
-本次统一版本为 **2.2.11**：Mac build **20**、浏览器 **2.2.11**、Android build **22006**、iOS build **8**。此次新增浏览器离线保存、授权读取账号和可选 Mac 启动自动解锁。测试结果不代表已上架应用商店或通过生产安全验收，详见[原生迁移](docs/NATIVE-MIGRATION.md)及[移动端产物](docs/MOBILE-IMPLEMENTATION.md#current-preview-artifacts)。
+本次统一版本为 **2.3.2**：Mac build **32**、浏览器 **2.3.2**、Android build **23007**、iOS build **14**。新增个人密码库加密中继同步、设备授权开关、批量冲突处理和手机提醒；Android 需 8.0+。检查通过不代表已上架应用商店或通过生产安全验收，详见[安装说明](docs/NATIVE-RELEASE-NOTES.md)及[中继配置](docs/PERSONAL-RELAY.md)。
 
 </details>
 
@@ -156,3 +156,7 @@ Mac 应用生成于 `apps/macos/build/Build/Products/Release/PasswordVault.app`�
 ## 许可证
 
 [MIT](LICENSE)。打包依赖保留各自许可证，详见[第三方声明](THIRD_PARTY_NOTICES.md)。
+
+## 个人库中继同步
+
+Mac 作为主库，通过统一中继与 Android 8+、iOS 双向同步；浏览器插件沿用本机桥接。支持创建设备组、默认扫码自动加入、可选配对码审批及成员管理；在 Mac“我的设备”中开启对应设备的“查看并同步修改”即可授权密码库同步。配置、配对、冲突与恢复见[中继同步说明](docs/PERSONAL-RELAY.md)，实际验证范围见[验证记录](docs/PERSONAL-RELAY-VALIDATION.md)。当前验证范围与限制见上述记录。

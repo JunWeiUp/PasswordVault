@@ -1,6 +1,6 @@
 # Native mobile implementation and acceptance
 
-The new clients share the V2 Rust security core and encrypted formats. iOS uses SwiftUI (iOS 16+, phone/tablet); Android uses Kotlin/Compose (API 24+, phone/tablet). Both clients open on Passwords. Android follows the original Accounts → Codes → Wallets → Notes → Settings order; iOS retains its existing Passwords → Notes → Codes → Wallets → Settings tabs. Chinese is the initial UI language; English is selectable. Tools and backup are secondary navigation. Android and iOS no longer offer shared-vault management or LAN synchronization. Wide layouts use a sidebar/rail. Existing Flutter clients remain available until migration and release gates pass.
+The new clients share the V2 Rust security core and encrypted formats. iOS uses SwiftUI (iOS 16+, phone/tablet); Android uses Kotlin/Compose (API 26+, phone/tablet). Both clients open on Passwords. Android follows the original Accounts → Codes → Wallets → Notes → Settings order; iOS retains its existing Passwords → Notes → Codes → Wallets → Settings tabs. Chinese is the initial UI language; English is selectable. Tools and backup are secondary navigation. Android and iOS no longer offer shared-vault management or LAN synchronization. Wide layouts use a sidebar/rail. Existing Flutter clients remain available until migration and release gates pass.
 
 ## Implemented source
 

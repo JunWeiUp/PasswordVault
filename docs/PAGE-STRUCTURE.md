@@ -166,3 +166,15 @@ The popup offers **添加账号密码** above saved accounts when no capture is 
 ## Mac rich personal notes
 
 Personal notes open directly in the local Tiptap editor. The title and body share the outer page scrollbar; formatting, insert, find and contextual tools operate without replacing selection/history. Preview is read-only. Images/files import through the encrypted native core; Save as and lossy Markdown export are explicit. Mobile/Web show protected summaries. See [complete behavior](RICH-NOTES.md).
+
+## Relay settings
+
+Mac Settings has a Relay sync page; iOS Settings links to the shared SwiftUI panel; Android Settings opens RelaySettingsScreen. The page starts with sync status and device-group onboarding (create or scan/paste invitation). Managed groups show a verified roster, presence, rename/remove, invite/approve, leave and disband. Pending creation/join offers durable retry; invalid access hides cached management controls. Legacy credentials are collapsed. Vault authorization is a separate section available after relay enrollment; Mac additionally resolves conflicts. See [device-group behavior](PERSONAL-RELAY.md).
+
+New device invitations default to **Join automatically after scanning**. Managers can disable it before generating a manual code-approval invitation. An active invitation must be cancelled before changing modes; mobile scanning submits immediately. Automatic admission grants ordinary membership only; vault authorization stays separate.
+
+Enrolled devices show relay connection status even before vault authorization. The roster refreshes presence every five seconds. “Relay connected; vault not authorized” and “Relay connected; vault sync paused” distinguish connectivity from data access; locking the vault disconnects presence.
+
+The native Mac relay member list exposes a **View and sync changes** switch per remote device. Pending acknowledgements remain visible while the device is offline or locked. Legacy manual vault pairing is collapsed. Phones direct users to this Mac switch; disabling it preserves downloaded data.
+
+Mac relay conflicts have two batch buttons above the individual rows: **Use mobile for all** and **Use Mac for all**. Confirmation names the count and replacement/deletion scope; a progress indicator disables repeated actions. Android/iOS display a recipient-scoped merge-conflict reminder directing users to the Mac, rather than implying retries alone can clear pending edits.

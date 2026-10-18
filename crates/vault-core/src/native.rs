@@ -1,5 +1,6 @@
 use crate::*;
 mod notes;
+mod relay;
 use fs2::FileExt;
 use rusqlite::{Connection, OpenFlags};
 use serde_json::{json, Value};
@@ -95,6 +96,12 @@ fn save_document_row(
     vault_id: &str,
     doc: &Document,
 ) -> Result<()> {
+    let mut guarded = doc.clone();
+    if relay::enabled(conn)? {
+        guarded.format_version = 4;
+    }
+    let doc = &guarded;
+    relay::capture(conn, root, vault_id, doc)?;
     let bytes = Zeroizing::new(serde_json::to_vec(doc).map_err(|_| VaultError::InvalidData)?);
     let sealed = seal(&subkey(root, b"document"), &bytes, vault_id.as_bytes())?;
     let encrypted = serde_json::to_vec(&sealed).map_err(|_| VaultError::InvalidData)?;
@@ -228,6 +235,9 @@ impl DiskVault {
             && ["import", "restore-drafts", "remove"].contains(&op)
         {
             return Err(VaultError::Unsupported);
+        }
+        if op.starts_with("relay-") {
+            return self.relay_command(request);
         }
         match op {
             "status" => Ok(
@@ -655,16 +665,8 @@ impl DiskVault {
                     "createdAt":now, "updatedAt":now, "isDeleted":false}),
                 )?;
             }
-            let bytes =
-                Zeroizing::new(serde_json::to_vec(&doc).map_err(|_| VaultError::InvalidData)?);
-            let sealed = seal(
-                &subkey(&open.root, b"document"),
-                &bytes,
-                open.header.vault_id.as_bytes(),
-            )?;
-            let encrypted = serde_json::to_vec(&sealed).map_err(|_| VaultError::InvalidData)?;
             let tx = storage(open.connection.transaction())?;
-            storage(tx.execute("UPDATE vault_state SET payload=?1 WHERE id=1", [encrypted]))?;
+            save_document_row(&tx, &open.root, &open.header.vault_id, &doc)?;
             storage(tx.execute("INSERT INTO browser_sync_receipts(id) VALUES(?1)", [id]))?;
             storage(tx.commit())?;
             open.document = doc;

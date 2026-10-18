@@ -75,3 +75,9 @@ After running the native core/macOS/browser checks, run the Debug Swift scheme w
 ## Rich-note regression gates
 
 Run `bash tool/check_native.sh core|macos|browser` separately and the documented Debug Swift test command. `RichNoteTests` must run inside the full native window for Return/focus checks. Rebuild the editor resources before testing. Use only disposable fixtures. See [data/backup cases and remaining hardware gates](RICH-NOTES.md).
+
+## Personal relay checks
+
+Run native core and browser checks, Mac PersonalRelayTests, and Android PersonalRelayTest on an isolated emulator. The optional Mac WSS test requires explicit isolated credentials via TEST_RUNNER_PV_RELAY_QA_CONFIG; it skips without them. Do not pass production user identities.
+
+Group regressions use a disposable loopback common-relay service with `--self-service-apps passwordvault`. Set `TEST_RUNNER_PV_GROUP_TEST_URL=ws://127.0.0.1:<port>/relay/v1/ws` for `RelayGroupTests`; production code defaults to WSS-only. Run Java SDK tests with `PV_GROUP_TEST_URL` and `SODIUM_LIBRARY_PATH` using `:common-relay:testDebugUnitTest`. Neither suite reads real identities. Shared signature vectors are bundled as XCTest resources; do not read them from `#filePath` at runtime. Put Xcode derived data/test bundles under a temporary directory outside Documents to avoid repeated privacy prompts from changing ad-hoc test signatures. Do not reset user privacy grants or grant broad filesystem access to work around test paths.
