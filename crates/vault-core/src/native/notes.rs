@@ -9,12 +9,12 @@ pub(super) const ARCHIVE_LIMIT: usize = 1024 * 1024 * 1024;
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct AttachmentMeta {
-    id: String,
-    note_id: String,
-    name: String,
-    mime: String,
-    size: usize,
+pub(super) struct AttachmentMeta {
+    pub(super) id: String,
+    pub(super) note_id: String,
+    pub(super) name: String,
+    pub(super) mime: String,
+    pub(super) size: usize,
 }
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -34,17 +34,17 @@ struct Manifest {
 fn aad(vault: &str, meta: &AttachmentMeta) -> Result<Vec<u8>> {
     serde_json::to_vec(&(vault, meta)).map_err(|_| VaultError::InvalidData)
 }
-fn table(conn: &Connection) -> Result<()> {
+pub(super) fn table(conn: &Connection) -> Result<()> {
     storage(conn.execute_batch("CREATE TABLE IF NOT EXISTS note_attachments(id TEXT PRIMARY KEY, note_id TEXT NOT NULL, metadata TEXT NOT NULL, payload BLOB NOT NULL)"))
 }
-fn metas(conn: &Connection) -> Result<Vec<AttachmentMeta>> {
+pub(super) fn metas(conn: &Connection) -> Result<Vec<AttachmentMeta>> {
     table(conn)?;
     let mut query = storage(conn.prepare("SELECT metadata FROM note_attachments ORDER BY id"))?;
     let rows = storage(query.query_map([], |row| row.get::<_, String>(0)))?;
     rows.map(|row| serde_json::from_str(&storage(row)?).map_err(|_| VaultError::InvalidData))
         .collect()
 }
-fn read(
+pub(super) fn read(
     conn: &Connection,
     root: &[u8; 32],
     vault: &str,
@@ -66,7 +66,7 @@ fn read(
     }
     Ok(bytes)
 }
-fn write(
+pub(super) fn write(
     conn: &Connection,
     root: &[u8; 32],
     vault: &str,
@@ -82,7 +82,7 @@ fn write(
         rusqlite::params![meta.id, meta.note_id, serde_json::to_string(meta).map_err(|_| VaultError::InvalidData)?, serde_json::to_vec(&sealed).map_err(|_| VaultError::InvalidData)?]))?;
     Ok(())
 }
-fn refs(node: &Value, out: &mut HashSet<String>, depth: usize) -> Result<()> {
+pub(super) fn refs(node: &Value, out: &mut HashSet<String>, depth: usize) -> Result<()> {
     if depth > 100 {
         return Err(VaultError::InvalidData);
     }
@@ -102,7 +102,7 @@ fn refs(node: &Value, out: &mut HashSet<String>, depth: usize) -> Result<()> {
     }
     Ok(())
 }
-fn validate(doc: &Document, files: &[AttachmentMeta]) -> Result<()> {
+pub(super) fn validate(doc: &Document, files: &[AttachmentMeta]) -> Result<()> {
     let mut ids = HashSet::new();
     let mut totals = HashMap::<&str, usize>::new();
     for meta in files {
@@ -158,6 +158,9 @@ pub(super) fn guard_legacy_write(doc: &Document, request: &Value) -> Result<()> 
 impl DiskVault {
     pub(super) fn collect_note_attachments(&mut self) -> Result<Value> {
         let open = self.open()?;
+        if relay::enabled(&open.connection)? {
+            return Ok(json!({"ok":true}));
+        }
         let mut used = HashSet::new();
         for item in &open.document.items {
             refs(&item["noteDocument"], &mut used, 0)?;
@@ -187,7 +190,9 @@ impl DiskVault {
         next.items.retain(|n| n["id"] != id);
         table(&open.connection)?;
         let tx = storage(open.connection.transaction())?;
-        storage(tx.execute("DELETE FROM note_attachments WHERE note_id=?1", [id]))?;
+        if !relay::enabled(&tx)? {
+            storage(tx.execute("DELETE FROM note_attachments WHERE note_id=?1", [id]))?;
+        }
         save_document_row(&tx, &open.root, &open.header.vault_id, &next)?;
         storage(tx.commit())?;
         open.document = next;
@@ -283,7 +288,7 @@ impl DiskVault {
             size: bytes.len(),
         };
         let mut next = open.document.clone();
-        next.format_version = 3;
+        next.format_version = next.format_version.max(3);
         let tx = storage(open.connection.transaction())?;
         write(&tx, &open.root, &open.header.vault_id, &meta, bytes)?;
         save_document_row(&tx, &open.root, &open.header.vault_id, &next)?;

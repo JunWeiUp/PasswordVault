@@ -6,6 +6,7 @@ struct MobileQRImport: View {
   @EnvironmentObject private var store: MobileVaultStore
   @Environment(\.dismiss) private var dismiss
   let apply: ([String: JSONValue]) -> Void
+  var payloadHandler: ((String) -> Void)? = nil
   @State private var selection: PhotosPickerItem?
   @State private var camera = false
   @State private var busy = false
@@ -62,6 +63,7 @@ struct MobileQRImport: View {
   private func scan(_ data: Data) {
     busy = true
     message = nil
+    let rawPayload = payloadHandler != nil
     Task {
       do {
         let payload = try await Task.detached { () -> String in
@@ -70,7 +72,7 @@ struct MobileQRImport: View {
           try VNImageRequestHandler(data: data).perform([request])
           guard
             let value = request.results?.compactMap(\.payloadStringValue).first(where: {
-              $0.lowercased().hasPrefix("otpauth://")
+              rawPayload || $0.lowercased().hasPrefix("otpauth://")
             })
           else { throw VaultError.InvalidData }
           return value
@@ -86,6 +88,7 @@ struct MobileQRImport: View {
     }
   }
   private func parse(_ text: String) {
+    if let payloadHandler { payloadHandler(text); dismiss(); return }
     busy = true
     Task {
       defer { busy = false }

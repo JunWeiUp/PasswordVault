@@ -1,0 +1,15 @@
+{
+  "upstream": "https://github.com/JunWeiUp/common-relay",
+  "version": "0.1.0-dev",
+  "files": {
+    "LICENSE": "272282293edccf0e0df0cc16ecc9e7d9bc112f4d2995422556ea173ba1795ef5",
+    "build.gradle": "be0db21abca3e6265febf45be9036d92509fddc471ad789cd339afd6e7493468",
+    "gradle.properties": "76c95c3c54b027d8553444c2ae8912d101c525c61e08a95669eda26f243c0867",
+    "settings.gradle": "d9350c8e9de54a976a49e8653903a85cf0a17b6e3068332130d702777b097ad4",
+    "src/main/java/io/github/junweiup/commonrelay/Crypto.java": "1a8e5c9fd8b8be28e9ecba57f08b798413f52e1e748ddfc1bba071e100b9a6c7",
+    "src/main/java/io/github/junweiup/commonrelay/RelayClient.java": "c089bf76d800bba88c830d9c70961ec259fb307b0c44bb0b61f276a2e3a921d8",
+    "src/main/java/io/github/junweiup/commonrelay/RelayFiles.java": "97dfa710f259b2ab2368fa309236ec7943601248c0e488b858d319abc02a8211",
+    "src/main/java/io/github/junweiup/commonrelay/RelayJournal.java": "77f4c4f3ac023459a63ac66b5aa93be32c6def1414cae5222b537106a2f7d509"
+  },
+  "commit": "ff5ed1f29c7af1734016ab77c5a85c61acdbecd0"
+}

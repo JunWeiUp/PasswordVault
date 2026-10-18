@@ -6,6 +6,7 @@ struct SettingsNavigation: View {
   private let pages = [
     ("general", "通用", "General", "gearshape"), ("security", "安全", "Security", "shield"),
     ("appearance", "外观", "Appearance", "paintbrush"), ("browser", "浏览器", "Browser", "safari"),
+    ("relay", "中继同步", "Relay sync", "arrow.triangle.2.circlepath"),
     ("backup", "备份与同步", "Backup & sync", "icloud"),
   ]
   var body: some View {
@@ -44,7 +45,9 @@ struct SecuritySettingsView: View {
         ScrollView {
           VStack(alignment: .leading, spacing: 26) {
             Text(title).font(.system(size: 30, weight: .semibold))
-            if store.settingsPage == "security" {
+            if store.settingsPage == "relay" {
+              RelaySettingsView(relay: store.relay)
+            } else if store.settingsPage == "security" {
               securityForm
             } else if store.settingsPage == "appearance" {
               appearanceForm
@@ -61,6 +64,7 @@ struct SecuritySettingsView: View {
   }
   private var title: String {
     switch store.settingsPage {
+    case "relay": return store.t("中继同步", "Relay sync")
     case "general": return store.t("通用", "General")
     case "appearance": return store.t("外观", "Appearance")
     case "browser": return store.t("浏览器", "Browser")

@@ -54,7 +54,7 @@ impl Document {
             }
             serde_json::from_value(value).map_err(|_| VaultError::InvalidData)?
         };
-        if ![2, 3].contains(&result.format_version) || result.items.len() > 100_000 {
+        if ![2, 3, 4].contains(&result.format_version) || result.items.len() > 100_000 {
             return Err(VaultError::Unsupported);
         }
         if result.format_version < 3 && result.items.iter().any(|n| n["noteFormat"] == "rich-v1") {
@@ -76,7 +76,7 @@ impl Document {
             {
                 return Err(VaultError::InvalidData);
             }
-            self.format_version = 3;
+            self.format_version = self.format_version.max(3);
         }
         if item["type"] == "secureNote" {
             let mut categories = self.note_categories();

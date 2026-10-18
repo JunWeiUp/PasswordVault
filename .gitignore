@@ -145,3 +145,9 @@ android/build/
 
 /release-input/
 /downloaded/
+
+# Vendored relay SDK build/cache outputs are local artifacts.
+/vendor/common-relay/java/build/
+/vendor/common-relay/java/.gradle/
+/vendor/common-relay/swift/.build/
+/vendor/common-relay/swift/.swiftpm/

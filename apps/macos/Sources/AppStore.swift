@@ -6,7 +6,7 @@ import Foundation
 final class AppStore: ObservableObject {
   @Published var ready = false
   @Published var exists = false
-  @Published var unlocked = false
+  @Published var unlocked = false { didSet { relay.setUnlocked(unlocked) } }
   @Published var busy = false
   @Published var error: String?
   @Published var authenticationError: String?
@@ -29,6 +29,10 @@ final class AppStore: ObservableObject {
   @Published var notePreviewModes: [String: Bool] = [:]
   @Published var language = UserDefaults.standard.string(forKey: "language") ?? "zh"
 
+  lazy var relay = VaultRelay(directory: directory, role: "hub", call: { [weak self] request in
+    guard let self else { throw VaultError.Locked }
+    return try await self.perform(request)
+  }, refresh: { [weak self] in await self?.refresh() })
   let directory: URL
   private(set) var core: CoreClient?
   private var epoch = 0
@@ -719,7 +723,7 @@ final class AppStore: ObservableObject {
 
   func perform(_ request: [String: JSONValue]) async throws -> JSONValue {
     guard let core, unlocked else { throw VaultError.Locked }
-    if ["export", "export-plain", "import"].contains(request["op"]?.string ?? "") {
+    if ["export", "export-plain", "import", "relay-init", "relay-receive", "relay-resolve"].contains(request["op"]?.string ?? "") {
       try await prepareSnapshot()
     }
     let generation = epoch

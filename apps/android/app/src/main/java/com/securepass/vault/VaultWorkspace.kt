@@ -249,7 +249,9 @@ internal fun VaultWorkspace(
                             language,
                             { page = "trash" },
                             { page = "webdav" },
+                            { page = "relay" },
                         )
+                    page == "relay" -> RelaySettingsScreen(vault, t)
                     page == "webdav" -> WebDavScreen(vault, state, t)
                     else ->
                         key(page) {

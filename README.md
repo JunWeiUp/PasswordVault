@@ -68,7 +68,7 @@ Browser 2.2.11 / Mac 2.2.11 can show and fill current-site accounts while Mac is
 | Platform | What you can use | Start here |
 | --- | --- | --- |
 | **Mac · macOS 13+** | Native desktop preview, notes editor and browser connection | [Mac setup](docs/NATIVE-MIGRATION.md#build-and-launch) |
-| **Android · 7.0+** | Native mobile preview; system Autofill on Android 8+ | [Android guide](apps/android/README.md) |
+| **Android · 8.0+** | Native mobile preview; system Autofill on Android 8+ | [Android guide](apps/android/README.md) |
 | **iPhone / iPad · iOS 16+** | Native simulator preview; signed-device distribution pending | [iOS guide](apps/ios/README.md) |
 | **Chromium browsers** | Unpacked extension; connect to Mac or create a separate vault | [Extension setup](#run-from-source) |
 
@@ -80,7 +80,7 @@ Standalone Web is also available with a smaller feature set. Windows and Linux h
 | Client | Current scope | Validation and delivery |
 | --- | --- | --- |
 | **macOS 13+** | SwiftUI desktop app; universal Apple Silicon/Intel build; local Tiptap rich editor | Development build. Checks include native-window continuous Return/focus tests, formatting, encrypted images and archive failure paths. Physical IME coverage, macOS 13/Intel hardware and distribution signing/notarization remain open |
-| **Android 7.0+** | Kotlin/Compose preview; account/code/wallet workflows aligned with the legacy app, separate Notes design | Emulator UI plus scoped physical non-UI checks. Camera/fingerprint, older devices and original production-signing-key upgrades remain gated. System Autofill requires Android 8+ |
+| **Android 8.0+** | Kotlin/Compose preview; account/code/wallet workflows aligned with the legacy app, separate Notes design | Emulator UI plus scoped physical non-UI checks. Camera/fingerprint, older devices and original production-signing-key upgrades remain gated. System Autofill requires Android 8+ |
 | **iOS 16+ / iPadOS 16+** | SwiftUI app and Password AutoFill extension | Simulator flows and device-architecture compilation pass. Eligible team provisioning, signed-device installation and hardware acceptance remain open |
 | **Chromium extension** | Lightweight MV3; Mac connection and independent vault; explicit fill/save | Scoped Edge/ego lite, DOM and signed-helper checks. Broader Google Chrome/site coverage remains open; unpacked installation |
 | **Standalone Web** | Independent encrypted vault, CRUD, TOTP, backup/import and utilities | Sharing/WebDAV/QR UI, full theme/language parity and automatic legacy OPFS migration remain incomplete |
@@ -156,3 +156,7 @@ The retained `lib/`, `android/`, `ios/`, `web/` and `chrome/` clients have separ
 ## License
 
 [MIT](LICENSE). Bundled dependencies retain their own licenses; see [third-party notices](THIRD_PARTY_NOTICES.md).
+
+## Personal vault relay sync
+
+Mac coordinates encrypted bidirectional sync with Android 8+ and iOS. Browser extensions retain local native synchronization. Setup, pairing, conflicts and recovery: [personal relay sync](docs/PERSONAL-RELAY.md). Local development feature; see [validation](docs/PERSONAL-RELAY-VALIDATION.md).
