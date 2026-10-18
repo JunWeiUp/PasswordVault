@@ -148,6 +148,50 @@ final class RelayGroupTests: XCTestCase {
     try await eventually { !mac.groupBusy }; await mac.leaveGroup(disband: true)
     XCTAssertNil(mac.failure)
   }
+  func testDeviceToggleGrantsReadWriteRevokesAndSurvivesRestart() async throws {
+    let url = try server()
+    let (core, mac, a) = try await fixture("hub")
+    let (phoneCore, phone, b) = try await fixture("mobile")
+    defer { mac.setUnlocked(false); phone.setUnlocked(false); try? FileManager.default.removeItem(at: a); try? FileManager.default.removeItem(at: b) }
+    try await eventually { !mac.groupBusy }; await mac.createGroup(endpoint: url, name: "Toggle fixture", deviceName: "Mac fixture")
+    try await eventually { !mac.groupBusy }; await mac.inviteToGroup()
+    try await eventually { !phone.groupBusy }; await phone.joinGroup(mac.groupInvite, deviceName: "Phone fixture")
+    try await eventually { mac.groupMembers.count == 2 && mac.groupMembers.allSatisfy(\.online) && !mac.groupBusy }
+    let peer = phone.config.device, hub = mac.config.device
+    XCTAssertFalse(mac.vaultAccessEnabled(peer)); XCTAssertTrue(phone.config.peers.isEmpty)
+    await mac.setVaultAccess(peer, enabled: true)
+    try await eventually { mac.vaultAccessEnabled(peer) && !mac.vaultAccessPending(peer) && phone.config.peers[hub] != nil }
+    XCTAssertNil(mac.failure)
+    _ = try await phoneCore.call(["op": .string("save"), "item": .object(["id": .string("toggle-edit"), "type": .string("secureNote"), "title": .string("Phone edit after one toggle")])])
+    phone.syncNow()
+    var synced = false
+    for _ in 0..<200 {
+      let list = try await core.call(["op": .string("list")])
+      if list.object["items"]?.array.contains(where: { $0.object["id"]?.string == "toggle-edit" }) == true { synced = true; break }
+      try await Task.sleep(nanoseconds: 100_000_000)
+    }
+    XCTAssertTrue(synced)
+    try await eventually { !mac.groupBusy }
+    mac.groupFresh = false // Revocation must not require a fresh network roster.
+    await mac.setVaultAccess(peer, enabled: false)
+    XCTAssertNil(mac.config.peers[peer])
+    try await eventually { !mac.vaultAccessPending(peer) && phone.config.peers.isEmpty }
+    XCTAssertEqual(phone.config.accessRevision, 2)
+    // A stale grant or a grant from an ordinary member cannot restore access.
+    let identity = try RelayIdentity(app: "passwordvault", group: phone.config.group, device: peer, secretKey: phone.config.secret, trustedPeers: [:])
+    let disconnected = RelayClient(identity: identity)
+    let stale: [String: Any] = ["format": "passwordvault.access.v1", "kind": "set", "group": phone.config.group, "to": peer, "revision": 1, "enabled": true, "permission": "read-write"]
+    let staleBytes = try JSONSerialization.data(withJSONObject: stale)
+    _ = try await phone.receiveAuthorization(staleBytes, from: hub, connection: disconnected)
+    _ = try await phone.receiveAuthorization(staleBytes, from: "untrusted-member", connection: disconnected)
+    XCTAssertTrue(phone.config.peers.isEmpty)
+    phone.setUnlocked(false); phone.setUnlocked(true)
+    try await eventually { phone.credentialsReady }
+    XCTAssertEqual(phone.config.accessRevision, 2); XCTAssertTrue(phone.config.peers.isEmpty)
+    try await eventually { !mac.groupBusy }; await mac.setVaultAccess(peer, enabled: true)
+    try await eventually { !mac.vaultAccessPending(peer) && phone.config.peers[hub] != nil }
+    try await eventually { !mac.groupBusy }; await mac.leaveGroup(disband: true)
+  }
   func testJoinDraftIsSavedBeforeNetworkFailureAndSurvivesRestart() async throws {
     let (core, phone, path) = try await fixture("mobile")
     defer { phone.setUnlocked(false); try? FileManager.default.removeItem(at: path) }

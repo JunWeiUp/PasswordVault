@@ -50,7 +50,10 @@ struct RelaySettingsView: View {
       }
       Divider()
       if relay.isLegacyGroup || (relay.hasManagedGroup && !relay.groupInvalid) {
-      Text(t("密码库同步授权", "Authorize vault sync")).font(.headline)
+      if relay.hasManagedGroup {
+        Text(t("在“我的设备”中开启“查看并同步修改”。两端解锁后自动完成授权；关闭不会删除设备已下载的资料。", "Enable View and sync changes in My devices. Both vaults must be unlocked. Turning it off does not erase downloaded data.")).font(.caption).foregroundStyle(.secondary)
+      }
+      DisclosureGroup(t("兼容旧版密码库配对", "Legacy vault pairing")) {
       if relay.config.role == "hub" {
         Button(t("生成五分钟配对码", "Create 5-minute invitation")) { Task { await relay.invite() } }
       } else {
@@ -76,6 +79,7 @@ struct RelaySettingsView: View {
       Divider()
       ForEach(relay.config.peers.keys.sorted(), id: \.self) { peer in
         HStack { Text(peer).font(.caption); Spacer(); Button(t("解除绑定", "Unpair"), role: .destructive) { Task { await relay.revoke(peer) } } }
+      }
       }
       }
       }

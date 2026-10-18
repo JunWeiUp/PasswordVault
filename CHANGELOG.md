@@ -1,5 +1,10 @@
 # Changelog
 
+## Device update 2.3.1 — device-list vault access
+
+- Mac build 30 adds a per-device **View and sync changes** switch. Android build 23005 and iOS build 12 accept encrypted grants from their pinned enrollment authority without a second QR/receipt exchange.
+- Persist pending authorization and revocation, require matching device acknowledgements, reject stale revisions and changed member keys, and retain downloaded data when access is disabled.
+
 ## Device update 2.3.1 — encrypted local relay credentials
 
 - Mac build 29, Android build 23004 and iOS build 11 store relay credentials in a master-password-protected local file through the shared core, with unlock-only access, authenticated encryption and atomic writes.

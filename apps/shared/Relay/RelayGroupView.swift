@@ -45,6 +45,19 @@ struct RelayGroupView: View {
                 .font(.caption).foregroundStyle(.secondary)
             }
             Spacer()
+            if relay.config.role == "hub" && member.id != relay.config.device {
+              VStack(alignment: .trailing, spacing: 4) {
+                Toggle(t("查看并同步修改", "View and sync changes"), isOn: Binding(
+                  get: { relay.vaultAccessEnabled(member.id) },
+                  set: { value in Task { await relay.setVaultAccess(member.id, enabled: value) } }
+                )).toggleStyle(.switch).disabled(!relay.groupManager && !relay.vaultAccessEnabled(member.id))
+                  .accessibilityIdentifier("vault-access-" + member.id)
+                Text(relay.vaultAccessPending(member.id)
+                     ? t("等待设备解锁并确认", "Waiting for device to unlock and confirm")
+                     : (relay.vaultAccessEnabled(member.id) ? t("已授权", "Authorized") : t("未授权", "Not authorized")))
+                  .font(.caption).foregroundStyle(.secondary)
+              }
+            }
             if relay.groupManager || member.id == relay.config.device {
               Menu {
                 Button(t("改名", "Rename")) { target = member; renamed = member.name }
