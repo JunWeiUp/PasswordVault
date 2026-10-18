@@ -14,7 +14,7 @@
 
 原生客户端目前为**开发预览版**。[平台状态](#选择你的工作空间)与[安全模型](docs/SECURITY_MODEL.md)记录当前限制，独立安全审查仍待完成。
 
-**下载原生版 2.2.11：** [GitHub Release](https://github.com/JunWeiUp/PasswordVault/releases/tag/v2.2.11) · [安装方式与签名限制](docs/NATIVE-RELEASE-NOTES.md)。包含 Android、Mac 开发版、解压式插件、Web、iOS 模拟器包及源码。
+**下载原生版 2.3.2：** [GitHub Release](https://github.com/JunWeiUp/PasswordVault/releases/tag/v2.3.2) · [安装方式与签名限制](docs/NATIVE-RELEASE-NOTES.md)。包含 Android、Mac 开发版、解压式插件、Web、iOS 模拟器包及源码。
 
 ## 少一点翻找，多一点从容
 
@@ -86,7 +86,7 @@
 | **独立 Web** | 独立加密资料库、增删改查、TOTP、备份/导入和工具 | 共享/WebDAV/QR 界面、完整主题/语言对齐及旧 OPFS 自动迁移尚未完成 |
 | **Windows / Linux 桌面** | 无原生桌面客户端 | 尚未实现 |
 
-本次统一版本为 **2.2.11**：Mac build **20**、浏览器 **2.2.11**、Android build **22006**、iOS build **8**。此次新增浏览器离线保存、授权读取账号和可选 Mac 启动自动解锁。测试结果不代表已上架应用商店或通过生产安全验收，详见[原生迁移](docs/NATIVE-MIGRATION.md)及[移动端产物](docs/MOBILE-IMPLEMENTATION.md#current-preview-artifacts)。
+本次统一版本为 **2.3.2**：Mac build **32**、浏览器 **2.3.2**、Android build **23007**、iOS build **14**。新增个人密码库加密中继同步、设备授权开关、批量冲突处理和手机提醒；Android 需 8.0+。检查通过不代表已上架应用商店或通过生产安全验收，详见[安装说明](docs/NATIVE-RELEASE-NOTES.md)及[中继配置](docs/PERSONAL-RELAY.md)。
 
 </details>
 
@@ -159,4 +159,4 @@ Mac 应用生成于 `apps/macos/build/Build/Products/Release/PasswordVault.app`�
 
 ## 个人库中继同步
 
-Mac 作为主库，通过统一中继与 Android 8+、iOS 双向同步；浏览器插件沿用本机桥接。支持创建设备组、默认扫码自动加入、可选配对码审批及成员管理；在 Mac“我的设备”中开启对应设备的“查看并同步修改”即可授权密码库同步。配置、配对、冲突与恢复见[中继同步说明](docs/PERSONAL-RELAY.md)，实际验证范围见[验证记录](docs/PERSONAL-RELAY-VALIDATION.md)。当前为本地开发功能。
+Mac 作为主库，通过统一中继与 Android 8+、iOS 双向同步；浏览器插件沿用本机桥接。支持创建设备组、默认扫码自动加入、可选配对码审批及成员管理；在 Mac“我的设备”中开启对应设备的“查看并同步修改”即可授权密码库同步。配置、配对、冲突与恢复见[中继同步说明](docs/PERSONAL-RELAY.md)，实际验证范围见[验证记录](docs/PERSONAL-RELAY-VALIDATION.md)。当前验证范围与限制见上述记录。

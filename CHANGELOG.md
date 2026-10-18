@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.3.2 — personal relay synchronization
+
+- Release encrypted Mac/Android/iOS relay synchronization, default automatic QR admission, device-list read/write authorization and independent online presence.
+- Protect local relay credentials with the vault master password and preserve device identity during legacy migration.
+- Add atomic bulk conflict choices on Mac and persistent recipient-scoped conflict reminders on mobile.
+- Coordinated builds: Mac 32, Android 23007, iOS 14 and browser/Web 2.3.2. Public Mac archives remain ad-hoc development builds; iOS downloads remain Simulator-only.
+
 ## Device update 2.3.1 — batch conflict resolution
 
 - Mac build 31 adds **Use mobile for all** and **Use Mac for all** above the conflict list, with an affected-count confirmation and atomic resolution of the displayed selection.
