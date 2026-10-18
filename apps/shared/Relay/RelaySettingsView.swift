@@ -17,6 +17,9 @@ struct RelaySettingsView: View {
       Text(t("中继同步", "Relay sync")).font(.title2)
       #endif
       if let failure = relay.failure { Text(localizedMessage(failure)).foregroundStyle(.red) }
+      if relay.hasManagedGroup && relay.config.peers.isEmpty {
+        Text(localizedMessage(relay.status)).accessibilityIdentifier("relay-status")
+      }
       if relay.config.peers.isEmpty {
         Label(t("连接你的设备", "Connect your devices"), systemImage: "laptopcomputer.and.iphone").font(.title3)
         Text(t("先创建或加入设备组，再授权密码库同步。资料在设备间加密传输。", "Create or join a device group, then authorize vault synchronization. Data travels encrypted between devices."))

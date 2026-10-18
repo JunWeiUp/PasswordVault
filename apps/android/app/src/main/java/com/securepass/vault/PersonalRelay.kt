@@ -51,6 +51,7 @@ internal class PersonalRelay(private val directory: File, private val vault: Vau
     @Volatile private var unlocked = false
     @Volatile private var epoch = 0
     @Volatile private var wake = false
+    @Volatile private var transportFailure: String? = null
     private val http = OkHttpClient.Builder().followRedirects(false).followSslRedirects(false).build()
 
     init { scope.launch {
@@ -162,10 +163,16 @@ internal class PersonalRelay(private val directory: File, private val vault: Vau
     }
     suspend fun close() { unlocked = false; stop(); scope.cancel(); http.connectionPool.evictAll() }
     fun syncNow() { wake = true; scope.launch { actions.withLock { if (loop?.isActive != true) start() } } }
-    private suspend fun stop() { epoch++; client?.close(); loop?.cancelAndJoin(); loop = null }
+    private suspend fun stop() {
+        epoch++; client?.close(); loop?.cancelAndJoin(); loop = null
+        mutable.value = mutable.value.copy(members = mutable.value.members.map { it.copy(online = false) },
+            status = if (unlocked) "未连接 / Disconnected" else "已锁定 / Locked")
+    }
     private fun start() {
         val c = config ?: return
-        if (!unlocked || c.optJSONObject("groups")?.optBoolean("access_invalid") == true || c.optBoolean("paused", true) || c.optString("token").isEmpty() || c.getJSONObject("peers").length() == 0) return
+        val managed = c.optJSONObject("groups")?.has("group_entry") == true
+        if (!unlocked || c.optJSONObject("groups")?.optBoolean("access_invalid") == true || c.optString("token").isEmpty() ||
+            (!managed && (c.optBoolean("paused", true) || c.getJSONObject("peers").length() == 0))) return
         val snapshot = JSONObject(c.toString()); val generation = epoch
         loop = scope.launch { run(snapshot, generation) }
     }
@@ -176,7 +183,6 @@ internal class PersonalRelay(private val directory: File, private val vault: Vau
             try {
                 refreshGroupForConnection(c, generation)
                 currentCoroutineContext().ensureActive()
-                if (c.getJSONObject("peers").length() == 0) return
                 if (journal == null) journal = RelayJournal(File(storage, "journal").toPath())
                 val crypto = crypto(c); val hub = c.getString("hub")
                 val events = Channel<JSONObject>(64); val ready = CompletableDeferred<Unit>()
@@ -189,7 +195,12 @@ internal class PersonalRelay(private val directory: File, private val vault: Vau
                 mutable.value = mutable.value.copy(status = "正在连接 / Connecting")
                 connection.connect(c.getString("endpoint"), c.getString("token"))
                 withTimeout(45_000) { ready.await() }
-                mutable.value = mutable.value.copy(status = "已连接 / Connected", error = null); backoff = 1000
+                val canSync = !c.optBoolean("paused", true) && c.getJSONObject("peers").length() > 0
+                val connected = if (c.getJSONObject("peers").length() == 0) "中继已连接，密码库尚未授权 / Relay connected; vault not authorized"
+                    else if (!canSync) "中继已连接，密码库同步已暂停 / Relay connected; vault sync paused" else "已连接 / Connected"
+                mutable.value = mutable.value.copy(status = connected,
+                    error = mutable.value.error.takeUnless { it == transportFailure })
+                transportFailure = null; backoff = 1000
                 val fileClient = RelayFiles(http, c.getString("endpoint").replaceFirst("wss://", "https://").removeSuffix("/ws") + "/files", c.getString("token"))
                 var last = ""
                 while (currentCoroutineContext().isActive && unlocked && generation == epoch) {
@@ -198,6 +209,7 @@ internal class PersonalRelay(private val directory: File, private val vault: Vau
                         if (result.isClosed) throw IllegalStateException("Disconnected")
                         val event = result.getOrNull() ?: break
                         if (event.optString("type") == "message") {
+                            if (!canSync) continue
                             require(event.getString("from") == hub)
                             receive(Base64.getDecoder().decode(event.getString("data")), hub, generation)
                             connection.acknowledge(event).get(45, TimeUnit.SECONDS)
@@ -205,35 +217,53 @@ internal class PersonalRelay(private val directory: File, private val vault: Vau
                             (c.optJSONObject("groups")?.optJSONObject("group_entry")?.let { RelayGroups.unpack(it).optInt("revision") } ?: 0)) throw IllegalStateException("Membership changed")
                         else if (event.optString("type") == "peer.up") last = ""
                     }
-                    val summary = vault.command("relay-status")
-                    mutable.value = mutable.value.copy(pending = summary.optInt("pending"))
-                    val packet = vault.command("relay-export", JSONObject().put("peer", hub)).toString().toByteArray()
-                    val signature = hex(hash(packet)) + ":" + System.currentTimeMillis()/3_600_000
-                    if (last != signature || wake) {
-                        wake = false
-                        if (packet.size <= 128*1024) connection.message(hub, packet, true, hex(hash((hub + signature).toByteArray())).take(32)).get(45, TimeUnit.SECONDS)
-                        else sendFile(packet, crypto, hub, fileClient)
-                        last = signature
+                    if (c.optJSONObject("groups")?.has("group_entry") == true) {
+                        val devices = connection.peers().get(45, TimeUnit.SECONDS).getJSONArray("devices")
+                        currentCoroutineContext().ensureActive(); check(unlocked && generation == epoch)
+                        val online = (0 until devices.length()).map { devices.getJSONObject(it) }
+                            .filter { it.optString("app") == "passwordvault" && it.optString("group") == c.getString("group") }
+                            .map { it.getString("device") }.toSet() + c.getString("device")
+                        mutable.value = mutable.value.copy(members = mutable.value.members.map { it.copy(online = it.id in online) })
                     }
-                    val inbox = fileClient.inbox()
-                    for (index in 0 until inbox.length()) {
-                        val file = inbox.getJSONObject(index)
-                        require(file.getString("from") == hub && file.getLong("size") <= 768L*1024*1024)
-                        val cipher = File(storage, UUID.randomUUID().toString()+".download")
-                        val inner = File(storage, UUID.randomUUID().toString()+".sealed")
-                        try {
-                            fileClient.download(file, cipher)
-                            val meta = RelayFiles.decrypt(crypto, hub, file, cipher, inner)
-                            require(meta.getString("format") == "passwordvault.sync.v1")
-                            receive(decrypt(inner.readBytes(), SecretKeySpec(Crypto.unhex(meta.getString("key")), "AES")), hub, generation)
-                            fileClient.acknowledge(file.getString("id"))
-                        } finally { cipher.delete(); inner.delete() }
+                    if (canSync) {
+                        val summary = vault.command("relay-status")
+                        mutable.value = mutable.value.copy(pending = summary.optInt("pending"))
+                        val packet = vault.command("relay-export", JSONObject().put("peer", hub)).toString().toByteArray()
+                        val signature = hex(hash(packet)) + ":" + System.currentTimeMillis()/3_600_000
+                        if (last != signature || wake) {
+                            wake = false
+                            if (packet.size <= 128*1024) connection.message(hub, packet, true, hex(hash((hub + signature).toByteArray())).take(32)).get(45, TimeUnit.SECONDS)
+                            else sendFile(packet, crypto, hub, fileClient)
+                            last = signature
+                        }
+                        val inbox = fileClient.inbox()
+                        for (index in 0 until inbox.length()) {
+                            val file = inbox.getJSONObject(index)
+                            require(file.getString("from") == hub && file.getLong("size") <= 768L*1024*1024)
+                            val cipher = File(storage, UUID.randomUUID().toString()+".download")
+                            val inner = File(storage, UUID.randomUUID().toString()+".sealed")
+                            try {
+                                fileClient.download(file, cipher)
+                                val meta = RelayFiles.decrypt(crypto, hub, file, cipher, inner)
+                                require(meta.getString("format") == "passwordvault.sync.v1")
+                                receive(decrypt(inner.readBytes(), SecretKeySpec(Crypto.unhex(meta.getString("key")), "AES")), hub, generation)
+                                fileClient.acknowledge(file.getString("id"))
+                            } finally { cipher.delete(); inner.delete() }
+                        }
                     }
                     delay(5000)
                 }
             } catch (cancel: CancellationException) { throw cancel }
-            catch (_: Exception) { if (unlocked && generation == epoch) mutable.value = mutable.value.copy(status = "等待重连 / Waiting to reconnect", error = "同步未完成，本地改动已保留 / Sync incomplete; local changes retained") }
-            finally { connection?.close() }
+            catch (_: Exception) {
+                if (unlocked && generation == epoch) {
+                    transportFailure = "同步未完成，本地改动已保留 / Sync incomplete; local changes retained"
+                    mutable.value = mutable.value.copy(status = "等待重连 / Waiting to reconnect", error = mutable.value.error ?: transportFailure)
+                }
+            }
+            finally {
+                connection?.close()
+                if (generation == epoch) mutable.value = mutable.value.copy(members = mutable.value.members.map { it.copy(online = false) })
+            }
             if (mutable.value.invalid) return
             delay(backoff); backoff = (backoff*2).coerceAtMost(30_000)
         }
@@ -294,7 +324,7 @@ internal class PersonalRelay(private val directory: File, private val vault: Vau
             try {
                 val c = checkNotNull(config); val g = groups(c)
                 try { block(c, g) } catch (error: Exception) { saveGroup(c, g); throw error }
-                publish(); start()
+                publish()
             } catch (cancel: CancellationException) { throw cancel }
             catch (error: Exception) {
                 val c = config
@@ -303,7 +333,7 @@ internal class PersonalRelay(private val directory: File, private val vault: Vau
                 mutable.value = mutable.value.copy(groupFresh = false, members = emptyList(),
                     error = if (mutable.value.invalid) "接入已失效，请确认清除本机接入后重新加入 / Access invalid; clear local access to rejoin"
                     else "操作未完成，重试草稿已保留。检查网络、权限或服务端 passwordvault 自助创建开关 / Group operation incomplete; retry draft retained")
-            } finally { mutable.value = mutable.value.copy(busy = false) }
+            } finally { mutable.value = mutable.value.copy(busy = false); start() }
         }
     } }
     fun createGroup(endpoint: String, name: String, deviceName: String) = groupAction { c, g ->

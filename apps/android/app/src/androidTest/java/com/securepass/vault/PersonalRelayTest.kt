@@ -44,6 +44,49 @@ class PersonalRelayTest {
             assertNotNull(vault.relay.state.value.lastReceived)
         } finally {vault.close();directory.deleteRecursively();java.security.KeyStore.getInstance("AndroidKeyStore").apply{load(null);deleteEntry(alias)}}
     }
+    @Test fun managedPresenceDoesNotRequireVaultAuthorization() = runBlocking {
+        val endpoint = InstrumentationRegistry.getArguments().getString("presenceEndpoint")
+        org.junit.Assume.assumeTrue(endpoint?.startsWith("wss://") == true)
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val base = File(context.cacheDir, "presence-fixture-${UUID.randomUUID()}")
+        val a = VaultRepository(context, File(base, "owner"))
+        val b = VaultRepository(context, File(base, "phone"))
+        suspend fun until(condition: () -> Boolean) {
+            withTimeout(40_000) { while (!condition()) delay(100) }
+        }
+        fun allOnline(v: VaultRepository) = v.relay.state.value.members.size == 2 && v.relay.state.value.members.all { it.online }
+        try {
+            until { a.state.value.ready && b.state.value.ready }
+            a.authenticate("fixture", true); b.authenticate("fixture", true)
+            a.relay.createGroup(endpoint!!, "Presence test fixture", "Fixture owner")
+            until { a.relay.state.value.managed && a.relay.state.value.members.any { it.online } && !a.relay.state.value.busy }
+            a.relay.inviteToGroup()
+            until { a.relay.state.value.groupInvite.isNotEmpty() && !a.relay.state.value.busy }
+            b.relay.joinGroup(a.relay.state.value.groupInvite, "Fixture phone")
+            until { allOnline(a) && allOnline(b) }
+            assertFalse(a.relay.state.value.paired); assertFalse(b.relay.state.value.paired)
+            assertTrue(a.relay.state.value.paused); assertTrue(b.relay.state.value.paused)
+            assertFalse(a.command("relay-status").optBoolean("enabled")); assertFalse(b.command("relay-status").optBoolean("enabled"))
+            b.relay.pause(true)
+            until { allOnline(a) && allOnline(b) }
+            b.relay.setUnlocked(false)
+            until { a.relay.state.value.members.any { it.id == b.relay.state.value.device && !it.online } }
+            b.relay.setUnlocked(true)
+            until { allOnline(a) && allOnline(b) }
+            assertFalse(b.command("relay-status").optBoolean("enabled"))
+        } finally {
+            if (a.relay.state.value.managed) {
+                until { !a.relay.state.value.busy }
+                a.relay.leaveGroup(true)
+                until { !a.relay.state.value.managed }
+            }
+            a.close(); b.close(); base.deleteRecursively()
+            for (name in listOf("owner", "phone")) {
+                val alias = "pv-relay-" + io.github.junweiup.commonrelay.Crypto.hex(java.security.MessageDigest.getInstance("SHA-256").digest(File(base, name).absolutePath.toByteArray())).take(32)
+                java.security.KeyStore.getInstance("AndroidKeyStore").apply { load(null); deleteEntry(alias) }
+            }
+        }
+    }
     @Test fun coreReplicationAndSecureIdentity() = runBlocking {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val base = File(context.cacheDir, "relay-test-${UUID.randomUUID()}").apply { mkdirs() }

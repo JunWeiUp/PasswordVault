@@ -45,6 +45,7 @@ final class VaultRelay: ObservableObject {
   private var invitation: (nonce: String, expires: Date)?
   private var sent: [String: String] = [:]
   private var retryRequested = false
+  private var transportFailure: String?
 
   init(directory: URL, role: String, allowLocalGroupTest: Bool = false,
        call: @escaping ([String: JSONValue]) async throws -> JSONValue,
@@ -189,10 +190,12 @@ final class VaultRelay: ObservableObject {
     generation = UUID(); loop?.cancel(); loop = nil; reader?.cancel(); reader = nil
     let old = client; let oldFiles = files; client = nil; files = nil
     Task { await old?.close(); await oldFiles?.close() }
-    status = active ? "已暂停 / Paused" : "已锁定 / Locked"
+    setGroupOnline([])
+    status = active ? "未连接 / Disconnected" : "已锁定 / Locked"
   }
   private func restart() {
-    stop(); guard active, !config.paused, !groupInvalid, !config.token.isEmpty, !config.peers.isEmpty else { return }
+    stop(); guard active, !groupInvalid, !config.token.isEmpty,
+      hasManagedGroup || (!config.paused && !config.peers.isEmpty) else { return }
     let epoch = generation
     loop = Task { [weak self] in await self?.run(epoch) }
   }
@@ -208,7 +211,7 @@ final class VaultRelay: ObservableObject {
       var ownedFiles: RelayFiles?
       do {
         try await refreshGroupForConnection(epoch)
-        guard active, generation == epoch, !Task.isCancelled, !config.peers.isEmpty else { return }
+        guard active, generation == epoch, !Task.isCancelled else { return }
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
         if journal == nil { journal = try RelayJournal(directory: directory.appendingPathComponent("journal")) }
         let identity = try identity(), connection = RelayClient(identity: identity, journal: journal)
@@ -219,13 +222,16 @@ final class VaultRelay: ObservableObject {
         status = "正在连接 / Connecting"
         let events = try await connection.connect(url: ws, token: config.token, allowLocalTest: allowLocalGroupTest)
         guard generation == epoch, active else { await connection.close(); return }
-        status = "已连接 / Connected"; failure = nil; backoff = 1; sent.removeAll()
+        status = connectedStatus
+        if failure == transportFailure { failure = nil }; transportFailure = nil
+        backoff = 1; sent.removeAll()
         reader = Task { [weak self] in
           do {
             for try await event in events {
               guard let self, self.active, self.generation == epoch else { return }
               if event["type"] as? String == "message", let data = event["data"] as? Data,
                  let from = event["from"] as? String, let id = event["id"] as? String {
+                guard !self.config.paused, self.config.peers[from] != nil else { continue }
                 try await self.receive(data, from: from, epoch: epoch)
                 try await connection.acknowledge(id: id, from: from, offline: event["offline"] as? Bool ?? false)
               } else if event["type"] as? String == "group.changed",
@@ -239,41 +245,53 @@ final class VaultRelay: ObservableObject {
         }
         retryRequested = false
         while active && generation == epoch && !Task.isCancelled && !retryRequested {
-          try await updateSummary()
-          for peer in config.peers.keys.sorted() {
-            let packet = try await call(["op": .string("relay-export"), "peer": .string(peer)])
-            let encoder = JSONEncoder(); encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
-            let data = try encoder.encode(packet)
-            let digest = Data(SHA256.hash(data: data)).relayHex
-            let period = Int(Date().timeIntervalSince1970 / 3600)
-            let signature = digest + ":" + String(period)
-            guard sent[peer] != signature else { continue }
-            guard generation == epoch, active else { return }
-            if data.count <= 128 * 1024 {
-              let id = String(Data(SHA256.hash(data: Data((peer + signature).utf8))).relayHex.prefix(32))
-              _ = try await connection.message(to: peer, data: data, offline: true, id: id)
-            } else { try await sendFile(data, peer: peer, identity: identity, files: fileClient) }
-            sent[peer] = signature
+          if hasManagedGroup {
+            let devices = try await connection.peers()
+            guard active, generation == epoch, !Task.isCancelled else { return }
+            setGroupOnline(Set(devices.filter { $0.app == "passwordvault" && $0.group == config.group }.map(\.device)).union([config.device]))
           }
-          for event in try await fileClient.inbox() {
-            guard let id = event["id"] as? String, let from = event["from"] as? String,
-                  config.peers[from] != nil, let size = event["size"] as? NSNumber,
-                  size.int64Value <= 768 * 1024 * 1024 else { throw RelayError.invalid("file sender or size") }
-            let cipher = directory.appendingPathComponent(UUID().uuidString + ".download")
-            let inner = directory.appendingPathComponent(UUID().uuidString + ".sealed")
-            defer { try? FileManager.default.removeItem(at: cipher); try? FileManager.default.removeItem(at: inner) }
-            try await fileClient.download(id: id, ciphertext: cipher)
-            let metadata = try RelayFileCrypto.decrypt(identity: identity, from: from, descriptor: event.object, ciphertext: cipher, destination: inner)
-            guard let key = metadata["key"] as? String, metadata["format"] as? String == "passwordvault.sync.v1" else { throw RelayError.invalid("file format") }
-            let bytes = try AES.GCM.open(AES.GCM.SealedBox(combined: Data(contentsOf: inner)), using: SymmetricKey(data: Data(relayHex: key)))
-            try await receive(bytes, from: from, epoch: epoch)
-            try await fileClient.acknowledge(id: id)
+          if !config.paused && !config.peers.isEmpty {
+            try await updateSummary()
+            for peer in config.peers.keys.sorted() {
+              let packet = try await call(["op": .string("relay-export"), "peer": .string(peer)])
+              let encoder = JSONEncoder(); encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
+              let data = try encoder.encode(packet)
+              let digest = Data(SHA256.hash(data: data)).relayHex
+              let period = Int(Date().timeIntervalSince1970 / 3600)
+              let signature = digest + ":" + String(period)
+              guard sent[peer] != signature else { continue }
+              guard generation == epoch, active else { return }
+              if data.count <= 128 * 1024 {
+                let id = String(Data(SHA256.hash(data: Data((peer + signature).utf8))).relayHex.prefix(32))
+                _ = try await connection.message(to: peer, data: data, offline: true, id: id)
+              } else { try await sendFile(data, peer: peer, identity: identity, files: fileClient) }
+              sent[peer] = signature
+            }
+            for event in try await fileClient.inbox() {
+              guard let id = event["id"] as? String, let from = event["from"] as? String,
+                    config.peers[from] != nil, let size = event["size"] as? NSNumber,
+                    size.int64Value <= 768 * 1024 * 1024 else { throw RelayError.invalid("file sender or size") }
+              let cipher = directory.appendingPathComponent(UUID().uuidString + ".download")
+              let inner = directory.appendingPathComponent(UUID().uuidString + ".sealed")
+              defer { try? FileManager.default.removeItem(at: cipher); try? FileManager.default.removeItem(at: inner) }
+              try await fileClient.download(id: id, ciphertext: cipher)
+              let metadata = try RelayFileCrypto.decrypt(identity: identity, from: from, descriptor: event.object, ciphertext: cipher, destination: inner)
+              guard let key = metadata["key"] as? String, metadata["format"] as? String == "passwordvault.sync.v1" else { throw RelayError.invalid("file format") }
+              let bytes = try AES.GCM.open(AES.GCM.SealedBox(combined: Data(contentsOf: inner)), using: SymmetricKey(data: Data(relayHex: key)))
+              try await receive(bytes, from: from, epoch: epoch)
+              try await fileClient.acknowledge(id: id)
+            }
           }
           try await Task.sleep(nanoseconds: 5_000_000_000)
         }
+        if generation == epoch { setGroupOnline([]) }
         reader?.cancel(); await connection.close(); await fileClient.close()
       } catch {
-        if generation == epoch && active { status = "等待重连 / Waiting to reconnect"; failure = "同步尚未完成，改动保留在本机 / Sync incomplete; local changes retained" }
+        if generation == epoch && active {
+          setGroupOnline([]); status = "等待重连 / Waiting to reconnect"
+          transportFailure = "同步尚未完成，改动保留在本机 / Sync incomplete; local changes retained"
+          if failure == nil { failure = transportFailure }
+        }
         if generation == epoch { reader?.cancel() }
         await ownedClient?.close(); await ownedFiles?.close()
       }
@@ -308,6 +326,14 @@ final class VaultRelay: ObservableObject {
 // Device-group access never grants vault read/write authority. Vault pairing below
 // remains a separate, explicit confirmation between the Mac and a replica.
 extension VaultRelay {
+  private var connectedStatus: String {
+    if config.peers.isEmpty { return "中继已连接，密码库尚未授权 / Relay connected; vault not authorized" }
+    if config.paused { return "中继已连接，密码库同步已暂停 / Relay connected; vault sync paused" }
+    return "已连接 / Connected"
+  }
+  private func setGroupOnline(_ ids: Set<String>) {
+    groupMembers = groupMembers.map { GroupMember(id: $0.id, name: $0.name, manager: $0.manager, online: ids.contains($0.id)) }
+  }
   struct GroupMember: Identifiable {
     let id: String
     let name: String
@@ -395,7 +421,7 @@ extension VaultRelay {
   private func groupAction(_ body: (RelayGroups) async throws -> Void) async {
     guard !groupBusy, active else { return }
     groupBusy = true; failure = nil; stop()
-    defer { groupBusy = false }
+    defer { groupBusy = false; restart() }
     do {
       let g = try groups()
       do { try await body(g) }
@@ -404,7 +430,6 @@ extension VaultRelay {
         try saveGroup(g)
         throw error
       }
-      restart()
     } catch {
       groupFresh = false; groupMembers = []
       let message = String(describing: error)
