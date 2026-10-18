@@ -9,7 +9,7 @@ final class MobileVaultStore: ObservableObject {
   private var volatileRecovery: JSONValue?
   var pendingDraft: VaultItem?
   var systemFileFlow = false
-  @Published var unlocked = false
+  @Published var unlocked = false { didSet { relay.setUnlocked(unlocked) } }
   @Published var exists = false
   @Published var legacyAvailable = false
   private var legacySource: URL {
@@ -24,6 +24,10 @@ final class MobileVaultStore: ObservableObject {
   @Published var error: String?
   @Published var notice: String?
   @Published var language = UserDefaults.standard.string(forKey: "language") ?? "zh"
+  lazy var relay = VaultRelay(directory: directory, role: "mobile", call: { [weak self] request in
+    guard let self else { throw VaultError.Locked }
+    return try await self.perform(request)
+  }, refresh: { [weak self] in try? await self?.refresh() })
   let directory: URL
   private var core: MobileCore?
   private var epoch = 0
@@ -297,6 +301,7 @@ final class MobileVaultStore: ObservableObject {
   }
   func perform(_ request: [String: JSONValue]) async throws -> JSONValue {
     guard unlocked, let core else { throw VaultError.Locked }
+    if pendingDraft != nil, ["relay-init", "relay-receive"].contains(request["op"]?.string ?? "") { throw VaultError.InUse }
     let generation = epoch
     let value = try await core.call(request)
     guard generation == epoch, unlocked else { throw VaultError.Locked }

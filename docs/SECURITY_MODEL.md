@@ -62,3 +62,7 @@ Browser 2.2.9 / Mac 2.0.12 adds separately declared scopes to the protected nati
 A cold-start unlock requires a helper launched by the signed desktop executable plus the AppStore's pending single-use nonce. The helper sends no root material on stdout; the signed-peer socket carries it to the pending app instance only. Browser-origin requests, stale/replayed challenges, revoked grants and lock races fail closed. A missing grant leaves normal password entry usable. Window reopening and status polling cannot repeat startup unlock.
 
 The startup option is persistent: a later full app restart may unlock again even after an earlier manual lock. It does not promise a new OS authentication ceremony; a login Keychain can remain unlocked across screen locking. Disable startup unlock or revoke the authorization to require password entry on later launches. The newest opted-in plugin is the startup source; disabling that source leaves other read/save grants intact. Root-bearing grants remain sensitive native secrets; these scope restrictions do not protect against a compromised OS/helper. [Full behavior and scoped evidence](BROWSER-AUTHORIZATION.md).
+
+## Personal relay boundary
+
+Opt-in synchronization upgrades the local document to format 4 after an encrypted snapshot. Pairing pins device keys, the Mac explicitly authorizes a single-use invitation, and business commits precede ACK. Server tokens are not vault keys. Metadata, static-key forward-secrecy limits and separate release/security gates remain. See [personal relay](PERSONAL-RELAY.md).

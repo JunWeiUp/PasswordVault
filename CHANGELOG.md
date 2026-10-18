@@ -253,3 +253,7 @@ Existing security release blockers remain open.
 ## Private development history
 
 The existing `v1.0.0`–`v1.0.4` tags were private development snapshots. They included vault management, TOTP, browser autofill, WebDAV backup, local sharing, trash, and password history. They were not independently audited production releases. Do not install old APKs as a supported release.
+
+## Unreleased — personal relay
+
+Added opt-in native Mac authority / Android and iOS replica synchronization using pinned common-relay SDKs, offline pending operations, explicit pairing and conflict handling. Android minimum is API 26. Browser transport is unchanged; its background writes participate in the native replication journal.

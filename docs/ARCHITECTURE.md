@@ -88,3 +88,7 @@ Confirmed captures stay in the AES-GCM IndexedDB queue until the native durable 
 Browser 2.2.9 / Mac 2.0.12 adds explicit read/startup scope flags to the helper-owned Keychain envelope; raw legacy grants decode as save-only. A separate Keychain index points to the most recently enabled startup owner. Matches/fill use a narrow native API that restores a previously locked core after each call, while the existing append path and durable receipts are unchanged.
 
 At cold start, AppStore creates an in-memory, single-use nonce and invokes the helper's desktop-only mode. The helper verifies the parent's desktop code signature and returns the grant only over the signed-peer socket. Browser-mode requests cannot enter that operation. AppStore consumes the nonce once; lock clears it and increments the existing lifecycle epoch. Reopening a window or status polling never starts a second attempt. See [authorization protocol and evidence](BROWSER-AUTHORIZATION.md).
+
+## Personal relay replication
+
+The native core owns a transactional encrypted replication journal. Mac commits revisions; Swift/Java common-relay adapters transport authenticated messages and encrypted files. See [protocol and lifecycle](PERSONAL-RELAY.md).

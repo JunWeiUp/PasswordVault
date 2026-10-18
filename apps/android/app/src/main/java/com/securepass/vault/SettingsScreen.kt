@@ -23,6 +23,7 @@ fun SettingsScreen(
     language: () -> Unit,
     trash: () -> Unit,
     webdav: () -> Unit,
+    relay: () -> Unit,
 ) {
     val context = LocalContext.current
     val biometric = remember { BiometricVault(context as androidx.fragment.app.FragmentActivity) }
@@ -360,6 +361,7 @@ fun SettingsScreen(
                 }
             }
             message?.let { Text(it) }
+            OutlinedButton(onClick = relay) { Text(t("中继同步", "Relay sync")) }
             OutlinedButton(onClick = webdav) { Text("WebDAV") }
             OutlinedButton(onClick = trash) { Text(t("回收站", "Trash")) }
             HorizontalDivider()

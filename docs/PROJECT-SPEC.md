@@ -8,7 +8,7 @@ The product aims to keep related credentials together, make search and everyday 
 
 ## Native migration scope
 
-The approved target is SwiftUI on Mac/iOS, Kotlin/Compose on Android, and a lightweight standalone Web/Chromium client with a shared Rust core. Mac and extension come first. macOS 13+ (arm64/x86_64), iOS 16+, and Android 7+ are targets; only the Mac and browser source increment exists today. Mac defaults to Simplified Chinese and supports English. Mac personal notes support rich text, images and encrypted file attachments; mobile/Web protect the new format as read-only summaries. Shared notes retain text compatibility. See [rich notes](RICH-NOTES.md). The selected design is [Native Notes](design/macos-native/README.md).
+The approved target is SwiftUI on Mac/iOS, Kotlin/Compose on Android, and a lightweight standalone Web/Chromium client with a shared Rust core. Mac and extension come first. macOS 13+ (arm64/x86_64), iOS 16+, and Android 8+ are targets; only the Mac and browser source increment exists today. Mac defaults to Simplified Chinese and supports English. Mac personal notes support rich text, images and encrypted file attachments; mobile/Web protect the new format as read-only summaries. Shared notes retain text compatibility. See [rich notes](RICH-NOTES.md). The selected design is [Native Notes](design/macos-native/README.md).
 
 Current Android source removes shared-vault management, invitations and LAN synchronization. Existing records and encrypted backup metadata remain readable, with historical read-only permissions retained. App switches preserve the main session until idle expiry; screen/manual locking and process-restart authentication remain in place. See [mobile implementation](MOBILE-IMPLEMENTATION.md).
 
@@ -57,3 +57,7 @@ HOTP, other TOTP algorithms/digit lengths, and Google Authenticator migration QR
 Changes should preserve existing vault data and identifiers, describe failures accurately, and support the relevant empty, loading, error, and recovery states. Use synthetic fixtures for screenshots, imports, backups, and tests. Security-sensitive changes require migration and failure-path evidence.
 
 Use [TODO.md](../TODO.md) for priorities and progress, [CHANGELOG.md](../CHANGELOG.md) for completed changes, [DESIGN.md](../DESIGN.md) for presentation, and [ARCHITECTURE.md](ARCHITECTURE.md) for implementation boundaries. Installation instructions remain in [GETTING_STARTED.md](GETTING_STARTED.md).
+
+## Personal relay synchronization
+
+Mac is the personal-vault authority; Android/iOS retain editable offline replicas and synchronize through common-relay. The browser bridge is unchanged. See [personal relay scope and behavior](PERSONAL-RELAY.md).

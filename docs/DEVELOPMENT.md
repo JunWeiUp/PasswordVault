@@ -75,3 +75,7 @@ After running the native core/macOS/browser checks, run the Debug Swift scheme w
 ## Rich-note regression gates
 
 Run `bash tool/check_native.sh core|macos|browser` separately and the documented Debug Swift test command. `RichNoteTests` must run inside the full native window for Return/focus checks. Rebuild the editor resources before testing. Use only disposable fixtures. See [data/backup cases and remaining hardware gates](RICH-NOTES.md).
+
+## Personal relay checks
+
+Run native core and browser checks, Mac PersonalRelayTests, and Android PersonalRelayTest on an isolated emulator. The optional Mac WSS test requires explicit isolated credentials via TEST_RUNNER_PV_RELAY_QA_CONFIG; it skips without them. Do not pass production user identities.

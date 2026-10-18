@@ -166,3 +166,7 @@ The popup offers **添加账号密码** above saved accounts when no capture is 
 ## Mac rich personal notes
 
 Personal notes open directly in the local Tiptap editor. The title and body share the outer page scrollbar; formatting, insert, find and contextual tools operate without replacing selection/history. Preview is read-only. Images/files import through the encrypted native core; Save as and lossy Markdown export are explicit. Mobile/Web show protected summaries. See [complete behavior](RICH-NOTES.md).
+
+## Relay settings
+
+Mac Settings has a Relay sync page; iOS Settings links to the shared SwiftUI panel; Android Settings opens RelaySettingsScreen. Registration, public-key pairing, pause/retry, status and pending operations are shown; Mac additionally resolves conflicts.

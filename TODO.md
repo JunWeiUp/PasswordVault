@@ -80,3 +80,7 @@ The following items remain open for affected legacy clients or project-wide revi
 
 - [x] Adopt the root documentation and `docs/` guide structure defined in [AGENTS.md](AGENTS.md).
 - [ ] Update these priorities and the relevant design, architecture, page, or deployment guide whenever behavior changes.
+
+## Personal relay delivery
+
+Implementation and validation details are tracked in [personal relay validation](docs/PERSONAL-RELAY-VALIDATION.md). Keep real vault installation, public releases and signed iOS hardware acceptance separate.
