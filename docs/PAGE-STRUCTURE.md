@@ -174,3 +174,5 @@ Mac Settings has a Relay sync page; iOS Settings links to the shared SwiftUI pan
 New device invitations default to **Join automatically after scanning**. Managers can disable it before generating a manual code-approval invitation. An active invitation must be cancelled before changing modes; mobile scanning submits immediately. Automatic admission grants ordinary membership only; vault authorization stays separate.
 
 Enrolled devices show relay connection status even before vault authorization. The roster refreshes presence every five seconds. “Relay connected; vault not authorized” and “Relay connected; vault sync paused” distinguish connectivity from data access; locking the vault disconnects presence.
+
+The native Mac relay member list exposes a **View and sync changes** switch per remote device. Pending acknowledgements remain visible while the device is offline or locked. Legacy manual vault pairing is collapsed. Phones direct users to this Mac switch; disabling it preserves downloaded data.

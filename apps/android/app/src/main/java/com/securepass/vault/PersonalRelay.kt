@@ -97,7 +97,7 @@ internal class PersonalRelay(private val directory: File, private val vault: Vau
         vault.command("relay-credentials-write", JSONObject().put("data", value.toString()))
     }
     private fun crypto(value: JSONObject): Crypto {
-        val peers = value.getJSONObject("peers")
+        val peers = value.optJSONObject("groups")?.optJSONObject("trusted_peers") ?: value.getJSONObject("peers")
         return Crypto("passwordvault", value.getString("group"), value.getString("device"),
             value.getString("secret"), peers.keys().asSequence().associateWith { peers.getString(it) })
     }
@@ -160,6 +160,7 @@ internal class PersonalRelay(private val directory: File, private val vault: Vau
     fun pause(paused: Boolean) = action { it.put("paused", paused) }
     fun unpair() = action { c ->
         val hub = c.getString("hub")
+        c.put("access_enabled", false)
         vault.command("relay-revoke", JSONObject().put("peer", hub)); c.put("peers", JSONObject()).put("paused", true)
         mutable.value = mutable.value.copy(reply = "", code = "")
     }
@@ -195,7 +196,7 @@ internal class PersonalRelay(private val directory: File, private val vault: Vau
                 refreshGroupForConnection(c, generation)
                 currentCoroutineContext().ensureActive()
                 if (journal == null) journal = RelayJournal(File(storage, "journal").toPath())
-                val crypto = crypto(c); val hub = c.getString("hub")
+                val crypto = crypto(c)
                 val events = Channel<JSONObject>(64); val ready = CompletableDeferred<Unit>()
                 connection = RelayClient(http, crypto, object: RelayClient.Listener {
                     override fun onReady() { ready.complete(Unit) }
@@ -220,9 +221,16 @@ internal class PersonalRelay(private val directory: File, private val vault: Vau
                         if (result.isClosed) throw IllegalStateException("Disconnected")
                         val event = result.getOrNull() ?: break
                         if (event.optString("type") == "message") {
-                            if (!canSync) continue
-                            require(event.getString("from") == hub)
-                            receive(Base64.getDecoder().decode(event.getString("data")), hub, generation)
+                            val data = Base64.getDecoder().decode(event.getString("data"))
+                            val from = event.getString("from")
+                            if (receiveAuthorization(c, JSONObject(String(data)), from, generation)) {
+                                val reply = JSONObject(String(data)).put("kind", "ack").put("to", from)
+                                connection.message(from, reply.toString().toByteArray(), false, UUID.randomUUID().toString().replace("-", "")).get(45, TimeUnit.SECONDS)
+                            } else {
+                                if (JSONObject(String(data)).optString("format") == "passwordvault.access.v1") continue
+                                if (c.optBoolean("paused", true) || !c.getJSONObject("peers").has(from) || from != c.getString("hub")) continue
+                                receive(data, from, generation)
+                            }
                             connection.acknowledge(event).get(45, TimeUnit.SECONDS)
                         } else if (event.optString("type") == "group.changed" && event.optInt("revision") >
                             (c.optJSONObject("groups")?.optJSONObject("group_entry")?.let { RelayGroups.unpack(it).optInt("revision") } ?: 0)) throw IllegalStateException("Membership changed")
@@ -236,7 +244,8 @@ internal class PersonalRelay(private val directory: File, private val vault: Vau
                             .map { it.getString("device") }.toSet() + c.getString("device")
                         mutable.value = mutable.value.copy(members = mutable.value.members.map { it.copy(online = it.id in online) })
                     }
-                    if (canSync) {
+                    val hub = c.getString("hub")
+                    if (!c.optBoolean("paused", true) && c.getJSONObject("peers").has(hub)) {
                         val summary = vault.command("relay-status")
                         mutable.value = mutable.value.copy(pending = summary.optInt("pending"))
                         val packet = vault.command("relay-export", JSONObject().put("peer", hub)).toString().toByteArray()
@@ -300,9 +309,10 @@ internal class PersonalRelay(private val directory: File, private val vault: Vau
         val g = c.optJSONObject("groups") ?: JSONObject().put("app", "passwordvault")
             .put("device", c.getString("device")).put("secret_key", c.getString("secret"))
             .put("url", "wss://eglish.top/relay/v1/ws")
+        pinVaultAuthority(c, g)
         return RelayGroups(g, false)
     }
-    private suspend fun saveGroup(c: JSONObject, g: RelayGroups) { c.put("groups", g.config); save(c) }
+    private suspend fun saveGroup(c: JSONObject, g: RelayGroups) { pinVaultAuthority(c, g.config); c.put("groups", g.config); save(c) }
     private suspend fun applyGroup(c: JSONObject, g: RelayGroups, online: org.json.JSONArray = org.json.JSONArray()) {
         saveGroup(c, g)
         check(unlocked)
@@ -420,6 +430,7 @@ internal class PersonalRelay(private val directory: File, private val vault: Vau
         val old = vault.command("relay-status")
         if (old.optBoolean("enabled")) vault.command("relay-detach", JSONObject().put("group", old.getString("group")).put("device", old.getString("device")))
         val previous = JSONObject(c.toString())
+        c.remove("access_revision"); c.remove("access_enabled")
         c.remove("groups"); c.put("group", "").put("token", "").put("hub", "").put("peers", JSONObject())
             .put("paused", true).put("device", UUID.randomUUID().toString())
         try { save(c) } catch (error: Exception) {
@@ -441,14 +452,63 @@ internal class PersonalRelay(private val directory: File, private val vault: Vau
                 val g = groups(c); val result = g.refresh()
                 currentCoroutineContext().ensureActive(); check(unlocked && generation == epoch)
                 applyGroup(c, g, result.getJSONArray("online")); publish()
-                snapshot.put("peers", JSONObject(c.getJSONObject("peers").toString()))
-                snapshot.put("groups", JSONObject(c.getJSONObject("groups").toString()))
+                snapshot.keys().asSequence().toList().forEach { snapshot.remove(it) }
+                val fresh = JSONObject(c.toString())
+                fresh.keys().forEach { snapshot.put(it, fresh.get(it)) }
             } catch (error: Exception) {
                 mutable.value = mutable.value.copy(groupFresh = false, members = emptyList())
                 if (error.message.orEmpty().contains("(401)")) invalidateGroup(c)
                 throw error
             } finally { mutable.value = mutable.value.copy(busy = false) }
         }
+    }
+
+    private fun pinVaultAuthority(c: JSONObject, g: JSONObject) {
+        if (g.has("vault_authority")) return
+        val entry = g.optJSONObject("group_entry") ?: return
+        val members = RelayGroups.unpack(entry).getJSONArray("members")
+        val managers = (0 until members.length()).map { members.getJSONObject(it) }.filter { it.optBoolean("manager") }
+        if (managers.size == 1 && managers[0].getString("device") != c.getString("device")) g.put("vault_authority", managers[0])
+    }
+    // Only the authority pinned from the verified enrollment may offer access.
+    // Ordinary group membership never permits a peer to request vault contents.
+    internal suspend fun receiveAuthorization(c: JSONObject, p: JSONObject, from: String, generation: Int): Boolean {
+        if (p.optString("format") != "passwordvault.access.v1") return false
+        val g = c.optJSONObject("groups") ?: return false
+        val authority = g.optJSONObject("vault_authority") ?: return false
+        val key = g.optJSONObject("trusted_peers")?.optString(from).orEmpty()
+        if (!unlocked || generation != epoch || g.optBoolean("access_invalid") || key.isEmpty() ||
+            p.optString("kind") != "set" || p.optString("group") != c.getString("group") ||
+            p.optString("to") != c.getString("device") || p.optString("permission") != "read-write" ||
+            authority.optString("device") != from || authority.optString("public_key") != key ||
+            (c.optString("hub").isNotEmpty() && c.getString("hub") != from)) return false
+        val revision = p.optLong("revision")
+        if (revision <= 0 || revision < c.optLong("access_revision") || p.opt("enabled") !is Boolean) return false
+        val enabled = p.getBoolean("enabled")
+        if (revision == c.optLong("access_revision")) return enabled == c.optBoolean("access_enabled")
+        val previous = JSONObject(c.toString())
+        val current = vault.command("relay-status")
+        if (current.optBoolean("enabled")) require(current.getString("hub") == from && current.getString("group") == c.getString("group"))
+        else vault.command("relay-init", JSONObject().put("role", "mobile").put("device", c.getString("device")).put("group", c.getString("group")).put("hub", from))
+        check(unlocked && generation == epoch)
+        val peers = c.getJSONObject("peers")
+        if (enabled) {
+            vault.command("relay-trust", JSONObject().put("peer", from))
+            peers.put(from, key); c.put("paused", false)
+        } else {
+            peers.remove(from)
+            vault.command("relay-revoke", JSONObject().put("peer", from))
+        }
+        c.put("hub", from).put("access_revision", revision).put("access_enabled", enabled)
+        try { save(c) } catch (error: Exception) {
+            c.keys().asSequence().toList().forEach { c.remove(it) }
+            previous.keys().forEach { c.put(it, previous.get(it)) }
+            throw error
+        }
+        check(unlocked && generation == epoch)
+        config = JSONObject(c.toString()); publish()
+        mutable.value = mutable.value.copy(status = if (enabled) "已授权查看并同步修改 / Authorized to view and sync changes" else "密码库授权已关闭 / Vault access revoked")
+        return true
     }
 
     companion object {

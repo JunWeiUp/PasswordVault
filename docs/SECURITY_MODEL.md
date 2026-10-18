@@ -70,3 +70,7 @@ Opt-in synchronization upgrades the local document to format 4 after an encrypte
 ## Native local relay credentials
 
 Relay credentials are encrypted by the unlocked vault core in a separate local file using AES-256-GCM, a purpose-separated vault-root subkey and vault-ID authenticated data. The master password protects the root through the existing vault header/KDF; it is not serialized into the credential file. Locked core commands cannot read or write this metadata. Credential files are not document export or replication content. Migration from legacy Keychain/Keystore storage validates a durable encrypted readback before attempting legacy cleanup; denied or corrupt storage cannot silently regenerate a device identity. This storage change is not an independent audit or a guarantee against a compromised unlocked app/OS.
+
+### Relay device-list authorization
+
+Mac's per-device read/write switch grants vault access through an encrypted, recipient-bound grant/ack exchange. Mobile enrollment pins the sole verified manager as the authority allowed to offer access; ambiguous manager configurations retain manual pairing. Ordinary group members cannot request vault contents. Persisted revisions reject stale grants, recipient key changes invalidate grants, and local revocation blocks subsequent Mac exchanges before network delivery. This policy delegates acceptance of vault offers to the pinned enrollment manager; it does not cryptographically retract existing downloaded copies. See [relay protocol](PERSONAL-RELAY.md#device-list-authorization-protocol).

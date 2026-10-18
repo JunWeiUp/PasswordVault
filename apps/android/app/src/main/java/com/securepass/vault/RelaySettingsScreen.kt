@@ -29,6 +29,7 @@ internal fun RelaySettingsScreen(vault: VaultRepository, t: (String,String)->Str
     var endpoint by remember(state.endpoint) { mutableStateOf(state.endpoint) }
     var invitation by remember { mutableStateOf("") }
     var scanning by remember { mutableStateOf(false) }
+    var pairingExpanded by remember { mutableStateOf(false) }
     var legacyExpanded by remember { mutableStateOf(false) }
     var showReply by remember(state.reply) { mutableStateOf(false) }
     fun localized(text: String): String { val parts = text.split(" / ", limit = 2); return if (parts.size == 2) t(parts[0], parts[1]) else text }
@@ -80,7 +81,9 @@ internal fun RelaySettingsScreen(vault: VaultRepository, t: (String,String)->Str
         }
         HorizontalDivider()
         if (state.legacy || (state.managed && !state.invalid)) {
-        Text(t("密码库同步授权", "Authorize vault sync"), style = MaterialTheme.typography.titleMedium)
+        if (state.managed) Text(t("在 Mac 的“我的设备”中开启本机的“查看并同步修改”，保持两端解锁即可完成授权。", "Enable View and sync changes for this device in My devices on Mac. Keep both vaults unlocked to finish authorization."))
+        TextButton(onClick = { pairingExpanded = !pairingExpanded }) { Text(t("兼容旧版密码库配对", "Legacy vault pairing")) }
+        if (pairingExpanded) {
         OutlinedButton(onClick = { scanning = true }) { Text(t("扫描 Mac 配对码", "Scan Mac invitation")) }
         OutlinedTextField(invitation, { invitation = it }, label = { Text(t("或粘贴邀请内容", "Or paste invitation")) }, modifier = Modifier.fillMaxWidth(), maxLines = 5)
         Button(onClick = { relay.pair(invitation); invitation = "" }, enabled = !state.busy && invitation.isNotEmpty()) { Text(t("读取邀请", "Read invitation")) }
@@ -96,6 +99,7 @@ internal fun RelaySettingsScreen(vault: VaultRepository, t: (String,String)->Str
             Image(image, contentDescription = t("配对回执", "Pairing reply"), modifier = Modifier.size(220.dp))
             TextButton(onClick = { showReply = !showReply }) { Text(t("查看配对回执（可复制）", "Show pairing reply")) }
             if (showReply) SelectionContainer { Text(state.reply, style = MaterialTheme.typography.bodySmall) }
+        }
         }
         if (state.paired) OutlinedButton(onClick = { relay.unpair() }) { Text(t("解除绑定", "Unpair")) }
         }

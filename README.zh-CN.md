@@ -159,4 +159,4 @@ Mac 应用生成于 `apps/macos/build/Build/Products/Release/PasswordVault.app`�
 
 ## 个人库中继同步
 
-Mac 作为主库，通过统一中继与 Android 8+、iOS 双向同步；浏览器插件沿用本机桥接。支持创建设备组、默认扫码自动加入、可选配对码审批及成员管理；密码库同步仍由 Mac 单独授权。配置、配对、冲突与恢复见[中继同步说明](docs/PERSONAL-RELAY.md)，实际验证范围见[验证记录](docs/PERSONAL-RELAY-VALIDATION.md)。当前为本地开发功能。
+Mac 作为主库，通过统一中继与 Android 8+、iOS 双向同步；浏览器插件沿用本机桥接。支持创建设备组、默认扫码自动加入、可选配对码审批及成员管理；在 Mac“我的设备”中开启对应设备的“查看并同步修改”即可授权密码库同步。配置、配对、冲突与恢复见[中继同步说明](docs/PERSONAL-RELAY.md)，实际验证范围见[验证记录](docs/PERSONAL-RELAY-VALIDATION.md)。当前为本地开发功能。

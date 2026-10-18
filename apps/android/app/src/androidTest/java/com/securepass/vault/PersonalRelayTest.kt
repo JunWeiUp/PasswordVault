@@ -15,6 +15,41 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class PersonalRelayTest {
+    @Test fun deviceAccessGrantRejectsWrongAuthorityScopeAndReplay() = runBlocking {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val directory = File(context.cacheDir, "access-fixture-${UUID.randomUUID()}")
+        val vault = VaultRepository(context, directory)
+        try {
+            withTimeout(20_000) { while (!vault.state.value.ready) delay(100) }
+            vault.authenticate("fixture", true)
+            withTimeout(20_000) { while (vault.relay.state.value.device.isEmpty()) delay(100) }
+            val c = JSONObject(vault.command("relay-credentials-read").getString("data"))
+            val key = io.github.junweiup.commonrelay.Crypto.hex(io.github.junweiup.commonrelay.Crypto.random(32))
+            c.put("group", "access-test").put("groups", JSONObject()
+                .put("trusted_peers", JSONObject().put("hub", key).put("ordinary", key))
+                .put("vault_authority", JSONObject().put("device", "hub").put("public_key", key)))
+            val field = PersonalRelay::class.java.getDeclaredField("epoch").apply { isAccessible = true }
+            val generation = field.getInt(vault.relay)
+            fun message(revision: Int, enabled: Boolean) = JSONObject().put("format", "passwordvault.access.v1")
+                .put("kind", "set").put("permission", "read-write").put("group", "access-test")
+                .put("to", c.getString("device")).put("revision", revision).put("enabled", enabled)
+            assertFalse(vault.relay.receiveAuthorization(c, message(1, true), "ordinary", generation))
+            assertFalse(vault.relay.receiveAuthorization(c, message(1, true).put("to", "other"), "hub", generation))
+            assertFalse(vault.relay.receiveAuthorization(c, message(1, true).put("group", "other"), "hub", generation))
+            assertFalse(vault.command("relay-status").optBoolean("enabled"))
+            assertTrue(vault.relay.receiveAuthorization(c, message(1, true), "hub", generation))
+            assertTrue(c.getJSONObject("peers").has("hub"))
+            assertTrue(vault.relay.receiveAuthorization(c, message(2, false), "hub", generation))
+            assertFalse(c.getJSONObject("peers").has("hub"))
+            assertFalse(vault.relay.receiveAuthorization(c, message(1, true), "hub", generation))
+            assertFalse(vault.relay.receiveAuthorization(c, message(2, true), "hub", generation))
+            val persisted = JSONObject(vault.command("relay-credentials-read").getString("data"))
+            assertEquals(2, persisted.getInt("access_revision")); assertFalse(persisted.getBoolean("access_enabled"))
+            assertTrue(vault.relay.receiveAuthorization(c, message(3, true), "hub", generation))
+            vault.relay.setUnlocked(false)
+            assertFalse(vault.relay.receiveAuthorization(c, message(4, true), "hub", generation))
+        } finally { vault.close(); directory.deleteRecursively() }
+    }
     @Test fun productionWSSInterop() = runBlocking {
         val args=InstrumentationRegistry.getArguments()
         val path=args.getString("relayConfigPath")
