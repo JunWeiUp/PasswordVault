@@ -14,7 +14,7 @@
 
 Native clients are in **developer preview**. [Platform availability](#choose-your-workspace) and the [security model](docs/SECURITY_MODEL.md) describe current limits; an independent security review is still pending.
 
-**Download native 2.2.11:** [GitHub Release](https://github.com/JunWeiUp/PasswordVault/releases/tag/v2.2.11) · [Installation and signing limits](docs/NATIVE-RELEASE-NOTES.md). Includes Android, Mac development build, unpacked extension, Web, iOS Simulator and source.
+**Download native 2.3.2:** [GitHub Release](https://github.com/JunWeiUp/PasswordVault/releases/tag/v2.3.2) · [Installation and signing limits](docs/NATIVE-RELEASE-NOTES.md). Includes Android, Mac development build, unpacked extension, Web, iOS Simulator and source.
 
 ## Less searching. More doing.
 
@@ -86,7 +86,7 @@ Standalone Web is also available with a smaller feature set. Windows and Linux h
 | **Standalone Web** | Independent encrypted vault, CRUD, TOTP, backup/import and utilities | Sharing/WebDAV/QR UI, full theme/language parity and automatic legacy OPFS migration remain incomplete |
 | **Windows / Linux desktop** | No native desktop client | Not implemented |
 
-The coordinated release is **2.2.11**: Mac build **20**, browser **2.2.11**, Android build **22006**, and iOS build **8**. This update adds browser offline saving, authorized account access and optional Mac startup unlock. Local test results do not imply app-store availability or production security acceptance. See [native migration](docs/NATIVE-MIGRATION.md) and [mobile artifacts](docs/MOBILE-IMPLEMENTATION.md#current-preview-artifacts).
+The coordinated release is **2.3.2**: Mac build **32**, browser **2.3.2**, Android build **23007**, and iOS build **14**. This update adds encrypted personal relay sync, device-list access controls and bulk conflict handling with mobile reminders. Android requires 8.0+. Passing checks does not imply app-store availability or production security acceptance. See [installation](docs/NATIVE-RELEASE-NOTES.md) and [relay setup](docs/PERSONAL-RELAY.md).
 
 </details>
 
@@ -159,4 +159,4 @@ The retained `lib/`, `android/`, `ios/`, `web/` and `chrome/` clients have separ
 
 ## Personal vault relay sync
 
-Mac coordinates encrypted bidirectional sync with Android 8+ and iOS. Browser extensions retain local native synchronization. Create/join signed device groups with automatic admission by default or optional code approval, manage members, then enable **View and sync changes** beside each device on Mac. Setup, pairing, conflicts and recovery: [personal relay sync](docs/PERSONAL-RELAY.md). Local development feature; see [validation](docs/PERSONAL-RELAY-VALIDATION.md).
+Mac coordinates encrypted bidirectional sync with Android 8+ and iOS. Browser extensions retain local native synchronization. Create/join signed device groups with automatic admission by default or optional code approval, manage members, then enable **View and sync changes** beside each device on Mac. Setup, pairing, conflicts and recovery: [personal relay sync](docs/PERSONAL-RELAY.md). See the tested scope in [validation](docs/PERSONAL-RELAY-VALIDATION.md).
