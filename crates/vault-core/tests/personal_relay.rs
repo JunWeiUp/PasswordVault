@@ -278,3 +278,185 @@ fn detach_preserves_offline_edits_and_rejects_stale_scope() {
     call(&phone, json!({"op":"unlock","password":"fixture"}));
     assert_eq!(title(&phone), "unsent local edit");
 }
+
+#[test]
+fn batch_conflicts_are_atomic_scoped_and_clear_mobile_reminders() {
+    for choice in ["local", "remote"] {
+        let (_d, mac) = setup("hub", "mac");
+        let (phone_dir, phone) = setup("mobile", "phone");
+        let (_t, tablet) = setup("mobile", "tablet");
+        for id in ["one", "two"] {
+            for (session, title) in [(&mac, "Mac version"), (&phone, "Phone version")] {
+                call(
+                    session,
+                    json!({"op":"save","item":{"id":id,"type":"secureNote","title":title}}),
+                );
+            }
+        }
+        send(&phone, &mac, "phone", "mac");
+        send(&mac, &phone, "mac", "phone");
+        send(&mac, &tablet, "mac", "tablet");
+        assert_eq!(
+            call(&phone, json!({"op":"relay-status"}))["conflictCount"],
+            2
+        );
+        assert_eq!(
+            call(&tablet, json!({"op":"relay-status"}))["conflictCount"],
+            0
+        );
+        assert!(
+            call(&mac, json!({"op":"relay-export","peer":"tablet"}))["conflicts"]
+                .as_array()
+                .unwrap()
+                .is_empty()
+        );
+        call(&phone, json!({"op":"lock"}));
+        drop(phone);
+        let phone = VaultSession::new(phone_dir.path().to_string_lossy().into()).unwrap();
+        call(&phone, json!({"op":"unlock","password":"fixture"}));
+        assert_eq!(
+            call(&phone, json!({"op":"relay-status"}))["conflictCount"],
+            2
+        );
+        let before = call(&mac, json!({"op":"relay-status"}));
+        let ids: Vec<_> = before["conflicts"]
+            .as_object()
+            .unwrap()
+            .keys()
+            .cloned()
+            .collect();
+        for bad in [
+            json!([ids[0], "missing"]),
+            json!([ids[0], ids[0]]),
+            json!([]),
+        ] {
+            assert!(mac
+                .command(
+                    json!({"op":"relay-resolve-batch","choice":choice,"conflicts":bad}).to_string()
+                )
+                .is_err());
+            assert_eq!(call(&mac, json!({"op":"relay-status"})), before);
+        }
+        assert!(phone
+            .command(
+                json!({"op":"relay-resolve-batch","choice":choice,"conflicts":ids}).to_string()
+            )
+            .is_err());
+        assert!(mac
+            .command(
+                json!({"op":"relay-resolve-batch","choice":"invalid","conflicts":ids}).to_string()
+            )
+            .is_err());
+        // A new conflict arriving after the confirmation list was captured stays unresolved.
+        for (s, title) in [(&mac, "Later Mac"), (&phone, "Later phone")] {
+            call(
+                s,
+                json!({"op":"save","item":{"id":"later","type":"secureNote","title":title}}),
+            );
+        }
+        send(&phone, &mac, "phone", "mac");
+        call(
+            &mac,
+            json!({"op":"relay-resolve-batch","choice":choice,"conflicts":ids}),
+        );
+        send(&mac, &phone, "mac", "phone");
+        let status = call(&phone, json!({"op":"relay-status"}));
+        assert_eq!(status["pending"], 1);
+        assert_eq!(status["conflictCount"], 1);
+        let items = call(&phone, json!({"op":"list"}));
+        for id in ["one", "two"] {
+            let item = items["items"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|v| v["id"] == id)
+                .unwrap();
+            assert_eq!(
+                item["title"],
+                if choice == "local" {
+                    "Mac version"
+                } else {
+                    "Phone version"
+                }
+            );
+        }
+        let rest: Vec<_> = call(&mac, json!({"op":"relay-status"}))["conflicts"]
+            .as_object()
+            .unwrap()
+            .keys()
+            .cloned()
+            .collect();
+        call(
+            &mac,
+            json!({"op":"relay-resolve-batch","choice":choice,"conflicts":rest}),
+        );
+        send(&mac, &phone, "mac", "phone");
+        assert_eq!(
+            call(&phone, json!({"op":"relay-status"}))["conflictCount"],
+            0
+        );
+        assert_eq!(call(&phone, json!({"op":"relay-status"}))["pending"], 0);
+    }
+}
+
+#[test]
+fn older_snapshots_and_changed_pending_edits_do_not_show_false_conflicts() {
+    let (_d, mac) = setup("hub", "mac");
+    let (_p, phone) = setup("mobile", "phone");
+    save(&mac, "Mac");
+    save(&phone, "Phone");
+    send(&phone, &mac, "phone", "mac");
+    send(&mac, &phone, "mac", "phone");
+    assert_eq!(
+        call(&phone, json!({"op":"relay-status"}))["conflictCount"],
+        1
+    );
+    save(&phone, "New edit");
+    assert_eq!(
+        call(&phone, json!({"op":"relay-status"}))["conflictCount"],
+        0
+    );
+    let mut old = call(&mac, json!({"op":"relay-export","peer":"phone"}));
+    old.as_object_mut().unwrap().remove("conflicts");
+    call(
+        &phone,
+        json!({"op":"relay-receive","peer":"mac","packet":old}),
+    );
+    assert_eq!(
+        call(&phone, json!({"op":"relay-status"}))["conflictCount"],
+        0
+    );
+}
+
+#[test]
+fn batch_mobile_choice_rejects_ambiguous_multiple_phone_versions() {
+    let (_d, mac) = setup("hub", "mac");
+    let (_p, phone) = setup("mobile", "phone");
+    let (_t, tablet) = setup("mobile", "tablet");
+    save(&mac, "Mac");
+    save(&phone, "Phone");
+    save(&tablet, "Tablet");
+    send(&phone, &mac, "phone", "mac");
+    send(&tablet, &mac, "tablet", "mac");
+    let before = call(&mac, json!({"op":"relay-status"}));
+    let ids: Vec<_> = before["conflicts"]
+        .as_object()
+        .unwrap()
+        .keys()
+        .cloned()
+        .collect();
+    assert_eq!(ids.len(), 2);
+    assert!(mac
+        .command(json!({"op":"relay-resolve-batch","choice":"remote","conflicts":ids}).to_string())
+        .is_err());
+    assert_eq!(call(&mac, json!({"op":"relay-status"})), before);
+    assert_eq!(title(&mac), "Mac");
+    call(
+        &mac,
+        json!({"op":"relay-resolve-batch","choice":"local","conflicts":ids}),
+    );
+    send(&mac, &phone, "mac", "phone");
+    send(&mac, &tablet, "mac", "tablet");
+    assert_eq!(title(&phone), "Mac");
+    assert_eq!(title(&tablet), "Mac");
+}

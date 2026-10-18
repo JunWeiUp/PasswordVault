@@ -36,6 +36,8 @@ struct State {
     canonical: Records,
     revisions: BTreeMap<String, u64>,
     pending: BTreeMap<String, Change>,
+    #[serde(default)]
+    blocked: BTreeSet<String>,
     seen: BTreeMap<String, String>,
     conflicts: BTreeMap<String, Conflict>,
     receipts: BTreeMap<String, BTreeSet<String>>,
@@ -325,6 +327,7 @@ impl DiskVault {
                 canonical: Records::new(),
                 revisions: BTreeMap::new(),
                 pending: BTreeMap::new(),
+                blocked: BTreeSet::new(),
                 seen: BTreeMap::new(),
                 conflicts: BTreeMap::new(),
                 receipts: BTreeMap::new(),
@@ -377,7 +380,7 @@ impl DiskVault {
         if op == "relay-status" {
             let conflicts:BTreeMap<_,_>=state.conflicts.iter().map(|(id,c)|(id,json!({"peer":c.peer,"change":c.change,"local":state.canonical.get(&c.change.key)}))).collect();
             return Ok(
-                json!({"enabled":true,"role":state.role,"group":state.group,"device":state.device,"hub":state.hub,"peers":state.peers,"revision":state.revision,"cursor":state.cursor,"pending":state.pending.len(),"conflicts":conflicts}),
+                json!({"enabled":true,"role":state.role,"group":state.group,"device":state.device,"hub":state.hub,"peers":state.peers,"revision":state.revision,"cursor":state.cursor,"pending":state.pending.len(),"conflictCount":state.pending.values().filter(|c| state.blocked.contains(&c.id)).count(),"conflicts":conflicts}),
             );
         }
         if op == "relay-export" {
@@ -393,7 +396,13 @@ impl DiskVault {
                     .filter(|(key, _)| state.revisions.get(*key).copied().unwrap_or(0) > cursor)
                     .map(|(k, v)| (k.clone(), v.clone()))
                     .collect();
-                json!({"version":1,"group":state.group,"hub":state.hub,"kind":"snapshot","baseCursor":cursor,"revision":state.revision,"records":values,"revisions":state.revisions,"receipts":state.receipts.get(peer)})
+                let blocked: Vec<_> = state
+                    .conflicts
+                    .values()
+                    .filter(|c| c.peer == peer)
+                    .map(|c| &c.change.id)
+                    .collect();
+                json!({"conflicts":blocked,"version":1,"group":state.group,"hub":state.hub,"kind":"snapshot","baseCursor":cursor,"revision":state.revision,"records":values,"revisions":state.revisions,"receipts":state.receipts.get(peer)})
             } else {
                 json!({"version":1,"group":state.group,"hub":state.hub,"kind":"changes","cursor":state.cursor,"changes":state.pending.values().collect::<Vec<_>>()})
             };
@@ -534,7 +543,17 @@ impl DiskVault {
                         serde_json::from_value(packet["receipts"].clone())
                             .map_err(|_| VaultError::InvalidData)?
                     };
+                    let blocked: BTreeSet<String> = if packet["conflicts"].is_null() {
+                        BTreeSet::new() // Compatible with older Mac snapshots.
+                    } else {
+                        serde_json::from_value(packet["conflicts"].clone())
+                            .map_err(|_| VaultError::InvalidData)?
+                    };
                     state.pending.retain(|_, c| !receipts.contains(&c.id));
+                    state.blocked = blocked
+                        .into_iter()
+                        .filter(|id| state.pending.values().any(|c| &c.id == id))
+                        .collect();
                     let base = packet["baseCursor"]
                         .as_u64()
                         .ok_or(VaultError::InvalidData)?;
@@ -554,6 +573,50 @@ impl DiskVault {
                     }
                     install(&mut next, &overlay)?;
                 }
+            }
+            "relay-resolve-batch" => {
+                if state.role != "hub" {
+                    return Err(VaultError::Authentication);
+                }
+                let choice = string(request, "choice")?;
+                if choice != "local" && choice != "remote" {
+                    return Err(VaultError::InvalidData);
+                }
+                let ids: Vec<String> = serde_json::from_value(request["conflicts"].clone())
+                    .map_err(|_| VaultError::InvalidData)?;
+                if ids.is_empty()
+                    || ids.len() > 4096
+                    || ids.iter().collect::<BTreeSet<_>>().len() != ids.len()
+                {
+                    return Err(VaultError::InvalidData);
+                }
+                // Validate the exact displayed selection before writing anything.
+                // Multiple phones proposing different values for one record need
+                // individual resolution; never silently select the last phone.
+                let mut remote_values = BTreeMap::new();
+                for id in &ids {
+                    let c = state.conflicts.get(id).ok_or(VaultError::InvalidData)?;
+                    if choice == "remote" {
+                        if let Some(previous) = remote_values.insert(&c.change.key, &c.change.value)
+                        {
+                            if previous != &c.change.value {
+                                return Err(VaultError::InvalidData);
+                            }
+                        }
+                    }
+                }
+                for id in ids {
+                    let c = state.conflicts.remove(&id).ok_or(VaultError::InvalidData)?;
+                    if choice == "remote" {
+                        commit(&mut state, &c.change.key, c.change.value.clone())?;
+                    }
+                    state
+                        .receipts
+                        .entry(c.peer)
+                        .or_default()
+                        .insert(c.change.id);
+                }
+                install(&mut next, &state.canonical)?;
             }
             "relay-resolve" => {
                 if state.role != "hub" {

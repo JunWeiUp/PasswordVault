@@ -67,3 +67,8 @@ Android emulator checks cover migration from a synthetic Keystore file, restart 
 - Disposable local relay: the Swift group suite passes six tests, including encrypted grant/ack, phone-to-Mac edits, revoke, stale grants, restart and re-grant. The revoke case also passes with an unverified management list, proving local denial does not require a roster refresh.
 - The combined Swift relay suite passes 14 tests with two opt-in external fixtures skipped. Android instrumentation passes five reported tests (the external large-payload fixture remains opt-in), including wrong authority/recipient/group, revoke, conflicting or stale revision, durable state and lock rejection. Synthetic production presence groups are disbanded after testing.
 - Mac and arm64 iOS Simulator builds and repository checks pass. These checks do not authorize any real vault replica and do not establish real iPhone, Touch ID or production-security acceptance.
+
+## Batch conflict resolution (Mac 31 / Android 23006 / iOS 13)
+
+- Core relay tests verify both bulk choices, atomic rollback for stale/duplicate IDs and invalid choices, hub-only access, exclusion of later conflicts, per-recipient conflict IDs, restart persistence, older snapshots and rejection of ambiguous versions from multiple phones. Eleven relay scenarios pass; the full core checks also pass.
+- Android instrumentation reports six tests (one external payload fixture remains opt-in). The new synthetic test verifies that the reminder restores after reload and clears, together with pending edits, after a Mac batch receipt. Mac and arm64 iOS Simulator builds pass. No real user conflicts are resolved during these checks.

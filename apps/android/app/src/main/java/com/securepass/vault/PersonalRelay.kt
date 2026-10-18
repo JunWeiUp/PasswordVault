@@ -29,7 +29,7 @@ internal data class RelayUi(
     val members: List<RelayMember> = emptyList(), val groupInvite: String = "", val groupCode: String = "", val applicant: String = "",
     val status: String = "未连接 / Disconnected", val error: String? = null,
     val publicKey: String = "", val device: String = "", val group: String = "", val endpoint: String = "",
-    val paired: Boolean = false, val paused: Boolean = true, val pending: Int = 0,
+    val paired: Boolean = false, val paused: Boolean = true, val pending: Int = 0, val conflicts: Int = 0,
     val reply: String = "", val code: String = "", val lastReceived: Long? = null,
 )
 
@@ -82,6 +82,8 @@ internal class PersonalRelay(private val directory: File, private val vault: Vau
             }
             mutable.value = mutable.value.copy(credentialsBlocked = false)
             publish()
+            val summary = vault.command("relay-status")
+            mutable.value = mutable.value.copy(pending = summary.optInt("pending"), conflicts = summary.optInt("conflictCount"))
         } catch (cancel: CancellationException) { throw cancel }
         catch (_: Exception) {
             if (unlocked && generation == epoch) {
@@ -247,7 +249,7 @@ internal class PersonalRelay(private val directory: File, private val vault: Vau
                     val hub = c.getString("hub")
                     if (!c.optBoolean("paused", true) && c.getJSONObject("peers").has(hub)) {
                         val summary = vault.command("relay-status")
-                        mutable.value = mutable.value.copy(pending = summary.optInt("pending"))
+                        mutable.value = mutable.value.copy(pending = summary.optInt("pending"), conflicts = summary.optInt("conflictCount"))
                         val packet = vault.command("relay-export", JSONObject().put("peer", hub)).toString().toByteArray()
                         val signature = hex(hash(packet)) + ":" + System.currentTimeMillis()/3_600_000
                         if (last != signature || wake) {
@@ -292,7 +294,9 @@ internal class PersonalRelay(private val directory: File, private val vault: Vau
         check(unlocked && generation == epoch)
         vault.command("relay-receive", JSONObject().put("peer", hub).put("packet", JSONObject(String(data))))
         check(unlocked && generation == epoch)
-        vault.refresh(); mutable.value = mutable.value.copy(lastReceived = System.currentTimeMillis())
+        vault.refresh()
+        val summary = vault.command("relay-status")
+        mutable.value = mutable.value.copy(lastReceived = System.currentTimeMillis(), pending = summary.optInt("pending"), conflicts = summary.optInt("conflictCount"))
     }
     private fun sendFile(bytes: ByteArray, crypto: Crypto, hub: String, files: RelayFiles) {
         val key = SecretKeySpec(Crypto.random(32), "AES")

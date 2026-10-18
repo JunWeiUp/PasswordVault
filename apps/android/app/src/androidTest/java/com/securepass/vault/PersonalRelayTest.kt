@@ -15,6 +15,41 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class PersonalRelayTest {
+    @Test fun conflictReminderRestoresAndClearsAfterMacBatchResolution() = runBlocking {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val directory = File(context.cacheDir, "conflict-fixture-${UUID.randomUUID()}")
+        val phone = VaultRepository(context, File(directory, "phone"))
+        val mac = VaultSession(File(directory, "mac").absolutePath)
+        fun macCall(value: JSONObject) = JSONObject(mac.command(value.toString()))
+        try {
+            withTimeout(20_000) { while (!phone.state.value.ready) delay(100) }
+            phone.authenticate("fixture", true)
+            withTimeout(20_000) { while (phone.relay.state.value.device.isEmpty()) delay(100) }
+            val peer = phone.relay.state.value.device
+            macCall(JSONObject().put("op", "create").put("password", "fixture"))
+            macCall(JSONObject().put("op", "relay-init").put("role", "hub").put("device", "mac").put("hub", "mac").put("group", "fixture"))
+            macCall(JSONObject().put("op", "relay-trust").put("peer", peer))
+            phone.command("relay-init", JSONObject().put("role", "mobile").put("device", peer).put("hub", "mac").put("group", "fixture"))
+            phone.command("relay-trust", JSONObject().put("peer", "mac"))
+            macCall(JSONObject().put("op", "save").put("item", JSONObject().put("id", "conflict").put("type", "secureNote").put("title", "Mac version")))
+            phone.command("save", JSONObject().put("item", JSONObject().put("id", "conflict").put("type", "secureNote").put("title", "Phone version")))
+            val changes = phone.command("relay-export", JSONObject().put("peer", "mac"))
+            macCall(JSONObject().put("op", "relay-receive").put("peer", peer).put("packet", changes))
+            suspend fun deliverAndReload() {
+                val packet = macCall(JSONObject().put("op", "relay-export").put("peer", peer))
+                phone.command("relay-receive", JSONObject().put("peer", "mac").put("packet", packet))
+                phone.relay.setUnlocked(false); phone.relay.setUnlocked(true)
+                withTimeout(20_000) { while (phone.relay.state.value.device.isEmpty() || phone.relay.state.value.busy) delay(100) }
+            }
+            deliverAndReload()
+            assertEquals(1, phone.relay.state.value.conflicts)
+            val conflicts = macCall(JSONObject().put("op", "relay-status")).getJSONObject("conflicts")
+            macCall(JSONObject().put("op", "relay-resolve-batch").put("choice", "local").put("conflicts", org.json.JSONArray(conflicts.keys().asSequence().toList())))
+            deliverAndReload()
+            assertEquals(0, phone.relay.state.value.conflicts)
+            assertEquals(0, phone.relay.state.value.pending)
+        } finally { phone.close(); mac.close(); directory.deleteRecursively() }
+    }
     @Test fun deviceAccessGrantRejectsWrongAuthorityScopeAndReplay() = runBlocking {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val directory = File(context.cacheDir, "access-fixture-${UUID.randomUUID()}")

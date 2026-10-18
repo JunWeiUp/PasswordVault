@@ -57,6 +57,14 @@ internal fun RelaySettingsScreen(vault: VaultRepository, t: (String,String)->Str
         if (importError) Text(t("凭据文件无法读取或过大", "Credential file unreadable or too large"), color = MaterialTheme.colorScheme.error)
         if (state.paired) {
         Text(t("待提交：${state.pending}", "Pending: ${state.pending}"))
+        if (state.conflicts > 0) {
+            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(t("有 ${state.conflicts} 项合并冲突，请到电脑端处理", "${state.conflicts} merge conflicts — resolve on your computer"), style = MaterialTheme.typography.titleSmall)
+                    Text(t("打开 Mac 设置 → 中继同步，逐条选择或统一采用手机端 / Mac 端。处理完成后会自动继续同步，无需反复点击“立即同步”。", "Open Mac Settings → Relay sync. Resolve individually or use the mobile/Mac version for all. Sync resumes automatically; repeatedly tapping Sync now will not resolve conflicts."))
+                }
+            }
+        }
         state.lastReceived?.let { Text(t("最近接收：", "Last received: ") + java.util.Date(it).toString()) }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(onClick = { relay.syncNow() }, enabled = state.paired && !state.invalid && !state.busy) { Text(t("立即同步", "Sync now")) }

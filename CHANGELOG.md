@@ -1,5 +1,10 @@
 # Changelog
 
+## Device update 2.3.1 — batch conflict resolution
+
+- Mac build 31 adds **Use mobile for all** and **Use Mac for all** above the conflict list, with an affected-count confirmation and atomic resolution of the displayed selection.
+- Android build 23006 and iOS build 13 show the number of merge conflicts awaiting action on Mac. Notices survive restarts and clear after the Mac receipt; only the recipient’s own conflict identifiers are transmitted.
+
 ## Device update 2.3.1 — device-list vault access
 
 - Mac build 30 adds a per-device **View and sync changes** switch. Android build 23005 and iOS build 12 accept encrypted grants from their pinned enrollment authority without a second QR/receipt exchange.

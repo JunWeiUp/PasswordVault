@@ -176,3 +176,5 @@ New device invitations default to **Join automatically after scanning**. Manager
 Enrolled devices show relay connection status even before vault authorization. The roster refreshes presence every five seconds. “Relay connected; vault not authorized” and “Relay connected; vault sync paused” distinguish connectivity from data access; locking the vault disconnects presence.
 
 The native Mac relay member list exposes a **View and sync changes** switch per remote device. Pending acknowledgements remain visible while the device is offline or locked. Legacy manual vault pairing is collapsed. Phones direct users to this Mac switch; disabling it preserves downloaded data.
+
+Mac relay conflicts have two batch buttons above the individual rows: **Use mobile for all** and **Use Mac for all**. Confirmation names the count and replacement/deletion scope; a progress indicator disables repeated actions. Android/iOS display a recipient-scoped merge-conflict reminder directing users to the Mac, rather than implying retries alone can clear pending edits.
