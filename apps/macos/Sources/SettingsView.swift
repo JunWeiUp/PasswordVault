@@ -46,7 +46,7 @@ struct SecuritySettingsView: View {
           VStack(alignment: .leading, spacing: 26) {
             Text(title).font(.system(size: 30, weight: .semibold))
             if store.settingsPage == "relay" {
-              RelaySettingsView(relay: store.relay)
+              RelaySettingsView(relay: store.relay, t: store.t)
             } else if store.settingsPage == "security" {
               securityForm
             } else if store.settingsPage == "appearance" {

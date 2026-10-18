@@ -2,6 +2,23 @@
 
 This is a local implementation and test-build delivery, not a public release or installation over a real vault.
 
+## Automatic admission and compact invitation update
+
+- Mac universal Release build and iOS ARM64 simulator build pass; Android compact Kotlin compilation and repository checks pass.
+- Five Swift application tests pass against the latest disposable loopback relay, including default automatic short-link admission without vault authorization, optional manual manager approval, durable failure/restart drafts, revocation and managed WebSocket transfer.
+- Five Java tests pass with no skips: automatic short-link resolution/join across restart, wrong-application rejection, manual lifecycle, shared membership rejection vectors (including delegated manager escalation/tampering), authenticated invitation encryption vectors and offline preparation.
+- Both SDK snapshots preserve `prepareJoin` and `group.changed` integration. Source and protocol fixture hashes are recorded in `SOURCE.json`.
+- This update is source-only: no installed app, real vault or production configuration was changed. Real camera scanning and hardware acceptance remain unverified. Upgrade every existing group member before using automatic invitations.
+
+## Device-group redesign validation
+
+- `bash tool/check_native.sh core`: formatting, native Rust suites and clippy pass. New detach tests cover stale-scope rejection, pending-edit preservation across restart/rebind, encrypted archive retention and transaction rollback when archive writes fail.
+- Mac: 77 selected XCTest cases completed with 2 explicit public-WSS fixtures skipped and no failures. The unchanged BackgroundSyncTests suite was excluded after its separate full-suite attempt stalled; this increment does not claim a complete background-browser regression run.
+- Four new Swift group tests also pass against a disposable loopback service with self-service enabled only for the fictional `passwordvault` identities. They cover create/join, stable retry drafts, matching codes, independent vault authorization, actual managed WebSocket delivery, welcome-revision handling, ordinary-member denial, last-manager protection, rename, removal, invalidation, mobile-created groups, disband and local data retention.
+- Three Java SDK tests pass, including shared signed membership vectors and a real loopback create/approve/rename/remove/disband flow. This verifies the Java SDK, not Android camera/Keystore integration on hardware.
+- Mac universal Release, Android compact ARM64 and iOS ARM64 simulator builds pass. UI validation uses an isolated Mac QA bundle and a newly seeded fictional vault outside Documents. Shared input controls follow app language; setup shows create/join guidance instead of a misleading paused state.
+- No real vault, installed application, production service whitelist or existing relay device is modified. The configured production endpoint still requires operator enablement of `passwordvault` self-service. Real camera pairing, Android/iPhone device installation and physical background behavior remain unverified in this increment.
+
 ## Executed
 
 - Rust native checks: original security/storage/sharing/rich-note/background-browser suites plus seven personal-relay integration tests and one transactional journal-failure unit test. Coverage includes first activation backup, bidirectional commit, immutable operation retries, pending-edit overlay, conflicts and keep-both, incremental cursors, multiple replicas, restart, deletion tombstones, missing/tampered attachment rollback, revoked senders, and browser background-save capture. Clippy and formatting checks pass.

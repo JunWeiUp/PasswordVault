@@ -1,5 +1,15 @@
 # Changelog
 
+## Device update 2.3.1 — relay device groups
+
+- Device build identifiers: Mac 26 and Android 23002; iOS remains build 10.
+
+- Relay invitations now default to automatic ordinary-member admission, use encrypted compact QR links, and retain optional manual code approval across Mac, iOS and Android.
+- Replace manual-first relay onboarding with signed device-group creation, QR/text invitations, matching-code approval, durable retry, roster/presence, rename/remove, leave and disband on Mac, iOS and Android.
+- Keep group-management permission independent from explicit Mac vault-sync authorization; invalidate cached management on revoked access and revalidate membership before reconnect.
+- Archive encrypted sync journals on local detach, preserve current data/attachment recovery and rotate device IDs. Keep explicit migration for legacy credentials.
+- Bundle test fixtures and run test apps outside Documents to avoid unnecessary folder-access prompts from ad-hoc builds.
+
 ## Native 2.3.1 — remove shared-vault controls
 
 - Remove shared-vault management, invitations and LAN sync from Mac and iOS, matching the earlier Android removal. Existing shared records, backup metadata and read-only permissions remain.

@@ -1,5 +1,9 @@
 # TODO and progress
 
+- [x] Update native relay SDKs for automatic admission and encrypted short invitations; default new invitations to automatic joining.
+- [x] Signed relay device-group onboarding/management and independent vault authorization; [behavior and recovery](docs/PERSONAL-RELAY.md).
+- [ ] Enable `passwordvault` self-service on the intended relay deployment, then verify real QR pairing and signed device installation; source builds do not establish these gates.
+
 - [x] Mac Tiptap rich-note editing, encrypted attachments, V3 archives and other-client protection; [implementation and gates](docs/RICH-NOTES.md).
 - [ ] Physical Chinese IME candidate confirmation, VoiceOver, macOS 13/Intel and large-backup peak-memory acceptance for rich notes.
 

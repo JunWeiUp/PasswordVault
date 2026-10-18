@@ -158,7 +158,7 @@ pub(super) fn guard_legacy_write(doc: &Document, request: &Value) -> Result<()> 
 impl DiskVault {
     pub(super) fn collect_note_attachments(&mut self) -> Result<Value> {
         let open = self.open()?;
-        if relay::enabled(&open.connection)? {
+        if relay::retains_attachments(&open.connection)? {
             return Ok(json!({"ok":true}));
         }
         let mut used = HashSet::new();
@@ -190,7 +190,7 @@ impl DiskVault {
         next.items.retain(|n| n["id"] != id);
         table(&open.connection)?;
         let tx = storage(open.connection.transaction())?;
-        if !relay::enabled(&tx)? {
+        if !relay::retains_attachments(&tx)? {
             storage(tx.execute("DELETE FROM note_attachments WHERE note_id=?1", [id]))?;
         }
         save_document_row(&tx, &open.root, &open.header.vault_id, &next)?;

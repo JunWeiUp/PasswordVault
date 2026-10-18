@@ -64,6 +64,8 @@ targets:
     sources:
       - Tests
       - path: ../shared/RelayTests
+      - path: ../../vendor/common-relay/protocol/group-vectors.json
+        buildPhase: resources
       - path: ../macos/Tests/WebDAVListingTests.swift
     dependencies:
       - target: PasswordVault

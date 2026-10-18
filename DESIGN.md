@@ -120,3 +120,7 @@ New immediately creates and selects a named blank entry for all four record type
 ### Browser save confirmation
 
 Place pending-login review before saved-account matches and secondary reminder settings. Fold the match list while a capture is under review. Keep the account, editable password and Cancel save / Save controls visible together at 380×600; do not grow the popup beyond browser limits merely to fit account lists. Use a dedicated eye button with a changing accessible name and pressed state. Default to concealed; conceal on record changes, focus/visibility loss and save/cancel. Save errors belong inside the review card and must retain edits for retry.
+
+## Relay device groups
+
+Present two distinct stages: **Device group** for authenticated connectivity, then **Authorize vault sync** for access to vault contents. Put create/join actions before credentials, hide legacy manual setup in a disclosure, and keep device names primary with management and presence as secondary labels. Never imply that group membership has already enabled password synchronization. Invitations and approvals are explicit; no background camera or application polling is introduced. Hide cached membership when verification fails. Leave, disband, remove and local reset have separate confirmation text explaining which devices lose access and that local data remains.

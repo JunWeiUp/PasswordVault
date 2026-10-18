@@ -16,6 +16,11 @@ public final class RelayClient implements AutoCloseable {
         void onEvent(JSONObject event);
         void onClosed(Throwable error);
     }
+    private static final ScheduledThreadPoolExecutor REQUEST_TIMEOUTS = requestTimeouts();
+    private static ScheduledThreadPoolExecutor requestTimeouts(){
+        ScheduledThreadPoolExecutor timer=new ScheduledThreadPoolExecutor(1,r->{Thread t=new Thread(r,"relay-request-timeout");t.setDaemon(true);return t;});
+        timer.setRemoveOnCancelPolicy(true);return timer;
+    }
     private final Crypto crypto;
     private final Listener listener;
     private final OkHttpClient http;
@@ -48,7 +53,8 @@ public final class RelayClient implements AutoCloseable {
     public CompletableFuture<JSONObject> request(JSONObject event)throws Exception{
         String id=event.optString("id",UUID.randomUUID().toString().replace("-",""));event.put("id",id);CompletableFuture<JSONObject> result=new CompletableFuture<>();
         if(pending.putIfAbsent(id,result)!=null)throw new IllegalStateException("Request already pending");
-        result.orTimeout(45,TimeUnit.SECONDS).whenComplete((v,e)->pending.remove(id,result));try{send(event);}catch(Exception e){result.completeExceptionally(e);}return result;
+        ScheduledFuture<?> timeout=REQUEST_TIMEOUTS.schedule(()->result.completeExceptionally(new TimeoutException("Relay request timed out")),45,TimeUnit.SECONDS);
+        result.whenComplete((v,e)->{timeout.cancel(false);pending.remove(id,result);});try{send(event);}catch(Exception e){result.completeExceptionally(e);}return result;
     }
     public CompletableFuture<JSONObject> peers()throws Exception{return request(new JSONObject().put("type","peers"));}
     /** Enqueues an online-only frame. Success is not a server/device/business receipt. No replay. */
@@ -96,7 +102,7 @@ public final class RelayClient implements AutoCloseable {
             if((value.has("expires")&&value.getLong("expires")<=System.currentTimeMillis()/1000)||(journal!=null&&journal.contains(scope(),from,id))){if(event.optBoolean("offline"))send(new JSONObject().put("type","ack").put("id",id).put("from",from));return;}
             event.put("data",value.getString("data"));
         }
-        if(type.equals("message")||type.equals("stream.open")||type.equals("peer.up")||type.equals("peer.down"))listener.onEvent(event);
+        if(type.equals("message")||type.equals("stream.open")||type.equals("peer.up")||type.equals("peer.down")||type.equals("group.changed"))listener.onEvent(event);
     }
     private void binary(byte[] data)throws Exception{if(data.length<26||data.length>65561||data[0]!=1)throw new IOException("Invalid frame");ByteBuffer b=ByteBuffer.wrap(data);b.get();byte[] id=new byte[16];b.get(id);long seq=b.getLong();Stream s=streams.get(Crypto.hex(id));if(s==null)return;if(!s.queue.offer(new Record(seq,Arrays.copyOfRange(data,25,data.length)))){s.close();}}
     private void fail(Throwable error){if(!closed.compareAndSet(false,true))return;if(cleaner!=null)cleaner.shutdownNow();if(socket!=null)socket.cancel();for(Stream s:streams.values())s.abort();streams.clear();for(CompletableFuture<JSONObject> f:pending.values())f.completeExceptionally(error);pending.clear();listener.onClosed(error);}

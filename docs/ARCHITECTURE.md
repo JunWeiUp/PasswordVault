@@ -92,3 +92,5 @@ At cold start, AppStore creates an in-memory, single-use nonce and invokes the h
 ## Personal relay replication
 
 The native core owns a transactional encrypted replication journal. Mac commits revisions; Swift/Java common-relay adapters transport authenticated messages and encrypted files. See [protocol and lifecycle](PERSONAL-RELAY.md).
+
+Membership configuration, signing-chain tips, invitation secrets and pending requests live in the existing Keychain (Swift) or Keystore-sealed AtomicFile (Android). Group SDK trust is separate from the explicit vault-peer allowlist. Reconnect validates membership before creating a transport identity. `relay-detach` validates the old group/device scope, copies the already encrypted journal into `personal_relay_archive` and drops only the active binding in one SQLCipher transaction. Archived journals retain attachment references and prevent attachment garbage collection; they never feed another group's receipts or tombstones.

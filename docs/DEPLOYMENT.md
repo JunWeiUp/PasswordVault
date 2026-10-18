@@ -145,3 +145,7 @@ Before ADB update, compare the downloaded artifact checksums, package/version/AB
 ## Rich-note preview compatibility
 
 Version 2.3.0 introduces encrypted document format 3 and complete V3 attachment archives. Old binaries reject upgraded vaults. Retain the automatic encrypted pre-upgrade snapshot and publish matching compatibility-protection clients. A signed local preview is not a public release or notarization. See [migration and restore instructions](RICH-NOTES.md).
+
+## Relay device-group service prerequisite
+
+The native application uses the existing common-relay group API; it does not deploy a server. A service operator must add `passwordvault` to the existing `serve --self-service-apps` list, preserving every other enabled application. Keep `/relay/v1/group*` and `/relay/v1/enroll/*` HTTPS routes available alongside WSS/files; preserve databases and existing devices. Test a disposable group before real enrollment. This source increment does not change the production whitelist or migrate any real device. Legacy credential revocation remains an explicit administrator operation.

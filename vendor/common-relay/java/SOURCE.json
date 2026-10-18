@@ -6,10 +6,23 @@
     "build.gradle": "be0db21abca3e6265febf45be9036d92509fddc471ad789cd339afd6e7493468",
     "gradle.properties": "76c95c3c54b027d8553444c2ae8912d101c525c61e08a95669eda26f243c0867",
     "settings.gradle": "d9350c8e9de54a976a49e8653903a85cf0a17b6e3068332130d702777b097ad4",
-    "src/main/java/io/github/junweiup/commonrelay/Crypto.java": "1a8e5c9fd8b8be28e9ecba57f08b798413f52e1e748ddfc1bba071e100b9a6c7",
-    "src/main/java/io/github/junweiup/commonrelay/RelayClient.java": "c089bf76d800bba88c830d9c70961ec259fb307b0c44bb0b61f276a2e3a921d8",
+    "src/main/java/io/github/junweiup/commonrelay/Crypto.java": "99375163d44f71c4560c089ec57abebae5ec6fd00f3b4c14fbef1f66062f32c5",
+    "src/main/java/io/github/junweiup/commonrelay/InvitationLinks.java": "f98bc1ae6430fa27d309897d674ce3521cb33940846259740696a73988376218",
+    "src/main/java/io/github/junweiup/commonrelay/RelayClient.java": "c828f4893bd735232e080cd90bcac3bb87e6952fd893341a049849d48f26ac5b",
     "src/main/java/io/github/junweiup/commonrelay/RelayFiles.java": "97dfa710f259b2ab2368fa309236ec7943601248c0e488b858d319abc02a8211",
-    "src/main/java/io/github/junweiup/commonrelay/RelayJournal.java": "77f4c4f3ac023459a63ac66b5aa93be32c6def1414cae5222b537106a2f7d509"
+    "src/main/java/io/github/junweiup/commonrelay/RelayGroups.java": "d1206faf7f99fb12f57f270f51765cf1b0ddc6312ad2d95fd8162033cfd54d1d",
+    "src/main/java/io/github/junweiup/commonrelay/RelayJournal.java": "77f4c4f3ac023459a63ac66b5aa93be32c6def1414cae5222b537106a2f7d509",
+    "src/test/java/io/github/junweiup/commonrelay/GroupTest.java": "32afccd8bfc6fbe1a814f84dc43182222295ab934a1e384bc4f3dbdc6825265d",
+    "src/test/java/io/github/junweiup/commonrelay/InvitationLinksTest.java": "d446ea0b306854e501e179d3718e501a2022c553fede042aaf787c0911a921d5",
+    "src/test/java/io/github/junweiup/commonrelay/VaultGroupFlowTest.java": "0e9d908f9d7c0e67c4879fa2bd026143367820f1188c1c94fdb424be505cad69"
   },
-  "commit": "ff5ed1f29c7af1734016ab77c5a85c61acdbecd0"
+  "commit": "ff5ed1f29c7af1734016ab77c5a85c61acdbecd0",
+  "local_patches": [
+    "Automatic admission and encrypted invitation links from upstream working tree; checksums pin exact source.",
+    "Expose prepareJoin to durably save requests before network transmission.",
+    "Forward group.changed for immediate membership revalidation."
+  ],
+  "upstream_group_source_sha256": "61e2c2de32ac11d056a4ebef0fbb239af204676b219f4071904c850df30d88af",
+  "group_vectors_sha256": "6f891071bd7cf433c033d18ba28296a5e10e1127b10e7a1fcedd11d132311470",
+  "invitation_link_vectors_sha256": "c5b2c8c8a80975620db0a37243d807ebbdebe76802b1f932847b06826e75cdc4"
 }

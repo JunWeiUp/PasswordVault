@@ -61,3 +61,5 @@ Use [TODO.md](../TODO.md) for priorities and progress, [CHANGELOG.md](../CHANGEL
 ## Personal relay synchronization
 
 Mac is the personal-vault authority; Android/iOS retain editable offline replicas and synchronize through common-relay. The browser bridge is unchanged. See [personal relay scope and behavior](PERSONAL-RELAY.md).
+
+Device groups provide self-service creation, trusted QR/text invitations, code comparison, explicit optional manager grants, roster/presence, rename/remove, leave and disband. Mobile and desktop management permissions are equal. Membership does not grant vault access: Mac vault authorization remains separate. Legacy manual provisioning requires explicit local migration and separate administrator revocation. Production service enablement and physical-device pairing remain deployment/acceptance gates.

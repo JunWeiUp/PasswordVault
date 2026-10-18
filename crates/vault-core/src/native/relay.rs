@@ -47,6 +47,13 @@ pub(super) fn enabled(conn: &Connection) -> Result<bool> {
         |r| r.get::<_, i64>(0),
     ))? != 0)
 }
+// Archived sync state can reference attachments absent from the current document.
+pub(super) fn retains_attachments(conn: &Connection) -> Result<bool> {
+    Ok(enabled(conn)? || storage(conn.query_row(
+        "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='personal_relay_archive'",
+        [], |r| r.get::<_, i64>(0),
+    ))? != 0)
+}
 fn load(conn: &Connection, root: &[u8; 32], vault: &str) -> Result<State> {
     let data: Vec<u8> = storage(conn.query_row(
         "SELECT payload FROM personal_relay WHERE id=1",
@@ -307,6 +314,20 @@ impl DiskVault {
             return Err(VaultError::Unsupported);
         }
         let mut state = load(&open.connection, &open.root, &open.header.vault_id)?;
+        if op == "relay-detach" {
+            if string(request, "group")? != state.group
+                || string(request, "device")? != state.device
+            {
+                return Err(VaultError::Authentication);
+            }
+            // Preserve the authenticated journal, including pending edits and conflicts.
+            // A new group starts from the current document, never old receipts/tombstones.
+            let tx = storage(open.connection.transaction())?;
+            storage(tx.execute_batch("CREATE TABLE IF NOT EXISTS personal_relay_archive(id INTEGER PRIMARY KEY, payload BLOB NOT NULL); INSERT INTO personal_relay_archive(payload) SELECT payload FROM personal_relay; DROP TABLE personal_relay;"))?;
+            storage(tx.commit())?;
+            return Ok(json!({"ok":true}));
+        }
+
         if op == "relay-status" {
             let conflicts:BTreeMap<_,_>=state.conflicts.iter().map(|(id,c)|(id,json!({"peer":c.peer,"change":c.change,"local":state.canonical.get(&c.change.key)}))).collect();
             return Ok(
@@ -614,5 +635,52 @@ mod tests {
         vault.lock();
         vault.unlock("fixture").unwrap();
         assert!(vault.open().unwrap().document.items.is_empty());
+    }
+    #[test]
+    fn detach_archive_failure_preserves_binding_and_encrypted_history() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut vault = DiskVault::new(dir.path()).unwrap();
+        vault.create("fixture").unwrap();
+        vault.relay_command(&json!({"op":"relay-init","role":"mobile","group":"test","device":"phone","hub":"mac"})).unwrap();
+        let before = vault.relay_command(&json!({"op":"relay-status"})).unwrap();
+        vault.open().unwrap().connection.execute_batch("CREATE TABLE personal_relay_archive(id INTEGER PRIMARY KEY,payload BLOB NOT NULL); CREATE TRIGGER reject_archive BEFORE INSERT ON personal_relay_archive BEGIN SELECT RAISE(ABORT,'fixture failure'); END;").unwrap();
+        assert!(vault
+            .relay_command(&json!({"op":"relay-detach","group":"test","device":"phone"}))
+            .is_err());
+        assert_eq!(
+            vault.relay_command(&json!({"op":"relay-status"})).unwrap(),
+            before
+        );
+        vault
+            .open()
+            .unwrap()
+            .connection
+            .execute_batch("DROP TRIGGER reject_archive")
+            .unwrap();
+        vault
+            .relay_command(&json!({"op":"relay-detach","group":"test","device":"phone"}))
+            .unwrap();
+        let open = vault.open().unwrap();
+        assert!(!enabled(&open.connection).unwrap());
+        assert!(retains_attachments(&open.connection).unwrap());
+        let archived: Vec<u8> = open
+            .connection
+            .query_row("SELECT payload FROM personal_relay_archive", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        let sealed: Sealed = serde_json::from_slice(&archived).unwrap();
+        let raw = unseal(
+            &subkey(&open.root, b"personal-relay-v1"),
+            &sealed,
+            open.header.vault_id.as_bytes(),
+        )
+        .unwrap();
+        let history: State = serde_json::from_slice(&raw).unwrap();
+        assert_eq!(history.group, "test");
+        assert_eq!(
+            history.pending.len() as u64,
+            before["pending"].as_u64().unwrap()
+        );
     }
 }

@@ -169,4 +169,6 @@ Personal notes open directly in the local Tiptap editor. The title and body shar
 
 ## Relay settings
 
-Mac Settings has a Relay sync page; iOS Settings links to the shared SwiftUI panel; Android Settings opens RelaySettingsScreen. Registration, public-key pairing, pause/retry, status and pending operations are shown; Mac additionally resolves conflicts.
+Mac Settings has a Relay sync page; iOS Settings links to the shared SwiftUI panel; Android Settings opens RelaySettingsScreen. The page starts with sync status and device-group onboarding (create or scan/paste invitation). Managed groups show a verified roster, presence, rename/remove, invite/approve, leave and disband. Pending creation/join offers durable retry; invalid access hides cached management controls. Legacy credentials are collapsed. Vault authorization is a separate section available after relay enrollment; Mac additionally resolves conflicts. See [device-group behavior](PERSONAL-RELAY.md).
+
+New device invitations default to **Join automatically after scanning**. Managers can disable it before generating a manual code-approval invitation. An active invitation must be cancelled before changing modes; mobile scanning submits immediately. Automatic admission grants ordinary membership only; vault authorization stays separate.
