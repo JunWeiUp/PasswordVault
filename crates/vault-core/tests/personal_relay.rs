@@ -243,3 +243,38 @@ fn conflict_keep_both_and_delete_edit_preserve_versions() {
     assert!(items.iter().all(|i| i["id"] != "test"));
     assert!(items.iter().any(|i| i["title"] == "new-local"));
 }
+
+#[test]
+fn detach_preserves_offline_edits_and_rejects_stale_scope() {
+    let (dir, phone) = setup("mobile", "phone");
+    save(&phone, "unsent local edit");
+    assert!(phone
+        .command(json!({"op":"relay-detach","group":"other","device":"phone"}).to_string())
+        .is_err());
+    assert_eq!(call(&phone, json!({"op":"relay-status"}))["enabled"], true);
+    call(
+        &phone,
+        json!({"op":"relay-detach","group":"fixture","device":"phone"}),
+    );
+    assert_eq!(call(&phone, json!({"op":"relay-status"}))["enabled"], false);
+    assert_eq!(title(&phone), "unsent local edit");
+    assert!(phone
+        .command(json!({"op":"relay-export","peer":"mac"}).to_string())
+        .is_err());
+    call(
+        &phone,
+        json!({"op":"relay-init","role":"mobile","group":"new","device":"new-phone","hub":"new-mac"}),
+    );
+    call(&phone, json!({"op":"relay-trust","peer":"new-mac"}));
+    let packet = call(&phone, json!({"op":"relay-export","peer":"new-mac"}));
+    assert_eq!(packet["group"], "new");
+    assert!(packet["changes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|c| c["value"]["title"] == "unsent local edit"));
+    drop(phone);
+    let phone = VaultSession::new(dir.path().to_string_lossy().into()).unwrap();
+    call(&phone, json!({"op":"unlock","password":"fixture"}));
+    assert_eq!(title(&phone), "unsent local edit");
+}

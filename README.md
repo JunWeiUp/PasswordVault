@@ -159,4 +159,4 @@ The retained `lib/`, `android/`, `ios/`, `web/` and `chrome/` clients have separ
 
 ## Personal vault relay sync
 
-Mac coordinates encrypted bidirectional sync with Android 8+ and iOS. Browser extensions retain local native synchronization. Setup, pairing, conflicts and recovery: [personal relay sync](docs/PERSONAL-RELAY.md). Local development feature; see [validation](docs/PERSONAL-RELAY-VALIDATION.md).
+Mac coordinates encrypted bidirectional sync with Android 8+ and iOS. Browser extensions retain local native synchronization. Create/join signed device groups with automatic admission by default or optional code approval, manage members, then separately authorize vault sync on Mac. Setup, pairing, conflicts and recovery: [personal relay sync](docs/PERSONAL-RELAY.md). Local development feature; see [validation](docs/PERSONAL-RELAY-VALIDATION.md).

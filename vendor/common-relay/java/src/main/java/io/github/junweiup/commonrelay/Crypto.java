@@ -17,6 +17,11 @@ import java.security.SecureRandom;
 public final class Crypto {
     interface Sodium extends Library {
         int sodium_init();
+        int crypto_secretbox_easy(byte[] out,byte[] message,long length,byte[] nonce,byte[] key);
+        int crypto_secretbox_open_easy(byte[] out,byte[] cipher,long length,byte[] nonce,byte[] key);
+        int crypto_sign_seed_keypair(byte[] pk, byte[] sk, byte[] seed);
+        int crypto_sign_detached(byte[] sig, LongByReference len, byte[] msg, long n, byte[] sk);
+        int crypto_sign_verify_detached(byte[] sig, byte[] msg, long n, byte[] pk);
         int crypto_scalarmult_base(byte[] out, byte[] secret);
         int crypto_box_easy(byte[] out, byte[] message, long length, byte[] nonce, byte[] peer, byte[] secret);
         int crypto_box_open_easy(byte[] out, byte[] cipher, long length, byte[] nonce, byte[] peer, byte[] secret);

@@ -17,7 +17,12 @@ final class VaultRelay: ObservableObject {
     var token = ""
     var peers: [String: String] = [:]
     var paused = true
+    var groupState: Data?
   }
+  @Published var groupBusy = false
+  @Published var groupFresh = false
+  @Published var groupName = ""
+  @Published var groupMembers: [GroupMember] = []
   @Published var config: Config
   @Published var status = "未连接 / Disconnected"
   @Published var summary: [String: JSONValue] = [:]
@@ -25,6 +30,7 @@ final class VaultRelay: ObservableObject {
   @Published var verificationCode = ""
   @Published var lastSuccess: Date?
   @Published var failure: String?
+  private let allowLocalGroupTest: Bool
   private let directory: URL
   private let account: String
   private let call: ([String: JSONValue]) async throws -> JSONValue
@@ -40,9 +46,10 @@ final class VaultRelay: ObservableObject {
   private var sent: [String: String] = [:]
   private var retryRequested = false
 
-  init(directory: URL, role: String,
+  init(directory: URL, role: String, allowLocalGroupTest: Bool = false,
        call: @escaping ([String: JSONValue]) async throws -> JSONValue,
        refresh: @escaping () async -> Void) {
+    self.allowLocalGroupTest = allowLocalGroupTest
     self.directory = directory.appendingPathComponent("relay-private", isDirectory: true)
     account = SHA256.hash(data: Data(directory.standardizedFileURL.path.utf8)).map { String(format: "%02x", $0) }.joined()
     self.call = call; self.refresh = refresh
@@ -77,6 +84,7 @@ final class VaultRelay: ObservableObject {
   var publicKey: String { (try? identity().publicKey.relayHex) ?? "" }
   func importCredential(_ text: String, endpoint: String) async {
     await action {
+      guard config.groupState == nil else { throw RelayError.invalid("managed group") }
       guard let url = URL(string: endpoint), url.scheme == "wss", url.host != nil,
             url.path == "/relay/v1/ws", url.user == nil, url.password == nil, url.query == nil, url.fragment == nil,
             let value = try JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any],
@@ -144,6 +152,10 @@ final class VaultRelay: ObservableObject {
         // UI previews the same code before explicit approval invokes this operation.
         invitation = nil
       }
+      if hasManagedGroup {
+        let g = try groups(); _ = try await g.refresh(); try await applyGroup(g)
+        guard (g.config["trusted_peers"] as? [String: String])?[peer] == key else { throw RelayError.invalid("peer is not a group member") }
+      }
       if let pinned = config.peers[peer], pinned != key { throw RelayError.invalid("public key changed") }
       try await initialize()
       config.peers[peer] = key; try persist()
@@ -170,7 +182,7 @@ final class VaultRelay: ObservableObject {
   func setPaused(_ paused: Bool) async { await action { config.paused = paused; try persist(); restart() } }
   func setUnlocked(_ unlocked: Bool) {
     guard active != unlocked else { return }; active = unlocked
-    if unlocked { restart() } else { stop(); summary = [:]; pairingText = ""; verificationCode = ""; invitation = nil }
+    if unlocked { restart() } else { groupFresh = false; groupMembers = []; stop(); summary = [:]; pairingText = ""; verificationCode = ""; invitation = nil }
   }
   func syncNow() { sent.removeAll(); retryRequested = true; if loop == nil { restart() } }
   private func stop() {
@@ -180,7 +192,7 @@ final class VaultRelay: ObservableObject {
     status = active ? "已暂停 / Paused" : "已锁定 / Locked"
   }
   private func restart() {
-    stop(); guard active, !config.paused, !config.token.isEmpty, !config.peers.isEmpty else { return }
+    stop(); guard active, !config.paused, !groupInvalid, !config.token.isEmpty, !config.peers.isEmpty else { return }
     let epoch = generation
     loop = Task { [weak self] in await self?.run(epoch) }
   }
@@ -195,15 +207,17 @@ final class VaultRelay: ObservableObject {
       var ownedClient: RelayClient?
       var ownedFiles: RelayFiles?
       do {
+        try await refreshGroupForConnection(epoch)
+        guard active, generation == epoch, !Task.isCancelled, !config.peers.isEmpty else { return }
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
         if journal == nil { journal = try RelayJournal(directory: directory.appendingPathComponent("journal")) }
         let identity = try identity(), connection = RelayClient(identity: identity, journal: journal)
         client = connection; ownedClient = connection
         guard let ws = URL(string: config.endpoint), var components = URLComponents(url: ws, resolvingAgainstBaseURL: false) else { throw RelayError.invalid("URL") }
-        components.scheme = "https"; components.path = "/relay/v1/files"
-        let fileClient = try RelayFiles(base: components.url!, token: config.token); files = fileClient; ownedFiles = fileClient
+        components.scheme = allowLocalGroupTest && ws.scheme == "ws" ? "http" : "https"; components.path = "/relay/v1/files"
+        let fileClient = try RelayFiles(base: components.url!, token: config.token, allowLocalTest: allowLocalGroupTest); files = fileClient; ownedFiles = fileClient
         status = "正在连接 / Connecting"
-        let events = try await connection.connect(url: ws, token: config.token)
+        let events = try await connection.connect(url: ws, token: config.token, allowLocalTest: allowLocalGroupTest)
         guard generation == epoch, active else { await connection.close(); return }
         status = "已连接 / Connected"; failure = nil; backoff = 1; sent.removeAll()
         reader = Task { [weak self] in
@@ -214,6 +228,10 @@ final class VaultRelay: ObservableObject {
                  let from = event["from"] as? String, let id = event["id"] as? String {
                 try await self.receive(data, from: from, epoch: epoch)
                 try await connection.acknowledge(id: id, from: from, offline: event["offline"] as? Bool ?? false)
+              } else if event["type"] as? String == "group.changed",
+                        (event["revision"] as? Int ?? 0) > self.groupRevision {
+                self.retryRequested = true
+                await connection.close(); return
               } else if event["type"] as? String == "peer.up" { self.sent.removeAll() }
             }
             self?.retryRequested = true
@@ -284,5 +302,259 @@ final class VaultRelay: ObservableObject {
     let prepared = try RelayFileCrypto.prepare(identity: identity, to: peer, source: source, ciphertext: destination,
                                                metadata: ["format": "passwordvault.sync.v1", "key": keyHex])
     _ = try await files.upload(prepared)
+  }
+}
+
+// Device-group access never grants vault read/write authority. Vault pairing below
+// remains a separate, explicit confirmation between the Mac and a replica.
+extension VaultRelay {
+  struct GroupMember: Identifiable {
+    let id: String
+    let name: String
+    let manager: Bool
+    let online: Bool
+  }
+  var hasManagedGroup: Bool { groupDictionary["group_entry"] != nil }
+  var isLegacyGroup: Bool { !config.token.isEmpty && config.groupState == nil }
+  var joiningGroup: Bool { groupDictionary["pending_join"] != nil }
+  var creatingGroup: Bool { groupDictionary["pending_create"] != nil }
+  var groupManager: Bool { groupFresh && groupMembers.contains { $0.id == config.device && $0.manager } }
+  var groupInvite: String {
+    guard groupFresh, let inv = groupDictionary["issued_invitation"] as? [String: Any],
+          (inv["expires"] as? Double ?? 0) > Date().timeIntervalSince1970 else { return "" }
+    return inv["short_link"] as? String ?? (try? encode(inv)) ?? ""
+  }
+  var automaticGroupJoin: Bool {
+    let inv = (groupDictionary["pending_join"] as? [String: Any])?["invitation"] as? [String: Any]
+      ?? groupDictionary["issued_invitation"] as? [String: Any]
+    return inv?["mode"] as? String == "auto"
+  }
+  var groupCode: String {
+    let d = groupDictionary
+    let request = (d["pending_join"] as? [String: Any])?["request"] as? [String: Any] ?? d["join_request"] as? [String: Any]
+    guard let request, let raw = try? RelayGroups.payload(request) else { return "" }
+    let code = Array(RelayGroups.digest(raw).prefix(12).uppercased())
+    return stride(from: 0, to: 12, by: 4).map { String(code[$0..<$0+4]) }.joined(separator: "-")
+  }
+  var applicantName: String {
+    guard groupFresh, let entry = groupDictionary["join_request"] as? [String: Any],
+          let body = try? RelayGroups.unpack(entry), let member = body["member"] as? [String: Any] else { return "" }
+    return member["name"] as? String ?? ""
+  }
+  private var groupDictionary: [String: Any] {
+    guard let bytes = config.groupState else { return [:] }
+    return (try? JSONSerialization.jsonObject(with: bytes) as? [String: Any]) ?? [:]
+  }
+  private func groups() throws -> RelayGroups {
+    guard !isLegacyGroup else { throw RelayError.invalid("legacy access requires explicit reset") }
+    var value = groupDictionary
+    if value.isEmpty {
+      value = ["app": "passwordvault", "device": config.device, "secret_key": config.secret.relayHex]
+    }
+    return RelayGroups(config: value, allowLocalTest: allowLocalGroupTest)
+  }
+  private func saveGroup(_ groups: RelayGroups) throws {
+    config.groupState = try JSONSerialization.data(withJSONObject: groups.config, options: [.sortedKeys])
+    try persist()
+  }
+  private func applyGroup(_ groups: RelayGroups, online: [String] = []) async throws {
+    try saveGroup(groups)
+    guard active else { throw CancellationError() }
+    guard let entry = groups.config["group_entry"] as? [String: Any] else { return }
+    let state = try RelayGroups.unpack(entry), members = state["members"] as? [[String: Any]] ?? []
+    guard state["closed"] as? Bool != true, members.contains(where: { $0["device"] as? String == config.device }) else {
+      try invalidateGroup(); throw RelayError.invalid("group access revoked")
+    }
+    config.endpoint = groups.config["url"] as? String ?? ""
+    config.group = groups.config["group"] as? String ?? ""
+    config.token = groups.config["token"] as? String ?? ""
+    if config.role == "hub" { config.hub = config.device }
+    let trusted = groups.config["trusted_peers"] as? [String: String] ?? [:]
+    // Revoked or changed identities lose business authorization before reconnect.
+    for (id, key) in config.peers where trusted[id] != key {
+      _ = try await call(["op": .string("relay-revoke"), "peer": .string(id)])
+      config.peers.removeValue(forKey: id)
+    }
+    try persist()
+    groupName = state["name"] as? String ?? config.group
+    groupMembers = members.compactMap { m in
+      guard let id = m["device"] as? String else { return nil }
+      return GroupMember(id: id, name: m["name"] as? String ?? id, manager: m["manager"] as? Bool ?? false, online: online.contains(id))
+    }
+    groupFresh = true
+  }
+  private func invalidateGroup() throws {
+    config.paused = true; groupFresh = false; groupMembers = []
+    let g = try groups(); g.config["access_invalid"] = true; try saveGroup(g)
+  }
+  var groupRevision: Int {
+    guard let entry = groupDictionary["group_entry"] as? [String: Any] else { return 0 }
+    return (try? RelayGroups.unpack(entry)["revision"] as? Int) ?? 0
+  }
+  var groupInvalid: Bool { groupDictionary["access_invalid"] as? Bool == true }
+  private func groupAction(_ body: (RelayGroups) async throws -> Void) async {
+    guard !groupBusy, active else { return }
+    groupBusy = true; failure = nil; stop()
+    defer { groupBusy = false }
+    do {
+      let g = try groups()
+      do { try await body(g) }
+      catch {
+        // Keep signed retry drafts, including conflict-cleared exit state.
+        try saveGroup(g)
+        throw error
+      }
+      restart()
+    } catch {
+      groupFresh = false; groupMembers = []
+      let message = String(describing: error)
+      if hasManagedGroup && message.contains("401") { try? invalidateGroup() }
+      failure = groupInvalid ? "设备组接入已失效。确认清除本机接入后，可重新创建或加入。 / Group access expired. Clear local access to rejoin."
+        : "设备组操作未完成，草稿已保留。请检查网络、权限或服务端是否为 passwordvault 开启自助创建。 / Group operation incomplete; retry draft retained."
+    }
+  }
+  func createGroup(endpoint: String, name: String, deviceName: String) async {
+    await groupAction { g in
+      guard !hasManagedGroup, !joiningGroup, config.token.isEmpty else { throw RelayError.invalid("already configured") }
+      if !creatingGroup { g.config["url"] = endpoint }
+      try g.prepareCreate(groupName: name, deviceName: deviceName); try saveGroup(g)
+      try await g.create(); try await applyGroup(g)
+      status = "设备组已创建，请授权密码库同步 / Group created; authorize vault sync next"
+    }
+  }
+  func joinGroup(_ text: String, deviceName: String) async {
+    await groupAction { g in
+      guard !hasManagedGroup, !creatingGroup, config.token.isEmpty, text.utf8.count <= 16384 else { throw RelayError.invalid("invitation scope") }
+      let input = text.trimmingCharacters(in: .whitespacesAndNewlines)
+      let inv: [String: Any]
+      if input.hasPrefix("common-relay:") { inv = try await g.resolveInvitation(input) }
+      else {
+        guard let value = try JSONSerialization.jsonObject(with: Data(input.utf8)) as? [String: Any] else { throw RelayError.invalid("invitation") }
+        inv = value
+      }
+      guard inv["app"] as? String == "passwordvault" else { throw RelayError.invalid("invitation scope") }
+      if let old = (g.config["pending_join"] as? [String: Any])?["invitation"] as? [String: Any] {
+        guard NSDictionary(dictionary: old).isEqual(to: inv) else { throw RelayError.invalid("another join pending") }
+      }
+      g.config["url"] = inv["url"]; g.config["group"] = inv["group"]
+      try g.prepareJoin(inv, name: deviceName); try saveGroup(g)
+      try await g.join(inv, name: deviceName); try saveGroup(g)
+      if inv["mode"] as? String == "auto" {
+        guard try await g.finishJoin() else { throw RelayError.invalid("automatic join incomplete") }
+        try await applyGroup(g)
+        status = "已加入设备组，密码库同步尚未授权 / Joined; vault sync needs separate authorization"
+      } else { status = "请核对双方配对码，再由邀请方批准 / Compare codes before approval" }
+    }
+  }
+  func retryGroupJoin() async {
+    await groupAction { g in
+      guard let pending = g.config["pending_join"] as? [String: Any], let inv = pending["invitation"] as? [String: Any],
+            let request = pending["request"] as? [String: Any], let member = try RelayGroups.unpack(request)["member"] as? [String: Any],
+            let name = member["name"] as? String else { throw RelayError.invalid("join request") }
+      try await g.join(inv, name: name); try saveGroup(g)
+      if inv["mode"] as? String == "auto", try await g.finishJoin() { try await applyGroup(g) }
+    }
+  }
+  func finishGroupJoin() async {
+    await groupAction { g in
+      guard try await g.finishJoin() else { status = "等待邀请方批准 / Waiting for approval"; return }
+      try await applyGroup(g)
+      status = "已加入设备组，密码库同步尚未授权 / Joined; vault sync needs separate authorization"
+    }
+  }
+  func refreshGroup() async {
+    await groupAction { g in
+      let result = try await g.refresh(); try await applyGroup(g, online: result["online"] as? [String] ?? [])
+    }
+  }
+  func inviteToGroup(automatic: Bool = true) async {
+    await groupAction { g in
+      if var old = g.config["issued_invitation"] as? [String: Any], (old["expires"] as? Double ?? 0) > Date().timeIntervalSince1970 {
+        if old["short_link"] == nil {
+          _ = try await g.publishInvitation(&old); g.config["issued_invitation"] = old
+        }
+        try await applyGroup(g); return
+      }
+      var inv = try await g.invite(mode: automatic ? "auto" : "manual")
+      g.config["issued_invitation"] = inv; try saveGroup(g)
+      _ = try await g.publishInvitation(&inv)
+      g.config["issued_invitation"] = inv; g.config.removeValue(forKey: "join_request")
+      try await applyGroup(g)
+    }
+  }
+  func checkGroupRequest() async {
+    await groupAction { g in
+      guard let inv = g.config["issued_invitation"] as? [String: Any] else { throw RelayError.invalid("invitation") }
+      guard inv["mode"] as? String != "auto" else { throw RelayError.invalid("automatic invitation") }
+      g.config["join_request"] = try await g.pending(inv)
+      let result = try await g.refresh(); try await applyGroup(g, online: result["online"] as? [String] ?? [])
+      if g.config["join_request"] == nil { status = "尚无加入申请 / No join request yet" }
+    }
+  }
+  func approveGroupRequest(manager: Bool) async {
+    await groupAction { g in
+      guard let inv = g.config["issued_invitation"] as? [String: Any], let req = g.config["join_request"] as? [String: Any] else { throw RelayError.invalid("request") }
+      try await g.approve(inv, request: req, manager: manager)
+      g.config.removeValue(forKey: "issued_invitation"); g.config.removeValue(forKey: "join_request")
+      try await applyGroup(g)
+    }
+  }
+  func cancelGroupInvitation() async {
+    await groupAction { g in
+      guard let inv = g.config["issued_invitation"] as? [String: Any] else { return }
+      try await g.cancel(inv); g.config.removeValue(forKey: "issued_invitation"); g.config.removeValue(forKey: "join_request")
+      try await applyGroup(g)
+    }
+  }
+  func renameGroupMember(_ device: String, name: String) async {
+    await groupAction { g in try await g.rename(device: device, name: name); try await applyGroup(g) }
+  }
+  func removeGroupMember(_ device: String) async {
+    await groupAction { g in try await g.remove(device: device); try await applyGroup(g) }
+  }
+  func leaveGroup(disband: Bool) async {
+    await groupAction { g in
+      if (g.config["pending_exit"] != nil || g.config["exit_completed"] as? Bool == true), let intent = g.config["exit_disband"] as? Bool { guard intent == disband else { throw RelayError.invalid("exit pending") } }
+      g.config["exit_disband"] = disband
+      if g.config["exit_completed"] as? Bool != true {
+        try await g.prepareExit(disband: disband); try saveGroup(g)
+        try await g.exit(); g.config["exit_completed"] = true; try saveGroup(g)
+      }
+      try await clearGroupAccess()
+    }
+  }
+  // Also used for explicit legacy reset or invalid local access. Never claims a
+  // server-side revocation when only local configuration is cleared.
+  func clearLocalGroup() async {
+    guard !groupBusy, active else { return }; groupBusy = true; stop()
+    defer { groupBusy = false }
+    await action { try await clearGroupAccess() }
+  }
+  private func clearGroupAccess() async throws {
+    let state = try await call(["op": .string("relay-status")]).object
+    if state["enabled"]?.bool == true {
+      _ = try await call(["op": .string("relay-detach"), "group": state["group"] ?? .null, "device": state["device"] ?? .null])
+    }
+    let old = config
+    config.groupState = nil; config.group = ""; config.token = ""; config.hub = ""
+    config.peers = [:]; config.paused = true; config.device = UUID().uuidString.lowercased()
+    do { try persist() } catch { config = old; throw error }
+    groupMembers = []; groupFresh = false; groupName = ""; pairingText = ""; verificationCode = ""; invitation = nil
+    try await updateSummary(); status = "本机接入已清除，本地资料保留 / Local access cleared; vault retained"
+  }
+  private func refreshGroupForConnection(_ epoch: UUID) async throws {
+    guard hasManagedGroup else { return }
+    guard !groupBusy, !groupInvalid else { throw RelayError.invalid("group unavailable") }
+    groupBusy = true; defer { groupBusy = false }
+    let g = try groups()
+    do {
+      let result = try await g.refresh()
+      guard active, generation == epoch, !Task.isCancelled else { throw CancellationError() }
+      try await applyGroup(g, online: result["online"] as? [String] ?? [])
+    } catch {
+      groupFresh = false; groupMembers = []
+      if String(describing: error).contains("401") { try invalidateGroup() }
+      throw error
+    }
   }
 }
