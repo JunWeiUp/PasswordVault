@@ -229,6 +229,52 @@ fn validate_files(conn: &Connection, doc: &Document) -> Result<()> {
 impl DiskVault {
     pub(super) fn relay_command(&mut self, request: &Value) -> Result<Value> {
         let op = string(request, "op")?;
+        if matches!(op, "relay-credentials-read" | "relay-credentials-write") {
+            let directory = self.directory.join("relay-private");
+            let path = directory.join("credentials.v1.enc");
+            let open = self.open()?; // The master-password-protected vault must be unlocked.
+            let key = subkey(&open.root, b"local-relay-credentials-v1");
+            let aad = open.header.vault_id.clone();
+            for candidate in [&directory, &path] {
+                if let Ok(metadata) = fs::symlink_metadata(candidate) {
+                    if metadata.file_type().is_symlink() {
+                        return Err(VaultError::InvalidData);
+                    }
+                }
+            }
+            if op == "relay-credentials-read" {
+                if !path.try_exists().map_err(|_| VaultError::Storage)? {
+                    return Ok(json!({"data":null}));
+                }
+                if storage(fs::metadata(&path))?.len() > 2 * 1024 * 1024 {
+                    return Err(VaultError::InvalidData);
+                }
+                let envelope: Value = serde_json::from_slice(&storage(fs::read(&path))?)
+                    .map_err(|_| VaultError::InvalidData)?;
+                if envelope["version"] != 1 {
+                    return Err(VaultError::Unsupported);
+                }
+                let sealed: Sealed = serde_json::from_value(envelope["sealed"].clone())
+                    .map_err(|_| VaultError::InvalidData)?;
+                let plain = Zeroizing::new(unseal(&key, &sealed, aad.as_bytes())?);
+                let data = std::str::from_utf8(&plain).map_err(|_| VaultError::InvalidData)?;
+                return Ok(json!({"data":data}));
+            }
+            let data = string(request, "data")?;
+            if data.len() > 1024 * 1024
+                || !serde_json::from_str::<Value>(data)
+                    .map_err(|_| VaultError::InvalidData)?
+                    .is_object()
+            {
+                return Err(VaultError::InvalidData);
+            }
+            let sealed = seal(&key, data.as_bytes(), aad.as_bytes())?;
+            let bytes = serde_json::to_vec(&json!({"version":1,"sealed":sealed}))
+                .map_err(|_| VaultError::InvalidData)?;
+            protect_dir(&directory)?;
+            atomic_write(&path, &bytes)?;
+            return Ok(json!({"ok":true}));
+        }
         if op == "relay-init" {
             let role = string(request, "role")?;
             let group = string(request, "group")?;

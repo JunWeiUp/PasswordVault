@@ -34,6 +34,10 @@ struct RelaySettingsView: View {
         }
       }
       Divider()
+      if relay.credentialAccessBlocked {
+        Text(t("中继凭据由本机主密码保护。首次迁移旧版钥匙串时可能需要一次授权；完成后不再使用钥匙串。", "Relay credentials are protected by the local master password. Legacy Keychain migration may need one authorization; subsequent access uses the encrypted local file."))
+        Button(t("迁移或重试读取中继凭据…", "Migrate or retry relay credentials…")) { Task { await relay.restoreCredentialAccess() } }
+      } else if relay.credentialsReady {
       RelayGroupView(relay: relay, t: t)
       if relay.isLegacyGroup || (!relay.hasManagedGroup && !relay.joiningGroup && !relay.creatingGroup) {
         DisclosureGroup(t("兼容旧版手动接入", "Legacy manual access")) {
@@ -72,6 +76,7 @@ struct RelaySettingsView: View {
       Divider()
       ForEach(relay.config.peers.keys.sorted(), id: \.self) { peer in
         HStack { Text(peer).font(.caption); Spacer(); Button(t("解除绑定", "Unpair"), role: .destructive) { Task { await relay.revoke(peer) } } }
+      }
       }
       }
       let conflicts = relay.summary["conflicts"]?.object ?? [:]

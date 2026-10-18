@@ -69,8 +69,9 @@ class PersonalRelayTest {
             assertFalse(a.command("relay-status").optBoolean("enabled")); assertFalse(b.command("relay-status").optBoolean("enabled"))
             b.relay.pause(true)
             until { allOnline(a) && allOnline(b) }
+            val phoneID = b.relay.state.value.device
             b.relay.setUnlocked(false)
-            until { a.relay.state.value.members.any { it.id == b.relay.state.value.device && !it.online } }
+            until { a.relay.state.value.members.any { it.id == phoneID && !it.online } }
             b.relay.setUnlocked(true)
             until { allOnline(a) && allOnline(b) }
             assertFalse(b.command("relay-status").optBoolean("enabled"))
@@ -86,6 +87,38 @@ class PersonalRelayTest {
                 java.security.KeyStore.getInstance("AndroidKeyStore").apply { load(null); deleteEntry(alias) }
             }
         }
+    }
+    @Test fun legacyKeystoreMigratesToMasterPasswordFileAndRestartsWithoutLegacyKey() = runBlocking {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val base = File(context.cacheDir, "relay-migration-${UUID.randomUUID()}")
+        val legacyDir = File(base, "relay-private").apply { mkdirs() }
+        val alias = "pv-relay-" + io.github.junweiup.commonrelay.Crypto.hex(java.security.MessageDigest.getInstance("SHA-256").digest(base.absolutePath.toByteArray())).take(32)
+        val keyStore = java.security.KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+        val generator = javax.crypto.KeyGenerator.getInstance("AES", "AndroidKeyStore")
+        generator.init(android.security.keystore.KeyGenParameterSpec.Builder(alias, android.security.keystore.KeyProperties.PURPOSE_ENCRYPT or android.security.keystore.KeyProperties.PURPOSE_DECRYPT)
+            .setBlockModes("GCM").setEncryptionPaddings("NoPadding").build())
+        val key = generator.generateKey()
+        val legacy = JSONObject().put("secret", io.github.junweiup.commonrelay.Crypto.hex(io.github.junweiup.commonrelay.Crypto.random(32)))
+            .put("device", "migration-fixture").put("group", "").put("hub", "").put("endpoint", "").put("token", "")
+            .put("paused", true).put("peers", JSONObject())
+        val cipher = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding").apply { init(javax.crypto.Cipher.ENCRYPT_MODE, key) }
+        File(legacyDir, "identity.sealed").writeBytes(cipher.iv + cipher.doFinal(legacy.toString().toByteArray()))
+        var repository = VaultRepository(context, base)
+        suspend fun ready() { withTimeout(20_000) { while (!repository.state.value.ready) delay(100) } }
+        suspend fun migrated() { withTimeout(20_000) { while (repository.relay.state.value.device != "migration-fixture") delay(100) } }
+        try {
+            ready(); assertTrue(repository.relay.state.value.publicKey.isEmpty())
+            repository.authenticate("fixture", true); migrated()
+            val stored = File(base, "vault/relay-private/credentials.v1.enc")
+            val encrypted = stored.readBytes().toString(Charsets.UTF_8)
+            assertFalse(encrypted.contains("migration-fixture")); assertFalse(encrypted.contains(legacy.getString("secret")))
+            assertEquals("migration-fixture", JSONObject(repository.command("relay-credentials-read").getString("data")).getString("device"))
+            repository.close()
+            keyStore.deleteEntry(alias); File(legacyDir, "identity.sealed").delete()
+            repository = VaultRepository(context, base); ready()
+            repository.authenticate("fixture", false); migrated()
+            assertFalse(repository.relay.state.value.credentialsBlocked)
+        } finally { repository.close(); base.deleteRecursively(); if (keyStore.containsAlias(alias)) keyStore.deleteEntry(alias) }
     }
     @Test fun coreReplicationAndSecureIdentity() = runBlocking {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
@@ -109,9 +142,12 @@ class PersonalRelayTest {
             }
             val repository=VaultRepository(context,File(base,"identity"))
             val relay=repository.relay
+            assertTrue(relay.state.value.publicKey.isEmpty())
+            withTimeout(20000) { while (!repository.state.value.ready) delay(100) }
+            repository.authenticate("fixture", true)
             withTimeout(20000) { while(relay.state.value.publicKey.isEmpty() && relay.state.value.error==null) delay(100) }
             assertNull(relay.state.value.error); assertEquals(64,relay.state.value.publicKey.length)
-            val encoded=File(base,"identity/relay-private/identity.sealed").readBytes().toString(Charsets.ISO_8859_1)
+            val encoded=File(base,"identity/vault/relay-private/credentials.v1.enc").readBytes().toString(Charsets.ISO_8859_1)
             assertFalse(encoded.contains("secret"));assertFalse(encoded.contains(relay.state.value.publicKey))
             repository.close()
         } finally { base.deleteRecursively() }

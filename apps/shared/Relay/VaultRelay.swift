@@ -2,9 +2,10 @@ import Foundation
 import Combine
 import CryptoKit
 import Security
+import LocalAuthentication
 import CommonRelay
 
-/// UI and lifecycle owner. Secrets live in Keychain; the core owns business persistence.
+/// The unlocked vault core encrypts local credentials; Keychain is a read-only legacy migration source.
 @MainActor
 final class VaultRelay: ObservableObject {
   struct Config: Codable {
@@ -19,6 +20,8 @@ final class VaultRelay: ObservableObject {
     var paused = true
     var groupState: Data?
   }
+  @Published private(set) var credentialsReady = false
+  @Published private(set) var credentialAccessBlocked = false
   @Published var groupBusy = false
   @Published var groupFresh = false
   @Published var groupName = ""
@@ -31,6 +34,7 @@ final class VaultRelay: ObservableObject {
   @Published var lastSuccess: Date?
   @Published var failure: String?
   private let allowLocalGroupTest: Bool
+  private let credentialReader: (String, Bool) throws -> Data?
   private let directory: URL
   private let account: String
   private let call: ([String: JSONValue]) async throws -> JSONValue
@@ -46,37 +50,103 @@ final class VaultRelay: ObservableObject {
   private var sent: [String: String] = [:]
   private var retryRequested = false
   private var transportFailure: String?
+  private var credentialLoadTask: Task<Void, Never>?
+  private var credentialLoadGeneration = UUID()
 
   init(directory: URL, role: String, allowLocalGroupTest: Bool = false,
        call: @escaping ([String: JSONValue]) async throws -> JSONValue,
-       refresh: @escaping () async -> Void) {
+       refresh: @escaping () async -> Void,
+       credentialReader: ((String, Bool) throws -> Data?)? = nil) {
+    self.credentialReader = credentialReader ?? Self.load
     self.allowLocalGroupTest = allowLocalGroupTest
     self.directory = directory.appendingPathComponent("relay-private", isDirectory: true)
     account = SHA256.hash(data: Data(directory.standardizedFileURL.path.utf8)).map { String(format: "%02x", $0) }.joined()
     self.call = call; self.refresh = refresh
     config = Config(role: role, secret: RelayIdentity.generateSecretKey())
-    do {
-      if let data = try Self.load(account) { config = try JSONDecoder().decode(Config.self, from: data) }
-      else { if role == "hub" { config.group = UUID().uuidString.lowercased(); config.hub = config.device }; try persist() }
-    } catch { failure = "无法读取中继安全配置 / Cannot read secure relay configuration" }
+    // No credential access before the vault is unlocked.
   }
   private static func query(_ account: String) -> [String: Any] {
     [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: "com.securepass.vault.personal-relay.v1", kSecAttrAccount as String: account]
   }
-  private static func load(_ account: String) throws -> Data? {
-    var q = query(account); q[kSecReturnData as String] = true; q[kSecMatchLimit as String] = kSecMatchLimitOne
-    var result: CFTypeRef?; let code = SecItemCopyMatching(q as CFDictionary, &result)
-    if code == errSecItemNotFound { return nil }
-    guard code == errSecSuccess, let data = result as? Data else { throw RelayError.invalid("Keychain") }; return data
+  private enum CredentialError: Error { case status(OSStatus), unavailable }
+  // Legacy macOS login-Keychain ACL prompts do not reliably honor LAContext.
+  // Scope the legacy switch to a synchronous MainActor operation and restore it
+  // immediately; never disable interaction for unrelated biometric operations.
+  private static func credentialOperation<T>(allowInteraction: Bool, _ operation: () throws -> T) throws -> T {
+    #if os(macOS)
+    var previous = DarwinBoolean(true)
+    let readStatus = SecKeychainGetUserInteractionAllowed(&previous)
+    guard readStatus == errSecSuccess else { throw CredentialError.status(readStatus) }
+    let setStatus = SecKeychainSetUserInteractionAllowed(allowInteraction)
+    guard setStatus == errSecSuccess else { throw CredentialError.status(setStatus) }
+    defer { SecKeychainSetUserInteractionAllowed(previous.boolValue) }
+    #endif
+    return try operation()
   }
-  private func persist() throws {
-    let data = try JSONEncoder().encode(config); let q = Self.query(account)
-    let update = SecItemUpdate(q as CFDictionary, [kSecValueData as String: data] as CFDictionary)
-    if update == errSecItemNotFound {
-      var entry = q; entry[kSecValueData as String] = data
-      entry[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
-      guard SecItemAdd(entry as CFDictionary, nil) == errSecSuccess else { throw RelayError.invalid("Keychain write") }
-    } else if update != errSecSuccess { throw RelayError.invalid("Keychain update") }
+  private static func load(_ account: String, _ allowInteraction: Bool) throws -> Data? {
+    try credentialOperation(allowInteraction: allowInteraction) {
+      var q = query(account); q[kSecReturnData as String] = true; q[kSecMatchLimit as String] = kSecMatchLimitOne
+      let context = LAContext(); context.interactionNotAllowed = !allowInteraction
+      q[kSecUseAuthenticationContext as String] = context
+      var result: CFTypeRef?; let code = SecItemCopyMatching(q as CFDictionary, &result)
+      if code == errSecItemNotFound { return nil }
+      guard code == errSecSuccess, let data = result as? Data else { throw CredentialError.status(code) }
+      return data
+    }
+  }
+  private func persist() async throws {
+    guard active, credentialsReady, !credentialAccessBlocked else { throw CredentialError.unavailable }
+    let encoded = String(decoding: try JSONEncoder().encode(config), as: UTF8.self)
+    _ = try await call(["op": .string("relay-credentials-write"), "data": .string(encoded)])
+  }
+  private func loadCredentials(allowLegacyInteraction: Bool) async {
+    guard active, !credentialsReady else { return }
+    let epoch = credentialLoadGeneration
+    groupBusy = true; failure = nil
+    defer { if credentialLoadGeneration == epoch { groupBusy = false } }
+    do {
+      let result = try await call(["op": .string("relay-credentials-read")])
+      guard active, credentialLoadGeneration == epoch, !Task.isCancelled else { return }
+      let loaded: Config
+      var migratedLegacy = false
+      switch result.object["data"] {
+      case .some(.string(let text)):
+        loaded = try JSONDecoder().decode(Config.self, from: Data(text.utf8))
+      case .some(.null):
+        if let legacy = try credentialReader(account, allowLegacyInteraction) {
+          loaded = try JSONDecoder().decode(Config.self, from: legacy)
+          migratedLegacy = true
+        } else {
+          var fresh = Config(role: config.role, secret: RelayIdentity.generateSecretKey())
+          if fresh.role == "hub" { fresh.group = UUID().uuidString.lowercased(); fresh.hub = fresh.device }
+          loaded = fresh
+        }
+        let encoded = String(decoding: try JSONEncoder().encode(loaded), as: UTF8.self)
+        _ = try await call(["op": .string("relay-credentials-write"), "data": .string(encoded)])
+        let verified = try await call(["op": .string("relay-credentials-read")])
+        guard verified.object["data"]?.string == encoded else { throw CredentialError.unavailable }
+      default: throw CredentialError.unavailable
+      }
+      guard active, credentialLoadGeneration == epoch, !Task.isCancelled else { return }
+      config = loaded; credentialsReady = true; credentialAccessBlocked = false
+      if migratedLegacy {
+        // Verified local ciphertext is authoritative. Best-effort legacy cleanup
+        // must never open a system dialog or invalidate a successful migration.
+        try? Self.credentialOperation(allowInteraction: false) {
+          let result = SecItemDelete(Self.query(account) as CFDictionary)
+          guard result == errSecSuccess || result == errSecItemNotFound else { throw CredentialError.status(result) }
+        }
+      }
+      restart()
+    } catch {
+      guard active, credentialLoadGeneration == epoch, !Task.isCancelled else { return }
+      credentialAccessBlocked = true
+      failure = "中继凭据无法读取。旧版钥匙串如需授权，请主动迁移；原接入和加密文件均保留。 / Relay credentials unavailable. Explicitly migrate legacy access if needed; existing credentials and encrypted files are preserved."
+    }
+  }
+  func restoreCredentialAccess() async {
+    guard credentialAccessBlocked, !groupBusy else { return }
+    await loadCredentials(allowLegacyInteraction: true)
   }
   private func identity() throws -> RelayIdentity {
     try RelayIdentity(app: "passwordvault", group: config.group, device: config.device, secretKey: config.secret,
@@ -99,7 +169,7 @@ final class VaultRelay: ObservableObject {
       }
       config.endpoint = endpoint; config.group = group; config.device = device; config.token = token
       if config.role == "hub" { config.hub = device }
-      try persist()
+      try await persist()
       if config.role == "hub" { try await initialize() }
       status = "凭据已导入 / Credential imported"
       restart()
@@ -159,9 +229,9 @@ final class VaultRelay: ObservableObject {
       }
       if let pinned = config.peers[peer], pinned != key { throw RelayError.invalid("public key changed") }
       try await initialize()
-      config.peers[peer] = key; try persist()
+      config.peers[peer] = key; try await persist()
       _ = try await call(["op": .string("relay-trust"), "peer": .string(peer)])
-      config.paused = false; try persist(); restart()
+      config.paused = false; try await persist(); restart()
       status = "已配对，等待同步 / Paired; awaiting sync"
     }
   }
@@ -174,16 +244,23 @@ final class VaultRelay: ObservableObject {
   func revoke(_ peer: String) async {
     await action {
       _ = try await call(["op": .string("relay-revoke"), "peer": .string(peer)])
-      config.peers.removeValue(forKey: peer); try persist(); restart(); try await updateSummary()
+      config.peers.removeValue(forKey: peer); try await persist(); restart(); try await updateSummary()
     }
   }
   func resolve(_ conflict: String, choice: String) async {
     await action { _ = try await call(["op": .string("relay-resolve"), "conflict": .string(conflict), "choice": .string(choice)]); try await updateSummary(); await refresh(); sent.removeAll() }
   }
-  func setPaused(_ paused: Bool) async { await action { config.paused = paused; try persist(); restart() } }
+  func setPaused(_ paused: Bool) async { await action { config.paused = paused; try await persist(); restart() } }
   func setUnlocked(_ unlocked: Bool) {
     guard active != unlocked else { return }; active = unlocked
-    if unlocked { restart() } else { groupFresh = false; groupMembers = []; stop(); summary = [:]; pairingText = ""; verificationCode = ""; invitation = nil }
+    credentialLoadGeneration = UUID(); credentialLoadTask?.cancel(); credentialLoadTask = nil
+    if unlocked {
+      credentialLoadTask = Task { [weak self] in await self?.loadCredentials(allowLegacyInteraction: false) }
+    } else {
+      groupFresh = false; groupMembers = []; stop(); summary = [:]; pairingText = ""; verificationCode = ""; invitation = nil
+      credentialsReady = false; credentialAccessBlocked = false; groupBusy = false
+      config = Config(role: config.role, secret: Data(repeating: 0, count: 32))
+    }
   }
   func syncNow() { sent.removeAll(); retryRequested = true; if loop == nil { restart() } }
   private func stop() {
@@ -194,13 +271,14 @@ final class VaultRelay: ObservableObject {
     status = active ? "未连接 / Disconnected" : "已锁定 / Locked"
   }
   private func restart() {
-    stop(); guard active, !groupInvalid, !config.token.isEmpty,
+    stop(); guard active, credentialsReady, !credentialAccessBlocked, !groupInvalid, !config.token.isEmpty,
       hasManagedGroup || (!config.paused && !config.peers.isEmpty) else { return }
     let epoch = generation
     loop = Task { [weak self] in await self?.run(epoch) }
   }
   private func updateSummary() async throws { summary = try await call(["op": .string("relay-status")]).object }
   private func action(_ body: () async throws -> Void) async {
+    guard active, credentialsReady, !credentialAccessBlocked else { return }
     failure = nil
     do { try await body() } catch { failure = "中继操作失败，请检查配对、凭据或网络 / Relay operation failed; check pairing, credentials or network" }
   }
@@ -379,17 +457,18 @@ extension VaultRelay {
     }
     return RelayGroups(config: value, allowLocalTest: allowLocalGroupTest)
   }
-  private func saveGroup(_ groups: RelayGroups) throws {
+  private func saveGroup(_ groups: RelayGroups) async throws {
+    guard active, credentialsReady else { throw CredentialError.unavailable }
     config.groupState = try JSONSerialization.data(withJSONObject: groups.config, options: [.sortedKeys])
-    try persist()
+    try await persist()
   }
   private func applyGroup(_ groups: RelayGroups, online: [String] = []) async throws {
-    try saveGroup(groups)
+    try await saveGroup(groups)
     guard active else { throw CancellationError() }
     guard let entry = groups.config["group_entry"] as? [String: Any] else { return }
     let state = try RelayGroups.unpack(entry), members = state["members"] as? [[String: Any]] ?? []
     guard state["closed"] as? Bool != true, members.contains(where: { $0["device"] as? String == config.device }) else {
-      try invalidateGroup(); throw RelayError.invalid("group access revoked")
+      try await invalidateGroup(); throw RelayError.invalid("group access revoked")
     }
     config.endpoint = groups.config["url"] as? String ?? ""
     config.group = groups.config["group"] as? String ?? ""
@@ -401,7 +480,7 @@ extension VaultRelay {
       _ = try await call(["op": .string("relay-revoke"), "peer": .string(id)])
       config.peers.removeValue(forKey: id)
     }
-    try persist()
+    try await persist()
     groupName = state["name"] as? String ?? config.group
     groupMembers = members.compactMap { m in
       guard let id = m["device"] as? String else { return nil }
@@ -409,9 +488,9 @@ extension VaultRelay {
     }
     groupFresh = true
   }
-  private func invalidateGroup() throws {
+  private func invalidateGroup() async throws {
     config.paused = true; groupFresh = false; groupMembers = []
-    let g = try groups(); g.config["access_invalid"] = true; try saveGroup(g)
+    let g = try groups(); g.config["access_invalid"] = true; try await saveGroup(g)
   }
   var groupRevision: Int {
     guard let entry = groupDictionary["group_entry"] as? [String: Any] else { return 0 }
@@ -419,7 +498,7 @@ extension VaultRelay {
   }
   var groupInvalid: Bool { groupDictionary["access_invalid"] as? Bool == true }
   private func groupAction(_ body: (RelayGroups) async throws -> Void) async {
-    guard !groupBusy, active else { return }
+    guard credentialsReady, !credentialAccessBlocked, !groupBusy, active else { return }
     groupBusy = true; failure = nil; stop()
     defer { groupBusy = false; restart() }
     do {
@@ -427,13 +506,13 @@ extension VaultRelay {
       do { try await body(g) }
       catch {
         // Keep signed retry drafts, including conflict-cleared exit state.
-        try saveGroup(g)
+        try await saveGroup(g)
         throw error
       }
     } catch {
       groupFresh = false; groupMembers = []
       let message = String(describing: error)
-      if hasManagedGroup && message.contains("401") { try? invalidateGroup() }
+      if hasManagedGroup && message.contains("401") { try? await invalidateGroup() }
       failure = groupInvalid ? "设备组接入已失效。确认清除本机接入后，可重新创建或加入。 / Group access expired. Clear local access to rejoin."
         : "设备组操作未完成，草稿已保留。请检查网络、权限或服务端是否为 passwordvault 开启自助创建。 / Group operation incomplete; retry draft retained."
     }
@@ -442,7 +521,7 @@ extension VaultRelay {
     await groupAction { g in
       guard !hasManagedGroup, !joiningGroup, config.token.isEmpty else { throw RelayError.invalid("already configured") }
       if !creatingGroup { g.config["url"] = endpoint }
-      try g.prepareCreate(groupName: name, deviceName: deviceName); try saveGroup(g)
+      try g.prepareCreate(groupName: name, deviceName: deviceName); try await saveGroup(g)
       try await g.create(); try await applyGroup(g)
       status = "设备组已创建，请授权密码库同步 / Group created; authorize vault sync next"
     }
@@ -462,8 +541,8 @@ extension VaultRelay {
         guard NSDictionary(dictionary: old).isEqual(to: inv) else { throw RelayError.invalid("another join pending") }
       }
       g.config["url"] = inv["url"]; g.config["group"] = inv["group"]
-      try g.prepareJoin(inv, name: deviceName); try saveGroup(g)
-      try await g.join(inv, name: deviceName); try saveGroup(g)
+      try g.prepareJoin(inv, name: deviceName); try await saveGroup(g)
+      try await g.join(inv, name: deviceName); try await saveGroup(g)
       if inv["mode"] as? String == "auto" {
         guard try await g.finishJoin() else { throw RelayError.invalid("automatic join incomplete") }
         try await applyGroup(g)
@@ -476,7 +555,7 @@ extension VaultRelay {
       guard let pending = g.config["pending_join"] as? [String: Any], let inv = pending["invitation"] as? [String: Any],
             let request = pending["request"] as? [String: Any], let member = try RelayGroups.unpack(request)["member"] as? [String: Any],
             let name = member["name"] as? String else { throw RelayError.invalid("join request") }
-      try await g.join(inv, name: name); try saveGroup(g)
+      try await g.join(inv, name: name); try await saveGroup(g)
       if inv["mode"] as? String == "auto", try await g.finishJoin() { try await applyGroup(g) }
     }
   }
@@ -501,7 +580,7 @@ extension VaultRelay {
         try await applyGroup(g); return
       }
       var inv = try await g.invite(mode: automatic ? "auto" : "manual")
-      g.config["issued_invitation"] = inv; try saveGroup(g)
+      g.config["issued_invitation"] = inv; try await saveGroup(g)
       _ = try await g.publishInvitation(&inv)
       g.config["issued_invitation"] = inv; g.config.removeValue(forKey: "join_request")
       try await applyGroup(g)
@@ -542,8 +621,8 @@ extension VaultRelay {
       if (g.config["pending_exit"] != nil || g.config["exit_completed"] as? Bool == true), let intent = g.config["exit_disband"] as? Bool { guard intent == disband else { throw RelayError.invalid("exit pending") } }
       g.config["exit_disband"] = disband
       if g.config["exit_completed"] as? Bool != true {
-        try await g.prepareExit(disband: disband); try saveGroup(g)
-        try await g.exit(); g.config["exit_completed"] = true; try saveGroup(g)
+        try await g.prepareExit(disband: disband); try await saveGroup(g)
+        try await g.exit(); g.config["exit_completed"] = true; try await saveGroup(g)
       }
       try await clearGroupAccess()
     }
@@ -551,7 +630,7 @@ extension VaultRelay {
   // Also used for explicit legacy reset or invalid local access. Never claims a
   // server-side revocation when only local configuration is cleared.
   func clearLocalGroup() async {
-    guard !groupBusy, active else { return }; groupBusy = true; stop()
+    guard credentialsReady, !credentialAccessBlocked, !groupBusy, active else { return }; groupBusy = true; stop()
     defer { groupBusy = false }
     await action { try await clearGroupAccess() }
   }
@@ -563,7 +642,7 @@ extension VaultRelay {
     let old = config
     config.groupState = nil; config.group = ""; config.token = ""; config.hub = ""
     config.peers = [:]; config.paused = true; config.device = UUID().uuidString.lowercased()
-    do { try persist() } catch { config = old; throw error }
+    do { try await persist() } catch { config = old; throw error }
     groupMembers = []; groupFresh = false; groupName = ""; pairingText = ""; verificationCode = ""; invitation = nil
     try await updateSummary(); status = "本机接入已清除，本地资料保留 / Local access cleared; vault retained"
   }
@@ -578,7 +657,7 @@ extension VaultRelay {
       try await applyGroup(g, online: result["online"] as? [String] ?? [])
     } catch {
       groupFresh = false; groupMembers = []
-      if String(describing: error).contains("401") { try invalidateGroup() }
+      if String(describing: error).contains("401") { try await invalidateGroup() }
       throw error
     }
   }

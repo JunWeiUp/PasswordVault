@@ -1,5 +1,10 @@
 # Changelog
 
+## Device update 2.3.1 — encrypted local relay credentials
+
+- Mac build 29, Android build 23004 and iOS build 11 store relay credentials in a master-password-protected local file through the shared core, with unlock-only access, authenticated encryption and atomic writes.
+- Migrate existing device identities without rejoining; preserve originals on denied access, failed migration or corrupt ciphertext. Old Keychain authorization is explicit and needed only for migration. Local Mac builds honor stable signing configuration.
+
 ## Device update 2.3.1 — relay presence fix
 
 - Mac build 27 and Android build 23003 connect enrolled device groups before vault authorization, keep presence during sync pause, and refresh online status every five seconds. Vault data access still requires explicit authorization and an unlocked, unpaused client.
