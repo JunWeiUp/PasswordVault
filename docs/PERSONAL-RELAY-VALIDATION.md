@@ -17,7 +17,7 @@ This is a local implementation and test-build delivery, not a public release or 
 - Four new Swift group tests also pass against a disposable loopback service with self-service enabled only for the fictional `passwordvault` identities. They cover create/join, stable retry drafts, matching codes, independent vault authorization, actual managed WebSocket delivery, welcome-revision handling, ordinary-member denial, last-manager protection, rename, removal, invalidation, mobile-created groups, disband and local data retention.
 - Three Java SDK tests pass, including shared signed membership vectors and a real loopback create/approve/rename/remove/disband flow. This verifies the Java SDK, not Android camera/Keystore integration on hardware.
 - Mac universal Release, Android compact ARM64 and iOS ARM64 simulator builds pass. UI validation uses an isolated Mac QA bundle and a newly seeded fictional vault outside Documents. Shared input controls follow app language; setup shows create/join guidance instead of a misleading paused state.
-- No real vault, installed application, production service whitelist or existing relay device is modified. The configured production endpoint still requires operator enablement of `passwordvault` self-service. Real camera pairing, Android/iPhone device installation and physical background behavior remain unverified in this increment.
+- No real vault, installed application, production service whitelist or existing relay device is modified. The production endpoint was enabled in the subsequent device-install follow-up below. Real camera pairing, Android/iPhone device installation and physical background behavior remain unverified in this increment.
 
 ## Executed
 
@@ -39,3 +39,11 @@ This is a local implementation and test-build delivery, not a public release or 
 - Android 8 hardware acceptance, real camera pairing, iPhone AutoFill and signed-device delivery are separate acceptance gates. Background operation under OS suspension is not guaranteed.
 - Business queues, deduplication metadata and attachment retention are conservative and currently unpruned. Long-duration large-history/large-attachment memory and storage stress testing remains outside these functional checks.
 - Tests use fictional data and private temporary configuration. Full logs and test builds remain in ignored local output/build directories; credentials are never part of the repository.
+
+## Device-install follow-up
+
+Production now enables `passwordvault` self-service alongside all three existing applications. Configuration and online SQLite backups were retained; the service binary and existing devices were preserved. An isolated production test passed creation, encrypted compact invitation resolution, automatic admission, rename and encrypted WebSocket delivery, then disbanded its test group. A failed creation draft can use **Retry creation** without resetting identity.
+
+Mac 2.3.1 build 26 and Mi10 2.3.1-preview build 23002 were installed and launched. The previous applications and encrypted data were backed up; four Mi10 persistent data files matched byte-for-byte after installation. Mac retains its existing ad-hoc signing mode. Actual camera pairing and Touch ID remain separate hardware acceptance checks.
+
+The 250 phone was updated in place to officially signed 2.3.1 build 23002 and launched. [Device signing workflow](https://github.com/JunWeiUp/PasswordVault/actions/runs/39119191412) succeeded for commit `482e2f1`; source revision, checksums, package, 16 KB ZIP alignment and matching installed certificate were verified before `adb install -r`. No public Release was created. Its non-debuggable private vault was not read or reset.

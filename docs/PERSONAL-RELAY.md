@@ -4,7 +4,7 @@ Mac is the authority for a personal vault. Native Android (8+) and iOS (16+) rep
 
 ## Device groups and vault authorization
 
-Native clients use common-relay's signed device-group protocol. The default endpoint is `wss://eglish.top/relay/v1/ws`; users may configure their own compatible WSS service. Self-service creation must be explicitly enabled for `passwordvault` on that service. A configured endpoint is not evidence that production registration is enabled.
+Native clients use common-relay's signed device-group protocol. The default endpoint is `wss://eglish.top/relay/v1/ws`; users may configure their own compatible WSS service. Self-service creation must be explicitly enabled for `passwordvault` on that service. The configured production endpoint now enables `passwordvault` self-service; independent deployments must enable it themselves.
 
 1. Open **Settings → Relay sync → Device group** while unlocked. Enter a device name and create a named group, or scan/paste a trusted invitation. Phones and desktops have the same group-management capabilities; creating a group makes that device its first manager.
 2. A manager selects **Add device** with **Join automatically after scanning** enabled by default. The encrypted short invitation lasts ten minutes and admits one ordinary member without further approval. Mobile scanners submit the invitation immediately; pasted invitations use the join button. Disable the option before creating an invitation to compare the twelve-hex-digit codes and approve manually; only manual approval can grant management permission (off by default). Cancel an active invitation before changing its mode. Failed automatic joins retain a retry draft.
