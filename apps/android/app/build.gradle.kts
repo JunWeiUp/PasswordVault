@@ -20,10 +20,10 @@ android {
     ndkVersion = "27.0.12077973"
     defaultConfig {
         applicationId = "com.securepass.vault"
-        minSdk = 24
+        minSdk = 26
         targetSdk = 36
-        versionCode = 23001
-        versionName = "2.3.1"
+        versionCode = 23007
+        versionName = "2.3.2"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         testProguardFile("test-proguard-rules.pro")
         ndk {
@@ -85,6 +85,7 @@ android {
 }
 
 dependencies {
+    implementation(project(":common-relay"))
     implementation("androidx.camera:camera-camera2:1.4.2")
     implementation("androidx.camera:camera-lifecycle:1.4.2")
     implementation("androidx.camera:camera-view:1.4.2")

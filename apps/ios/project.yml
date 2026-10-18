@@ -15,12 +15,16 @@ settings:
     CODE_SIGN_STYLE: Automatic
     SWIFT_STRICT_CONCURRENCY: targeted
     OTHER_LDFLAGS: ["-lresolv", "-liconv", "-framework", "Security"]
+packages:
+  CommonRelay:
+    path: ../../vendor/common-relay/swift
 targets:
   PasswordVault:
     type: application
     platform: iOS
     sources:
       - Sources
+      - path: ../shared/Relay
       - path: ../macos/Sources/WebDAVListing.swift
       - path: ../macos/Sources/Models.swift
       - path: Generated/VaultCore.swift
@@ -31,8 +35,8 @@ targets:
       properties:
         VaultAppGroup: $(VAULT_APP_GROUP)
         CFBundleDisplayName: PasswordVault
-        CFBundleShortVersionString: "2.3.1"
-        CFBundleVersion: "10"
+        CFBundleShortVersionString: "2.3.2"
+        CFBundleVersion: "14"
         UILaunchScreen: {}
         NSFaceIDUsageDescription: Unlock your encrypted PasswordVault with Face ID.
         NSCameraUsageDescription: Scan an authenticator setup QR code you choose.
@@ -48,6 +52,7 @@ targets:
           VAULT_APP_GROUP: group.com.securepass.vault.nativepreview
           PRODUCT_BUNDLE_IDENTIFIER: com.securepass.vault.ios.nativepreview
     dependencies:
+      - package: CommonRelay
       - target: PasswordVaultAutofill
       - framework: Generated/VaultCore.xcframework
         embed: false
@@ -58,6 +63,9 @@ targets:
     platform: iOS
     sources:
       - Tests
+      - path: ../shared/RelayTests
+      - path: ../../vendor/common-relay/protocol/group-vectors.json
+        buildPhase: resources
       - path: ../macos/Tests/WebDAVListingTests.swift
     dependencies:
       - target: PasswordVault
@@ -100,8 +108,8 @@ targets:
       path: Autofill/Info.plist
       properties:
         CFBundleDisplayName: PasswordVault
-        CFBundleShortVersionString: "2.3.1"
-        CFBundleVersion: "10"
+        CFBundleShortVersionString: "2.3.2"
+        CFBundleVersion: "14"
         VaultAppGroup: $(VAULT_APP_GROUP)
         NSExtension:
           NSExtensionPointIdentifier: com.apple.authentication-services-credential-provider-ui

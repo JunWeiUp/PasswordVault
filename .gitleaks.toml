@@ -9,3 +9,8 @@ description = "Android signing password in tracked configuration"
 path = '''(^|/)android/key\.properties$'''
 regex = '''(?m)^\s*(?:storePassword|keyPassword)\s*=\s*(\S+)'''
 secretGroup = 1
+
+# Published deterministic protocol fixtures, never operational credentials.
+[[allowlists]]
+description = "Common-relay public cryptographic test vectors"
+paths = ['''(^|/)vendor/common-relay/protocol/(group-vectors|invitation-link-vectors)\.json$''']

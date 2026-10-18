@@ -1,5 +1,10 @@
 # TODO and progress
 
+- [x] Update native relay SDKs for automatic admission and encrypted short invitations; default new invitations to automatic joining.
+- [x] Signed relay device-group onboarding/management and independent vault authorization; [behavior and recovery](docs/PERSONAL-RELAY.md).
+- [x] Enable `passwordvault` production self-service; isolated HTTPS/short-link automatic admission and encrypted WSS delivery pass.
+- [ ] Verify real camera pairing and remaining device behavior after installation.
+
 - [x] Mac Tiptap rich-note editing, encrypted attachments, V3 archives and other-client protection; [implementation and gates](docs/RICH-NOTES.md).
 - [ ] Physical Chinese IME candidate confirmation, VoiceOver, macOS 13/Intel and large-backup peak-memory acceptance for rich notes.
 
@@ -80,3 +85,7 @@ The following items remain open for affected legacy clients or project-wide revi
 
 - [x] Adopt the root documentation and `docs/` guide structure defined in [AGENTS.md](AGENTS.md).
 - [ ] Update these priorities and the relevant design, architecture, page, or deployment guide whenever behavior changes.
+
+## Personal relay delivery
+
+Implementation and validation details are tracked in [personal relay validation](docs/PERSONAL-RELAY-VALIDATION.md). Keep real vault installation, public releases and signed iOS hardware acceptance separate.

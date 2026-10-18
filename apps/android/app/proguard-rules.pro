@@ -5,3 +5,5 @@
 -keepattributes RuntimeVisibleAnnotations,AnnotationDefault,InnerClasses,EnclosingMethod,Signature
 # JNA includes optional desktop helpers that are never used by the Android client.
 -dontwarn java.awt.**
+# Common Relay's libsodium JNA interface is instantiated by a runtime proxy.
+-keep interface io.github.junweiup.commonrelay.Crypto$Sodium { *; }

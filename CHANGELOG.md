@@ -1,5 +1,41 @@
 # Changelog
 
+## 2.3.2 — personal relay synchronization
+
+- Release encrypted Mac/Android/iOS relay synchronization, default automatic QR admission, device-list read/write authorization and independent online presence.
+- Protect local relay credentials with the vault master password and preserve device identity during legacy migration.
+- Add atomic bulk conflict choices on Mac and persistent recipient-scoped conflict reminders on mobile.
+- Coordinated builds: Mac 32, Android 23007, iOS 14 and browser/Web 2.3.2. Public Mac archives remain ad-hoc development builds; iOS downloads remain Simulator-only.
+
+## Device update 2.3.1 — batch conflict resolution
+
+- Mac build 31 adds **Use mobile for all** and **Use Mac for all** above the conflict list, with an affected-count confirmation and atomic resolution of the displayed selection.
+- Android build 23006 and iOS build 13 show the number of merge conflicts awaiting action on Mac. Notices survive restarts and clear after the Mac receipt; only the recipient’s own conflict identifiers are transmitted.
+
+## Device update 2.3.1 — device-list vault access
+
+- Mac build 30 adds a per-device **View and sync changes** switch. Android build 23005 and iOS build 12 accept encrypted grants from their pinned enrollment authority without a second QR/receipt exchange.
+- Persist pending authorization and revocation, require matching device acknowledgements, reject stale revisions and changed member keys, and retain downloaded data when access is disabled.
+
+## Device update 2.3.1 — encrypted local relay credentials
+
+- Mac build 29, Android build 23004 and iOS build 11 store relay credentials in a master-password-protected local file through the shared core, with unlock-only access, authenticated encryption and atomic writes.
+- Migrate existing device identities without rejoining; preserve originals on denied access, failed migration or corrupt ciphertext. Old Keychain authorization is explicit and needed only for migration. Local Mac builds honor stable signing configuration.
+
+## Device update 2.3.1 — relay presence fix
+
+- Mac build 27 and Android build 23003 connect enrolled device groups before vault authorization, keep presence during sync pause, and refresh online status every five seconds. Vault data access still requires explicit authorization and an unlocked, unpaused client.
+
+## Device update 2.3.1 — relay device groups
+
+- Device build identifiers: Mac 26 and Android 23002; iOS remains build 10.
+
+- Relay invitations now default to automatic ordinary-member admission, use encrypted compact QR links, and retain optional manual code approval across Mac, iOS and Android.
+- Replace manual-first relay onboarding with signed device-group creation, QR/text invitations, matching-code approval, durable retry, roster/presence, rename/remove, leave and disband on Mac, iOS and Android.
+- Keep group-management permission independent from explicit Mac vault-sync authorization; invalidate cached management on revoked access and revalidate membership before reconnect.
+- Archive encrypted sync journals on local detach, preserve current data/attachment recovery and rotate device IDs. Keep explicit migration for legacy credentials.
+- Bundle test fixtures and run test apps outside Documents to avoid unnecessary folder-access prompts from ad-hoc builds.
+
 ## Native 2.3.1 — remove shared-vault controls
 
 - Remove shared-vault management, invitations and LAN sync from Mac and iOS, matching the earlier Android removal. Existing shared records, backup metadata and read-only permissions remain.
@@ -253,3 +289,7 @@ Existing security release blockers remain open.
 ## Private development history
 
 The existing `v1.0.0`–`v1.0.4` tags were private development snapshots. They included vault management, TOTP, browser autofill, WebDAV backup, local sharing, trash, and password history. They were not independently audited production releases. Do not install old APKs as a supported release.
+
+## Unreleased — personal relay
+
+Added opt-in native Mac authority / Android and iOS replica synchronization using pinned common-relay SDKs, offline pending operations, explicit pairing and conflict handling. Android minimum is API 26. Browser transport is unchanged; its background writes participate in the native replication journal.
