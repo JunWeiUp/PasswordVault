@@ -66,3 +66,7 @@ The startup option is persistent: a later full app restart may unlock again even
 ## Personal relay boundary
 
 Opt-in synchronization upgrades the local document to format 4 after an encrypted snapshot. Pairing pins device keys, the Mac explicitly authorizes a single-use invitation, and business commits precede ACK. Server tokens are not vault keys. Metadata, static-key forward-secrecy limits and separate release/security gates remain. See [personal relay](PERSONAL-RELAY.md).
+
+## Native local relay credentials
+
+Relay credentials are encrypted by the unlocked vault core in a separate local file using AES-256-GCM, a purpose-separated vault-root subkey and vault-ID authenticated data. The master password protects the root through the existing vault header/KDF; it is not serialized into the credential file. Locked core commands cannot read or write this metadata. Credential files are not document export or replication content. Migration from legacy Keychain/Keystore storage validates a durable encrypted readback before attempting legacy cleanup; denied or corrupt storage cannot silently regenerate a device identity. This storage change is not an independent audit or a guarantee against a compromised unlocked app/OS.

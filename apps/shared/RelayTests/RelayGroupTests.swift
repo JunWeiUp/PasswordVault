@@ -8,8 +8,9 @@ final class RelayGroupTests: XCTestCase {
     let path = FileManager.default.temporaryDirectory.appendingPathComponent("pv-groups-" + UUID().uuidString)
     let core = try RelayTestCore(directory: path)
     _ = try await core.call(["op": .string("create"), "password": .string("fixture")])
-    let relay = VaultRelay(directory: path, role: role, allowLocalGroupTest: true, call: { try await core.call($0) }, refresh: {})
+    let relay = VaultRelay(directory: path, role: role, allowLocalGroupTest: true, call: { try await core.call($0) }, refresh: {}, credentialReader: { _, _ in nil })
     relay.setUnlocked(true)
+    try await eventually { relay.credentialsReady }
     return (core, relay, path)
   }
   private func server() throws -> String {
@@ -135,8 +136,9 @@ final class RelayGroupTests: XCTestCase {
     // Pausing vault synchronization must not disconnect device-group presence.
     await phone.setPaused(true)
     try await eventually { phone.groupMembers.allSatisfy(\.online) && phone.groupMembers.count == 2 }
+    let phoneID = phone.config.device
     phone.setUnlocked(false)
-    try await eventually { mac.groupMembers.contains { $0.id == phone.config.device && !$0.online } }
+    try await eventually { mac.groupMembers.contains { $0.id == phoneID && !$0.online } }
     phone.setUnlocked(true)
     try await eventually { mac.groupMembers.allSatisfy(\.online) && phone.groupMembers.count == 2 && phone.groupMembers.allSatisfy(\.online) }
     let phoneState = try await phoneCore.call(["op": .string("relay-status")])
@@ -147,15 +149,18 @@ final class RelayGroupTests: XCTestCase {
     XCTAssertNil(mac.failure)
   }
   func testJoinDraftIsSavedBeforeNetworkFailureAndSurvivesRestart() async throws {
-    let (_, phone, path) = try await fixture("mobile")
+    let (core, phone, path) = try await fixture("mobile")
     defer { phone.setUnlocked(false); try? FileManager.default.removeItem(at: path) }
     let inv: [String: Any] = ["version": 1, "app": "passwordvault", "group": "fixture", "url": "ws://127.0.0.1:1/relay/v1/ws",
                               "expires": Date().timeIntervalSince1970 + 600, "id": "fixture", "secret": "fixture", "manager": [:]]
     try await eventually { !phone.groupBusy }; await phone.joinGroup(String(decoding: try JSONSerialization.data(withJSONObject: inv), as: UTF8.self), deviceName: "Phone")
     XCTAssertNotNil(phone.failure); XCTAssertTrue(phone.joiningGroup); XCTAssertFalse(phone.groupCode.isEmpty)
-    let old = phone.config.groupState
-    let reloaded = VaultRelay(directory: path, role: "mobile", allowLocalGroupTest: true, call: { _ in .null }, refresh: {})
-    XCTAssertEqual(reloaded.config.groupState, old); XCTAssertEqual(reloaded.groupCode, phone.groupCode)
+    let old = phone.config.groupState, code = phone.groupCode
+    phone.setUnlocked(false)
+    let reloaded = VaultRelay(directory: path, role: "mobile", allowLocalGroupTest: true, call: { try await core.call($0) }, refresh: {})
+    reloaded.setUnlocked(true); try await eventually { reloaded.credentialsReady }
+    XCTAssertEqual(reloaded.config.groupState, old); XCTAssertEqual(reloaded.groupCode, code)
     XCTAssertTrue(reloaded.config.token.isEmpty); XCTAssertTrue(reloaded.config.peers.isEmpty)
+    reloaded.setUnlocked(false)
   }
 }

@@ -29,7 +29,9 @@ macos() {
   mkdir -p target/universal
   lipo -create target/aarch64-apple-darwin/release/libvault_core.a target/x86_64-apple-darwin/release/libvault_core.a -output target/universal/libvault_core.a
   xcodegen generate --spec apps/macos/project.yml
-  xcodebuild -project apps/macos/PasswordVault.xcodeproj -scheme PasswordVault \
+  local signing_args=()
+  if [[ -f apps/macos/Signing.local.xcconfig ]]; then signing_args=(-xcconfig apps/macos/Signing.local.xcconfig); fi
+  xcodebuild -project apps/macos/PasswordVault.xcodeproj -scheme PasswordVault "${signing_args[@]}" \
     -configuration Release -derivedDataPath "${PASSWORDVAULT_DERIVED_DATA:-apps/macos/build}" \
     -destination 'platform=macOS,arch=arm64' build
 }

@@ -15,7 +15,10 @@ final class PersonalRelayTests: XCTestCase {
     let directory = FileManager.default.temporaryDirectory.appendingPathComponent("pv-relay-test-" + UUID().uuidString)
     let core = try RelayTestCore(directory: directory)
     _ = try await core.call(["op": .string("create"), "password": .string("fixture")])
-    let relay = VaultRelay(directory: directory, role: role, call: { try await core.call($0) }, refresh: {})
+    let relay = VaultRelay(directory: directory, role: role, call: { try await core.call($0) }, refresh: {}, credentialReader: { _, _ in nil })
+    relay.setUnlocked(true)
+    for _ in 0..<100 where !relay.credentialsReady { try await Task.sleep(nanoseconds: 50_000_000) }
+    XCTAssertTrue(relay.credentialsReady)
     return (core, relay, directory)
   }
   private func credential(_ relay: VaultRelay, group: String, device: String, token: String = String(repeating: "a", count: 64)) throws -> String {
@@ -86,7 +89,7 @@ final class PersonalRelayTests: XCTestCase {
     XCTAssertNil(hub.failure)
     hub.config.peers[p["device"] as! String]=p["public_key"] as? String
     _=try await mac.call(["op":.string("relay-trust"),"peer":.string(p["device"] as! String)])
-    hub.config.paused=false;hub.setUnlocked(true)
+    await hub.setPaused(false)
     _=try await mac.call(["op":.string("save"),"item":.object(["id":.string("android-large"),"type":.string("secureNote"),"title":.string("Mac to Android"),"note":.string(String(repeating:"INTEROP",count:45000))])])
     var received=false
     for _ in 0..<180 {
@@ -111,7 +114,7 @@ final class PersonalRelayTests: XCTestCase {
     mobile.config.peers[hub["device"] as! String]=hub["public_key"] as? String
     _=try await phone.call(["op":.string("relay-init"),"role":.string("mobile"),"group":.string(c["group"] as! String),"device":.string(c["device"] as! String),"hub":.string(hub["device"] as! String)])
     _=try await phone.call(["op":.string("relay-trust"),"peer":.string(hub["device"] as! String)])
-    mobile.config.paused=false;mobile.setUnlocked(true)
+    await mobile.setPaused(false)
     try await eventually {try await phone.document().items.contains{$0.id=="android-large" && $0.string("note").count==315000}}
     _=try await phone.call(["op":.string("save"),"item":.object(["id":.string("android-roundtrip"),"type":.string("secureNote"),"title":.string("iOS to Mac")])])
     try await eventually {try await phone.document().items.contains{$0.id=="android-ack"}}

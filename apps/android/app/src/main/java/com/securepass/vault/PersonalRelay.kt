@@ -1,7 +1,5 @@
 package com.securepass.vault
 
-import android.security.keystore.KeyGenParameterSpec
-import android.security.keystore.KeyProperties
 import io.github.junweiup.commonrelay.*
 import java.io.File
 import java.net.URI
@@ -11,7 +9,6 @@ import java.util.Base64
 import java.util.UUID
 import java.util.concurrent.TimeUnit
 import javax.crypto.Cipher
-import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.SecretKeySpec
@@ -27,7 +24,7 @@ import org.json.JSONObject
 internal data class RelayMember(val id: String, val name: String, val manager: Boolean, val online: Boolean)
 
 internal data class RelayUi(
-    val automaticJoin: Boolean = false, val managed: Boolean = false, val legacy: Boolean = false, val joining: Boolean = false, val creating: Boolean = false,
+    val credentialsBlocked: Boolean = false, val automaticJoin: Boolean = false, val managed: Boolean = false, val legacy: Boolean = false, val joining: Boolean = false, val creating: Boolean = false,
     val invalid: Boolean = false, val busy: Boolean = false, val groupFresh: Boolean = false, val groupName: String = "",
     val members: List<RelayMember> = emptyList(), val groupInvite: String = "", val groupCode: String = "", val applicant: String = "",
     val status: String = "未连接 / Disconnected", val error: String? = null,
@@ -54,37 +51,50 @@ internal class PersonalRelay(private val directory: File, private val vault: Vau
     @Volatile private var transportFailure: String? = null
     private val http = OkHttpClient.Builder().followRedirects(false).followSslRedirects(false).build()
 
-    init { scope.launch {
-        actions.withLock {
-            try {
-                storage.mkdirs()
-                config = if (configFile.exists()) JSONObject(String(decrypt(configFile.readBytes(), key()))) else {
-                    JSONObject().put("device", UUID.randomUUID().toString()).put("secret", hex(Crypto.random(32)))
-                        .put("group", "").put("hub", "").put("endpoint", "").put("token", "").put("paused", true)
-                        .put("peers", JSONObject()).also { save(it) }
-                }
-                publish(); start()
-            } catch (_: Exception) { mutable.value = mutable.value.copy(error = "无法读取中继安全配置 / Secure relay configuration unavailable") }
-        }
-    } }
-    private fun key(): SecretKey {
+    private fun legacyKey(): SecretKey {
         val ks = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
-        (ks.getKey(alias, null) as? SecretKey)?.let { return it }
-        check(!configFile.exists()) { "Missing key" }
-        return KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore").run {
-            init(KeyGenParameterSpec.Builder(alias, KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT)
-                .setBlockModes(KeyProperties.BLOCK_MODE_GCM).setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE).build()); generateKey()
-        }
+        return ks.getKey(alias, null) as? SecretKey ?: error("Legacy relay key unavailable")
     }
-    private fun save(value: JSONObject) {
-        storage.mkdirs()
-        // Android 8 AtomicFile creates the base path in startWrite; obtain/create the
-        // Keystore key first so an empty in-progress file is not mistaken for a lost key.
-        val sealed = encrypt(value.toString().toByteArray(), key())
-        val atomic = android.util.AtomicFile(configFile)
-        val output = atomic.startWrite()
-        try { output.write(sealed); atomic.finishWrite(output) }
-        catch (error: Exception) { atomic.failWrite(output); throw error }
+    private suspend fun loadCredentials() {
+        if (!unlocked) return
+        val generation = epoch
+        mutable.value = mutable.value.copy(busy = true, error = null)
+        try {
+            val stored = vault.command("relay-credentials-read")
+            check(unlocked && generation == epoch)
+            val migrating = stored.isNull("data")
+            val legacyExists = migrating && configFile.exists()
+            val loaded = if (!migrating) JSONObject(stored.getString("data"))
+            else if (configFile.exists()) JSONObject(String(decrypt(configFile.readBytes(), legacyKey())))
+            else JSONObject().put("device", UUID.randomUUID().toString()).put("secret", hex(Crypto.random(32)))
+                .put("group", "").put("hub", "").put("endpoint", "").put("token", "").put("paused", true)
+                .put("peers", JSONObject())
+            crypto(loaded).publicKey() // Validate legacy identity before committing migration.
+            if (migrating) {
+                val encoded = loaded.toString()
+                vault.command("relay-credentials-write", JSONObject().put("data", encoded))
+                check(vault.command("relay-credentials-read").getString("data") == encoded)
+            }
+            check(unlocked && generation == epoch)
+            config = loaded
+            if (legacyExists && configFile.delete()) {
+                runCatching { KeyStore.getInstance("AndroidKeyStore").apply { load(null); deleteEntry(alias) } }
+            }
+            mutable.value = mutable.value.copy(credentialsBlocked = false)
+            publish()
+        } catch (cancel: CancellationException) { throw cancel }
+        catch (_: Exception) {
+            if (unlocked && generation == epoch) {
+                config = null
+                mutable.value = mutable.value.copy(credentialsBlocked = true,
+                    error = "中继凭据读取或迁移失败；原接入与加密文件保留 / Relay credential migration/read failed; original access and encrypted files preserved")
+            }
+        } finally { if (generation == epoch) mutable.value = mutable.value.copy(busy = false) }
+    }
+    fun retryCredentials() { scope.launch { actions.withLock { stop(); loadCredentials(); start() } } }
+    private suspend fun save(value: JSONObject) {
+        check(unlocked)
+        vault.command("relay-credentials-write", JSONObject().put("data", value.toString()))
     }
     private fun crypto(value: JSONObject): Crypto {
         val peers = value.getJSONObject("peers")
@@ -158,8 +168,9 @@ internal class PersonalRelay(private val directory: File, private val vault: Vau
         unlocked = value
         if (!value) {
             epoch++; client?.close(); loop?.cancel()
-            mutable.value = mutable.value.copy(groupFresh = false, members = emptyList(), groupInvite = "", groupCode = "", applicant = "", status = "已锁定 / Locked", reply = "", code = "", pending = 0)
-        } else scope.launch { actions.withLock { stop(); start() } }
+            config = null
+            mutable.value = RelayUi(status = "已锁定 / Locked")
+        } else scope.launch { actions.withLock { stop(); loadCredentials(); start() } }
     }
     suspend fun close() { unlocked = false; stop(); scope.cancel(); http.connectionPool.evictAll() }
     fun syncNow() { wake = true; scope.launch { actions.withLock { if (loop?.isActive != true) start() } } }
@@ -291,7 +302,7 @@ internal class PersonalRelay(private val directory: File, private val vault: Vau
             .put("url", "wss://eglish.top/relay/v1/ws")
         return RelayGroups(g, false)
     }
-    private fun saveGroup(c: JSONObject, g: RelayGroups) { c.put("groups", g.config); save(c) }
+    private suspend fun saveGroup(c: JSONObject, g: RelayGroups) { c.put("groups", g.config); save(c) }
     private suspend fun applyGroup(c: JSONObject, g: RelayGroups, online: org.json.JSONArray = org.json.JSONArray()) {
         saveGroup(c, g)
         check(unlocked)
@@ -312,7 +323,7 @@ internal class PersonalRelay(private val directory: File, private val vault: Vau
                 RelayMember(id, m.getString("name"), m.getBoolean("manager"), (0 until online.length()).any { online.optString(it) == id })
             })
     }
-    private fun invalidateGroup(c: JSONObject) {
+    private suspend fun invalidateGroup(c: JSONObject) {
         c.put("paused", true); c.getJSONObject("groups").put("access_invalid", true); save(c)
         mutable.value = mutable.value.copy(groupFresh = false, members = emptyList(), invalid = true)
     }

@@ -63,8 +63,11 @@ internal fun RelaySettingsScreen(vault: VaultRepository, t: (String,String)->Str
         }
         }
         HorizontalDivider()
-        RelayGroupPanel(vault, state, t)
-        if (state.legacy || (!state.managed && !state.joining && !state.creating)) {
+        if (state.credentialsBlocked) {
+            Text(t("中继凭据由本机主密码保护。迁移失败不会清除原接入。", "Relay credentials are protected by the local master password. Failed migration preserves the original access."))
+            Button(onClick = relay::retryCredentials, enabled = !state.busy) { Text(t("重试读取凭据", "Retry credential access")) }
+        } else RelayGroupPanel(vault, state, t)
+        if (!state.credentialsBlocked && (state.legacy || (!state.managed && !state.joining && !state.creating))) {
             TextButton(onClick = { legacyExpanded = !legacyExpanded }, enabled = !state.busy) { Text(t("兼容旧版手动接入", "Legacy manual access")) }
             if (legacyExpanded) {
         Text(t("登记设备", "Register device"), style = MaterialTheme.typography.titleMedium)
