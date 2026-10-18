@@ -29,9 +29,11 @@ macos() {
   mkdir -p target/universal
   lipo -create target/aarch64-apple-darwin/release/libvault_core.a target/x86_64-apple-darwin/release/libvault_core.a -output target/universal/libvault_core.a
   xcodegen generate --spec apps/macos/project.yml
-  local signing_args=()
-  if [[ -f apps/macos/Signing.local.xcconfig ]]; then signing_args=(-xcconfig apps/macos/Signing.local.xcconfig); fi
-  xcodebuild -project apps/macos/PasswordVault.xcodeproj -scheme PasswordVault "${signing_args[@]}" \
+  # macOS Bash 3.2 treats an empty array as unset under `set -u`.
+  # Keep the command array nonempty when CI has no private signing config.
+  local build_command=(xcodebuild -project apps/macos/PasswordVault.xcodeproj -scheme PasswordVault)
+  if [[ -f apps/macos/Signing.local.xcconfig ]]; then build_command+=(-xcconfig apps/macos/Signing.local.xcconfig); fi
+  "${build_command[@]}" \
     -configuration Release -derivedDataPath "${PASSWORDVAULT_DERIVED_DATA:-apps/macos/build}" \
     -destination 'platform=macOS,arch=arm64' build
 }
