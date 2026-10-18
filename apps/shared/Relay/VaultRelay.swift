@@ -31,6 +31,7 @@ final class VaultRelay: ObservableObject {
   }
   @Published private(set) var credentialsReady = false
   @Published private(set) var credentialAccessBlocked = false
+  @Published private(set) var resolvingConflicts = false
   @Published var groupBusy = false
   @Published var groupFresh = false
   @Published var groupName = ""
@@ -146,7 +147,7 @@ final class VaultRelay: ObservableObject {
           guard result == errSecSuccess || result == errSecItemNotFound else { throw CredentialError.status(result) }
         }
       }
-      restart()
+      try await updateSummary(); restart()
     } catch {
       guard active, credentialLoadGeneration == epoch, !Task.isCancelled else { return }
       credentialAccessBlocked = true
@@ -260,6 +261,18 @@ final class VaultRelay: ObservableObject {
   }
   func resolve(_ conflict: String, choice: String) async {
     await action { _ = try await call(["op": .string("relay-resolve"), "conflict": .string(conflict), "choice": .string(choice)]); try await updateSummary(); await refresh(); sent.removeAll() }
+  }
+  func resolveConflicts(_ ids: [String], choice: String) async {
+    guard active, credentialsReady, config.role == "hub", !resolvingConflicts, !ids.isEmpty else { return }
+    resolvingConflicts = true; failure = nil
+    defer { resolvingConflicts = false }
+    do {
+      _ = try await call(["op": .string("relay-resolve-batch"), "conflicts": .array(ids.map(JSONValue.string)), "choice": .string(choice)])
+      try await updateSummary(); await refresh(); syncNow()
+    } catch {
+      try? await updateSummary()
+      failure = "批量处理未完成，请刷新后重试；同一条目存在多个手机版本时请逐条处理。 / Batch resolution failed. Refresh and retry; resolve differing versions from multiple phones individually."
+    }
   }
   func setPaused(_ paused: Bool) async { await action { config.paused = paused; try await persist(); restart() } }
   func setUnlocked(_ unlocked: Bool) {

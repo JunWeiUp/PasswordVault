@@ -8,6 +8,9 @@ struct RelaySettingsView: View {
   @State private var endpoint = ""
   @State private var pairInput = ""
   @State private var importing = false
+  @State private var batchIDs: [String] = []
+  @State private var batchChoice = "local"
+  @State private var confirmingBatch = false
   #if os(iOS)
   @State private var scanning = false
   #endif
@@ -32,6 +35,10 @@ struct RelaySettingsView: View {
           Button(t("立即同步", "Sync now")) { relay.syncNow() }.disabled(relay.groupInvalid)
           Button(relay.config.paused ? t("恢复", "Resume") : t("暂停", "Pause")) { Task { await relay.setPaused(!relay.config.paused) } }.disabled(relay.groupInvalid)
         }
+      }
+      if relay.config.role == "mobile", let count = relay.summary["conflictCount"]?.number, count > 0 {
+        Label(t("有 \(Int(count)) 项合并冲突，请到电脑端处理。打开 Mac 设置 → 中继同步，处理后这里会自动更新。", "\(Int(count)) merge conflicts need attention on your computer. Open Mac Settings → Relay sync; this status updates after resolution."), systemImage: "exclamationmark.triangle.fill")
+          .foregroundStyle(.orange).accessibilityIdentifier("relay-conflict-reminder")
       }
       Divider()
       if relay.credentialAccessBlocked {
@@ -84,13 +91,36 @@ struct RelaySettingsView: View {
       }
       }
       let conflicts = relay.summary["conflicts"]?.object ?? [:]
+      if relay.config.role == "hub" && !conflicts.isEmpty {
+        VStack(alignment: .leading, spacing: 8) {
+          Text(t("待处理冲突：", "Conflicts to resolve: ") + String(conflicts.count)).font(.headline)
+          HStack {
+            Button(t("全部采用手机端", "Use mobile for all")) {
+              batchIDs = conflicts.keys.sorted(); batchChoice = "remote"; confirmingBatch = true
+            }
+            Button(t("全部采用 Mac 端", "Use Mac for all")) {
+              batchIDs = conflicts.keys.sorted(); batchChoice = "local"; confirmingBatch = true
+            }
+          }
+          if relay.resolvingConflicts { ProgressView(t("正在处理冲突…", "Resolving conflicts…")) }
+        }
+      }
       ForEach(conflicts.keys.sorted(), id: \.self) { id in
         RelayConflictRow(id: id, conflict: conflicts[id] ?? .null, relay: relay, t: t)
       }
       Text(t("Mac 解锁后处理同步。中继暂存不代表已写入 Mac；手机本地编辑会保留到主库确认。", "Mac processes sync while unlocked. Local mobile changes remain pending until Mac confirms them."))
         .font(.caption).foregroundStyle(.secondary)
     }
-    .disabled(relay.groupBusy)
+    .disabled(relay.groupBusy || relay.resolvingConflicts)
+    .alert(batchChoice == "remote" ? t("全部采用手机端？", "Use mobile for all?") : t("全部采用 Mac 端？", "Use Mac for all?"), isPresented: $confirmingBatch) {
+      Button(t("取消", "Cancel"), role: .cancel) { batchIDs = [] }
+      Button(t("确认处理", "Resolve conflicts"), role: .destructive) {
+        let ids = batchIDs, choice = batchChoice
+        Task { await relay.resolveConflicts(ids, choice: choice) }
+      }
+    } message: {
+      Text(t("将处理当前选中的 \(batchIDs.count) 项冲突，统一采用所选端的版本（包括删除操作）。另一端的冲突版本将被替换；之后新增的冲突不会自动处理。", "Resolve the selected \(batchIDs.count) conflicts using the chosen side, including deletions. Conflicting versions on the other side will be replaced. New conflicts are excluded."))
+    }
     .onAppear { endpoint = relay.config.endpoint }
     .fileImporter(isPresented: $importing, allowedContentTypes: [.json]) { result in
       guard case .success(let url) = result else { return }
