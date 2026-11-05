@@ -74,7 +74,7 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^4.0.0
-  drift_dev: ^2.19.0
+  drift_dev: ^2.35.2
   build_runner: ^2.4.9
 
 # For information on the generic Dart part of this file, see the
