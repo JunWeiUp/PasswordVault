@@ -37,7 +37,7 @@ Serve the Web download over HTTPS or loopback HTTP; do not use file URLs.
 
 ## iOS
 
-The simulator archive requires a compatible Xcode simulator on Mac. It is not an
+The simulator archive is built with Xcode 26.3 for the iOS 26.2 simulator runtime on Mac. It is not an
 IPA and cannot be installed on an iPhone. Device provisioning, AutoFill/App Group
 eligibility and signed device distribution remain separate requirements.
 

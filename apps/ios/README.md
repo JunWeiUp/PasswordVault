@@ -19,3 +19,12 @@ The main app closes its database session on background lock so the credential-pr
 `PasswordVaultTests` covers encrypted lifecycle, unreadable/tampered drafts WebDAV parsing, request cancellation generations and real-interaction idle timing. `VaultFlowTests` covers create/edit/delete/restore/lock and background draft recovery. `AutofillSystemTest` is opt-in (`PV_SYSTEM_QA=1` in the test runner), changes only the simulator's provider setting, and requires the local login fixture to be opened in Safari beforehand. It checks cancellation followed by a new request and uses fictional credentials in the preview App Group. It must never run against a user's production vault.
 
 See [mobile acceptance](../../docs/MOBILE-IMPLEMENTATION.md) for what has actually been tested and remaining hardware/release gates.
+
+## CI toolchain
+
+CI pins Xcode 26.3 and selects an available iPhone whose runtime matches its iOS
+Simulator SDK (26.2). It never selects the first arbitrary installed runtime.
+This avoids the missing `libswiftWebKit.dylib` startup failure observed with the
+runner default Xcode 16.4/iOS 18.5. Per-test timeouts bound repeated launch failures.
+The deployment target remains iOS 16; simulator artifact requirements follow the
+selected SDK and are recorded by the CI build.
