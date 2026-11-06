@@ -1,41 +1,13 @@
-# PasswordVault 2.4.0
+## 更新内容
 
-This regular GitHub release contains developer-preview clients. It does not claim
-production security acceptance or an independent security audit.
+- Mac 升级 NSH 0.4 与原生富文本编辑器，字数及保存提示固定在底部。
+- 完善设备资料、恢复历史、中继同步和浏览器保存体验。
+- 整理项目结构，旧 SwiftUI Mac 归档；关闭自动依赖更新 PR。
 
-## Changes
+## 下载说明
 
-- Introduce the current Native Shell 0.4 Mac client with the official native
-  RichEditor, formatting, tables, undo/redo, encrypted attachments and a fixed
-  bottom status bar. Preserve unsupported legacy note formats without silently
-  rewriting them.
-- Add device/service records, encrypted scripts and configuration documents,
-  scoped local AI access, recovery/history tools and expanded account workflows.
-- Improve encrypted device relay access and mobile synchronization, and browser
-  credential saving and offline behavior.
-- Retain the SwiftUI Mac client in `apps/macos-legacy`; share the web editor across
-  legacy Mac, mobile and browser clients. Remove retired Flutter source/tooling.
-- Pin huacnlee/cargo in project build entry points and CI.
+提供 Android ARM64 APK、浏览器扩展、iOS 模拟器包、macOS ZIP 和 Web ZIP，各一个。
 
-## Choose a download
+macOS 支持 Apple Silicon / macOS 14+，公共包未公证；iOS 包仅用于模拟器，不能直接安装到 iPhone。软件仍为开发预览版，升级前请保留加密备份。
 
-- **Current Mac:** `macos-arm64-development.zip`, macOS 14+ on Apple Silicon.
-- **Android:** choose the ARM64 or x86_64 APK for Android 8.0+.
-- **Browser / Web:** unpacked Chromium extension or standalone HTTPS/localhost app.
-- **iOS:** simulator archive and source only; no signed iPhone installation package.
-
-Read `INSTALL.md` and verify the complete download set against `SHA256SUMS`.
-`BUILD.json` records the exact commit and component versions. Mac downloads are
-ad-hoc signed and not notarized; Touch ID enrollment is not guaranteed. Keep a
-verified encrypted backup before changing clients or enabling new storage formats.
-Do not uninstall the only copy of a vault to resolve a signing mismatch.
-
-## 中文
-
-本次新增 NSH 0.4 原生 Mac 客户端及官方富文本编辑器，底部字数/保存提示固定；
-同时整理设备资料、AI 访问、恢复历史、中继同步及浏览器保存功能。旧 SwiftUI Mac
-仅保留源码并明确标为 Legacy，本次不构建或发布旧版 Mac 包。
-
-这是开发预览软件的常规 GitHub Release，仍有独立安全审计、真实输入法、无障碍及
-部分设备场景待验收。新 Mac 包支持 macOS 14+ / Apple Silicon，未公证；升级前保留
-并验证加密备份。iOS 附件为模拟器包，不能直接安装到 iPhone。
+[许可证](https://github.com/JunWeiUp/PasswordVault/blob/main/LICENSE) · [第三方组件](https://github.com/JunWeiUp/PasswordVault/blob/main/config/release/THIRD_PARTY_NOTICES.md)

@@ -59,3 +59,7 @@ The owner has retired the standalone SwiftUI Mac CI and release artifact. Only N
 Dependabot automatic version-update PRs are disabled at the owner's request.
 Do not restore `.github/dependabot.yml` or enable automatic dependency-update PRs
 without a new owner request. Dependency updates are reviewed and run manually.
+
+## Release presentation
+
+Keep release notes concise and publish exactly five application packages: one Android ARM64 APK, one Chromium extension ZIP, one iOS Simulator ZIP, one NSH macOS ZIP and one Web ZIP. Do not publish extra x86 APKs, source archives or standalone metadata/documentation attachments. Keep internal signature/checksum verification and link license notices in the description.

@@ -10,7 +10,7 @@ from unittest import mock
 import unittest
 import zipfile
 
-from native_release import ROOT, validate_versions, verify_android_metadata, verify_app_archive
+from native_release import ROOT, validate_versions, verify_android_metadata, verify_app_archive, package, public_asset_names
 
 
 class NativeReleaseTests(unittest.TestCase):
@@ -159,6 +159,45 @@ class NativeReleaseTests(unittest.TestCase):
             with self.assertRaises(SystemExit): verify_app_archive(path, '2.4.0', nsh=True)
             make(identity='wrong.app')
             with self.assertRaises(SystemExit): verify_app_archive(path, '2.4.0', nsh=True)
+
+    def test_release_packages_exactly_one_download_per_platform(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            for name in ['native-version.json', 'apps/browser/package.json', 'apps/browser/package-lock.json',
+                         'apps/macos-nsh/nsh.json', 'apps/android/app/build.gradle.kts', 'apps/ios/project.yml',
+                         'config/signing/android-release-certificate.sha256']:
+                target = root / name
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes((ROOT / name).read_bytes())
+            data = validate_versions(root)
+            tag = 'v' + data['version']
+            inputs = root / 'incoming'
+            inputs.mkdir()
+            (inputs / 'android-arm64-v8a.apk').write_bytes(b'synthetic signed-input fixture')
+            for filename, simulator in [('PasswordVault-macos-arm64.zip', False), ('PasswordVault-ios-simulator.zip', True)]:
+                info = {'CFBundleShortVersionString': data['version'], 'CFBundleExecutable': 'PasswordVault'}
+                info.update({'CFBundleSupportedPlatforms': ['iPhoneSimulator']} if simulator else
+                            {'CFBundleIdentifier': 'com.securepass.vault.nshpreview', 'PVVaultDirectoryName': 'PasswordVaultNative'})
+                with zipfile.ZipFile(inputs / filename, 'w') as bundle:
+                    bundle.writestr('PasswordVault.app/' + ('Info.plist' if simulator else 'Contents/Info.plist'), plistlib.dumps(info))
+                    executable = zipfile.ZipInfo('PasswordVault.app/' + ('' if simulator else 'Contents/MacOS/') + 'PasswordVault')
+                    executable.external_attr = 0o100755 << 16
+                    bundle.writestr(executable, b'synthetic executable')
+                    if not simulator:
+                        for path in ['Contents/MacOS/pv-browser-host', 'Contents/MacOS/pv-mcp', 'Contents/Resources/BrowserIdentity.json']:
+                            bundle.writestr('PasswordVault.app/' + path, b'fixture')
+            browser = inputs / 'browser'
+            browser.mkdir()
+            (browser / 'manifest.json').write_text(json.dumps({'version': data['version']}))
+            (browser / 'index.html').write_text('<html>synthetic fixture</html>')
+            with mock.patch('native_release.subprocess.check_output', return_value='a' * 40):
+                package(root, inputs, tag)
+            output = root / 'release_assets'
+            downloads = sorted(path.name for path in output.iterdir() if path.suffix in ('.apk', '.zip'))
+            self.assertEqual(downloads, sorted(public_asset_names(tag)))
+            self.assertEqual(len(downloads), 5)
+            self.assertFalse(any('source.zip' in name or 'x86' in name for name in downloads))
+            self.assertTrue((output / 'SHA256SUMS').is_file())
 
 
 if __name__ == '__main__':

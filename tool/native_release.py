@@ -49,7 +49,7 @@ def verify_android(root, directory):
     signer = sdk / 'build-tools/36.0.0/apksigner'
     aapt = sdk / 'build-tools/36.0.0/aapt2'
     data = validate_versions(root)
-    for abi in ('arm64-v8a', 'x86_64'):
+    for abi in ('arm64-v8a',):
         apk = directory / f'android-{abi}.apk'
         result = subprocess.check_output([str(signer), 'verify', '--print-certs', str(apk)], text=True)
         verify_apk_certificates(result, expected, apk.name)
@@ -58,7 +58,7 @@ def verify_android(root, directory):
         with zipfile.ZipFile(apk) as bundle:
             if f'lib/{abi}/libvault_core.so' not in bundle.namelist():
                 raise SystemExit('Native vault core missing from APK.')
-    print('Both native APKs have the reviewed release signature and non-debuggable isolated package.')
+    print('The ARM64 APK has the reviewed release signature and non-debuggable isolated package.')
 
 
 def verify_android_metadata(badging, data, abi):
@@ -91,21 +91,27 @@ def verify_app_archive(path, version, simulator=False, nsh=False):
             raise SystemExit('Mac browser bridge is missing.')
 
 
+def public_asset_names(tag):
+    """Exactly one download per supported distribution surface."""
+    return [
+        f'PasswordVault-Android-arm64-{tag}.apk',
+        f'PasswordVault-macOS-{tag}.zip',
+        f'PasswordVault-iOS-Simulator-{tag}.zip',
+        f'PasswordVault-Extension-{tag}.zip',
+        f'PasswordVault-Web-{tag}.zip',
+    ]
+
+
 def package(root, inputs, tag):
     data = validate_versions(root, tag)
     output = root / 'release_assets'
     if output.exists():
         raise SystemExit('Refusing to mix release assets with an existing directory.')
-    prefix = f'PasswordVault-{tag}'
+    names = public_asset_names(tag)
     sources = {
-        f'{prefix}-android-arm64-v8a.apk': inputs / 'android-arm64-v8a.apk',
-        f'{prefix}-android-x86_64.apk': inputs / 'android-x86_64.apk',
-        f'{prefix}-macos-arm64-development.zip': inputs / 'PasswordVault-macos-arm64.zip',
-        f'{prefix}-ios-simulator.zip': inputs / 'PasswordVault-ios-simulator.zip',
-        'INSTALL.md': root / 'config/release/INSTALL.md',
-        'LICENSE': root / 'LICENSE',
-        'THIRD_PARTY_NOTICES.md': root / 'config/release/THIRD_PARTY_NOTICES.md',
-        'SIGNING-CERTIFICATE-SHA256.txt': root / 'config/signing/android-release-certificate.sha256',
+        names[0]: inputs / 'android-arm64-v8a.apk',
+        names[1]: inputs / 'PasswordVault-macos-arm64.zip',
+        names[2]: inputs / 'PasswordVault-ios-simulator.zip',
     }
     for path in sources.values():
         if not path.is_file() or path.is_symlink() or path.stat().st_size == 0:
@@ -122,10 +128,8 @@ def package(root, inputs, tag):
         staging.mkdir()
         for name, source in sources.items():
             shutil.copyfile(source, staging / name)
-        archive(browser, staging / f'{prefix}-chromium-extension.zip')
-        archive(browser, staging / f'{prefix}-web.zip')
-        # Only committed files enter the source archive, never ignored vaults/keys/builds.
-        subprocess.run(['git', 'archive', '--format=zip', f'--prefix=PasswordVault-{tag}/', '-o', str(staging / f'{prefix}-source.zip'), 'HEAD'], cwd=root, check=True)
+        archive(browser, staging / names[3])
+        archive(browser, staging / names[4])
         metadata = dict(data, product='PasswordVault', status='developer-preview', tag=tag, commit=commit,
                         android_package='com.securepass.vault.nativepreview', macos_distribution='ad-hoc-signed, not notarized',
                         ios_distribution='simulator only; not installable on iPhone',
