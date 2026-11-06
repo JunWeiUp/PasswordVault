@@ -28,7 +28,12 @@ final class MobileRichNoteTests: XCTestCase {
     let captured = await session.capture(closing: false).value
     XCTAssertEqual(captured?.note, "RICH_IOS_CANARY")
     XCTAssertEqual(captured?.string("noteFormat"), "rich-v1")
-    if let captured { let saved = await store.save(captured); XCTAssertTrue(saved) }
+    if let captured {
+      let saved = await store.save(captured)
+      XCTAssertTrue(saved)
+      XCTAssertEqual(store.items.first(where: { $0.id == captured.id })?.title, captured.title)
+      XCTAssertEqual(store.items.first(where: { $0.id == captured.id })?.note, "RICH_IOS_CANARY")
+    }
     store.captureRichDraft = { session.capture(closing: true) }
     store.lock()
     await store.authenticate("synthetic rich bridge fixture", create: false)

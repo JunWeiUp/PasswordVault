@@ -16,6 +16,9 @@ final class VaultFlowTests: XCTestCase {
     XCTAssertTrue(app.tabBars.buttons["全部笔记"].waitForExistence(timeout: 10))
     app.tabBars.buttons["全部笔记"].tap()
     app.buttons["新建"].tap()
+    let newEntry = app.buttons["新建条目"]
+    XCTAssertTrue(newEntry.waitForExistence(timeout: 5))
+    newEntry.tap()
     let title = app.textFields["entry.title"]
     XCTAssertTrue(title.waitForExistence(timeout: 5))
     title.tap()
@@ -63,7 +66,11 @@ final class VaultFlowTests: XCTestCase {
     XCTAssertTrue(app.tabBars.buttons["全部笔记"].waitForExistence(timeout: 10))
     app.tabBars.buttons["全部笔记"].tap()
     app.buttons["新建"].tap()
+    let newEntry = app.buttons["新建条目"]
+    XCTAssertTrue(newEntry.waitForExistence(timeout: 5))
+    newEntry.tap()
     let title = app.textFields["entry.title"]
+    XCTAssertTrue(title.waitForExistence(timeout: 5))
     title.tap()
     title.typeText("Unfinished encrypted draft")
     XCUIDevice.shared.press(.home)

@@ -19,7 +19,7 @@ struct MobileRichNoteEditor: View {
   var body: some View {
     NavigationStack {
       VStack(spacing: 8) {
-        TextField(store.t("标题", "Title"), text: Binding(get: { draft.title }, set: { draft.title = $0; store.pendingDraft = draft })).font(.title2).padding(.horizontal).disabled(!store.canEdit(draft))
+        TextField(store.t("标题", "Title"), text: Binding(get: { draft.title }, set: { draft.title = $0; store.pendingDraft = draft })).font(.title2).padding(.horizontal).disabled(!store.canEdit(draft)).accessibilityIdentifier("entry.title")
         if !error.isEmpty { Text(error).foregroundStyle(.orange).font(.caption).padding(.horizontal) }
         MobileNoteSurface(item: draft, store: store, connected: { value in
           session = value
@@ -79,7 +79,16 @@ private struct MobileNoteSurface: UIViewRepresentable {
   let store: MobileVaultStore
   let connected: (MobileNoteSession) -> Void
   func makeCoordinator() -> MobileNoteSession { MobileNoteSession(item: item, store: store) }
-  func makeUIView(context: Context) -> WKWebView { let session = context.coordinator; connected(session); session.load(); return session.webView }
+  func makeUIView(context: Context) -> WKWebView {
+    let session = context.coordinator
+    // Register view-owned state after SwiftUI finishes this view update.
+    DispatchQueue.main.async {
+      guard !session.closing else { return }
+      connected(session)
+    }
+    session.load()
+    return session.webView
+  }
   func updateUIView(_ view: WKWebView, context: Context) { context.coordinator.item.title = item.title }
   static func dismantleUIView(_ view: WKWebView, coordinator: MobileNoteSession) { _ = coordinator.capture(closing: true) }
 }
