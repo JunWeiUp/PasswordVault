@@ -1,0 +1,17 @@
+{
+  "description": "Public synthetic interoperability vector. Never use this key for real data.",
+  "key": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+  "envelope": {
+    "version": 1,
+    "id": "0123456789abcdef0123456789abcdef",
+    "nonce": "AAECAwQFBgcICQoL",
+    "ciphertext": "PCCicrGJpzm3Y8Tj0JsdCaOw7kyEDi0ZGkvH43QMbNZyMpSHjbRh/QbKHoDtpRIaiDAD+TO5zbtTtVc1OoKBmpFfrhe2v1ISPm7xM5IwGPD874XRsBLFBSN13ekZ"
+  },
+  "plaintext": {
+    "title": "Shared fixture",
+    "fields": {
+      "username": "fictional"
+    },
+    "attachments": []
+  }
+}

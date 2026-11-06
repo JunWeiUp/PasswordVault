@@ -8,7 +8,7 @@ import struct
 import subprocess
 parser=argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--fixture-dir',required=True)
-parser.add_argument('--app',default='apps/macos/build/Build/Products/Debug/PasswordVault.app')
+parser.add_argument('--app',default='apps/macos-legacy/build/Build/Products/Debug/PasswordVault.app')
 args=parser.parse_args()
 folder=str(pathlib.Path(args.fixture_dir).resolve())
 assert pathlib.Path(folder,'.synthetic-fixture').read_text()=='PasswordVault synthetic fixture v2\n', 'Refusing a non-fixture vault'

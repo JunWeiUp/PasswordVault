@@ -1,10 +1,12 @@
+import {requestPasskeyApproval,passkeyApproval,cancelPasskeyApproval} from "./passkey-approval";
+import {handlePasskey,cancelPasskeys} from "./passkey-bridge";
 import {
   enqueue,
   queuedCount,
   syncQueue,
   type QueuedLogin,
 } from "./offline-queue";
-import { handleInline, clearInlineOffers } from "./inline-fill";
+import { handleInline, clearInlineOffers, previousUsername } from "./inline-fill";
 import { nativeTransportError } from "./native-connection";
 import { readStorage } from "./storage";
 import * as vaultCore from "./core";
@@ -25,6 +27,18 @@ const HOST = "com.securepass.vault.native_v2";
 let core: typeof import("./core") | undefined;
 let serial: Promise<unknown> = Promise.resolve();
 let readGeneration = 0;
+let autoLockLoaded = false;
+let autoLockEnabled = false;
+let autoLockMinutes = 60;
+const autoLockReady = (async () => {
+  const enabled = await chrome.storage.local.get("browserAutoLockEnabled");
+  const duration = await chrome.storage.local.get("browserAutoLockMinutes");
+  autoLockEnabled = enabled.browserAutoLockEnabled === true;
+  autoLockMinutes = duration.browserAutoLockMinutes === 120 ? 120 : 60;
+  chrome.idle.setDetectionInterval(autoLockMinutes * 60);
+  autoLockLoaded = true;
+})();
+
 async function mode(): Promise<string> {
   return (await chrome.storage.local.get("mode")).mode ?? "native";
 }
@@ -44,6 +58,8 @@ async function native(request: Record<string, unknown>) {
   }
   if (!response?.ok) {
     clearInlineOffers();
+    cancelPasskeys();
+    cancelPasskeyApproval();
     if (response?.error === "unpaired")
       await chrome.storage.local.remove("token");
     throw new Error(response?.error ?? "native-unavailable");
@@ -61,7 +77,7 @@ async function currentTab(id?: number) {
 async function requestCore(request: Request) {
   if ((await mode()) === "native") {
     const generation = readGeneration;
-    if (["matches", "fill"].includes(request.op) &&
+    if (["matches", "fill", "otp-matches", "otp-fill", "structured-list", "structured-fill", "passkey-create", "passkey-assert"].includes(request.op) &&
         (await chrome.storage.session.get("nativeReadsLocked")).nativeReadsLocked)
       throw new Error("locked");
     const result = (await native(request)).data;
@@ -138,9 +154,13 @@ async function synchronize() {
   } else if (s.unlocked && s.paired === true) await syncQueue(deliverQueued);
   await updateSyncAlarm();
 }
-async function handle(request: Record<string, any>) {
+async function handle(request: Record<string, any>, validateSave?: () => Promise<void>) {
   switch (request.action) {
+    case "passkey-pending": case "passkey-approve": case "passkey-reject":
+      return passkeyApproval(request.action,request);
     case "status": {
+      await autoLockReady;
+      const lockSettings = { autoLockEnabled, autoLockMinutes };
       const chosen = await mode();
       if (chosen === "native") {
         try {
@@ -149,6 +169,8 @@ async function handle(request: Record<string, any>) {
           const readReady = s.readReady === true && !readsLocked;
           if ((!s.unlocked || s.paired === false) && !readReady) {
             clearInlineOffers();
+    cancelPasskeys();
+    cancelPasskeyApproval();
           }
           if (s.unlocked && s.paired === false)
             await chrome.storage.local.remove("token");
@@ -161,6 +183,7 @@ async function handle(request: Record<string, any>) {
             }
           }
           return {
+            ...lockSettings,
             queued: await queuedCount(),
             syncError,
             syncSupported: s.syncSupported === true,
@@ -178,11 +201,14 @@ async function handle(request: Record<string, any>) {
           };
         } catch (error) {
           clearInlineOffers();
+    cancelPasskeys();
+    cancelPasskeyApproval();
           return {
             mode: chosen,
             unlocked: false,
             paired: false,
             available: false,
+            ...lockSettings,
             queued: await queuedCount(),
             connectionError:
               error instanceof Error ? error.message : "native-unavailable",
@@ -191,9 +217,24 @@ async function handle(request: Record<string, any>) {
       }
       return {
         mode: chosen,
+        ...lockSettings,
         exists: !!(await readStorage()),
         unlocked: !!core && !core.locked(),
       };
+    }
+    case "configure-auto-lock": {
+      await autoLockReady;
+      if (typeof request.enabled !== "boolean" || ![60, 120].includes(request.minutes))
+        throw new Error("invalid");
+      await chrome.storage.local.set({
+        browserAutoLockEnabled: request.enabled,
+        browserAutoLockMinutes: request.minutes,
+      });
+      autoLockEnabled = request.enabled;
+      autoLockMinutes = request.minutes;
+      chrome.idle.setDetectionInterval(autoLockMinutes * 60);
+      // Changing a preference never unlocks an already locked session.
+      return {};
     }
     case "mode":
       if (!["native", "independent"].includes(request.mode))
@@ -201,6 +242,8 @@ async function handle(request: Record<string, any>) {
       core?.lock();
       clearAllPending();
       clearInlineOffers();
+    cancelPasskeys();
+    cancelPasskeyApproval();
       await chrome.storage.local.set({ mode: request.mode });
       await updateSyncAlarm();
       return {};
@@ -247,6 +290,8 @@ async function handle(request: Record<string, any>) {
       await chrome.storage.local.remove("syncToken");
       readGeneration++;
       clearInlineOffers();
+    cancelPasskeys();
+    cancelPasskeyApproval();
       return {};
     case "pair": {
       const r = await native({ op: "pair" });
@@ -278,6 +323,8 @@ async function handle(request: Record<string, any>) {
     case "lock":
       clearAllPending();
       clearInlineOffers();
+    cancelPasskeys();
+    cancelPasskeyApproval();
       if ((await mode()) === "native") {
         readGeneration++;
         await chrome.storage.session.set({nativeReadsLocked:true});
@@ -287,6 +334,13 @@ async function handle(request: Record<string, any>) {
         }
       } else core?.lock();
       return {};
+    case "recover": {
+      if ((await mode())!=="independent" || !Array.isArray(request.key) || request.key.length!==32 || !request.key.every((value:unknown)=>typeof value==="number"&&Number.isInteger(value)&&value>=0&&value<=255) || typeof request.storage!=="string" || (request.before!==undefined&&typeof request.before!=="string"))throw new Error("invalid");
+      core ??= vaultCore;
+      const key=Uint8Array.from(request.key);request.key.fill(0);
+      try{await core.recoverStorage(request.before,request.storage,key);}finally{key.fill(0);}
+      return {};
+    }
     case "command":
       if ((await mode()) !== "independent") throw new Error("native-app");
       return requestCore(request.request);
@@ -394,6 +448,27 @@ async function handle(request: Record<string, any>) {
       }
       return {};
     }
+    case "structured-list": {
+      const tab = await currentTab(request.tabId);
+      if (!tab.origin.startsWith("https://")) throw new Error("invalid-origin");
+      return {tabId:tab.id,origin:tab.origin,items:await requestCore({op:"structured-list"})};
+    }
+    case "structured-fill": {
+      const generation = readGeneration;
+      const tab = await currentTab(request.tabId);
+      if (tab.origin !== request.origin || !tab.origin.startsWith("https://")) throw new Error("changed-origin");
+      await chrome.scripting.executeScript({target:{tabId:tab.id},files:["structured-content.js"]});
+      const prepared=await chrome.tabs.sendMessage(tab.id,{action:"structured-prepare",origin:tab.origin},{frameId:0});
+      if(!prepared?.ok) throw new Error("fill");
+      const fields=await requestCore({op:"structured-fill",origin:tab.origin,id:request.id,includeSecurityCode:request.includeSecurityCode===true});
+      try {
+        const current=await currentTab(tab.id);
+        if(current.origin!==tab.origin || readGeneration!==generation) throw new Error("changed-origin");
+        const response=await chrome.tabs.sendMessage(tab.id,{action:"structured-deliver",origin:tab.origin,token:prepared.token,fields},{frameId:0});
+        if(!response?.ok)throw new Error("fill");
+        return {};
+      }finally{for(const key of Object.keys(fields))fields[key]="";}
+    }
     case "capture": {
       const tab = await currentTab(request.tabId);
       await chrome.scripting.executeScript({
@@ -423,13 +498,18 @@ async function handle(request: Record<string, any>) {
       )
         throw new Error("invalid-credential");
       let queued = false;
+      if (typeof request.updateId === "string" && request.updateId) {
+        await requestCore({op:"update-login",origin:tab.origin,id:request.updateId,accountId:request.updateAccountId,username:request.username, ["pass"+"word"]:request["pass"+"word"],time:new Date().toISOString()});
+        clearPending(tab.id);
+        return {queued:false,updated:true};
+      }
       if ((await mode()) === "native") {
         // Persist before attempting transport: timeouts may follow a successful save.
         await enqueue({
           origin: tab.origin,
           username: request.username,
           password: request.password,
-        });
+        }, validateSave);
         await updateSyncAlarm();
         try {
           await synchronize();
@@ -437,7 +517,8 @@ async function handle(request: Record<string, any>) {
           /* retained for retry */
         }
         queued = (await queuedCount()) > 0;
-      } else
+      } else {
+        await validateSave?.();
         await requestCore({
           op: "save",
           item: {
@@ -450,6 +531,7 @@ async function handle(request: Record<string, any>) {
             updatedAt: new Date().toISOString(),
           },
         });
+      }
       clearPending(tab.id);
       try {
         const accounts = await requestCore({
@@ -467,7 +549,24 @@ async function handle(request: Record<string, any>) {
   }
 }
 chrome.runtime.onMessage.addListener((request, sender, respond) => {
+  if (["passkey-request", "passkey-cancel"].includes(request?.action)) {
+    const run = async () => {
+      const nativeMode = (await mode()) === "native";
+      if(request.action === "passkey-cancel" && sender.id===chrome.runtime.id && sender.frameId===0 && sender.documentId) cancelPasskeyApproval(sender.documentId);
+      return handlePasskey(request,sender,nativeMode ? requestCore : query=>requestPasskeyApproval(query,async approved => {
+        if (!sender.tab?.id || !sender.documentId) throw new Error("forbidden");
+        const tab = await chrome.tabs.get(sender.tab.id);
+        if(tab.url !== sender.url) throw new Error("changed-origin");
+        const current = await chrome.tabs.sendMessage(sender.tab.id,{action:"passkey-document-check"},{documentId:sender.documentId});
+        if(!current?.ok) throw new Error("expired");
+        return requestCore(approved);
+      },sender.documentId??""));
+    };
+    void run().then(data=>respond({ok:true,data}),error=>respond({ok:false,error:error instanceof Error?error.message:"failed"}));
+    return true;
+  }
   const inlineAction = [
+    "inline-remember-username",
     "inline-availability",
     "inline-accounts",
     "inline-fill",
@@ -477,9 +576,13 @@ chrome.runtime.onMessage.addListener((request, sender, respond) => {
     "login-pending",
     "login-dismiss",
     "login-open",
+    "login-save",
   ].includes(request?.action);
+  if (request?.action === "login-submitted" && request.multiStep === true && !request.username && sender.tab?.id && sender.url) {
+    try { request = {...request,username:previousUsername(sender.tab.id,webOrigin(sender.url))??""}; } catch { /* standard validation rejects malformed origins */ }
+  }
   const captureEpoch =
-    request?.action === "login-submitted"
+    ["login-submitted", "login-save"].includes(request?.action)
       ? loginCaptureEpoch(sender)
       : undefined;
   if (!pageAction && !inlineAction && !trustedUI(sender)) {
@@ -499,6 +602,8 @@ chrome.runtime.onMessage.addListener((request, sender, respond) => {
     readGeneration++;
     clearAllPending();
     clearInlineOffers();
+    cancelPasskeys();
+    cancelPasskeyApproval();
   }
   const work = bypassSerial
     ? pageAction
@@ -508,7 +613,14 @@ chrome.runtime.onMessage.addListener((request, sender, respond) => {
         inlineAction
           ? handleInline(request, sender, requestCore)
           : pageAction
-            ? handleLoginPage(request, sender, reminderCore, captureEpoch)
+            ? handleLoginPage(request, sender, reminderCore, captureEpoch, async (value, validate) => {
+                try {
+                  return await handle({ action: "save-captured", tabId: value.tabId, origin: value.origin, username: value.username, password: value.password }, validate);
+                } finally {
+                  value.username = "";
+                  value.password = "";
+                }
+              })
             : handle(request),
       );
   if (!bypassSerial) serial = work.catch(() => {});
@@ -522,16 +634,22 @@ chrome.runtime.onMessage.addListener((request, sender, respond) => {
   );
   return true;
 });
-chrome.idle.onStateChanged.addListener((state) => {
-  if (state !== "active") {
+function onIdleState(state: string) {
+  if (autoLockEnabled && state !== "active") {
     core?.lock();
     readGeneration++;
     void chrome.storage.session.set({nativeReadsLocked:true});
     clearAllPending();
     clearInlineOffers();
+    cancelPasskeys();
+    cancelPasskeyApproval();
   }
+}
+chrome.idle.onStateChanged.addListener((state) => {
+  if (autoLockLoaded) onIdleState(state);
+  else void autoLockReady.then(() => onIdleState(state));
 });
-chrome.idle.setDetectionInterval(3600);
+
 chrome.tabs.onActivated.addListener(({ tabId }) => {
   const work = serial.then(async () => {
     try {

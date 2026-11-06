@@ -1,13 +1,14 @@
 """Regression coverage for CI routing, including fail-safe and release paths."""
 import json
 import os
+import re
 from pathlib import Path
 import subprocess
 import tempfile
 import unittest
 from unittest import mock
 
-from ci_changes import LEGACY, NATIVE, SCOPES, classify, select
+from ci_changes import NATIVE, SCOPES, classify, select
 
 BASE, HEAD = 'a' * 40, 'b' * 40
 
@@ -20,6 +21,12 @@ class CIChangesTests(unittest.TestCase):
         for platform in ['macos', 'browser', 'android', 'ios']:
             self.assertEqual(classify([f'apps/{platform}/src/example.code']), {platform})
 
+    def test_legacy_mac_has_no_standalone_job_but_shared_sources_remain_covered(self):
+        self.assertEqual(classify(['apps/macos-legacy/Sources/UserFeedback.swift']), set())
+        self.assertEqual(classify(['apps/macos-legacy/Sources/Models.swift']), {'ios'})
+        self.assertEqual(classify(['apps/macos-legacy/Resources/BrowserIdentity.json']), {'macos', 'browser'})
+        self.assertEqual(classify(['apps/macos-nsh/ui/Detail.tsx']), {'macos'})
+
     def test_core_and_toolchain_changes_cover_every_native_consumer(self):
         for path in ['crates/vault-core/src/model.rs', 'Cargo.lock', '.cargo/config.toml', 'rust-toolchain.toml']:
             self.assertEqual(classify([path]), NATIVE)
@@ -28,12 +35,17 @@ class CIChangesTests(unittest.TestCase):
         for path in ['assets/branding/icon.png', 'new-build.config', 'apps/new-platform/main.code']:
             self.assertEqual(classify([path]), set(SCOPES))
 
-    def test_legacy_platform_and_shared_changes(self):
-        self.assertEqual(classify(['lib/main.dart']), LEGACY)
-        self.assertEqual(classify(['android/app/build.gradle']), {'legacy', 'legacy_android'})
-        self.assertEqual(classify(['web/index.html']), {'legacy', 'legacy_web'})
-        self.assertEqual(classify(['test/widget_test.dart']), {'legacy'})
-        self.assertEqual(classify(['test/extension/content.test.cjs']), set())
+    def test_editor_bundle_changes_cover_all_embedding_clients(self):
+        self.assertEqual(classify(['apps/shared/note-editor/editor.js']), {'macos', 'ios', 'android', 'browser'})
+        self.assertEqual(classify(['apps/shared/note-editor/package-lock.json']), {'macos', 'ios', 'android', 'browser'})
+
+    def test_services_have_a_dedicated_always_on_job(self):
+        self.assertEqual(classify(['services/share/src/server.ts', 'services/sync-gateway/src/gateway.mjs']), set())
+        workflow = Path(__file__).resolve().parent.parent / '.github/workflows/native.yml'
+        section = re.split(r'(?m)^  [a-z][a-z0-9-]*:', workflow.read_text().split('  capability-services:', 1)[1])[0]
+        self.assertNotIn('    if:', section)
+        self.assertIn('npm --prefix services/share test', section)
+        self.assertIn('npm --prefix services/sync-gateway test', section)
 
     def test_multiple_platform_changes_are_unioned(self):
         self.assertEqual(classify(['apps/android/a.kt', 'apps/browser/a.ts']), {'android', 'browser'})
@@ -42,7 +54,7 @@ class CIChangesTests(unittest.TestCase):
         self.assertEqual(classify(['tool/build_mobile_core.sh']), {'android', 'ios'})
         self.assertEqual(classify(['tool/check_native.sh']), NATIVE)
         self.assertEqual(classify(['.github/workflows/native.yml']), NATIVE)
-        self.assertEqual(classify(['.github/workflows/ci.yml']), LEGACY)
+        self.assertEqual(classify(['.github/workflows/ci.yml']), NATIVE)
         self.assertEqual(classify(['tool/ci_changes.py']), set(SCOPES))
 
     def test_pull_request_uses_merge_base_not_target_branch_only_changes(self):

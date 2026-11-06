@@ -1,2 +1,2 @@
 // Optional machine-local signing configuration. Never commit team/account material.
-#include? "Signing.local.xcconfig"
+#include? "../../private/signing/ios/Signing.local.xcconfig"

@@ -59,6 +59,7 @@ class VaultRepository(
     val state = mutable.asStateFlow()
     @Volatile private var epoch = 0
     private var volatileRecovery: String? = null
+    @Volatile var captureRichDraft: (() -> Deferred<String?>)? = null
     @Volatile var pendingDraft: String? = null
     private val draftFileLock = Any()
     @Volatile private var lastActivity = clock()
@@ -107,6 +108,7 @@ class VaultRepository(
 
     private fun raw(op: String, values: JSONObject = JSONObject()): JSONObject {
         values.put("op", op)
+        if (op in listOf("export", "import", "create-from-backup", "remove", "save")) values.put("richNotes", true)
         return JSONObject(session!!.command(values.toString()))
     }
 
@@ -213,8 +215,14 @@ class VaultRepository(
         }
     }
 
+    fun canWriteLibrary(): Boolean {
+        val settings=state.value.settings
+        if(settings.optBoolean("_peerLibraryReadOnly")) return false
+        if(settings.optString("activePeerLibrary").isNotEmpty()) return settings.optString("_peerLibraryRole") in listOf("admin","editor")
+        return true
+    }
     fun canEdit(item: JSONObject): Boolean {
-        if (item.optString("noteFormat") == "rich-v1") return false
+        if(!canWriteLibrary()) return false
         val shared = item.optString("sharedVaultId")
         if (shared.isEmpty()) return true
         val own =
@@ -314,7 +322,35 @@ class VaultRepository(
         }
     }
 
+    suspend fun recover(key: String, newPassword: String, archive: String? = null) {
+        closing?.join()
+        mutex.withLock {
+            if (mutable.value.busy || mutable.value.unlocked || newPassword.isEmpty()) return@withLock
+            val generation = epoch
+            mutable.value = mutable.value.copy(busy = true, error = null)
+            try {
+                withContext(Dispatchers.IO) {
+                    raw(if (archive == null) "recovery-reset-password" else "recovery-restore-backup",
+                        JSONObject().put("key", key).put("newPassword", newPassword).apply { if (archive != null) put("content", archive) })
+                    if (!BiometricVault.clearAfterRecovery(context)) mutable.value = mutable.value.copy(notice = "恢复成功，请手动关闭并重新设置生物识别 / Recovered; manually disable and re-enroll biometrics")
+                    if (generation == epoch) { reload(); if (archive == null) recoverDraft() } else raw("lock")
+                }
+                if (generation == epoch) {
+                    mutable.value = mutable.value.copy(exists = true, legacyAvailable = false, unlocked = true)
+                    activity()
+                }
+            } catch (_: Exception) {
+                if (generation == epoch) {
+                    runCatching { withContext(Dispatchers.IO) { raw("lock") } }
+                    mutable.value = mutable.value.copy(unlocked = false, exists = File(directory, "vault").exists(), error = "恢复未完成，请检查密钥和备份 / Recovery failed; check the key and backup")
+                }
+            } finally { mutable.value = mutable.value.copy(busy = false) }
+        }
+    }
+
     fun lock() {
+        val capturedRichDraft = captureRichDraft?.invoke()
+        captureRichDraft = null
         epoch++
         mutable.value =
             mutable.value.copy(
@@ -334,7 +370,8 @@ class VaultRepository(
             scope.launch {
                 mutex.withLock {
                     try {
-                        if (pending != null) synchronized(draftFileLock) { persistDraft(pending) }
+                        val latest = capturedRichDraft?.await() ?: pending
+                        if (latest != null) synchronized(draftFileLock) { persistDraft(latest) }
                     } catch (_: Exception) {
                         mutable.value =
                             mutable.value.copy(
@@ -378,10 +415,20 @@ class VaultRepository(
         }
     }
 
+    suspend fun importNoteAttachment(noteId: String, name: String, mime: String, data: ByteArray): JSONObject = mutex.withLock {
+        check(mutable.value.unlocked); JSONObject(session!!.importNoteAttachment(noteId, name, mime, data))
+    }
+    suspend fun readNoteAttachment(noteId: String, id: String): ByteArray = mutex.withLock {
+        check(mutable.value.unlocked); session!!.readNoteAttachment(noteId, id)
+    }
+    suspend fun discardNoteAttachment(noteId: String, id: String) = mutex.withLock {
+        check(mutable.value.unlocked); session!!.discardNoteAttachment(noteId, id)
+    }
+
     suspend fun command(op: String, values: JSONObject = JSONObject()): JSONObject =
         mutex.withLock {
             check(mutable.value.unlocked) { "Locked" }
-            check(pendingDraft == null || op !in listOf("relay-init", "relay-receive")) { "Finish editing before applying sync" }
+            check(pendingDraft == null || op !in listOf("relay-peer-switch", "relay-peer-create", "relay-peer-rekey", "relay-init", "relay-receive", "recovery-export", "history-enable", "history-restore", "history-prune", "share-seal")) { "Save or discard the current draft first" }
             val generation = epoch
             val result = withContext(Dispatchers.IO) { raw(op, values) }
             check(generation == epoch && mutable.value.unlocked) { "Locked" }
@@ -418,10 +465,10 @@ class VaultRepository(
                     if (generation == epoch) reload()
                 }
                 generation == epoch && mutable.value.unlocked
-            } catch (_: Exception) {
+            } catch (failure: Exception) {
                 mutable.value =
                     mutable.value.copy(
-                        error = "操作未完成，原资料仍保留 / Operation failed; existing data is preserved"
+                        error = if (failure is com.securepass.vault.core.VaultException.StaleEdit) "此条目已在其他设备修改，草稿保留。请对照新版本后重试 / Entry changed on another device; draft retained. Review the latest version." else "操作未完成，原资料仍保留 / Operation failed; existing data is preserved"
                     )
                 false
             } finally {
@@ -511,6 +558,8 @@ class VaultRepository(
             JSONObject()
                 .put("id", UUID.randomUUID().toString())
                 .put("type", type)
+                .put("card", JSONObject())
+                .put("identity", JSONObject())
                 .put("title", "")
                 .put("note", "")
                 .put("period", 30)

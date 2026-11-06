@@ -11,6 +11,7 @@ type PendingLogin = {
 };
 const TTL = 120_000;
 const pending = new Map<number, PendingLogin>();
+const savedNotices = new Map<number, { id: string; origin: string; expires: number; documentId: string }>();
 let generation = 0;
 const tabGenerations = new Map<number, number>();
 const knownOrigins = new Map<number, string>();
@@ -148,6 +149,7 @@ export async function configureReminder(
 }
 
 export function clearPending(tabId: number, invalidate = true) {
+  savedNotices.delete(tabId);
   if (invalidate)
     tabGenerations.set(tabId, (tabGenerations.get(tabId) ?? 0) + 1);
   const value = pending.get(tabId);
@@ -171,6 +173,7 @@ export function clearPending(tabId: number, invalidate = true) {
 
 export function clearAllPending() {
   generation++;
+  savedNotices.clear();
   const tabs = new Set([...pending.keys(), ...siteBadges.keys()]);
   siteBadges.clear();
   for (const id of tabs) clearPending(id);
@@ -191,6 +194,7 @@ export async function handleLoginPage(
   sender: chrome.runtime.MessageSender,
   core: (request: Request) => Promise<any>,
   capturedEpoch = loginCaptureEpoch(sender),
+  save?: (value: PendingLogin, validate: () => Promise<void>) => Promise<{ queued: boolean }>,
 ) {
   if (
     sender.id !== chrome.runtime.id ||
@@ -210,15 +214,15 @@ export async function handleLoginPage(
     )
       throw new Error("cancelled");
   };
-  if (request.action === "login-submitted") ensureCurrent();
+  if (["login-submitted", "login-save"].includes(request.action)) ensureCurrent();
   if (sender.origin && sender.origin !== origin) throw new Error("forbidden");
   const tab = await chrome.tabs.get(tabId);
-  if (request.action === "login-submitted") ensureCurrent();
+  if (["login-submitted", "login-save"].includes(request.action)) ensureCurrent();
   if (!tab.url || webOrigin(tab.url) !== origin)
     throw new Error("changed-origin");
   knownOrigins.set(tabId, origin);
   const enabled = await reminderEnabled(origin);
-  if (request.action === "login-submitted") ensureCurrent();
+  if (["login-submitted", "login-save"].includes(request.action)) ensureCurrent();
   if (request.action === "login-pending") {
     try {
       const accounts = await core({ op: "matches", origin });
@@ -250,8 +254,11 @@ export async function handleLoginPage(
   }
   if (request.action === "login-open") {
     if (sender.frameId !== 0) throw new Error("forbidden");
-    if (!pendingLogin(tabId, origin)) throw new Error("expired");
-    await core({ op: "matches", origin });
+    const saved = savedNotices.get(tabId);
+    if (request.saved === true) {
+      if (!saved || saved.id !== request.id || saved.origin !== origin ||
+          saved.documentId !== sender.documentId || saved.expires <= Date.now()) throw new Error("expired");
+    } else if (!pendingLogin(tabId, origin)) throw new Error("expired");
     try {
       await chrome.action.openPopup({ windowId: tab.windowId });
     } catch {
@@ -262,11 +269,27 @@ export async function handleLoginPage(
     }
     return {};
   }
+  if (request.action === "login-save") {
+    if (sender.frameId !== 0 || !sender.documentId || !save) throw new Error("forbidden");
+    const value = pendingLogin(tabId, origin);
+    if (!value || value.id !== request.id) throw new Error("expired");
+    const validate = async () => {
+      const current = await chrome.tabs.get(tabId);
+      if (!current.url || webOrigin(current.url) !== origin || !(await reminderEnabled(origin))) throw new Error("changed-origin");
+      ensureCurrent();
+      if (pendingLogin(tabId, origin)?.id !== value.id) throw new Error("expired");
+    };
+    const result = await save({ ...value }, validate);
+    if (capturedEpoch.global === generation) {
+      savedNotices.set(tabId, { id: value.id, origin, documentId: sender.documentId, expires: Date.now() + TTL });
+    }
+    return result;
+  }
   if (request.action !== "login-submitted") throw new Error("forbidden");
   if (
     typeof request.username !== "string" ||
     typeof request.password !== "string" ||
-    !request.username.trim() ||
+    (!request.username.trim() && request.changePassword !== true) ||
     !request.password ||
     request.username.length > 4096 ||
     request.password.length > 4096

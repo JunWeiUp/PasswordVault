@@ -1,12 +1,6 @@
 # Synthetic legacy backup vectors
 
-These files contain fictional records only. Generate them with the pinned Dart SDK:
-
-```sh
-dart run tool/generate_legacy_backup_fixtures.dart
-```
-
-The generator uses the repository's legacy `VaultItem.toJson` model and the installed Dart `cryptography` API, rather than the Rust implementation under test. The fixed nonces and fixture password are exclusively for reproducible tests.
+These files contain fictional records only. They were generated independently with the historical Dart client and `cryptography` API. The generator and pinned toolchain remain in Git history before the native-only cleanup (`tool/generate_legacy_backup_fixtures.dart` in those revisions). Do not regenerate them with the Rust implementation under test. The fixed nonces and fixture password are exclusively for reproducible tests.
 
 - `webdav-1.3.json`: Argon2id with the backup's salt and parameters; password is ` Legacy fixture password! `, including both outer spaces.
 - `manual-2.0.json`: legacy fixed-salt Argon2id; exporter trims the fixture password.

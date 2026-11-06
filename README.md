@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/design/readme/hero-en.png" alt="PasswordVault — Your notes. Your passwords. Your space. A navy vault, an open notebook and credential cards on a warm illustrated background." width="1000">
+  <a href="docs/design/index.html#reference">View unified design reference</a>
 </p>
 
 <div align="center">
@@ -14,7 +14,9 @@
 
 Native clients are in **developer preview**. [Platform availability](#choose-your-workspace) and the [security model](docs/SECURITY_MODEL.md) describe current limits; an independent security review is still pending.
 
-**Download native 2.3.2:** [GitHub Release](https://github.com/JunWeiUp/PasswordVault/releases/tag/v2.3.2) · [Installation and signing limits](docs/NATIVE-RELEASE-NOTES.md). Includes Android, Mac development build, unpacked extension, Web, iOS Simulator and source.
+**Release 2.4.0:** [GitHub Release](https://github.com/JunWeiUp/PasswordVault/releases/tag/v2.4.0) · [Installation and limits](config/release/INSTALL.md). Includes current NSH Mac, Android, extension, Web and iOS Simulator packages.
+
+**Mac client status:** [`apps/macos-nsh`](apps/macos-nsh/README.md) is the current development and local daily client (NSH 0.4.0, macOS 14+ / Apple Silicon). [`apps/macos-legacy`](apps/macos-legacy/README.md) is the retained legacy SwiftUI Mac client. References below to macOS 13+/Intel and older coordinated releases apply to that legacy client.
 
 ## Less searching. More doing.
 
@@ -32,14 +34,14 @@ A familiar three-column Mac layout keeps folders, notes and your document in vie
 
 *The screenshot below shows the earlier Markdown workspace; 2.3.0 adds the rich editing toolbar described above.*
 
-![Earlier Mac workspace with fictional notes](docs/design/macos-native/current-notes-en.png)
+[Earlier Mac workspace with fictional notes](docs/design/index.html#reference)
 
 <details>
 <summary><strong>Look inside an account</strong> — passwords, additional logins and linked codes</summary>
 
 Edit details in place, reveal or copy individual passwords, generate replacements and keep password history. Add multiple websites, extra logins and a linked authenticator without scattering the record across screens.
 
-![PasswordVault Mac account editor with fictional English data and grouped actions](docs/design/macos-native/current-password-en.png)
+[PasswordVault Mac account editor with fictional English data and grouped actions](docs/design/index.html#reference)
 
 </details>
 
@@ -48,9 +50,7 @@ Edit details in place, reveal or copy individual passwords, generate replacement
 Native mobile previews bring notes, accounts, codes and wallets into a touch-friendly workspace. Notes have their own reading-focused layout; familiar actions stay consistent across pages.
 
 <p align="center">
-  <img src="docs/design/android-native/notes-en.png" alt="Android Notes grid with English fictional notes and the shared blue Add button" width="260">
-  &nbsp;&nbsp;
-  <img src="docs/design/android-native/account-editor-en.png" alt="Android account editor with English fictional credentials" width="260">
+  <a href="docs/design/index.html#android">View unified design reference</a>
 </p>
 
 <p align="center"><sub>Actual Mac and Android preview interfaces. All entries shown are fictional.</sub></p>
@@ -67,7 +67,8 @@ Browser 2.2.11 / Mac 2.2.11 can show and fill current-site accounts while Mac is
 
 | Platform | What you can use | Start here |
 | --- | --- | --- |
-| **Mac · macOS 13+** | Native desktop preview, notes editor and browser connection | [Mac setup](docs/NATIVE-MIGRATION.md#build-and-launch) |
+| **Mac · current NSH** | macOS 14+ / Apple Silicon; official native rich editor | [Current Mac](apps/macos-nsh/README.md) |
+| **Mac · legacy SwiftUI** | macOS 13+ / Apple Silicon and Intel; compatibility and rollback | [Legacy Mac](apps/macos-legacy/README.md) |
 | **Android · 8.0+** | Native mobile preview; system Autofill on Android 8+ | [Android guide](apps/android/README.md) |
 | **iPhone / iPad · iOS 16+** | Native simulator preview; signed-device distribution pending | [iOS guide](apps/ios/README.md) |
 | **Chromium browsers** | Unpacked extension; connect to Mac or create a separate vault | [Extension setup](#run-from-source) |
@@ -79,20 +80,20 @@ Standalone Web is also available with a smaller feature set. Windows and Linux h
 
 | Client | Current scope | Validation and delivery |
 | --- | --- | --- |
-| **macOS 13+** | SwiftUI desktop app; universal Apple Silicon/Intel build; local Tiptap rich editor | Development build. Checks include native-window continuous Return/focus tests, formatting, encrypted images and archive failure paths. Physical IME coverage, macOS 13/Intel hardware and distribution signing/notarization remain open |
+| **Legacy Mac · SwiftUI** | SwiftUI desktop app; universal Apple Silicon/Intel build; local Tiptap rich editor | Development build. Checks include native-window continuous Return/focus tests, formatting, encrypted images and archive failure paths. Physical IME coverage, macOS 13/Intel hardware and distribution signing/notarization remain open |
 | **Android 8.0+** | Kotlin/Compose preview; account/code/wallet workflows aligned with the legacy app, separate Notes design | Emulator UI plus scoped physical non-UI checks. Camera/fingerprint, older devices and original production-signing-key upgrades remain gated. System Autofill requires Android 8+ |
 | **iOS 16+ / iPadOS 16+** | SwiftUI app and Password AutoFill extension | Simulator flows and device-architecture compilation pass. Eligible team provisioning, signed-device installation and hardware acceptance remain open |
 | **Chromium extension** | Lightweight MV3; Mac connection and independent vault; explicit fill/save | Scoped Edge/ego lite, DOM and signed-helper checks. Broader Google Chrome/site coverage remains open; unpacked installation |
 | **Standalone Web** | Independent encrypted vault, CRUD, TOTP, backup/import and utilities | Sharing/WebDAV/QR UI, full theme/language parity and automatic legacy OPFS migration remain incomplete |
 | **Windows / Linux desktop** | No native desktop client | Not implemented |
 
-The coordinated release is **2.3.2**: Mac build **32**, browser **2.3.2**, Android build **23007**, and iOS build **14**. This update adds encrypted personal relay sync, device-list access controls and bulk conflict handling with mobile reminders. Android requires 8.0+. Passing checks does not imply app-store availability or production security acceptance. See [installation](docs/NATIVE-RELEASE-NOTES.md) and [relay setup](docs/PERSONAL-RELAY.md).
+The coordinated release is **2.4.0**: NSH Mac build **15**, browser **2.4.0**, Android build **24000**, and iOS build **16**. This update adds encrypted personal relay sync, device-list access controls and bulk conflict handling with mobile reminders. Android requires 8.0+. Passing checks does not imply app-store availability or production security acceptance. See [installation](docs/NATIVE-RELEASE-NOTES.md) and [relay setup](docs/PERSONAL-RELAY.md).
 
 </details>
 
 ## Run from source
 
-### Mac and browser
+### Legacy SwiftUI Mac and browser
 
 Install the pinned Rust, Node.js, Xcode and XcodeGen tools from [native setup](docs/NATIVE-MIGRATION.md#build-and-launch), then run from the repository root:
 
@@ -104,7 +105,9 @@ bash tool/check_native.sh macos
 bash tool/check_native.sh browser
 ```
 
-The Mac app is built at `apps/macos/build/Build/Products/Release/PasswordVault.app`; the unpacked extension is in `apps/browser/dist`. The Mac build also bundles the note editor and its dependency licenses locally. For evaluation, follow the native guide's **isolated synthetic vault** instructions.
+The Native Shell Mac client in `apps/macos-nsh` uses NSH 0.4.0 and its official native `RichEditor`. Project Rust build scripts require [huacnlee/cargo](https://huacnlee.github.io/cargo/) while retaining the pinned rustc toolchains. See [Mac build instructions](apps/macos-nsh/README.md).
+
+The Mac app is built at `apps/macos-legacy/build/Build/Products/Release/PasswordVault.app`; the unpacked extension is in `apps/browser/dist`. The Mac build also bundles the note editor and its dependency licenses locally. For evaluation, follow the native guide's **isolated synthetic vault** instructions.
 
 1. Load `apps/browser/dist` from `chrome://extensions` or `edge://extensions` with developer mode enabled.
 2. For Mac mode, register the browser connection in **Mac Settings → Browser**, select **Connect to Mac** in the extension and confirm pairing in Mac.
@@ -129,7 +132,7 @@ Native V2 uses SQLCipher/authenticated document encryption, salted Argon2id root
 
 Implemented features, automated checks and manual acceptance are recorded separately. Remaining work includes full process/GPU memory comparisons, standalone Web parity, unsupported desktop SQLite/Web OPFS and legacy-sharing migration, broader hardware/accessibility/server checks, production signing and independent security review. A smaller extension package is not proof of lower total process memory.
 
-See [current plans](TODO.md), [security limitations](docs/SECURITY_MODEL.md) and [privacy](PRIVACY.md). Report vulnerabilities through [SECURITY.md](SECURITY.md); never attach real credentials or vault exports.
+See [current plans](docs/TODO.md), [security limitations](docs/SECURITY_MODEL.md) and [privacy](docs/PRIVACY.md). Report vulnerabilities through [SECURITY.md](docs/SECURITY.md); never attach real credentials or vault exports.
 
 </details>
 
@@ -137,26 +140,44 @@ See [current plans](TODO.md), [security limitations](docs/SECURITY_MODEL.md) and
 
 CI runs only affected platform jobs for normal PRs; [selection, caching and full-run instructions](docs/CI.md).
 
-Use [development checks](docs/DEVELOPMENT.md), the [artifact registry](docs/REGISTRY.md) and [release procedure](docs/DEPLOYMENT.md). Native workflow source is in [.github/workflows/native.yml](.github/workflows/native.yml); use actual PR results when reporting CI status. Contribute with synthetic fixtures and follow [CONTRIBUTING.md](CONTRIBUTING.md) and [AGENTS.md](AGENTS.md).
+Use [development checks](docs/DEVELOPMENT.md), the [artifact registry](docs/REGISTRY.md) and [release procedure](docs/DEPLOYMENT.md). Native workflow source is in [.github/workflows/native.yml](.github/workflows/native.yml); use actual PR results when reporting CI status. Contribute with synthetic fixtures and follow [CONTRIBUTING.md](docs/CONTRIBUTING.md) and [AGENTS.md](AGENTS.md).
 
 | Topic | Guides |
 | --- | --- |
-| Product and interface | [Project specification](docs/PROJECT-SPEC.md) · [Design](DESIGN.md) · [Page structure](docs/PAGE-STRUCTURE.md) |
+| Product and interface | [Project specification](docs/PROJECT-SPEC.md) · [Design](docs/DESIGN.md) · [Page structure](docs/PAGE-STRUCTURE.md) |
 | Implementation | [Architecture](docs/ARCHITECTURE.md) · [Component guidelines](docs/COMPONENT-GUIDELINES.md) |
+| Capability workstream | [Recovery, history and planned capability expansion](docs/CAPABILITY-EXPANSION.md) |
+| Structured data and security | [Records, imports and security catalog](docs/STRUCTURED-IMPORT-SECURITY.md) |
+| Passkeys and filling | [Provider trust boundaries and verification](docs/PASSKEYS.md) |
+| Peer libraries | [Causal synchronization and family roles](docs/PEER-LIBRARIES.md) |
+| Devices and services | [Format 7, compatibility, encrypted attachments and sync gate](docs/DEVICE-ITEMS.md) |
+| Temporary sharing | [Self-hosted share service](services/share/README.md) |
 | Platform evidence | [Native migration](docs/NATIVE-MIGRATION.md) · [Mac field parity](docs/MAC-MOBILE-PARITY.md) · [Mobile acceptance](docs/MOBILE-IMPLEMENTATION.md) · [Android parity](docs/ANDROID-LEGACY-PARITY.md) · [Browser acceptance](docs/BROWSER-ACCEPTANCE.md) |
-| Progress | [TODO](TODO.md) · [Changelog](CHANGELOG.md) |
+| Progress | [TODO](docs/TODO.md) · [Changelog](docs/CHANGELOG.md) |
 
 <details>
 <summary>Looking for the older Flutter client?</summary>
 
-The retained `lib/`, `android/`, `ios/`, `web/` and `chrome/` clients have separate storage and security findings. They remain available until their replacement and migration gates pass. The older [Flutter preview download](https://github.com/JunWeiUp/PasswordVault/releases/tag/v1.1.0-preview.4), [widget gallery](docs/images/README.md) and [installation guide](docs/GETTING_STARTED.md) describe that client, not the native screenshots above. Its toolchain remains pinned in [.flutter-version](.flutter-version).
+The Flutter clients and their build/test/release tooling have been removed at the owner's request. Historical source remains in Git. Native legacy-data readers and synthetic compatibility fixtures remain supported; removing source does not complete migration, device or security acceptance. Use [native setup](docs/NATIVE-MIGRATION.md) for current development.
 
 </details>
 
 ## License
 
-[MIT](LICENSE). Bundled dependencies retain their own licenses; see [third-party notices](THIRD_PARTY_NOTICES.md).
+[MIT](LICENSE). Bundled dependencies retain their own licenses; see [third-party notices](docs/THIRD_PARTY_NOTICES.md).
 
 ## Personal vault relay sync
 
 Mac coordinates encrypted bidirectional sync with Android 8+ and iOS. Browser extensions retain local native synchronization. Create/join signed device groups with automatic admission by default or optional code approval, manage members, then enable **View and sync changes** beside each device on Mac. Setup, pairing, conflicts and recovery: [personal relay sync](docs/PERSONAL-RELAY.md). See the tested scope in [validation](docs/PERSONAL-RELAY-VALIDATION.md).
+
+## Repository layout
+
+Source clients live in `apps/`, the Rust core in `crates/`, and project guides in `docs/`. Public signing inputs are in `config/signing`; ignored local keys and retained backups are in `private/`. Cargo/toolchain/version manifests remain at the root. `native-test-output/dist` is retained for an already loaded extension.
+
+Device documents on the Native Shell Mac client support importing UTF-8 scripts and configuration files (including Python, Shell and JavaScript), opening full filenames and content, editing and copying. Files are stored as encrypted text. Import never executes code; Click Run hands supported scripts to the preferred external terminal (system Terminal by default). The terminal choice persists locally; output, interaction and stopping are managed there. Deleted devices no longer block reimport.
+
+[Application directory](apps/README.md) · [NSH Mac tools](tool/macos-nsh/README.md)
+
+[2.4.0 installation](config/release/INSTALL.md) · [Release notes](config/release/NOTES.md)
+
+The legacy SwiftUI Mac is source-only with manual build tooling; its standalone CI is disabled and current releases do not include a legacy Mac package.

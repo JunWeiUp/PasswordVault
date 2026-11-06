@@ -26,6 +26,10 @@ internal fun EntryDetail(
     restore: () -> Unit,
 ) {
     val type = item.optString("type")
+    var history by remember(item.optString("id")) { mutableStateOf(false) }
+    var share by remember(item.optString("id")) { mutableStateOf(false) }
+    if (share) ShareDialog(vault, item.getString("id"), t) { share = false }
+    if (history) HistoryDialog(vault, item.getString("id"), t) { history = false }
     val scope = rememberCoroutineScope()
     val writable = vault.canEdit(item)
     val deleted = item.optBoolean("isDeleted")
@@ -95,6 +99,8 @@ internal fun EntryDetail(
                 t("此共享条目为只读。", "This shared entry is read-only."),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+        TextButton(onClick = { history = true }) { Text(t("版本历史", "Version history")) }
+        TextButton(enabled = !deleted, onClick = { share = true }) { Text(t("临时分享", "Temporary share")) }
         if (deleted)
             Text(t("此条目在回收站中。", "This entry is in Trash."), color = MaterialTheme.colorScheme.error)
         when (type) {
@@ -262,6 +268,16 @@ internal fun EntryDetail(
                         )
                     }
             }
+        }
+        if (type in listOf("creditCard", "identity")) LegacySection {
+            val group = item.optJSONObject(if (type == "creditCard") "card" else "identity") ?: JSONObject()
+            for (key in group.keys().asSequence().toList().sorted()) DetailField(key, group.optString(key), vault, t, secret = key in listOf("number", "securityCode"))
+        }
+        PasskeyRecordsPanel(item, vault, t)
+        val custom = item.optJSONArray("customFields") ?: org.json.JSONArray()
+        if (custom.length() > 0) LegacySection {
+            Text(t("自定义字段", "Custom fields"), style = MaterialTheme.typography.titleMedium)
+            for (index in 0 until custom.length()) { val field = custom.getJSONObject(index); DetailField(field.optString("label"), field.optString("value"), vault, t, secret = field.optString("kind") == "concealed") }
         }
         if (
             listOf("category", "url", "email", "sharedVaultId").any {

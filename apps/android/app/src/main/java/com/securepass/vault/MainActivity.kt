@@ -145,6 +145,8 @@ fun UnlockScreen(
 ) {
     val activity = LocalContext.current as FragmentActivity
     val biometric = remember { BiometricVault(activity) }
+    var recovery by remember { mutableStateOf(false) }
+    if (recovery) RecoveryDialog(vault, state, t) { recovery = false }
     var backupUri by remember { mutableStateOf<android.net.Uri?>(null) }
     var backupPassword by remember { mutableStateOf("") }
     var legacyPassword by remember { mutableStateOf("") }
@@ -189,6 +191,7 @@ fun UnlockScreen(
                 secret = true,
             )
         }
+        OutlinedButton(enabled = !state.busy, onClick = { recovery = true }) { Text(t("使用恢复密钥", "Use recovery key")) }
         Input(t("主密码", "Master password"), password, { password = it }, secret = true)
         if (!state.exists)
             Input(t("确认主密码", "Confirm password"), confirm, { confirm = it }, secret = true)

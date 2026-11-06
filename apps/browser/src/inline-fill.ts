@@ -2,6 +2,7 @@ import { webOrigin } from "./security";
 import type { Request } from "./core";
 
 type Offer = {
+  kind: "otp" | "login";
   tabId: number;
   origin: string;
   documentId: string;
@@ -17,10 +18,17 @@ type Offer = {
   }[];
 };
 const offers = new Map<string, Offer>();
+const usernameSteps = new Map<number,{origin:string;username:string;expires:number}>();
+export function previousUsername(tabId:number,origin:string):string|undefined {
+  const value=usernameSteps.get(tabId);
+  if(!value || value.origin!==origin || value.expires<Date.now()){usernameSteps.delete(tabId);return undefined;}
+  return value.username;
+}
 const filling = new Set<Offer>();
 let generation = 0;
 export function clearInlineOffers() {
   generation++;
+  usernameSteps.clear();
   const current = new Set([...offers.values(), ...filling]);
   offers.clear();
   for (const offer of current)
@@ -56,19 +64,28 @@ export async function handleInline(
   const tab = await chrome.tabs.get(tabId);
   if (!tab.url || webOrigin(tab.url) !== origin)
     throw new Error("changed-origin");
+  if (request.action === "inline-remember-username") {
+    if(typeof request.username!=="string" || !request.username.trim() || request.username.length>4096) throw new Error("invalid-request");
+    usernameSteps.set(tabId,{origin,username:request.username,expires:Date.now()+120000});
+    if(usernameSteps.size>128)usernameSteps.delete(usernameSteps.keys().next().value!);
+    return {};
+  }
   for (const [key, offer] of offers)
     if (offer.expires <= Date.now()) offers.delete(key);
   if (request.action === "inline-availability") {
     try {
       const accounts = await core({ op: "matches", origin });
       ensureCurrent();
-      return { count: accounts.length };
+      const otps = await core({op:"otp-matches",origin}).catch(() => []);
+      ensureCurrent();
+      return { count: accounts.length + (Array.isArray(otps) ? otps.length : 0) };
     } catch {
       return { count: 0 };
     }
   }
   if (request.action === "inline-accounts") {
-    const matches = await core({ op: "matches", origin });
+    const kind = request.field === "otp" ? "otp" : "login";
+    const matches = await core({ op: kind === "otp" ? "otp-matches" : "matches", origin });
     ensureCurrent();
     const accounts = matches.slice(0, 100).map((a: any) => ({
       id: String(a.id),
@@ -82,6 +99,7 @@ export async function handleInline(
     const token = crypto.randomUUID();
     if (offers.size >= 128) offers.delete(offers.keys().next().value!);
     offers.set(token, {
+      kind,
       tabId,
       origin,
       documentId,
@@ -115,8 +133,9 @@ export async function handleInline(
   let credential: any;
   try {
     credential = await core({
-      op: "fill",
+      op: offer.kind === "otp" ? "otp-fill" : "fill",
       origin,
+      time: Math.floor(Date.now()/1000),
       id: request.id,
       accountId: request.accountId,
     });
@@ -135,18 +154,21 @@ export async function handleInline(
         action: "inline-deliver",
         origin,
         deliveryToken: request.deliveryToken,
+        code: offer.kind === "otp" ? credential.code : undefined,
         username: credential.username,
-        password: credential.password,
+        password: request.field === "username" ? "" : credential.password,
       },
       { documentId },
     );
     if (!result?.ok) throw new Error("field-changed");
+    if(request.field==="username")usernameSteps.set(tabId,{origin,username:credential.username,expires:Date.now()+120000});
     return {};
   } finally {
     filling.delete(offer);
     if (credential) {
       credential.password = "";
       credential.username = "";
+      credential.code = "";
     }
   }
 }

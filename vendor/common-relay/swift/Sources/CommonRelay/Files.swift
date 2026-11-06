@@ -56,15 +56,21 @@ private final class NoRedirect: NSObject, URLSessionTaskDelegate {
 }
 
 public actor RelayFiles {
-    private let base: URL, token: String
+    private let base: URL, token: String, password: String?
     private let session = URLSession(configuration: .ephemeral, delegate: NoRedirect(), delegateQueue: nil)
-    public init(base: URL, token: String, allowLocalTest: Bool = false) throws {
+    /// `password` is the server-wide access password (sent as `Relay-Access`); required by production relays.
+    public init(base: URL, token: String, password: String? = nil, allowLocalTest: Bool = false) throws {
         guard base.scheme == "https" || (allowLocalTest && base.scheme == "http" && base.host == "127.0.0.1") else { throw RelayError.invalid("HTTPS required") }
-        self.base = base; self.token = token
+        try RelayAccess.validate(password)
+        self.base = base; self.token = token; self.password = password
     }
-    private func request(_ method: String, path: String = "", body: Data? = nil, headers: [String: String] = [:]) async throws -> (Data, Int) {
+    func makeRequest(_ method: String, path: String = "", body: Data? = nil, headers: [String: String] = [:]) -> URLRequest {
         var request = URLRequest(url: path.isEmpty ? base : base.appendingPathComponent(path)); request.httpMethod = method; request.timeoutInterval = 60; request.httpBody = body; request.setValue("Bearer " + token, forHTTPHeaderField: "Authorization")
         for (name, value) in headers { request.setValue(value, forHTTPHeaderField: name) }
+        RelayAccess.apply(password, to: &request); return request
+    }
+    private func request(_ method: String, path: String = "", body: Data? = nil, headers: [String: String] = [:]) async throws -> (Data, Int) {
+        let request = makeRequest(method, path: path, body: body, headers: headers)
         let (data, response) = try await session.data(for: request)
         guard let response = response as? HTTPURLResponse else { throw RelayError.invalid("response") }; return (data, response.statusCode)
     }
@@ -75,11 +81,14 @@ public actor RelayFiles {
         guard code == 200 || code == 201 else { throw RelayError.invalid("file admission \(code)") }
         let existing = try dictionary(data)
         for field in ["id", "to", "size", "sha256", "metadata"] { guard let a = existing[field], let b = file.descriptor[field], try json([a]) == json([b]) else { throw RelayError.invalid("upload conflict") } }
-        var offset = (existing["offset"] as? NSNumber)?.uint64Value ?? 0
+        guard let initial = existing["offset"] as? NSNumber, let size = file.descriptor["size"] as? NSNumber,
+              initial.doubleValue >= 0, initial.doubleValue <= size.doubleValue,
+              initial.doubleValue == Double(initial.uint64Value) else { throw RelayError.invalid("upload offset") }
+        var offset = initial.uint64Value
         let input = try FileHandle(forReadingFrom: file.ciphertext); defer { try? input.close() }; try input.seek(toOffset: offset)
         while let chunk = try input.read(upToCount: 1 << 20), !chunk.isEmpty {
             let (response, status) = try await request("PUT", path: id + "/data", body: chunk, headers: ["Upload-Offset": String(offset)])
-            guard status == 200, let next = try dictionary(response)["offset"] as? NSNumber else { throw RelayError.invalid("upload failed \(status)") }; offset = next.uint64Value
+            guard status == 200, let next = try dictionary(response)["offset"] as? NSNumber else { throw RelayError.invalid("upload failed \(status)") }; guard next.doubleValue == Double(offset) + Double(chunk.count), next.doubleValue <= size.doubleValue else { throw RelayError.invalid("upload progress") }; offset = next.uint64Value
         }
         let (response, status) = try await request("POST", path: id + "/commit"); guard status == 200 else { throw RelayError.invalid("commit failed") }; return try RelayEvent(dictionary(response))
     }
@@ -89,6 +98,7 @@ public actor RelayFiles {
         let (raw, code) = try await request("GET", path: id); guard code == 200, let size = try dictionary(raw)["size"] as? NSNumber else { throw RelayError.invalid("file metadata") }
         if !FileManager.default.fileExists(atPath: ciphertext.path) { FileManager.default.createFile(atPath: ciphertext.path, contents: nil, attributes: [.posixPermissions: 0o600]) }
         let output = try FileHandle(forWritingTo: ciphertext); defer { try? output.close() }; var offset = try output.seekToEnd()
+        guard size.doubleValue >= 0, offset <= size.uint64Value else { throw RelayError.invalid("staged file exceeds declared size") }
         while offset < size.uint64Value {
             let end = min(size.uint64Value - 1, offset + (1 << 20) - 1)
             let (chunk, status) = try await request("GET", path: id + "/data", headers: ["Range": "bytes=\(offset)-\(end)"])

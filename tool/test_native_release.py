@@ -21,11 +21,12 @@ class NativeReleaseTests(unittest.TestCase):
             root = Path(temp)
             (root / 'tool').mkdir()
             (root / 'tool/check_native.sh').write_bytes((ROOT / 'tool/check_native.sh').read_bytes())
+            (root / 'tool/cargo_fork_env.sh').write_bytes((ROOT / 'tool/cargo_fork_env.sh').read_bytes())
             tools = root / 'bin'
             tools.mkdir()
             for name in ['cargo', 'npm', 'lipo', 'xcodegen']:
                 path = tools / name
-                path.write_text('#!/bin/sh\nexit 0\n')
+                path.write_text('#!/bin/sh\necho \"huacnlee/cargo fixture\"\nexit 0\n' if name == 'cargo' else '#!/bin/sh\nexit 0\n')
                 path.chmod(0o755)
             rustup = tools / 'rustup'
             rustup.write_text('#!/bin/sh\nprintf \'%s/rustc\\n\' "$(dirname "$0")"\n')
@@ -35,8 +36,8 @@ class NativeReleaseTests(unittest.TestCase):
             builder.chmod(0o755)
             capture = root / 'arguments.txt'
             env = {**os.environ, 'PATH': str(tools) + os.pathsep + os.defpath,
-                   'PV_TEST_ARGUMENTS': str(capture)}
-            config = root / 'apps/macos/Signing.local.xcconfig'
+                   'PV_CARGO_FORK': str(tools / 'cargo'), 'PV_TEST_ARGUMENTS': str(capture)}
+            config = root / 'private/signing/macos/Signing.local.xcconfig'
             for signed in [False, True]:
                 if signed:
                     config.parent.mkdir(parents=True)
@@ -46,7 +47,7 @@ class NativeReleaseTests(unittest.TestCase):
                 args = capture.read_text().splitlines()
                 self.assertEqual('-xcconfig' in args, signed)
                 if signed:
-                    self.assertEqual(args[args.index('-xcconfig') + 1], 'apps/macos/Signing.local.xcconfig')
+                    self.assertEqual(args[args.index('-xcconfig') + 1], 'private/signing/macos/Signing.local.xcconfig')
                 self.assertEqual(args[-1], 'build')
 
     def test_coordinated_versions_and_wrong_tag(self):
@@ -57,7 +58,7 @@ class NativeReleaseTests(unittest.TestCase):
 
     def test_mismatched_browser_lock_is_rejected(self):
         files = ['native-version.json', 'apps/browser/package.json', 'apps/browser/package-lock.json',
-                 'apps/macos/Info.plist', 'apps/android/app/build.gradle.kts', 'apps/ios/project.yml']
+                 'apps/macos-nsh/nsh.json', 'apps/macos-legacy/Info.plist', 'apps/android/app/build.gradle.kts', 'apps/ios/project.yml']
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             for name in files:
@@ -76,7 +77,7 @@ class NativeReleaseTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             for name in ['native-version.json', 'apps/browser/package.json', 'apps/browser/package-lock.json',
-                         'apps/macos/Info.plist', 'apps/android/app/build.gradle.kts', 'apps/ios/project.yml']:
+                         'apps/macos-nsh/nsh.json', 'apps/macos-legacy/Info.plist', 'apps/android/app/build.gradle.kts', 'apps/ios/project.yml']:
                 target = root / name
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_bytes((ROOT / name).read_bytes())
@@ -136,6 +137,28 @@ class NativeReleaseTests(unittest.TestCase):
                 make(path, info, mode)
                 with self.assertRaises(SystemExit):
                     verify_app_archive(path, '2.2.0', simulator=True)
+
+    def test_nsh_archive_rejects_missing_helpers_and_wrong_identity(self):
+        info = {'CFBundleShortVersionString': '2.4.0', 'CFBundleExecutable': 'PasswordVault',
+                'CFBundleIdentifier': 'com.securepass.vault.nshpreview', 'PVVaultDirectoryName': 'PasswordVaultNative'}
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / 'app.zip'
+            def make(helpers=True, identity='com.securepass.vault.nshpreview'):
+                metadata = dict(info, CFBundleIdentifier=identity)
+                with zipfile.ZipFile(path, 'w') as bundle:
+                    bundle.writestr('PasswordVault.app/Contents/Info.plist', plistlib.dumps(metadata))
+                    exe = zipfile.ZipInfo('PasswordVault.app/Contents/MacOS/PasswordVault')
+                    exe.external_attr = 0o100755 << 16
+                    bundle.writestr(exe, b'fixture')
+                    if helpers:
+                        for name in ['Contents/MacOS/pv-browser-host', 'Contents/MacOS/pv-mcp', 'Contents/Resources/BrowserIdentity.json']:
+                            bundle.writestr('PasswordVault.app/' + name, b'fixture')
+            make()
+            verify_app_archive(path, '2.4.0', nsh=True)
+            make(helpers=False)
+            with self.assertRaises(SystemExit): verify_app_archive(path, '2.4.0', nsh=True)
+            make(identity='wrong.app')
+            with self.assertRaises(SystemExit): verify_app_archive(path, '2.4.0', nsh=True)
 
 
 if __name__ == '__main__':

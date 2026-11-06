@@ -1,0 +1,34 @@
+import { expect, open, test } from "nsh/test";
+import { normalizeAccountIDs, normalizeSecret, setupLink, validPeriod, websites } from "../ui/entries/model";
+test("entry model preserves fields, repairs account identities and rejects unsafe sites",()=>{
+ const source=[{id:"same",username:"one",future:42},{id:"same",username:"two"},{username:"three"}];
+ const result=normalizeAccountIDs(source);
+ expect(new Set(result.map(r=>r.id)).size).toBe(3);
+ expect(result[0].future).toBe(42);
+ expect(source[1].id).toBe("same");
+ expect(websites("a.example;http://b.example,https://c.example javascript:alert(1)")).toEqual(["https://a.example","http://b.example","https://c.example"]);
+ expect(normalizeSecret(" a b\nc ")).toBe("ABC");
+ expect(validPeriod(0)).toBe(false);expect(validPeriod(86401)).toBe(false);
+ expect(setupLink({title:"A&B",username:"a+b",secret:"abc",period:60})).toContain("issuer=A%26B&period=60&algorithm=SHA1&digits=6");
+});
+test("account editing, import and next-code preview work against a synthetic vault",async()=>{
+ const app=await open("../ui/entries/TestHarness.tsx",{width:1200,height:2600,platform:"macos"});
+ await app.press("text:准备测试库");await app.waitFor("text:登录信息");
+ await app.press("text:添加另一个账号");await app.waitFor("text:附加数量 1");
+ await app.type("label:用途","测试用途");await app.type("label:附加用户名","qa-extra");await app.type("label:附加密码","synthetic-only");
+ await app.press("text:保存并重读");await app.wait(500);
+ expect(app.texts()).toContain("附加已保存");
+ await app.press("text:移除附加账号");await app.waitFor("text:移除此附加账号？");await app.press("text:取消");expect(app.texts()).toContain("附加数量 1");
+ await app.press("text:移除附加账号");await app.press("text:确认移除");await app.waitFor("text:附加数量 0");
+ await app.type("label:设置链接","otpauth://totp/Example:qa?secret=JBSWY3DPEHPK3PXP&issuer=Example&period=60");await app.press("text:导入链接");await app.wait(500);
+ await app.press("text:复制设置链接");expect(app.clipboard()??"").toContain("otpauth://totp/Example%3Aqa?");
+ await app.press("text:选择颜色");await app.chooseMenuItem("蓝色");await app.press("text:保存并重读");await app.wait(500);expect(app.texts()).toContain("蓝色");
+ await app.press("text:验证码视图");await app.wait(800);
+ expect(app.texts().some(t=>/^下一个 \d{3} \d{3}$/.test(t))).toBe(true);
+ await app.press("text:显示设置二维码…");await app.waitFor("text:显示设置二维码？");await app.press("text:取消");
+ const before=app.texts().find(t=>t.startsWith("验证码数量 "))!;
+ await app.press("text:新增验证码");await app.press("text:粘贴链接");
+ await app.type("label:otpauth 设置链接","otpauth://totp/Invalid:qa?secret=INVALID&algorithm=SHA256");
+ await app.press("text:验证并保存");await app.waitFor("text:无法导入");expect(app.texts()).toContain(before);
+ await app.press("text:取消");
+});

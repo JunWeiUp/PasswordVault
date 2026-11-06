@@ -15,6 +15,13 @@ struct MobileEntryDetail: View {
         List {
           Section {
             Text(item.title).font(.title2.bold())
+            NavigationLink(store.t("版本历史", "Version history")) { MobileHistoryView(id: id) }
+            if !item.isDeleted {
+              NavigationLink(store.t("临时分享", "Temporary share")) {
+                ShareComposer(id: id, settings: store.settings, unlocked: store.unlocked, t: store.t, perform: store.perform, refresh: { try? await store.refresh() }, copy: store.copy)
+                  .navigationTitle(store.t("临时分享", "Temporary share"))
+              }
+            }
             if !item.category.isEmpty {
               Label(item.category, systemImage: "folder").foregroundStyle(.secondary)
             }
@@ -56,6 +63,22 @@ struct MobileEntryDetail: View {
                 secret: true)
             }
           }
+          PasskeyRecordsView(item: item, perform: store.perform, refresh: { try? await store.refresh() }, t: store.t, editable: store.canEdit(item))
+          if ["creditCard", "identity"].contains(item.type) {
+            let group = item.type == "creditCard" ? "card" : "identity"
+            Section(store.t("结构化资料", "Structured details")) {
+              ForEach((item.fields[group]?.object ?? [:]).keys.sorted(), id: \.self) { key in
+                value(key, item.fields[group]?.object[key]?.string ?? "", key: "structured-\(key)", secret: ["number", "securityCode"].contains(key))
+              }
+            }
+          }
+          if let fields = item.fields["customFields"]?.array, !fields.isEmpty {
+            Section(store.t("自定义字段", "Custom fields")) {
+              ForEach(Array(fields.enumerated()), id: \.offset) { index, field in
+                value(field.object["label"]?.string ?? "", field.object["value"]?.string ?? "", key: "custom-\(index)", secret: field.object["kind"]?.string == "concealed")
+              }
+            }
+          }
           if let history = item.fields["passwordHistory"]?.array, !history.isEmpty {
             Section(store.t("密码历史", "Password history")) {
               ForEach(Array(history.enumerated()), id: \.offset) { index, entry in
@@ -72,7 +95,7 @@ struct MobileEntryDetail: View {
             }
           }
           if item.string("noteFormat") == "rich-v1" {
-            Text(store.t("此图文笔记仅显示文字摘要。请在 Mac 编辑和备份，避免丢失格式或附件。", "Text summary only. Edit and back up this rich note on Mac to preserve formatting and attachments."))
+            Button(store.t("打开图文笔记", "Open rich note")) { editor = item }
               .foregroundStyle(.secondary)
           }
           if !store.canEdit(item) && item.string("noteFormat") != "rich-v1" {
@@ -129,7 +152,9 @@ struct MobileEntryDetail: View {
         Text(store.t("此条目已移除", "Entry removed"))
       }
     }
-    .sheet(item: $editor) { MobileEntryEditor(item: $0) }
+    .sheet(item: $editor) { item in
+      if item.type == "secureNote" { MobileRichNoteEditor(item: item) } else { MobileEntryEditor(item: item) }
+    }
     .task(id: item) {
       guard let item, item.type == "totp" else { return }
       while !Task.isCancelled {

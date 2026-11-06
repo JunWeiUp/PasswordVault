@@ -14,6 +14,7 @@ class MobileBuildSelectionTests(unittest.TestCase):
             root = Path(folder)
             (root / 'tool').mkdir()
             shutil.copy(Path(__file__).with_name('build_mobile_core.sh'), root / 'tool/build_mobile_core.sh')
+            shutil.copy(Path(__file__).with_name('cargo_fork_env.sh'), root / 'tool/cargo_fork_env.sh')
             binaries = root / 'bin'
             binaries.mkdir()
             # Fake binaries produce just the files copied/packaged by the real script.
@@ -22,6 +23,8 @@ import json,os,sys
 from pathlib import Path
 name=Path(sys.argv[0]).name
 args=sys.argv[1:]
+if name=='cargo' and '--version' in args:
+    print('cargo (huacnlee/cargo fixture)'); sys.exit(0)
 with open(os.environ['CALLS'],'a') as f: f.write(json.dumps([name,*args])+'\\n')
 if name=='uname': print('arm64' if '-m' in args else 'Darwin')
 elif name=='rustup': print(str(Path(sys.argv[0]).parent/'rustc'))
@@ -35,7 +38,7 @@ elif name=='cargo':
 elif name=='lipo': Path(args[args.index('-output')+1]).write_text('synthetic universal')
 elif name=='xcodebuild': Path(args[args.index('-output')+1]).mkdir(parents=True)
 '''
-            for name in ['uname', 'rustup', 'cargo', 'lipo', 'xcodebuild']:
+            for name in ['uname', 'rustup', 'cargo', 'lipo', 'xcodebuild', 'npm']:
                 file = binaries / name
                 file.write_text(script)
                 file.chmod(0o755)
@@ -45,11 +48,20 @@ elif name=='xcodebuild': Path(args[args.index('-output')+1]).mkdir(parents=True)
             clang.chmod(0o755)
             result = subprocess.run(['bash', str(root / 'tool/build_mobile_core.sh'), platform], cwd=root,
                 env={**os.environ, 'PATH': str(binaries)+os.pathsep+os.environ['PATH'],
-                     'CALLS': str(root/'calls'), 'PASSWORDVAULT_NDK': str(root/'ndk'), **options},
+                     'PV_CARGO_FORK': str(binaries/'cargo'), 'CALLS': str(root/'calls'), 'PASSWORDVAULT_NDK': str(root/'ndk'), **options},
                 capture_output=True, text=True)
             calls = [json.loads(line) for line in (root/'calls').read_text().splitlines()]
             targets = [call[call.index('--target')+1] for call in calls if call[0]=='cargo' and '--target' in call]
             return result, targets, calls
+
+    def test_mobile_editor_is_built_from_locked_dependencies(self):
+        result, _, calls = self.build('android')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        npm = [call for call in calls if call[0] == 'npm']
+        self.assertEqual(npm, [
+            ['npm', '--prefix', 'apps/shared/note-editor', 'ci', '--ignore-scripts'],
+            ['npm', '--prefix', 'apps/shared/note-editor', 'run', 'build']])
+        self.assertLess(calls.index(npm[-1]), next(i for i, call in enumerate(calls) if call[0] == 'cargo'))
 
     def test_android_default_keeps_both_abis(self):
         result, targets, _ = self.build('android')

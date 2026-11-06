@@ -6,6 +6,14 @@ struct RelaySettingsView: View {
   @ObservedObject var relay: VaultRelay
   var t: (String, String) -> String = { zh, _ in zh }
   @State private var endpoint = ""
+  @State private var peerInput = ""
+  @State private var peerRole = "editor"
+  @State private var familyName = ""
+  @State private var confirmPersonalSync = false
+  private var personalInvitation: Bool {
+    guard let value = try? JSONSerialization.jsonObject(with: Data(peerInput.utf8)) as? [String:Any] else { return false }
+    return value["personal"] as? Bool == true
+  }
   @State private var pairInput = ""
   @State private var importing = false
   @State private var batchIDs: [String] = []
@@ -20,6 +28,68 @@ struct RelaySettingsView: View {
       Text(t("中继同步", "Relay sync")).font(.title2)
       #endif
       if let failure = relay.failure { Text(localizedMessage(failure)).foregroundStyle(.red) }
+      DisclosureGroup(t("对等密码库（无需 Mac 在线）", "Peer library (Mac can be offline)")) {
+        VStack(alignment: .leading, spacing: 10) {
+          Text(t("显式升级会保留旧同步日志，并使用独立设备身份。先让所有设备升级到支持对等协议的版本。", "Explicit enrollment preserves the legacy journal and uses independent device identities. Update all peers to a version supporting this protocol first."))
+            .font(.caption).foregroundStyle(.secondary)
+          if !relay.peerLibraries.isEmpty {
+            Picker(t("当前资料库", "Current library"), selection: Binding(get: { relay.activePeerLibrary }, set: { id in Task { await relay.switchPeerLibrary(id) } })) {
+              Text(t("个人资料库", "Personal library")).tag("")
+              ForEach(relay.peerLibraries.filter { $0.object["personal"]?.bool != true }, id: \.self) { library in
+                Text(library.object["name"]?.string ?? library.object["id"]?.string ?? "").tag(library.object["id"]?.string ?? "")
+              }
+            }
+          }
+          TextField(t("家庭库名称", "Family library name"), text: $familyName)
+          Button(t("创建独立家庭库", "Create independent family library")) { Task { await relay.createPeerLibrary(personal: false, name: familyName) } }.disabled(familyName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || relay.config.group.isEmpty)
+          Text(t("加入范围由邀请绑定；家庭库不会合并本机个人资料。", "The invitation binds its scope; family libraries never merge local personal records.")).font(.caption)
+          if personalInvitation {
+            Toggle(t("我确认：本机全部个人资料将同步给已授权设备", "I confirm: all local personal records will sync to authorized devices"), isOn: $confirmPersonalSync)
+          }
+          if relay.config.peerLibrary == nil {
+            Button(t("创建并迁移为对等库", "Create peer library and migrate")) { Task { await relay.createPeerLibrary() } }.disabled(relay.config.group.isEmpty)
+          } else {
+            Text(relay.config.peerLibrary ?? "").font(.caption).textSelection(.enabled)
+            Button(t("恢复为新共享库（重新邀请成员）", "Re-establish as a new shared library")) { Task { await relay.rekeyPeerLibrary() } }.disabled(relay.config.group.isEmpty || relay.peerLibraryRole != "admin" || (relay.summary["frozen"]?.bool != true && relay.summary["device"]?.string == relay.config.device))
+            Text(t("重建会替换本机同步身份；其他设备的旧库不变，需要重新邀请。", "Re-establishment replaces this local sync identity; other devices keep their old library and need new invitations.")).font(.caption).foregroundStyle(.secondary)
+            if relay.config.peerExpectedLibrary != nil {
+              Text(t("等待管理员核验身份回执并授权", "Waiting for the administrator to verify and authorize this identity"))
+              Button(t("取消加入，保留本机资料", "Cancel enrollment; keep local records")) { confirmPersonalSync = false; Task { await relay.cancelPeerJoin() } }
+            }
+            if relay.summary["frozen"]?.bool == true { Text(t("权限变更冲突，已停止同步。请从可信设备重新建立库。", "Conflicting permission changes have stopped synchronization. Re-enroll from a trusted device." )).foregroundStyle(.red) }
+          }
+          RelayPasteInput(text: $peerInput, placeholder: t("粘贴对等库邀请或对方身份回执", "Paste a peer-library invitation or identity request")).disabled(relay.config.peerExpectedLibrary != nil).onChange(of: peerInput) { _ in confirmPersonalSync = false }
+          if relay.config.peerExpectedLibrary == nil {
+            Button(t("确认邀请来源并加入", "Verify invitation source and join")) { Task { await relay.preparePeerJoin(peerInput, confirmPersonal: confirmPersonalSync) } }.disabled(peerInput.isEmpty || relay.config.group.isEmpty || (personalInvitation && !confirmPersonalSync))
+          }
+          if relay.config.peerLibrary != nil && relay.config.peerExpectedLibrary == nil {
+            Picker(t("授权角色", "Library role"), selection: $peerRole) {
+              Text(t("可编辑", "Editor")).tag("editor")
+              Text(t("只读", "Reader")).tag("reader")
+              Text(t("管理员", "Administrator")).tag("admin")
+            }.disabled(!relay.canManagePeerLibrary)
+            Button(t("已核对对方身份，授权", "Identity verified, authorize")) { Task { await relay.authorizePeerRequest(peerInput, role: peerRole) } }.disabled(peerInput.isEmpty || !relay.canManagePeerLibrary)
+          }
+          if !relay.pairingText.isEmpty, relay.config.peerLibrary != nil {
+            Text(t("公开邀请 / 身份回执（不含密码库内容）", "Public invitation / identity request (no vault contents)"))
+            Text(relay.pairingText).font(.caption2).textSelection(.enabled)
+          }
+          if relay.config.peerLibrary != nil {
+            ForEach(Array((relay.summary["conflicts"]?.object ?? [:]).keys).sorted(), id: \.self) { key in
+              VStack(alignment: .leading) {
+                Text(t("并发修改：", "Concurrent changes: ") + key).bold()
+                ForEach(relay.summary["conflicts"]?.object[key]?.array ?? [], id: \.self) { operation in
+                  let value = operation.object["value"] ?? .null
+                  Button((value.object["title"]?.string ?? t("删除 / 空值", "Delete / empty value")) + " — " + (operation.object["author"]?.string ?? "")) {
+                    Task { await relay.resolvePeer(key: key, value: value) }
+                  }.disabled(!relay.canWritePeerLibrary)
+                }
+              }
+            }
+          }
+        }.padding(.vertical, 8)
+      }
+
       if relay.hasManagedGroup && relay.config.peers.isEmpty {
         Text(localizedMessage(relay.status)).accessibilityIdentifier("relay-status")
       }
@@ -30,7 +100,8 @@ struct RelaySettingsView: View {
       } else {
         Text(localizedMessage(relay.status)).accessibilityIdentifier("relay-status")
         if let last = relay.lastSuccess { Text(t("最近接收：", "Last received: ") + last.formatted()).font(.caption) }
-        Text(t("待提交：", "Pending: ") + String(Int(relay.summary["pending"]?.number ?? 0)))
+        if relay.config.peerLibrary == nil { Text(t("待提交：", "Pending: ") + String(Int(relay.summary["pending"]?.number ?? 0))) }
+        else { Text(t("本地已保存；中继投递不代表所有设备已应用", "Saved locally; relay delivery does not mean every device has applied it")).font(.caption) }
         HStack {
           Button(t("立即同步", "Sync now")) { relay.syncNow() }.disabled(relay.groupInvalid)
           Button(relay.config.paused ? t("恢复", "Resume") : t("暂停", "Pause")) { Task { await relay.setPaused(!relay.config.paused) } }.disabled(relay.groupInvalid)

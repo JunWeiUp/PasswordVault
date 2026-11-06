@@ -2,6 +2,18 @@ import Foundation
 import Clibsodium
 
 public enum RelayError: Error { case invalid(String), closed, backpressure }
+
+/// Server-wide access password sent as `Relay-Access` on every `/relay/v1` request.
+public enum RelayAccess {
+    public static let header = "Relay-Access"
+    /// 8-128 printable ASCII characters (0x21-0x7E). The password itself is never included in errors.
+    public static func validate(_ password: String?) throws {
+        guard let password else { return }
+        let bytes = Array(password.utf8)
+        guard (8...128).contains(bytes.count), bytes.allSatisfy({ (0x21...0x7e).contains($0) }) else { throw RelayError.invalid("access password must be 8-128 printable ASCII characters") }
+    }
+    static func apply(_ password: String?, to request: inout URLRequest) { if let password { request.setValue(password, forHTTPHeaderField: header) } }
+}
 public extension Data {
     init(relayHex: String) throws {
         guard relayHex.count % 2 == 0 else { throw RelayError.invalid("hex") }

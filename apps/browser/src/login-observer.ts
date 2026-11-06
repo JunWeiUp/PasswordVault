@@ -21,6 +21,7 @@
   let busy = false;
   type Notice = { id: string; origin: string; expires: number };
   let activeNotice: Notice | undefined;
+  let savingNotice: string | undefined;
   let repairTimer: ReturnType<typeof setTimeout> | undefined;
   const repair = new MutationObserver(() => {
     if (!activeNotice || banner?.isConnected || repairTimer) return;
@@ -68,7 +69,7 @@
       repair.observe(document.documentElement, { childList: true });
     }
   }
-  function showBanner(message: string, dismiss = true, notice?: Notice) {
+  function showBanner(message: string, dismiss = true, notice?: Notice, saved = false) {
     if (!mainDocument) return;
     removeBanner();
     activeNotice = notice;
@@ -84,25 +85,46 @@
     card.className = "card";
     card.setAttribute("role", "status");
     const title = document.createElement("strong");
-    title.textContent = "PasswordVault · 登录提醒";
+    title.textContent = saved ? "PasswordVault · 已保存" : "PasswordVault · 登录提醒";
     const description = document.createElement("p");
     description.textContent = message;
     const close = document.createElement("button");
     close.textContent = dismiss ? "暂不保存" : "知道了";
-    close.onclick = () => {
+    close.onclick = (event) => {
+      if (!event.isTrusted) return;
       removeBanner();
       if (dismiss) void send({ action: "login-dismiss" });
     };
     card.append(title, description);
-    if (dismiss) {
+    if (dismiss || saved) {
       const review = document.createElement("button");
-      review.textContent = "查看并保存";
+      review.textContent = saved ? "修改账号密码" : "保存";
       review.style.marginRight = "8px";
-      review.onclick = async () => {
-        const result = await send({ action: "login-open" });
-        if (!result?.ok)
-          description.textContent =
-            "请点击浏览器工具栏的 PasswordVault 图标，核对后保存账号。";
+      const currentBanner = banner;
+      review.onclick = async (event) => {
+        if (!event.isTrusted || review.disabled || !notice) return;
+        review.disabled = true;
+        close.disabled = true;
+        if (!saved) {
+          savingNotice = notice.id;
+          review.textContent = "保存中…";
+        }
+        const result = await send({ action: saved ? "login-open" : "login-save", id: notice.id, saved });
+        if (savingNotice === notice.id) savingNotice = undefined;
+        if (banner !== currentBanner) return;
+        if (result?.ok && !saved) {
+          showBanner(result.data?.queued ? "已加密保存在此浏览器，稍后自动同步到 Mac。" : "账号密码已保存。", false,
+            { ...notice, expires: Date.now() + 120_000 }, true);
+          return;
+        }
+        review.disabled = false;
+        close.disabled = false;
+        review.textContent = saved ? "修改账号密码" : "重试保存";
+        if (!result?.ok) description.textContent = saved
+          ? "请点击浏览器工具栏的 PasswordVault 图标修改账号密码。"
+          : result?.error === "expired" || result?.error === "cancelled"
+            ? "这次填写已过期或取消，请重新填写后保存。"
+            : "保存未完成，请重试，或打开插件检查解锁及连接状态。";
       };
       card.append(review);
     }
@@ -123,7 +145,7 @@
       return;
     if (activeNotice?.id === notice.id && banner?.isConnected) return;
     showBanner(
-      "检测到登录或注册提交。是否保存这次填写的账号？请确认成功后再保存。",
+      "检测到填写的账号和密码。是否保存？请核对凭据，确认可用后再保存。",
       true,
       notice,
     );
@@ -137,6 +159,7 @@
     if (request.action === "reminder-enabled") enabled = true;
     if (
       request.action === "reminder-cleared" &&
+      (!savingNotice || (request.id && request.id !== savingNotice)) &&
       (!request.id || activeNotice?.id === request.id)
     )
       removeBanner();
@@ -164,10 +187,14 @@
   });
   void refreshStatus();
   document.addEventListener("focusin", (event) => {
+    const target = event.composedPath()[0];
+    for (const node of event.composedPath()) {
+      if (node instanceof ShadowRoot) observeRoot(node);
+    }
     if (
       !hasPassword &&
-      event.target instanceof HTMLInputElement &&
-      passwordField(event.target)
+      target instanceof HTMLInputElement &&
+      passwordField(target)
     ) {
       hasPassword = true;
       void refreshStatus();
@@ -177,6 +204,24 @@
   const knownPasswords = new WeakMap<HTMLInputElement, string>();
   const signature = (input: HTMLInputElement) =>
     [input.id, input.name, input.autocomplete].join("\u0000");
+  const parent = (element: Element): Element | null =>
+    element.parentElement ??
+    (element.getRootNode() instanceof ShadowRoot
+      ? (element.getRootNode() as ShadowRoot).host
+      : null);
+  function queryDeep<T extends Element>(
+    root: ParentNode,
+    selector: string,
+  ): T[] {
+    const matches: T[] = [];
+    for (const element of Array.from(root.children)) {
+      if (element.matches(selector)) matches.push(element as T);
+      if (element.shadowRoot)
+        matches.push(...queryDeep<T>(element.shadowRoot, selector));
+      matches.push(...queryDeep<T>(element, selector));
+    }
+    return matches;
+  }
   const passwordField = (input: HTMLInputElement) => {
     const tokens = input.autocomplete.toLowerCase().split(/\s+/);
     if (tokens.some((token) => ["one-time-code", "username"].includes(token)))
@@ -206,24 +251,31 @@
     for (
       let element: Element | null = input;
       element;
-      element = element.parentElement
+      element = parent(element)
     ) {
       const style = getComputedStyle(element);
       if (
         ["hidden", "collapse"].includes(style.visibility) ||
         style.display === "none" ||
-        Number(style.opacity) === 0
+        Number(style.opacity) === 0 ||
+        element.matches('[inert],[disabled],[aria-disabled="true"]')
       )
         return false;
     }
     return true;
   };
-  const remember = (root: ParentNode) =>
-    root
-      .querySelectorAll<HTMLInputElement>('input[type="password"]')
-      .forEach(passwordField);
-  remember(document);
-  new MutationObserver((records) => {
+  const observedRoots = new WeakSet<ParentNode>();
+  function remember(root: ParentNode) {
+    if (root instanceof Element && root.shadowRoot)
+      observeRoot(root.shadowRoot);
+    queryDeep<HTMLInputElement>(root, 'input[type="password"]').forEach(
+      passwordField,
+    );
+    for (const element of queryDeep<Element>(root, "*")) {
+      if (element.shadowRoot) observeRoot(element.shadowRoot);
+    }
+  }
+  const observeMutations = (records: MutationRecord[]) => {
     for (const record of records) {
       if (
         record.target instanceof HTMLInputElement &&
@@ -236,20 +288,42 @@
         else if (node instanceof Element) remember(node);
       }
     }
-  }).observe(document.documentElement, {
-    childList: true,
-    subtree: true,
-    attributes: true,
-    attributeFilter: ["type"],
-    attributeOldValue: true,
-  });
-  type Fields = { username: HTMLInputElement; password: HTMLInputElement };
+  };
+  function observeRoot(root: Document | ShadowRoot) {
+    if (observedRoots.has(root)) return;
+    observedRoots.add(root);
+    new MutationObserver(observeMutations).observe(root, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ["type"],
+      attributeOldValue: true,
+    });
+    root.addEventListener("submit", onSubmit, true);
+    remember(root);
+  }
+  type Fields = {
+    username: HTMLInputElement;
+    password: HTMLInputElement;
+    changePassword?: boolean;
+    multiStep?: boolean;
+  };
   function fieldsIn(scope: Element, strict: boolean): Fields | undefined {
     const inputs = Array.from(
-      scope.querySelectorAll<HTMLInputElement>("input"),
+      queryDeep<HTMLInputElement>(scope, "input"),
     ).filter(visible);
-    const passwords = inputs.filter(passwordField);
-    if (!passwords.length || passwords.length > 2) return;
+    const allPasswords = inputs.filter(passwordField);
+    const newPasswords = allPasswords.filter((input) =>
+      input.autocomplete.split(/\s+/).includes("new-password"),
+    );
+    const changePassword =
+      newPasswords.length > 0 &&
+      allPasswords.some((input) =>
+        input.autocomplete.split(/\s+/).includes("current-password"),
+      );
+    const passwords = changePassword ? newPasswords : allPasswords;
+    if (!passwords.length || passwords.length > 2 || allPasswords.length > 3)
+      return;
     const password = passwords[0];
     if (passwords.length === 2) {
       const confirmation = passwords[1];
@@ -272,21 +346,21 @@
         return;
     }
     const preceding = inputs.filter(
-      (input) =>
+      (input, index) =>
         input !== password &&
         !passwordField(input) &&
         ["text", "email", "tel"].includes(input.type) &&
         !input.autocomplete.split(/\s+/).includes("one-time-code") &&
-        !!(
-          input.compareDocumentPosition(password) &
-          Node.DOCUMENT_POSITION_FOLLOWING
-        ),
+        index < inputs.indexOf(password),
     );
     if (strict && preceding.length !== 1) return;
-    const username =
+    let username =
       preceding.find((input) =>
         input.autocomplete.split(/\s+/).includes("username"),
       ) ?? preceding.at(-1);
+    const multiStep = !username && passwords.length === 1 && !changePassword;
+    if (!username && (changePassword || multiStep))
+      username = document.createElement("input");
     if (!username) return;
     const hints = [
       username.autocomplete,
@@ -303,25 +377,27 @@
       )
     )
       return;
-    return { username, password };
+    return { username, password, changePassword, multiStep };
   }
   function nearby(target: Element): Fields | undefined {
     if (target.closest("form")) return fieldsIn(target.closest("form")!, false);
-    let scope: Element | null = target.parentElement;
+    let scope: Element | null = parent(target);
     for (
       let depth = 0;
-      scope && scope !== document.body && depth < 6;
-      depth++, scope = scope.parentElement
+      scope && scope !== document.body && depth < 12;
+      depth++, scope = parent(scope)
     ) {
+      if (scope instanceof HTMLFormElement) return fieldsIn(scope, false);
       const fields = fieldsIn(scope, true);
       if (fields) return fields;
       // Never climb past a group larger than a signup password/confirmation pair.
       if (
-        Array.from(scope.querySelectorAll<HTMLInputElement>("input")).filter(
+        queryDeep<HTMLInputElement>(scope, "input").filter(
           (input) => visible(input) && passwordField(input),
         ).length > 2
       )
         return;
+      if (scope.matches('dialog,[role="dialog"]')) return;
     }
   }
   async function capture(fields: Fields | undefined) {
@@ -329,13 +405,17 @@
       !enabled ||
       busy ||
       !fields?.password.value ||
-      !fields.username.value.trim()
+      (!fields.username.value.trim() &&
+        !fields.changePassword &&
+        !fields.multiStep)
     )
       return;
     busy = true;
     // Snapshot synchronously, before page handlers can remove/navigate the iframe.
     const request = {
       action: "login-submitted",
+      changePassword: fields.changePassword === true,
+      multiStep: fields.multiStep === true,
       username: fields.username.value,
       password: fields.password.value,
     };
@@ -379,21 +459,22 @@
         : target.textContent) ??
       ""
     ).trim();
-    return /^(?:登\s*[录入陆]|立即登录|登录并继续|登录\s*[/／]\s*注册|log\s*in|sign\s*in|sign\s*up|register|create\s+(?:an?\s+)?account|注\s*册|立即注册|创建(?:一个)?(?:账户|账号)|continue|继续)$/i.test(
+    return /^(?:登\s*[录入陆]|立即登录|登录并继续|登录\s*[/／]\s*注册|log\s*in|sign\s*in|sign\s*up|register|create\s+(?:an?\s+)?account|注\s*册|立即注册|创建(?:一个)?(?:账户|账号)|continue|继续|submit|提\s*交|change\s+password|update\s+password|save\s+password|修改密码|更新密码|保存密码)$/i.test(
       label,
     );
   }
   function hasLoginControl(fields: Fields) {
-    let scope = fields.password.parentElement;
+    let scope = parent(fields.password);
     for (
       let depth = 0;
-      scope && scope !== document.body && depth < 6;
-      depth++, scope = scope.parentElement
+      scope && scope !== document.body && depth < 12;
+      depth++, scope = parent(scope)
     ) {
       if (
-        scope.contains(fields.username) &&
+        queryDeep<HTMLInputElement>(scope, "input").includes(fields.username) &&
         Array.from(
-          scope.querySelectorAll(
+          queryDeep(
+            scope,
             'button,[role="button"],input[type="button"],input[type="submit"],div,span',
           ),
         ).some(loginControl)
@@ -402,25 +483,78 @@
     }
     return false;
   }
+  function onSubmit(event: Event) {
+    if (event.isTrusted && event.target instanceof HTMLFormElement) {
+      const form = event.target;
+      const inputs = queryDeep<HTMLInputElement>(form, "input").filter(visible);
+      if (!inputs.some(passwordField)) {
+        const username = inputs.find((input) =>
+          input.autocomplete.split(/\s+/).includes("username"),
+        );
+        if (username?.value.trim())
+          void send({
+            action: "inline-remember-username",
+            username: username.value,
+          });
+      }
+      void capture(fieldsIn(form, false));
+    }
+  }
+  observeRoot(document);
+  const edited = new WeakSet<HTMLInputElement>();
   document.addEventListener(
-    "submit",
+    "input",
     (event) => {
-      if (event.isTrusted && event.target instanceof HTMLFormElement)
-        void capture(fieldsIn(event.target, false));
+      const target = event.composedPath()[0];
+      if (event.isTrusted && target instanceof HTMLInputElement)
+        edited.add(target);
+    },
+    true,
+  );
+  document.addEventListener(
+    "focusout",
+    (event) => {
+      const target = event.composedPath()[0];
+      if (
+        !event.isTrusted ||
+        !(target instanceof HTMLInputElement) ||
+        !edited.has(target)
+      )
+        return;
+      edited.delete(target);
+      const fields = nearby(target);
+      if (
+        !fields ||
+        fields.changePassword ||
+        fields.multiStep ||
+        (target !== fields.username && target !== fields.password) ||
+        fields.password.autocomplete.split(/\s+/).includes("new-password") ||
+        !fields.username.checkValidity() ||
+        !fields.password.checkValidity()
+      )
+        return;
+      void capture(fields);
     },
     true,
   );
   document.addEventListener(
     "click",
     (event) => {
-      if (!event.isTrusted || !(event.target instanceof Element)) return;
+      const source = event.composedPath()[0];
+      if (!event.isTrusted || !(source instanceof Element)) return;
       if (
-        event.target.closest(
-          'a,[role="link"],[role="tab"],[disabled],[aria-disabled="true"]',
-        )
+        event
+          .composedPath()
+          .some(
+            (node) =>
+              node instanceof Element &&
+              node.matches(
+                'a,[role="link"],[role="tab"],[disabled],[aria-disabled="true"]',
+              ),
+          )
       )
         return;
-      const submit = event.target.closest('button,input[type="submit"]');
+      const submit = source.closest('button,input[type="submit"]');
       if (
         (submit instanceof HTMLButtonElement ||
           submit instanceof HTMLInputElement) &&
@@ -428,11 +562,11 @@
         submit.type === "submit"
       )
         return;
-      let target: Element | null = event.target;
+      let target: Element | null = source;
       for (
         let depth = 0;
         target && target !== document.body && depth < 5;
-        depth++, target = target.parentElement
+        depth++, target = parent(target)
       ) {
         if (target.matches('[disabled],[aria-disabled="true"]')) return;
         // Native submit buttons are handled after the browser's form validation.
@@ -454,20 +588,21 @@
   document.addEventListener(
     "keydown",
     (event) => {
+      const target = event.composedPath()[0];
       if (
         !event.isTrusted ||
         event.isComposing ||
         event.key !== "Enter" ||
-        !(event.target instanceof HTMLInputElement)
+        !(target instanceof HTMLInputElement)
       )
         return;
       // Native forms generate a submit event; this path is for form-less SPA panels.
-      if (event.target.form) return;
-      const fields = nearby(event.target);
+      if (target.form) return;
+      const fields = nearby(target);
       if (
         fields &&
         hasLoginControl(fields) &&
-        (event.target === fields.username || event.target === fields.password)
+        (target === fields.username || target === fields.password)
       )
         void capture(fields);
     },

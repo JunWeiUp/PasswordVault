@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<title>Synthetic component credential dialog</title>
+<body>
+<h1>Component credential fixture</h1>
+<div id="mount"></div>
+<button id="outside">Outside field</button>
+<script>
+window.qa = { requests: [], listeners: [], enabled: true, duplicate: false };
+window.chrome = { runtime: {
+  id: 'synthetic-shadow-login', onMessage: { addListener(listener) { qa.listeners.push(listener); } },
+  async sendMessage(request) {
+    qa.requests.push({ ...request });
+    if (request.action === 'login-pending') return { ok: true, data: { enabled: qa.enabled } };
+    if (request.action === 'login-save') {
+      if (qa.saveFailure) return {ok:false,error:'storage'};
+      for (const listener of qa.listeners) listener({action:'reminder-cleared',id:request.id},{id:'synthetic-shadow-login'});
+      return {ok:true,data:{queued:qa.queued === true}};
+    }
+    if (request.action === 'login-submitted') return { ok: true, data: qa.duplicate
+      ? { duplicate: true }
+      : { pending: true, notice: { id: 'fixture', origin: location.origin, expires: Date.now() + 120000 } } };
+    return { ok: true };
+  }
+} };
+window.renderPanel = (options = {}) => {
+  const host = document.createElement('fixture-app');
+  document.querySelector('#mount').replaceChildren(host);
+  const root = host.attachShadow({ mode: 'open' });
+  const dialog = document.createElement('section');
+  dialog.setAttribute('role', 'dialog');
+  root.append(dialog);
+  const panel = document.createElement(options.form ? 'form' : 'div');
+  panel.addEventListener('submit', event => event.preventDefault());
+  dialog.append(panel);
+  for (const [name, type, label] of [['username', 'text', '用户名'], ['password', 'password', '密码']]) {
+    const field = document.createElement('fixture-field');
+    panel.append(field);
+    const fieldRoot = field.attachShadow({ mode: 'open' });
+    fieldRoot.innerHTML = `<style>input{display:block;margin:16px;padding:12px}</style><input name="${name}" type="${type}" placeholder="${label}">`;
+  }
+  const action = document.createElement('fixture-action');
+  panel.append(action);
+  action.attachShadow({ mode: 'open' }).innerHTML = '<button type="button"><span>提交</span></button>';
+  qa.panel = panel;
+  qa.root = root;
+};
+renderPanel();
+</script>
+<script src="../../dist/login-observer.js"></script>
+</body>
+</html>

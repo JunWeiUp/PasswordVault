@@ -7,12 +7,22 @@ inputs:
 runs:
   using: composite
   steps:
+    - name: Install the project Cargo fork
+      shell: bash
+      env:
+        CARGO_FORK_VERSION: 0.102.0-9
+        CARGO_FORK_AUTO_UPDATE: '0'
+      run: |
+        curl --fail --show-error --silent --location https://huacnlee.github.io/cargo/install.sh -o "$RUNNER_TEMP/cargo-fork-install.sh"
+        sh "$RUNNER_TEMP/cargo-fork-install.sh"
+        "$HOME/.cargo/bin/cargo" --version
     - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
       with:
         path: |
           ~/.cargo/registry
           ~/.cargo/git
           target
-        key: rust-v1-${{ runner.os }}-${{ runner.arch }}-${{ inputs.component }}-${{ hashFiles('rust-toolchain.toml', 'Cargo.lock', 'crates/**') }}
+          ~/.cargo/targets
+        key: rust-fork-v2-${{ runner.os }}-${{ runner.arch }}-${{ inputs.component }}-${{ hashFiles('rust-toolchain.toml', 'Cargo.lock', 'crates/**') }}
         restore-keys: |
-          rust-v1-${{ runner.os }}-${{ runner.arch }}-${{ inputs.component }}-
+          rust-fork-v2-${{ runner.os }}-${{ runner.arch }}-${{ inputs.component }}-

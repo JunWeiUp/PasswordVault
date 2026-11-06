@@ -24,10 +24,19 @@ fun SettingsScreen(
     trash: () -> Unit,
     webdav: () -> Unit,
     relay: () -> Unit,
+    openEntry: (String) -> Unit = {},
 ) {
     val context = LocalContext.current
     val biometric = remember { BiometricVault(context as androidx.fragment.app.FragmentActivity) }
     val scope = rememberCoroutineScope()
+    var capabilityPanel by remember { mutableStateOf<String?>(null) }
+    if (capabilityPanel != null) androidx.compose.ui.window.Dialog(onDismissRequest = { capabilityPanel = null }, properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)) {
+        Surface(Modifier.fillMaxSize()) { Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            TextButton(onClick = { capabilityPanel = null }) { Text(t("关闭", "Close")) }
+            if (capabilityPanel == "import") ImportReviewPanel(vault, t)
+            else SecurityCenterPanel(vault, state.entries, t) { id -> capabilityPanel = null; openEntry(id) }
+        } }
+    }
     var category by remember { mutableStateOf("") }
     var currentPassword by remember { mutableStateOf("") }
     var nextPassword by remember { mutableStateOf("") }
@@ -38,6 +47,8 @@ fun SettingsScreen(
     var backup by remember { mutableStateOf<ByteArray?>(null) }
     var message by remember { mutableStateOf<String?>(null) }
     var working by remember { mutableStateOf(false) }
+    var recovery by remember { mutableStateOf(false) }
+    if (recovery) RecoveryDialog(vault, state, t) { recovery = false }
     var importFormat by remember { mutableStateOf("auto") }
     var plainExport by remember { mutableStateOf<String?>(null) }
     var exportWasPlain by remember { mutableStateOf(false) }
@@ -174,6 +185,8 @@ fun SettingsScreen(
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         Text(t("设置", "Settings"), style = MaterialTheme.typography.headlineMedium)
+        OutlinedButton(onClick = { capabilityPanel = "security" }) { Text(t("安全中心", "Security center")) }
+        OutlinedButton(onClick = { capabilityPanel = "import" }) { Text(t("迁入 CSV / 1Password .1pux", "Import CSV / 1Password .1pux")) }
         LegacySection {
             Text(t("安全", "Security"), style = MaterialTheme.typography.titleLarge)
             Text(
@@ -183,6 +196,7 @@ fun SettingsScreen(
                 )
             )
             BiometricSettings(biometric, vault, t)
+            OutlinedButton(onClick = { recovery = true }) { Text(t("应急恢复", "Emergency recovery")) }
             Text(t("空闲锁定（分钟）", "Idle lock (minutes)"))
             Row {
                 listOf(1, 5, 15, 60).forEach { minutes ->

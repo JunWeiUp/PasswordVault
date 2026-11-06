@@ -1,5 +1,6 @@
+import { t, useLocale, setLocale, setTheme } from "./i18n";
 import { render } from "preact";
-import { useEffect, useState, useRef } from "preact/hooks";
+import { useEffect, useLayoutEffect, useState, useRef } from "preact/hooks";
 import {
   authenticate,
   command,
@@ -10,6 +11,20 @@ import {
   status,
 } from "./client";
 import { NativeConnectionPanel } from "./NativeConnectionPanel";
+import { ShareDialog } from "./ShareDialog";
+import { RecoveryDialog, RecoveryPanel } from "./RecoveryPanel";
+import { PeerLibraries } from "./PeerLibraries";
+import { peerRelay } from "./peer-relay";
+import { PasskeyDetails } from "./PasskeyDetails";
+import { WebDAVPanel } from "./WebDAVPanel";
+import { RichNoteEditor, flushRichNote } from "./RichNoteEditor";
+import { HistoryDialog } from "./HistoryDialog";
+import {
+  structuredLabel,
+  StructuredFieldsEditor,
+  ImportReviewPanel,
+  SecurityCenterPanel,
+} from "./Capabilities";
 import "./style.css";
 type Item = { id: string; type: string; title: string; [key: string]: any };
 const sections = [
@@ -17,8 +32,11 @@ const sections = [
   ["password", "密码", "⌘"],
   ["totp", "验证码", "◷"],
   ["crypto", "钱包", "▱"],
+  ["creditCard", "银行卡", "▣"],
+  ["identity", "身份资料", "♙"],
 ];
 function Markdown({ text }: { text: string }) {
+  useLocale();
   return (
     <div class="markdown">
       {text.split("\n").map((line, i) =>
@@ -40,9 +58,17 @@ function Markdown({ text }: { text: string }) {
   );
 }
 function App() {
+  useLocale();
   const [state, setState] = useState<any>();
   const [doc, setDoc] = useState<any>();
   const [section, setSection] = useState("secureNote");
+  const readOnlyLibrary = doc?.settings?._peerLibraryReadOnly === true || (!!doc?.settings?.activePeerLibrary && (doc.settings._peerLibraryReadOnly !== false || !["admin", "editor"].includes(doc.settings._peerLibraryRole)));
+  function canEditItem(value:Item) {
+    if(readOnlyLibrary)return false;
+    if(!value.sharedVaultId)return true;
+    const own=doc?.settings?.sharingIdentity?.publicKey;
+    return !!own && !!doc?.sharedMembers?.some((member:any)=>member.vaultId===value.sharedVaultId&&member.userPublicKey===own&&["owner","editor"].includes(member.role));
+  }
   const [category, setCategory] = useState("");
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState("");
@@ -52,20 +78,111 @@ function App() {
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState("");
   const [editing, setEditing] = useState<Item>();
+  const [recoveredDraft, setRecoveredDraft] = useState<Item>();
+  const pendingDraft = useRef<Item>();
+  const draftTimer = useRef<ReturnType<typeof setTimeout>>();
+  const draftWrite = useRef<Promise<unknown>>(Promise.resolve());
+  async function persistDraft() {
+    clearTimeout(draftTimer.current);
+    const value = pendingDraft.current;
+    if (!value) return;
+    draftWrite.current = draftWrite.current
+      .catch(() => {})
+      .then(() => command({ op: "draft-save", item: value }));
+    await draftWrite.current;
+    if (pendingDraft.current?.id === value.id && pendingDraft.current?._draftLibrary === value._draftLibrary) setRecoveredDraft(value);
+  }
+  function changedDraft(value: Item) {
+    pendingDraft.current = { ...value, _draftLibrary: doc?.settings.activePeerLibrary ?? "" };
+    clearTimeout(draftTimer.current);
+    draftTimer.current = setTimeout(() => {
+      void persistDraft().catch((e) => setError(t(errorText(e))));
+    }, 250);
+  }
+  async function flushDraft() {
+    if (editing) {
+      const latest = await flushRichNote(editing.id);
+      if (latest)
+        pendingDraft.current = {
+          ...(pendingDraft.current ?? editing),
+          note: latest.note,
+          noteFormat: latest.noteFormat,
+          noteDocument: latest.noteDocument,
+          ...(latest.noteOriginal ? { noteOriginal: latest.noteOriginal } : {}),
+        };
+    }
+    await persistDraft();
+  }
+  async function lockWithDraft() {
+    await flushDraft();
+    await lock();
+    pendingDraft.current = undefined;
+    setRecoveredDraft(undefined);
+    setDoc(undefined);
+    setEditing(undefined);
+  }
+  useEffect(() => {
+    const leave = (e: BeforeUnloadEvent) => {
+      if (pendingDraft.current) {
+        void persistDraft().catch(() => {});
+        e.preventDefault();
+        e.returnValue = "";
+      }
+    };
+    const hide = () => {
+      if (document.visibilityState === "hidden")
+        void persistDraft().catch(() => {});
+    };
+    addEventListener("beforeunload", leave);
+    document.addEventListener("visibilitychange", hide);
+    return () => {
+      clearTimeout(draftTimer.current);
+      removeEventListener("beforeunload", leave);
+      document.removeEventListener("visibilitychange", hide);
+    };
+  }, []);
+  useLayoutEffect(() => {
+    if (editing) changedDraft(editing);
+  }, [editing?.id]);
+  const [sharing, setSharing] = useState<string>();
+  const [history, setHistory] = useState<string>();
+  const [recovering, setRecovering] = useState(false);
   const actionBusy = useRef(false);
   const polling = useRef(false);
   const generation = useRef(0);
+  useEffect(() => {
+    if (!doc) {
+      setSharing(undefined);
+      setHistory(undefined);
+    } else setRecovering(false);
+  }, [!!doc]);
   async function refresh() {
     const s = await status();
     setState(s);
     if (s.unlocked && s.mode === "independent") {
       const data = await command({ op: "list" });
       setDoc(data);
+      const draft = await command({ op: "draft-read" });
+      setRecoveredDraft(draft.item ?? undefined);
+      if (["zh", "en"].includes(data.settings?.language))
+        setLocale(data.settings.language);
+      if (["light", "dark", "system"].includes(data.settings?.theme))
+        setTheme(data.settings.theme);
     } else {
       setDoc(undefined);
+      clearTimeout(draftTimer.current);
+      pendingDraft.current = undefined;
+      setRecoveredDraft(undefined);
       setEditing(undefined);
+      setSharing(undefined);
+      setHistory(undefined);
     }
   }
+  useEffect(() => {
+    if (doc) void peerRelay.start(refresh).catch(() => {});
+    else peerRelay.stop();
+    return () => peerRelay.stop();
+  }, [!!doc]);
   async function run(work: () => Promise<unknown>) {
     if (actionBusy.current) return;
     actionBusy.current = true;
@@ -75,7 +192,7 @@ function App() {
     try {
       await work();
     } catch (e) {
-      setError(errorText(e));
+      setError(t(errorText(e)));
       await refresh().catch(() => {});
     } finally {
       actionBusy.current = false;
@@ -94,11 +211,16 @@ function App() {
           setState(s);
           if (!s.unlocked) {
             setDoc(undefined);
+            clearTimeout(draftTimer.current);
+            pendingDraft.current = undefined;
+            setRecoveredDraft(undefined);
             setEditing(undefined);
+            setSharing(undefined);
+            setHistory(undefined);
           }
         })
         .catch((e) => {
-          if (version === generation.current) setError(errorText(e));
+          if (version === generation.current) setError(t(errorText(e)));
         })
         .finally(() => {
           polling.current = false;
@@ -157,26 +279,47 @@ function App() {
         .filter(Boolean),
     ),
   ];
-  async function save(value: Item) {
+  async function save(value: Item, commitDraft = false) {
     await command({
       op: "save",
+      richNotes: true,
       item: { ...value, updatedAt: new Date().toISOString() },
     });
+    if (commitDraft && pendingDraft.current?.id === value.id) {
+      clearTimeout(draftTimer.current);
+      await draftWrite.current.catch(() => {});
+      await command({ op: "draft-clear" });
+      pendingDraft.current = undefined;
+      setRecoveredDraft(undefined);
+    }
     setSelected(value.id);
     await refresh();
     setEditing(undefined);
-    setToast("已保存");
+    setToast(t("已保存"));
+  }
+  function leaveEditor(action: () => void) {
+    if (editing) void run(async () => { await flushDraft(); action(); });
+    else action();
   }
   function navigate(next: string) {
-    setSection(next);
-    setCategory("");
-    setSearch("");
-    setEditing(undefined);
+    leaveEditor(() => {
+      setSection(next); setCategory(""); setSearch(""); setEditing(undefined);
+    });
   }
   function newItem() {
+    if(readOnlyLibrary){setError(t("当前资料库为只读，无法修改条目。"));return;}
+    if (pendingDraft.current || recoveredDraft) {
+      setError(t("请先保存或丢弃现有草稿"));
+      return;
+    }
     setEditing({
       id: crypto.randomUUID(),
       type: section,
+      ...(section === "creditCard"
+        ? { card: {} }
+        : section === "identity"
+          ? { identity: {} }
+          : {}),
       title: "",
       username: "",
       note: "",
@@ -188,7 +331,7 @@ function App() {
   async function copy(value: string) {
     await run(async () => {
       await navigator.clipboard.writeText(value);
-      setToast("已复制");
+      setToast(t("已复制"));
     });
   }
   useEffect(() => {
@@ -197,14 +340,12 @@ function App() {
       if (event.key.toLowerCase() === "k") {
         event.preventDefault();
         document
-          .querySelector<HTMLInputElement>('input[aria-label="搜索资料"]')
+          .querySelector<HTMLInputElement>("input[data-vault-search]")
           ?.focus();
       } else if (event.key.toLowerCase() === "l") {
         event.preventDefault();
         void run(async () => {
-          await lock();
-          setDoc(undefined);
-          setEditing(undefined);
+          await lockWithDraft();
         });
       }
     };
@@ -229,11 +370,11 @@ function App() {
               {error}
             </p>
             <button disabled={busy} onClick={() => run(refresh)}>
-              重新尝试
+              {t("重新尝试")}
             </button>
           </>
         ) : (
-          <p class="muted">正在打开资料库…</p>
+          <p class="muted">{t("正在打开资料库…")}</p>
         )}
       </div>
     );
@@ -268,7 +409,7 @@ function App() {
               })
             }
           >
-            使用独立浏览器资料库
+            {t("使用独立浏览器资料库")}
           </button>
           {error && <p class="error">{error}</p>}
         </div>
@@ -282,7 +423,7 @@ function App() {
           onSubmit={(e) => {
             e.preventDefault();
             if (!state.exists && password !== confirm) {
-              setError("两次输入的主密码不一致。");
+              setError(t("两次输入的主密码不一致。"));
               return;
             }
             const value = password;
@@ -296,28 +437,28 @@ function App() {
         >
           {brand}
           <span class="lock-symbol">⌑</span>
-          <h1>{state.exists ? "欢迎回来" : "留下重要的资料"}</h1>
+          <h1>{state.exists ? t("欢迎回来") : t("留下重要的资料")}</h1>
           <p>
             {state.exists
-              ? "解锁后继续整理你的笔记和账号。"
-              : "创建加密资料库。主密码无法找回，请妥善保管。"}
+              ? t("解锁后继续整理你的笔记和账号。")
+              : t("请保存恢复密钥和应急备份，未配置时无法重设忘记的主密码。")}
           </p>
           <label>
-            主密码
+            {t("主密码")}
             <input
               autoFocus
               required
               minLength={state.exists ? 1 : 10}
               type="password"
               autoComplete={state.exists ? "current-password" : "new-password"}
-              placeholder="至少 10 个字符"
+              placeholder={t("至少 10 个字符")}
               value={password}
               onInput={(e) => setPassword(e.currentTarget.value)}
             />
           </label>
           {!state.exists && (
             <label>
-              再次输入
+              {t("再次输入")}
               <input
                 required
                 type="password"
@@ -328,7 +469,11 @@ function App() {
             </label>
           )}
           <button class="primary" disabled={busy}>
-            {busy ? "正在解锁…" : state.exists ? "解锁资料库" : "创建资料库"}
+            {busy
+              ? t("正在解锁…")
+              : state.exists
+                ? t("解锁资料库")
+                : t("创建资料库")}
           </button>
           {isExtension && (
             <button
@@ -340,7 +485,7 @@ function App() {
                 })
               }
             >
-              连接 Mac 资料库
+              {t("连接 Mac 资料库")}
             </button>
           )}
           {error && (
@@ -348,15 +493,68 @@ function App() {
               {error}
             </p>
           )}
-          <small>本地保存 · 自动锁定</small>
+          <small>{t("本地保存 · 自动锁定")}</small>
+          <button type="button" onClick={() => setRecovering(true)}>
+            {t("使用恢复密钥")}
+          </button>
         </form>
+        {recovering && (
+          <RecoveryDialog
+            exists={state.exists}
+            close={() => setRecovering(false)}
+            onComplete={async () => {
+              setRecovering(false);
+              await refresh();
+            }}
+            copy={copy}
+          />
+        )}
       </div>
     );
   return (
     <main class="workspace">
       <aside class="sidebar">
+        {recoveredDraft && !editing && (
+          <section role="status">
+            <p>{t("有未保存的加密草稿")}</p>
+            <button
+              onClick={() => {
+                if (
+                  (recoveredDraft._draftLibrary ?? "") !==
+                  (doc.settings.activePeerLibrary ?? "")
+                ) {
+                  setError(t("请切换回草稿所属资料库"));
+                  return;
+                }
+                const draft = { ...recoveredDraft };
+                delete draft._draftLibrary;
+                navigate(draft.type);
+                setEditing(draft);
+                pendingDraft.current = draft;
+              }}
+            >
+              {t("继续编辑草稿")}
+            </button>
+            <button
+              onClick={() => {
+                if (!window.confirm(t("永久丢弃此草稿？"))) return;
+                void run(async () => {
+                  clearTimeout(draftTimer.current);
+                  await draftWrite.current.catch(() => {});
+                  await command({ op: "draft-clear" });
+                  pendingDraft.current = undefined;
+                  setRecoveredDraft(undefined);
+                });
+              }}
+            >
+              {t("丢弃草稿")}
+            </button>
+          </section>
+        )}
+
         {brand}
-        <div class="sidebar-caption">资料库</div>
+        <div class="sidebar-caption" role="status">{doc.settings.activePeerLibrary ? t("家庭库：") + (doc.settings._peerLibraryName ?? "") : t("个人资料库")}</div>
+        <div class="sidebar-caption">{t("资料库")}</div>
         <nav>
           {sections.map(([key, label, icon]) => (
             <button
@@ -364,20 +562,20 @@ function App() {
               onClick={() => navigate(key)}
             >
               <span class="nav-symbol">{icon}</span>
-              {label}
+              {t(label)}
               <span class="count">
                 {items.filter((i) => i.type === key && !i.isDeleted).length}
               </span>
             </button>
           ))}
         </nav>
-        <div class="sidebar-caption">笔记分类</div>
+        <div class="sidebar-caption">{t("笔记分类")}</div>
         <nav>
           <button
             class={section === "secureNote" && !category ? "selected-soft" : ""}
             onClick={() => navigate("secureNote")}
           >
-            ▱　全部笔记
+            {t("▱ 全部笔记")}
           </button>
           {categories.map((name) => (
             <button
@@ -391,35 +589,33 @@ function App() {
             </button>
           ))}
         </nav>
-        <div class="sidebar-caption">工具</div>
+        <div class="sidebar-caption">{t("工具")}</div>
         <nav>
           {[
-            ["backup", "备份与恢复", "↧"],
-            ["generate", "密码生成器", "⚙"],
-            ["audit", "安全检查", "◉"],
-            ["trash", "最近删除", "♲"],
+            ["backup", t("备份与恢复"), "↧"],
+            ["generate", t("密码生成器"), "⚙"],
+            ["audit", t("安全检查"), "◉"],
+            ["trash", t("最近删除"), "♲"],
           ].map(([key, label, icon]) => (
             <button
               class={section === key ? "selected-soft" : ""}
               onClick={() => navigate(key)}
             >
               <span class="nav-symbol">{icon}</span>
-              {label}
+              {t(label)}
             </button>
           ))}
         </nav>
         <div class="sidebar-bottom">
-          <button onClick={() => navigate("settings")}>⚙　设置</button>
+          <button onClick={() => navigate("settings")}>{t("⚙ 设置")}</button>
           <button
             onClick={() =>
               run(async () => {
-                await lock();
-                setDoc(undefined);
-                setEditing(undefined);
+                await lockWithDraft();
               })
             }
           >
-            ⌑　锁定资料库
+            {t("⌑ 锁定资料库")}
           </button>
         </div>
       </aside>
@@ -427,10 +623,19 @@ function App() {
         <section class="tools-panel">
           <Tools
             section={section}
+            readOnly={readOnlyLibrary}
+            openItem={(id: string) => {
+              const found = doc.items.find((i: Item) => i.id === id);
+              if (found) {
+                navigate(found.type);
+                setSelected(id);
+              }
+            }}
             doc={doc}
             refresh={refresh}
             run={run}
             setToast={setToast}
+            copy={copy}
           />
         </section>
       ) : (
@@ -439,13 +644,13 @@ function App() {
             <header>
               <h2>
                 {category ||
-                  sections.find((s) => s[0] === section)?.[1] ||
-                  "最近删除"}
+                  t(sections.find((s) => s[0] === section)?.[1] || "") ||
+                  t("最近删除")}
               </h2>
               <button
                 class="icon-button"
-                title="新建"
-                disabled={section === "trash"}
+                title={t("新建")}
+                disabled={section === "trash" || readOnlyLibrary}
                 onClick={newItem}
               >
                 ＋
@@ -454,33 +659,36 @@ function App() {
             <label class="search">
               <span>⌕</span>
               <input
-                aria-label="搜索资料"
-                placeholder="搜索"
+                data-vault-search="true"
+                aria-label={t("搜索资料")}
+                placeholder={t("搜索")}
                 value={search}
                 onInput={(e) => setSearch(e.currentTarget.value)}
               />
               <kbd>⌘ K</kbd>
             </label>
-            <div class="list-caption">{visible.length} 条资料</div>
+            <div class="list-caption">
+              {visible.length} {t("条资料")}
+            </div>
             <div class="records">
               {visible.map((record) => (
                 <button
                   class={"record " + (item?.id === record.id ? "active" : "")}
-                  onClick={() => {
+                  onClick={() => leaveEditor(() => {
                     setSelected(record.id);
                     setEditing(undefined);
-                  }}
+                  })}
                 >
                   <strong>
-                    {record.title || "未命名"}
+                    {record.title || t("未命名")}
                     {record.isFavorite && <span class="favorite">★</span>}
                   </strong>
                   <small>
                     {record.type === "secureNote"
                       ? ((record.note ?? "")
                           .split("\n")
-                          .find((s: string) => s.trim()) ?? "空白笔记")
-                      : record.username || record.network || "暂无备注"}
+                          .find((s: string) => s.trim()) ?? t("空白笔记"))
+                      : record.username || record.network || t("暂无备注")}
                   </small>
                   <time>
                     {record.updatedAt
@@ -498,21 +706,37 @@ function App() {
             {editing ? (
               <Editor
                 item={editing}
-                onCancel={() => setEditing(undefined)}
-                onSave={(value) => run(() => save(value))}
-                busy={busy}
+                onCancel={() => {
+                  void run(async () => {
+                    await flushDraft();
+                    setEditing(undefined);
+                    await refresh();
+                  });
+                }}
+                onDraft={changedDraft}
+                onSave={(value) => run(() => save(value, true))}
+                busy={busy || !canEditItem(editing)}
               />
             ) : item ? (
               <>
                 <header class="detail-toolbar">
                   <span class="muted">
-                    {item.category || "全部资料"} /{" "}
-                    {item.type === "secureNote" ? "笔记" : "条目"}
+                    {item.category || t("全部资料")} /{" "}
+                    {item.type === "secureNote" ? t("笔记") : t("条目")}
                   </span>
                   <div class="actions">
                     <button
-                      disabled={item.noteFormat === "rich-v1"}
-                      title="收藏"
+                      disabled={item.isDeleted}
+                      onClick={() => setSharing(item.id)}
+                    >
+                      {t("分享")}
+                    </button>
+                    <button onClick={() => setHistory(item.id)}>
+                      {t("版本历史")}
+                    </button>
+                    <button
+                      disabled={!canEditItem(item)}
+                      title={t("收藏")}
                       aria-pressed={!!item.isFavorite}
                       onClick={() =>
                         run(() =>
@@ -522,11 +746,28 @@ function App() {
                     >
                       {item.isFavorite ? "★" : "☆"}
                     </button>
-                    <button disabled={item.noteFormat === "rich-v1"} onClick={() => setEditing({ ...item })}>
-                      编辑
+                    <button
+                      disabled={!canEditItem(item)}
+                      onClick={() => {
+                        if (
+                          (pendingDraft.current ?? recoveredDraft)?.id &&
+                          (pendingDraft.current ?? recoveredDraft)?.id !==
+                            item.id
+                        ) {
+                          setError(t("请先保存或丢弃现有草稿"));
+                          return;
+                        }
+                        const current = pendingDraft.current ?? recoveredDraft;
+                        const resume = current?.id === item.id ? current : undefined;
+                        if (resume && (resume._draftLibrary ?? "") !== (doc.settings.activePeerLibrary ?? "")) { setError(t("请切换回草稿所属资料库")); return; }
+                        const next = { ...(resume ?? item) }; delete next._draftLibrary;
+                        setEditing(next);
+                      }}
+                    >
+                      {t("编辑")}
                     </button>
                     <button
-                      disabled={item.noteFormat === "rich-v1"}
+                      disabled={!canEditItem(item)}
                       onClick={() =>
                         run(() =>
                           save({
@@ -539,16 +780,16 @@ function App() {
                         )
                       }
                     >
-                      {item.isDeleted ? "恢复" : "移至最近删除"}
+                      {item.isDeleted ? t("恢复") : t("移至最近删除")}
                     </button>
                   </div>
                 </header>
                 <article class="note-body">
                   <div class="eyebrow">
-                    {item.isFavorite ? "已收藏 · " : ""}已保存
+                    {item.isFavorite ? t("已收藏 · ") : ""}
+                    {t("已保存")}
                   </div>
                   <h1>{item.title}</h1>
-                  {item.noteFormat === "rich-v1" && <p role="status">此图文笔记仅显示文字摘要。请在 Mac 编辑和备份，避免丢失格式或附件。</p>}
                   <p class="metadata">
                     {item.updatedAt
                       ? new Date(item.updatedAt).toLocaleString("zh-CN")
@@ -556,23 +797,27 @@ function App() {
                   </p>
                   {item.type === "password" && (
                     <>
-                      <Field label="账号" value={item.username} onCopy={copy} />
                       <Field
-                        label="密码"
+                        label={t("账号")}
+                        value={item.username}
+                        onCopy={copy}
+                      />
+                      <Field
+                        label={t("密码")}
                         value={item.password}
                         secret
                         onCopy={copy}
                       />
-                      <Field label="网站" value={item.url} onCopy={copy} />
+                      <Field label={t("网站")} value={item.url} onCopy={copy} />
                       {(item.accounts ?? []).map((a: any) => (
                         <div class="subaccount">
                           <Field
-                            label={a.label || "其他账号"}
+                            label={a.label || t("其他账号")}
                             value={a.username}
                             onCopy={copy}
                           />
                           <Field
-                            label="密码"
+                            label={t("密码")}
                             value={a.password}
                             secret
                             onCopy={copy}
@@ -581,10 +826,12 @@ function App() {
                       ))}
                       {(item.passwordHistory ?? []).length > 0 && (
                         <details>
-                          <summary>密码历史</summary>
+                          <summary>{t("密码历史")}</summary>
                           {item.passwordHistory.map((h: any) => (
                             <Field
-                              label={h.changedAt ?? h.timestamp ?? "历史密码"}
+                              label={
+                                h.changedAt ?? h.timestamp ?? t("历史密码")
+                              }
                               value={h.password ?? ""}
                               secret
                               onCopy={copy}
@@ -599,7 +846,7 @@ function App() {
                     <>
                       {["address", "privateKey", "mnemonic"].map((k, i) => (
                         <Field
-                          label={["地址", "私钥", "助记词"][i]}
+                          label={[t("地址"), t("私钥"), t("助记词")][i]}
                           value={item[k]}
                           secret={i > 0}
                           onCopy={copy}
@@ -607,7 +854,36 @@ function App() {
                       ))}
                     </>
                   )}
-                  <Markdown text={item.note ?? ""} />
+                  <PasskeyDetails key={`${doc.settings.activePeerLibrary??""}:${item.id}`} item={item} refresh={refresh} editable={canEditItem(item)} />
+                  {(item.type === "creditCard" || item.type === "identity") &&
+                    Object.entries(
+                      item[item.type === "creditCard" ? "card" : "identity"] ??
+                        {},
+                    ).map(([name, value]) => (
+                      <Field
+                        key={name}
+                        label={structuredLabel(name)}
+                        value={String(value ?? "")}
+                        secret={["number", "securityCode"].includes(name)}
+                        onCopy={copy}
+                      />
+                    ))}
+                  {(item.customFields ?? []).map((field: any) => (
+                    <Field
+                      key={field.id}
+                      label={[field.group, field.label]
+                        .filter(Boolean)
+                        .join(" / ")}
+                      value={field.value}
+                      secret={field.kind === "concealed"}
+                      onCopy={copy}
+                    />
+                  ))}
+                  {item.noteFormat === "rich-v1" ? (
+                    <RichNoteEditor key={item.id} item={item} />
+                  ) : (
+                    <Markdown text={item.note ?? ""} />
+                  )}
                   {(item.tags ?? []).length > 0 && (
                     <div class="tags">
                       {item.tags.map((tag: string) => (
@@ -617,18 +893,21 @@ function App() {
                   )}
                 </article>
                 <footer class="detail-status">
-                  <span>已保存到本地</span>
-                  <span>{(item.note ?? "").length} 字</span>
+                  <span>{t("已保存到本地")}</span>
+                  <span>
+                    {(item.note ?? "").length} {t("字")}
+                  </span>
                 </footer>
               </>
             ) : (
               <div class="empty-view">
                 <span class="lock-symbol">▤</span>
-                <h2>为重要信息留一个位置</h2>
-                <p>新建笔记，或从备份导入已有资料。</p>
+                <h2>{t("为重要信息留一个位置")}</h2>
+                <p>{t("新建笔记，或从备份导入已有资料。")}</p>
                 {section !== "trash" && (
-                  <button class="primary" onClick={newItem}>
-                    新建{sections.find((s) => s[0] === section)?.[1]}
+                  <button class="primary" disabled={readOnlyLibrary} onClick={newItem}>
+                    {t("新建")}
+                    {t(sections.find((s) => s[0] === section)?.[1] || "")}
                   </button>
                 )}
               </div>
@@ -639,8 +918,25 @@ function App() {
       {error && (
         <div class="error-banner" role="alert">
           {error}
-          <button onClick={() => setError("")}>关闭</button>
+          <button onClick={() => setError("")}>{t("关闭")}</button>
         </div>
+      )}
+      {doc && state?.unlocked && sharing && (
+        <ShareDialog
+          id={sharing}
+          settings={doc.settings}
+          close={() => setSharing(undefined)}
+          refresh={refresh}
+          copy={copy}
+        />
+      )}
+      {doc && state?.unlocked && history && (
+        <HistoryDialog
+          id={history}
+          readOnly={readOnlyLibrary}
+          close={() => setHistory(undefined)}
+          refresh={refresh}
+        />
       )}
       {toast && (
         <div class="toast" role="status">
@@ -661,23 +957,24 @@ function Field({
   secret?: boolean;
   onCopy: (value: string) => Promise<void>;
 }) {
+  useLocale();
   const [shown, setShown] = useState(false);
   return (
     <div class="field-row">
       <div>
-        <small>{label}</small>
+        <small>{t(label)}</small>
         <p class={secret ? "mono" : ""}>
-          {secret && !shown ? "••••••••••••" : value || "未填写"}
+          {secret && !shown ? "••••••••••••" : value || t("未填写")}
         </p>
       </div>
       <div class="actions">
         {secret && (
           <button onClick={() => setShown(!shown)}>
-            {shown ? "隐藏" : "显示"}
+            {shown ? t("隐藏") : t("显示")}
           </button>
         )}
         <button disabled={!value} onClick={() => onCopy(value)}>
-          复制
+          {t("复制")}
         </button>
       </div>
     </div>
@@ -690,6 +987,7 @@ function Code({
   item: Item;
   onCopy: (value: string) => Promise<void>;
 }) {
+  useLocale();
   const [code, setCode] = useState("");
   const [seconds, setSeconds] = useState(0);
   useEffect(() => {
@@ -714,8 +1012,10 @@ function Code({
       <strong>
         {code.slice(0, 3)} {code.slice(3)}
       </strong>
-      <span>{seconds} 秒后刷新</span>
-      <button onClick={() => onCopy(code)}>复制验证码</button>
+      <span>
+        {seconds} {t("秒后刷新")}
+      </span>
+      <button onClick={() => onCopy(code)}>{t("复制验证码")}</button>
     </div>
   );
 }
@@ -723,21 +1023,29 @@ function Editor({
   item,
   onCancel,
   onSave,
+  onDraft,
   busy,
 }: {
   item: Item;
   onCancel: () => void;
   onSave: (item: Item) => void;
+  onDraft: (item: Item) => void;
   busy: boolean;
 }) {
+  useLocale();
   const [draft, setDraft] = useState<Item>(item);
   const [preview, setPreview] = useState(false);
+  const [flushing, setFlushing] = useState(false);
+  const [editorError, setEditorError] = useState("");
+  useLayoutEffect(() => {
+    if (draft !== item) onDraft(draft);
+  }, [draft]);
   const update = (key: string, value: any) =>
     setDraft({ ...draft, [key]: value });
   function field(key: string, label: string, secret = false) {
     return (
       <label>
-        {label}
+        {t(label)}
         <input
           type={secret ? "password" : "text"}
           value={draft[key] ?? ""}
@@ -750,54 +1058,77 @@ function Editor({
   return (
     <form
       class="editor"
-      onSubmit={(e) => {
+      onSubmit={async (e) => {
         e.preventDefault();
-        const next = { ...draft };
-        if (
-          item.type === "password" &&
-          item.password &&
-          item.password !== draft.password
-        )
-          next.passwordHistory = [
-            ...(item.passwordHistory ?? []),
-            { password: item.password, changedAt: new Date().toISOString() },
-          ];
-        onSave(next);
+        if (flushing || busy) return;
+        setFlushing(true);
+        setEditorError("");
+        try {
+          const rich = await flushRichNote(draft.id);
+          const next: Item = {
+            ...draft,
+            ...(rich
+              ? {
+                  note: rich.note,
+                  noteFormat: rich.noteFormat,
+                  noteDocument: rich.noteDocument,
+                  ...(rich.noteOriginal ? { noteOriginal: rich.noteOriginal } : {}),
+                }
+              : {}),
+          };
+          if (
+            item.type === "password" &&
+            item.password &&
+            item.password !== draft.password
+          )
+            next.passwordHistory = [
+              ...(item.passwordHistory ?? []),
+              { password: item.password, changedAt: new Date().toISOString() },
+            ];
+          onDraft(next);
+          onSave(next);
+        } catch {
+          setEditorError(t("编辑器仍在处理，请稍后重试保存。"));
+        } finally {
+          setFlushing(false);
+        }
       }}
     >
       <header class="detail-toolbar">
-        <span>{item.title ? "编辑资料" : "新建资料"}</span>
+        <span>{item.title ? t("编辑资料") : t("新建资料")}</span>
         <div class="actions">
           <button type="button" onClick={onCancel}>
-            取消
+            {t("取消")}
           </button>
-          <button class="primary" disabled={busy}>
-            保存
+          <button class="primary" disabled={busy || flushing}>
+            {t("保存")}
           </button>
         </div>
       </header>
-      <div class="editor-fields">
+      <div class="editor-fields" inert={busy || flushing}>
+        {editorError && <p role="alert">{editorError}</p>}
         <input
           class="title-input"
-          aria-label="标题"
+          aria-label={t("标题")}
           required
-          placeholder="标题"
+          placeholder={t("标题")}
           value={draft.title}
           onInput={(e) => update("title", e.currentTarget.value)}
         />
         {item.type === "password" && (
           <>
-            {field("username", "账号")}
-            {field("password", "密码", true)}
-            {field("url", "网站")}
+            {field("username", t("账号"))}
+            {field("password", t("密码"), true)}
+            {field("url", t("网站"))}
           </>
         )}
         {item.type === "totp" && (
           <>
-            {field("username", "账号")}
-            {field("secret", "密钥", true)}
+            {field("username", t("账号"))}
+            {field("secret", t("密钥"), true)}
+            {field("url", t("网站"))}
             <label>
-              刷新间隔（秒）
+              {t("刷新间隔（秒）")}
               <input
                 type="number"
                 min="1"
@@ -810,15 +1141,16 @@ function Editor({
         )}
         {item.type === "crypto" && (
           <>
-            {field("network", "网络")}
-            {field("address", "地址")}
-            {field("privateKey", "私钥", true)}
-            {field("mnemonic", "助记词", true)}
+            {field("network", t("网络"))}
+            {field("address", t("地址"))}
+            {field("privateKey", t("私钥"), true)}
+            {field("mnemonic", t("助记词"), true)}
           </>
         )}
-        {field("category", "分类")}
+        <StructuredFieldsEditor item={draft} onChange={setDraft} />
+        {field("category", t("分类"))}
         <label>
-          标签（逗号分隔）
+          {t("标签（逗号分隔）")}
           <input
             value={(draft.tags ?? []).join(", ")}
             onInput={(e) =>
@@ -839,7 +1171,7 @@ function Editor({
             aria-pressed={preview}
             onClick={() => setPreview(!preview)}
           >
-            {preview ? "编辑" : "预览"}
+            {preview ? t("编辑") : t("预览")}
           </button>
           <label>
             <input
@@ -847,16 +1179,31 @@ function Editor({
               checked={!!draft.isPinned}
               onChange={(e) => update("isPinned", e.currentTarget.checked)}
             />
-            置顶
+            {t("置顶")}
           </label>
         </div>
-        {preview ? (
+        {draft.type === "secureNote" ? (
+          <RichNoteEditor
+            key={draft.id}
+            item={item}
+            editable
+            onChange={(value) =>
+              setDraft((previous) => ({
+                ...previous,
+                noteFormat: value.noteFormat,
+                noteDocument: value.noteDocument,
+                ...(value.noteOriginal ? { noteOriginal: value.noteOriginal } : {}),
+                note: value.note,
+              }))
+            }
+          />
+        ) : preview ? (
           <Markdown text={draft.note ?? ""} />
         ) : (
           <textarea
             class="note-editor"
-            aria-label="笔记正文"
-            placeholder="开始写下重要的事…"
+            aria-label={t("笔记正文")}
+            placeholder={t("开始写下重要的事…")}
             value={draft.note ?? ""}
             onInput={(e) => update("note", e.currentTarget.value)}
           />
@@ -865,7 +1212,8 @@ function Editor({
     </form>
   );
 }
-function Tools({ section, doc, refresh, run, setToast }: any) {
+function Tools({ section, doc, refresh, run, setToast, copy, openItem, readOnly }: any) {
+  useLocale();
   const [backupPassword, setBackupPassword] = useState("");
   const [file, setFile] = useState<File>();
   const [plain, setPlain] = useState(false);
@@ -895,21 +1243,25 @@ function Tools({ section, doc, refresh, run, setToast }: any) {
       <h1>
         {
           {
-            backup: "备份与恢复",
-            generate: "密码生成器",
-            audit: "安全检查",
-            settings: "设置",
+            backup: t("备份与恢复"),
+            generate: t("密码生成器"),
+            audit: t("安全检查"),
+            settings: t("设置"),
           }[section as string]
         }
       </h1>
       {section === "backup" ? (
         <>
+          <WebDAVPanel settings={doc.settings} onComplete={refresh} />
+          {readOnly ? <p>{t("当前资料库为只读，无法修改条目。")}</p> : <ImportReviewPanel onComplete={refresh} />}
+          <RecoveryPanel onComplete={refresh} copy={copy} />
           <p class="muted">
-            将资料保存为加密备份，或导入旧版 PasswordVault /
-            常见密码管理器的导出文件。
+            {t(
+              "将资料保存为加密备份，或导入旧版 PasswordVault / 常见密码管理器的导出文件。",
+            )}
           </p>
           <label>
-            备份密码
+            {t("备份密码")}
             <input
               type="password"
               autoComplete="new-password"
@@ -931,17 +1283,17 @@ function Tools({ section, doc, refresh, run, setToast }: any) {
               })
             }
           >
-            导出加密备份
+            {t("导出加密备份")}
           </button>
           <hr />
-          <h2>导入资料</h2>
+          <h2>{t("导入资料")}</h2>
           <input
             type="file"
             accept=".json,.csv,.encrypted,.txt"
             onChange={(e) => setFile(e.currentTarget.files?.[0])}
           />
           <button
-            disabled={!file}
+            disabled={!file || readOnly}
             onClick={() =>
               run(async () => {
                 if (!file || file.size > 64 * 1024 * 1024)
@@ -953,23 +1305,28 @@ function Tools({ section, doc, refresh, run, setToast }: any) {
                   password: backupPassword,
                 });
                 await refresh();
-                setToast(`已导入 ${r.imported} 条资料`);
+                setToast(
+                  t("已导入 {count} 条资料").replace(
+                    "{count}",
+                    String(r.imported),
+                  ),
+                );
                 setBackupPassword("");
               })
             }
           >
-            导入所选文件
+            {t("导入所选文件")}
           </button>
           <hr />
           <details>
-            <summary>其他导出方式</summary>
+            <summary>{t("其他导出方式")}</summary>
             <label class="checkbox">
               <input
                 type="checkbox"
                 checked={plain}
                 onChange={(e) => setPlain(e.currentTarget.checked)}
               />
-              我知道明文文件包含完整密码和笔记
+              {t("我知道明文文件包含完整密码和笔记")}
             </label>
             <button
               disabled={!plain}
@@ -981,7 +1338,7 @@ function Tools({ section, doc, refresh, run, setToast }: any) {
                 })
               }
             >
-              导出明文 JSON
+              {t("导出明文 JSON")}
             </button>
             <button
               disabled={!plain}
@@ -993,15 +1350,16 @@ function Tools({ section, doc, refresh, run, setToast }: any) {
                 })
               }
             >
-              导出明文 CSV
+              {t("导出明文 CSV")}
             </button>
           </details>
         </>
       ) : section === "generate" ? (
         <>
-          <p class="muted">为每个账号生成不同的密码。</p>
+          <p class="muted">{t("为每个账号生成不同的密码。")}</p>
           <label>
-            长度：{length}
+            {t("长度：")}
+            {length}
             <input
               type="range"
               min="8"
@@ -1020,42 +1378,67 @@ function Tools({ section, doc, refresh, run, setToast }: any) {
               )
             }
           >
-            生成密码
+            {t("生成密码")}
           </button>
           {generated && (
             <Field
-              label="生成结果"
+              label={t("生成结果")}
               value={generated}
               onCopy={async (v) => {
                 await navigator.clipboard.writeText(v);
-                setToast("已复制");
+                setToast(t("已复制"));
               }}
             />
           )}
         </>
       ) : section === "audit" ? (
-        <>
-          <p class="muted">检查密码长度和重复使用情况。</p>
-          {audit.length ? (
-            audit.map((entry) => (
-              <div class="audit-row">
-                <strong>{entry.title}</strong>
-                <span>
-                  {[entry.weak && "密码较短", entry.reused && "重复使用"]
-                    .filter(Boolean)
-                    .join(" · ")}
-                </span>
-              </div>
-            ))
-          ) : (
-            <p>未发现短密码或重复密码。</p>
-          )}
-        </>
+        <SecurityCenterPanel items={doc.items} openItem={openItem} />
       ) : (
         <>
-          <p class="muted">此资料库保存在当前浏览器中，请定期导出加密备份。</p>
+          <details><summary>{t("对等同步与家庭库")}</summary><PeerLibraries onComplete={refresh} /></details>
+          <p class="muted">
+            {t("此资料库保存在当前浏览器中，请定期导出加密备份。")}
+          </p>
           <label>
-            自动锁定
+            {t("界面语言")}
+            <select
+              value={doc.settings.language ?? "zh"}
+              onChange={(e) => {
+                const language = e.currentTarget.value as "zh" | "en";
+                void run(async () => {
+                  await command({ op: "settings", settings: { language } });
+                  setLocale(language);
+                  await refresh();
+                });
+              }}
+            >
+              <option value="zh">中文</option>
+              <option value="en">English</option>
+            </select>
+          </label>
+          <label>
+            {t("外观")}
+            <select
+              value={doc.settings.theme ?? "system"}
+              onChange={(e) => {
+                const theme = e.currentTarget.value as
+                  | "light"
+                  | "dark"
+                  | "system";
+                void run(async () => {
+                  await command({ op: "settings", settings: { theme } });
+                  setTheme(theme);
+                  await refresh();
+                });
+              }}
+            >
+              <option value="system">{t("跟随系统")}</option>
+              <option value="light">{t("浅色")}</option>
+              <option value="dark">{t("深色")}</option>
+            </select>
+          </label>
+          <label>
+            {t("自动锁定")}
             <select
               value={doc.settings.autoLockMinutes ?? 60}
               onChange={(e) =>
@@ -1071,13 +1454,19 @@ function Tools({ section, doc, refresh, run, setToast }: any) {
               }
             >
               {[1, 2, 5, 10, 15, 30, 60].map((m) => (
-                <option value={m}>{m === 60 ? "1 小时" : `${m} 分钟`}</option>
+                <option value={m}>
+                  {m === 60
+                    ? t("1 小时")
+                    : t("{count} 分钟").replace("{count}", String(m))}
+                </option>
               ))}
             </select>
           </label>
-          <small>浏览器回收后台进程或系统空闲时，扩展也会自动锁定。</small>
+          <small>
+            {t("浏览器回收后台进程或系统空闲时，扩展也会自动锁定。")}
+          </small>
           <hr />
-          <h2>更改主密码</h2>
+          <h2>{t("更改主密码")}</h2>
           <form
             onSubmit={(e) => {
               e.preventDefault();
@@ -1089,12 +1478,12 @@ function Tools({ section, doc, refresh, run, setToast }: any) {
                 });
                 setCurrent("");
                 setReplacement("");
-                setToast("主密码已更新");
+                setToast(t("主密码已更新"));
               });
             }}
           >
             <label>
-              当前密码
+              {t("当前密码")}
               <input
                 required
                 type="password"
@@ -1104,7 +1493,7 @@ function Tools({ section, doc, refresh, run, setToast }: any) {
               />
             </label>
             <label>
-              新密码
+              {t("新密码")}
               <input
                 required
                 minLength={10}
@@ -1114,7 +1503,7 @@ function Tools({ section, doc, refresh, run, setToast }: any) {
                 onInput={(e) => setReplacement(e.currentTarget.value)}
               />
             </label>
-            <button class="primary">更新主密码</button>
+            <button class="primary">{t("更新主密码")}</button>
           </form>
           {isExtension && (
             <>
@@ -1127,7 +1516,7 @@ function Tools({ section, doc, refresh, run, setToast }: any) {
                   })
                 }
               >
-                改为连接 Mac
+                {t("改为连接 Mac")}
               </button>
             </>
           )}

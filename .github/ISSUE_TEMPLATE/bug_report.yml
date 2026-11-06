@@ -15,7 +15,7 @@ body:
     id: platform
     attributes:
       label: Platform and version
-      placeholder: Android 15, Chrome 140, Flutter 3.41.7…
+      placeholder: Android 15, Chrome 140, macOS 15…
     validations:
       required: true
   - type: textarea

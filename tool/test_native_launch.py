@@ -43,7 +43,7 @@ def await_file(path):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--bridge-source", type=pathlib.Path,
-                        default=ROOT / "apps/macos/Bridge/main.swift")
+                        default=ROOT / "apps/macos-legacy/Bridge/main.swift")
     args = parser.parse_args()
     with tempfile.TemporaryDirectory(prefix="passwordvault-launch-test-") as directory:
         root = pathlib.Path(directory)
@@ -84,10 +84,10 @@ NSApplication.shared.run()
         sources = [str(args.bridge_source)]
         links = []
         if "BackgroundSync." in args.bridge_source.read_text():
-            generated = ROOT / "apps/macos/Generated"
+            generated = ROOT / "apps/macos-legacy/Generated"
             library = ROOT / "target/universal/libvault_core.a"
             assert library.exists(), "Run bash tool/check_native.sh macos first"
-            sources += [str(ROOT / "apps/macos/Bridge/DesktopPeer.swift"), str(ROOT / "apps/macos/Bridge/BackgroundSync.swift"), str(generated / "VaultCore.swift")]
+            sources += [str(ROOT / "apps/macos-legacy/Bridge/DesktopPeer.swift"), str(ROOT / "apps/macos-legacy/Bridge/BackgroundSync.swift"), str(generated / "VaultCore.swift")]
             links = ["-import-objc-header", str(generated / "VaultCoreFFI.h"),
                      str(library), "-lresolv", "-liconv", "-framework", "Security"]
         subprocess.run(["xcrun", "swiftc", *sources, *links, "-o", str(helper)], check=True)

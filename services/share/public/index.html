@@ -1,0 +1,7 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>PasswordVault · 安全分享</title><link rel="stylesheet" href="/style.css"><script type="module" src="/viewer.js"></script></head>
+<body><main><p class="brand">PasswordVault</p><h1>收到一份安全分享</h1><p id="status" role="status">正在读取加密内容…</p>
+<form id="email-form" hidden><label>指定接收邮箱<input id="email" type="email" autocomplete="email" required></label><button>发送验证码</button></form>
+<form id="code-form" hidden><label>邮箱验证码<input id="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" required></label><button>验证并查看</button></form>
+<section id="content" hidden><h2 id="title"></h2><dl id="fields"></dl><div id="files"></div></section>
+<p class="footer">内容在此设备解密。请只在可信设备上查看；对方撤销链接无法收回你已下载的副本。<br>Decrypted on this device. Revocation cannot erase downloaded copies.</p></main></body></html>

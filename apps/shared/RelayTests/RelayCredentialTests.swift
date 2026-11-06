@@ -41,6 +41,67 @@ final class RelayCredentialTests: XCTestCase {
     XCTAssertEqual(reloaded.config.device, "existing-device"); XCTAssertEqual(reloaded.config.token, "FICTIONAL-CREDENTIAL-CANARY")
     reloaded.setUnlocked(false)
   }
+  func testServerPasswordUpgradeIsEncryptedAndRetainsIdentity() async throws {
+    let (path, core, legacy) = try await fixture()
+    defer { try? FileManager.default.removeItem(at: path) }
+    let relay = VaultRelay(directory: path, role: "mobile", call: { try await core.call($0) }, refresh: {}, credentialReader: { _, _ in legacy })
+    relay.setUnlocked(true); try await wait { relay.credentialsReady && !relay.groupBusy }
+    XCTAssertNil(relay.config.serverPassword)
+    await relay.updateServerPassword("FICTIONAL-SERVER-PASSWORD")
+    XCTAssertNil(relay.failure)
+    XCTAssertEqual(relay.config.device, "existing-device")
+    XCTAssertEqual(relay.config.token, "FICTIONAL-CREDENTIAL-CANARY")
+    let file = path.appendingPathComponent("vault/relay-private/credentials.v1.enc")
+    XCTAssertFalse(String(decoding: try Data(contentsOf: file), as: UTF8.self).contains("FICTIONAL-SERVER-PASSWORD"))
+    await relay.updateServerPassword("")
+    XCTAssertNotNil(relay.failure)
+    XCTAssertEqual(relay.config.serverPassword, "FICTIONAL-SERVER-PASSWORD")
+    relay.setUnlocked(false)
+    let restored = VaultRelay(directory: path, role: "mobile", call: { try await core.call($0) }, refresh: {}, credentialReader: { _, _ in XCTFail("Must read encrypted credentials"); return nil })
+    restored.setUnlocked(true); try await wait { restored.credentialsReady }
+    XCTAssertEqual(restored.config.serverPassword, "FICTIONAL-SERVER-PASSWORD")
+    XCTAssertEqual(restored.config.device, "existing-device")
+    restored.setUnlocked(false)
+  }
+  func testPendingCreationCannotSwitchRelayEndpoint() async throws {
+    let (path, core, legacy) = try await fixture()
+    defer { try? FileManager.default.removeItem(at: path) }
+    var saved = try JSONDecoder().decode(VaultRelay.Config.self, from: legacy)
+    saved.token = ""
+    saved.endpoint = "wss://original.example.test/relay/v1/ws"
+    let groups = RelayGroups(config: ["url": saved.endpoint, "app": "passwordvault", "device": saved.device, "secret_key": saved.secret.relayHex])
+    try groups.prepareCreate(groupName: "Persisted group", deviceName: "Persisted phone")
+    saved.groupState = try JSONSerialization.data(withJSONObject: groups.config)
+    let bytes = try JSONEncoder().encode(saved)
+    let relay = VaultRelay(directory: path, role: "mobile", call: { try await core.call($0) }, refresh: {}, credentialReader: { _, _ in bytes })
+    relay.setUnlocked(true); try await wait { relay.credentialsReady && !relay.groupBusy }
+    await relay.createGroup(endpoint: "wss://other.example.test/relay/v1/ws", name: "Fixture", deviceName: "Phone", password: "FICTIONAL-PASSWORD")
+    XCTAssertNotNil(relay.failure)
+    XCTAssertTrue(relay.creatingGroup)
+    XCTAssertEqual(relay.config.endpoint, saved.endpoint)
+    XCTAssertEqual(relay.config.device, saved.device)
+    let state = try JSONSerialization.jsonObject(with: XCTUnwrap(relay.config.groupState)) as! [String: Any]
+    XCTAssertEqual(state["url"] as? String, saved.endpoint)
+    XCTAssertNotNil(state["pending_create"])
+    XCTAssertEqual(relay.pendingCreationNames?.group, "Persisted group")
+    XCTAssertEqual(relay.pendingCreationNames?.device, "Persisted phone")
+    relay.setUnlocked(false)
+  }
+  func testInvitationPreviewAndRequiredInputValidation() throws {
+    let inv: [String: Any] = ["url": "wss://relay.example.test/relay/v1/ws", "id": String(repeating: "01", count: 16)]
+    let link = try RelayInvitationLinks.make(inv, key: Data(repeating: 7, count: 32), password: "FICTIONAL-SERVER-PASSWORD")
+    let preview = try VaultRelay.inspectInvitation(link)
+    XCTAssertEqual(preview.endpoint, inv["url"] as? String)
+    XCTAssertEqual(preview.password, "FICTIONAL-SERVER-PASSWORD")
+    let old = try RelayInvitationLinks.make(inv, key: Data(repeating: 7, count: 32))
+    XCTAssertNil(try VaultRelay.inspectInvitation(old).password)
+    for bad in ["", "short", "has spaces", String(repeating: "x", count: 129)] {
+      XCTAssertThrowsError(try VaultRelay.validateServerPassword(bad))
+    }
+    for bad in ["", "https://relay.example.test/relay/v1/ws", "wss://relay.example.test/", "wss://relay.example.test/relay/v1/ws?q=1"] {
+      XCTAssertThrowsError(try VaultRelay.validateEndpoint(bad))
+    }
+  }
   func testDeniedOrCancelledLegacyAccessDoesNotCreateReplacementIdentity() async throws {
     let (path, core, legacy) = try await fixture()
     defer { try? FileManager.default.removeItem(at: path) }

@@ -10,7 +10,10 @@ final class RelayGroupTests: XCTestCase {
     _ = try await core.call(["op": .string("create"), "password": .string("fixture")])
     let relay = VaultRelay(directory: path, role: role, allowLocalGroupTest: true, call: { try await core.call($0) }, refresh: {}, credentialReader: { _, _ in nil })
     relay.setUnlocked(true)
-    try await eventually { relay.credentialsReady }
+    try await eventually { relay.credentialsReady && !relay.groupBusy }
+    if let password = ProcessInfo.processInfo.environment["PV_GROUP_TEST_PASSWORD"] {
+      await relay.updateServerPassword(password)
+    }
     return (core, relay, path)
   }
   private func server() throws -> String {
@@ -18,6 +21,29 @@ final class RelayGroupTests: XCTestCase {
       throw XCTSkip("Requires a disposable local relay with self-service-apps=passwordvault")
     }
     return url
+  }
+  func testWrongPasswordRetryAndTypedInvitationOverride() async throws {
+    let url = try server()
+    let password = try XCTUnwrap(ProcessInfo.processInfo.environment["PV_GROUP_TEST_PASSWORD"])
+    let (_, owner, a) = try await fixture("mobile")
+    let (_, joiner, b) = try await fixture("mobile")
+    defer { owner.setUnlocked(false); joiner.setUnlocked(false); try? FileManager.default.removeItem(at: a); try? FileManager.default.removeItem(at: b) }
+    await owner.createGroup(endpoint: url, name: "Retry fixture", deviceName: "Owner", password: "WRONG-FIXTURE-PASSWORD")
+    XCTAssertNotNil(owner.failure); XCTAssertTrue(owner.creatingGroup); XCTAssertFalse(owner.groupInvalid)
+    let device = owner.config.device
+    XCTAssertEqual(owner.pendingCreationNames?.group, "Retry fixture")
+    await owner.createGroup(endpoint: url, name: "Retry fixture", deviceName: "Owner", password: password)
+    XCTAssertNil(owner.failure); XCTAssertTrue(owner.hasManagedGroup); XCTAssertEqual(owner.config.device, device)
+    try await eventually { !owner.groupBusy }; await owner.inviteToGroup()
+    let parsed = try RelayInvitationLinks.parse(owner.groupInvite, allowLocalTest: true)
+    let stale = try RelayInvitationLinks.make(["url": parsed.url, "id": parsed.id], key: parsed.key, password: "STALE-FIXTURE-PASSWORD")
+    await joiner.joinGroup(stale, deviceName: "Joiner", password: "")
+    XCTAssertNotNil(joiner.failure); XCTAssertFalse(joiner.joiningGroup)
+    await joiner.joinGroup(stale, deviceName: "Joiner", password: password)
+    XCTAssertNil(joiner.failure); XCTAssertTrue(joiner.hasManagedGroup)
+    XCTAssertEqual(joiner.config.serverPassword, password)
+    XCTAssertTrue(joiner.config.peers.isEmpty)
+    try await eventually { !owner.groupBusy }; await owner.leaveGroup(disband: true)
   }
   func testSignedMembershipRejectsTamperingRollbackAndUnauthorizedChanges() throws {
     let file = try XCTUnwrap(Bundle(for: Self.self).url(forResource: "group-vectors", withExtension: "json"))
@@ -84,7 +110,7 @@ final class RelayGroupTests: XCTestCase {
     try await eventually { !mac.groupBusy }; await mac.removeGroupMember(phone.config.device); XCTAssertNil(mac.failure)
     XCTAssertTrue(mac.config.peers.isEmpty)
     for _ in 0..<150 where phone.groupBusy { try await Task.sleep(nanoseconds: 100_000_000) }
-    try await eventually { !phone.groupBusy }; await phone.refreshGroup(); XCTAssertTrue(phone.groupInvalid); XCTAssertTrue(phone.groupMembers.isEmpty)
+    try await eventually { !phone.groupBusy }; await phone.refreshGroup(); XCTAssertFalse(phone.groupFresh); XCTAssertTrue(phone.hasManagedGroup); XCTAssertTrue(phone.groupMembers.isEmpty)
     let original = phone.config.device, secret = phone.config.secret
     _ = try await phoneCore.call(["op": .string("save"), "item": .object(["id": .string("local"), "type": .string("secureNote"), "title": .string("Local fixture")])])
     await phone.clearLocalGroup(); XCTAssertNil(phone.failure)
@@ -104,7 +130,7 @@ final class RelayGroupTests: XCTestCase {
     XCTAssertNil(mac.failure); XCTAssertTrue(mac.groupManager)
     XCTAssertEqual(mac.config.hub, mac.config.device)
     try await eventually { !phone.groupBusy }; await phone.leaveGroup(disband: true); XCTAssertNil(phone.failure)
-    try await eventually { !mac.groupBusy }; await mac.refreshGroup(); XCTAssertTrue(mac.groupInvalid); XCTAssertFalse(mac.groupManager)
+    try await eventually { !mac.groupBusy }; await mac.refreshGroup(); XCTAssertFalse(mac.groupFresh); XCTAssertTrue(mac.hasManagedGroup); XCTAssertFalse(mac.groupManager)
     XCTAssertTrue(mac.groupInvite.isEmpty); XCTAssertTrue(mac.groupMembers.isEmpty)
   }
   private func eventually(_ condition: () -> Bool, file: StaticString = #fileID, line: UInt = #line) async throws {

@@ -11,8 +11,11 @@ export default defineConfig({
         popup: "popup.html",
         background: "src/background.ts",
         content: "src/content.ts",
+        "structured-content": "src/structured-content.ts",
         "login-observer": "src/login-observer.ts",
         "inline-fields": "src/inline-fields.ts",
+        "passkey-page": "src/passkey-page.ts",
+        "passkey-content": "src/passkey-content.ts",
       },
       output: {
         entryFileNames: "[name].js",

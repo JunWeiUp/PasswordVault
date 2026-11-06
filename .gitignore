@@ -21,26 +21,11 @@ migrate_working_dir/
 # is commented out by default.
 #.vscode/
 
-# Flutter/Dart/Pub related
-**/doc/api/
-**/ios/Flutter/.last_build_id
-.dart_tool/
-.flutter-plugins
-.flutter-plugins-dependencies
-.pub-cache/
-.pub/
-/build/
-
 # Symbolication related
 app.*.symbols
 
 # Obfuscation related
 app.*.map.json
-
-# Android Studio will place build artifacts here
-/android/app/debug
-/android/app/profile
-/android/app/release
 
 # Private signing material and local configuration
 *.jks
@@ -94,7 +79,6 @@ backup_*.json
 *.apk
 *.aab
 *.ipa
-pubspec_overrides.yaml
 
 # Local agent journals, debug output, and release staging
 Kim_AGENTS.md
@@ -103,20 +87,14 @@ release_assets/
 *.bundle
 *.patch
 
-# Rebuilt by flutter gen-l10n
-lib/l10n/app_localizations*.dart
-web/drift_worker.js.map
-web/drift_worker.js.deps
-coverage/
-
 __pycache__/
-android/build/
+coverage/
 
 # Native rewrite build outputs and local integration state
 /target
-/apps/macos/build/
-/apps/macos/Generated/
-/apps/macos/PasswordVault.xcodeproj/
+/apps/macos-legacy/build/
+/apps/macos-legacy/Generated/
+/apps/macos-legacy/PasswordVault.xcodeproj/
 /apps/browser/node_modules/
 /apps/browser/dist/
 /apps/browser/wasm/
@@ -139,9 +117,7 @@ android/build/
 /apps/android/app/src/main/generated/
 /apps/android/login-fixture/build/
 
-/apps/macos/NoteEditor/node_modules/
-/apps/macos/Resources/NoteEditor.html
-/apps/macos/Resources/NoteEditor-LICENSES.txt
+/apps/shared/note-editor/node_modules/
 
 /release-input/
 /downloaded/
@@ -151,3 +127,12 @@ android/build/
 /vendor/common-relay/java/.gradle/
 /vendor/common-relay/swift/.build/
 /vendor/common-relay/swift/.swiftpm/
+
+/services/sync-gateway/node_modules/
+
+# Project documentation is kept locally and not published.
+/docs/
+
+# Shared editor bundles and local service data
+/apps/shared/note-editor/dist/
+/data/

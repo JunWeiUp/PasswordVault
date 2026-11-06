@@ -26,6 +26,11 @@ internal fun RelaySettingsScreen(vault: VaultRepository, t: (String,String)->Str
     val state by relay.state.collectAsState()
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    var peerInput by remember { mutableStateOf("") }
+    var peerRole by remember { mutableStateOf("editor") }
+    var familyName by remember { mutableStateOf("") }
+    var confirmPersonalSync by remember { mutableStateOf(false) }
+    var peerExpanded by remember { mutableStateOf(false) }
     var endpoint by remember(state.endpoint) { mutableStateOf(state.endpoint) }
     var invitation by remember { mutableStateOf("") }
     var scanning by remember { mutableStateOf(false) }
@@ -51,12 +56,61 @@ internal fun RelaySettingsScreen(vault: VaultRepository, t: (String,String)->Str
     }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text(t("中继同步", "Relay sync"), style = MaterialTheme.typography.headlineSmall)
+        TextButton(onClick = { peerExpanded = !peerExpanded }) { Text(t("对等密码库（无需 Mac 在线）", "Peer library (Mac can be offline)")) }
+        if (peerExpanded) {
+            Text(t("显式升级会保留旧同步日志。请先升级所有参与设备，并独立核对邀请来源和身份回执。", "Enrollment preserves the legacy journal. Update every participating device and independently verify invitation sources and identities."))
+            val libraries=runCatching {org.json.JSONArray(state.peerLibraries)}.getOrDefault(org.json.JSONArray())
+            if(libraries.length()>0) {
+                Text(t("当前资料库：","Current library: ")+state.activePeerLibrary.ifEmpty {t("个人资料库","Personal library")})
+                TextButton(onClick={relay.switchPeerLibrary("")}) {Text(t("个人资料库","Personal library"))}
+                for(index in 0 until libraries.length()) {
+                    val library=libraries.getJSONObject(index)
+                    if(!library.optBoolean("personal") && !library.getString("id").startsWith("pending-")) TextButton(onClick={relay.switchPeerLibrary(library.getString("id"))}) {Text(library.optString("name",library.getString("id")))}
+                }
+            }
+            OutlinedTextField(value=familyName,onValueChange={familyName=it},label={Text(t("家庭库名称","Family library name"))})
+            Button(onClick={relay.createPeerLibrary(false,familyName)},enabled=familyName.isNotBlank() && state.group.isNotEmpty()) {Text(t("创建独立家庭库","Create independent family library"))}
+            val personalInvitation=runCatching {org.json.JSONObject(peerInput).opt("personal")==true}.getOrDefault(false)
+            Text(t("加入范围由邀请绑定；家庭库不会合并本机个人资料。","The invitation binds its scope; family libraries never merge local personal records."))
+            if(personalInvitation) Row {Checkbox(checked=confirmPersonalSync,onCheckedChange={confirmPersonalSync=it});Text(t("我确认：本机全部个人资料将同步给已授权设备","I confirm: all local personal records will sync to authorized devices"))}
+            if(state.peerPending) TextButton(onClick={confirmPersonalSync=false;relay.cancelPeerJoin()}) {Text(t("取消加入，保留本机资料","Cancel enrollment; keep local records"))}
+            if (state.peerLibrary.isEmpty()) {
+                Button(onClick = { relay.createPeerLibrary() }, enabled = state.group.isNotEmpty()) { Text(t("创建并迁移为对等库", "Create peer library and migrate")) }
+            } else {
+                SelectionContainer { Text(state.peerLibrary) }
+                TextButton(onClick={relay.rekeyPeerLibrary()},enabled=state.group.isNotEmpty() && state.peerRole == "admin" && (state.peerFrozen || state.peerDevice != state.device)) {Text(t("恢复为新共享库（重新邀请成员）","Re-establish as a new shared library"))}
+            }
+            OutlinedTextField(value = peerInput, onValueChange = { peerInput = it; confirmPersonalSync = false }, enabled = !state.peerPending, label = { Text(t("对等库邀请或身份回执", "Peer invitation or identity request")) }, modifier = Modifier.fillMaxWidth())
+            if (!state.peerPending) {
+                Button(onClick = { relay.preparePeerJoin(peerInput, confirmPersonalSync) }, enabled = peerInput.isNotEmpty() && state.group.isNotEmpty() && (!personalInvitation || confirmPersonalSync)) { Text(t("确认邀请来源并加入", "Verify invitation source and join")) }
+            }
+            if(state.peerLibrary.isNotEmpty() && !state.peerPending) {
+                Row {
+                    listOf("editor" to t("可编辑", "Editor"), "reader" to t("只读", "Reader"), "admin" to t("管理员", "Admin")).forEach { (role, label) ->
+                        FilterChip(selected = peerRole == role, onClick = { peerRole = role }, enabled = state.peerRole == "admin" && !state.peerFrozen, label = { Text(label) })
+                    }
+                }
+                Button(onClick = { relay.authorizePeerRequest(peerInput, peerRole) }, enabled = peerInput.isNotEmpty() && state.peerRole == "admin" && !state.peerFrozen) { Text(t("已核对对方身份，授权", "Identity verified, authorize")) }
+                val conflicts = runCatching { org.json.JSONObject(state.peerConflicts) }.getOrDefault(org.json.JSONObject())
+                for (key in conflicts.keys().asSequence().toList()) {
+                    Text(t("并发修改：", "Concurrent changes: ") + key)
+                    val versions = conflicts.getJSONArray(key)
+                    for (index in 0 until versions.length()) {
+                        val operation = versions.getJSONObject(index); val value = operation.get("value")
+                        TextButton(onClick = { relay.resolvePeer(key, value) }, enabled = state.peerRole in listOf("admin","editor") && !state.peerFrozen) { Text((value as? org.json.JSONObject)?.optString("title").orEmpty().ifEmpty { t("删除 / 空值", "Delete / empty value") } + " — " + operation.optString("author")) }
+                    }
+                }
+            }
+            if (state.reply.isNotEmpty()) SelectionContainer { Text(state.reply) }
+        }
+
         if (state.paired || state.managed) Text(localized(state.status))
         if (!state.paired) Text(t("先创建或加入设备组，再授权密码库同步。资料在设备间加密传输。", "Create or join a device group, then authorize vault sync. Data travels encrypted between devices."))
         state.error?.let { Text(localized(it), color = MaterialTheme.colorScheme.error) }
         if (importError) Text(t("凭据文件无法读取或过大", "Credential file unreadable or too large"), color = MaterialTheme.colorScheme.error)
         if (state.paired) {
-        Text(t("待提交：${state.pending}", "Pending: ${state.pending}"))
+        if (state.peerLibrary.isEmpty()) Text(t("待提交：${state.pending}", "Pending: ${state.pending}"))
+        else Text(t("本地已保存；中继投递不代表所有设备已应用", "Saved locally; relay delivery does not mean every device has applied it"))
         if (state.conflicts > 0) {
             Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {

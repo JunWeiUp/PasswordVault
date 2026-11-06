@@ -25,15 +25,25 @@ public enum RelayInvitationLinks {
         try checked(crypto_secretbox_open_easy(&plain,Array(cipher),UInt64(cipher.count),Array(nonce),Array(key)))
         let value=try dictionary(Data(plain));guard value["version"] as? Int == 1,value["purpose"] as? String == "common-relay/invitation-link/v1",let invitation=value["invitation"] as? [String:Any] else { throw RelayError.invalid("invitation packet scope") };return invitation
     }
-    public static func make(_ invitation: [String:Any], key: Data) throws -> String {
+    /// An optional server access password rides in the fragment (`#key.base64url(ASCII password)`), which never reaches HTTP.
+    public static func make(_ invitation: [String:Any], key: Data, password: String? = nil) throws -> String {
         guard let url=invitation["url"] as? String,var u=URLComponents(string:url),let id=invitation["id"] as? String else { throw RelayError.invalid("invitation URL") }
-        u.scheme="common-relay";u.path="/i/"+base64url(try Data(relayHex:id));u.fragment=base64url(key)
+        try RelayAccess.validate(password)
+        u.scheme="common-relay";u.path="/i/"+base64url(try Data(relayHex:id));u.fragment=base64url(key)+(password.map { "."+base64url(Data($0.utf8)) } ?? "")
         guard let link=u.string else { throw RelayError.invalid("invitation URL") };return link
     }
-    public static func parse(_ text: String, allowLocalTest: Bool = false) throws -> (url: String,id: String,key: Data) {
+    private static func fragmentPassword(_ text: String) throws -> String {
+        guard !text.isEmpty, text.allSatisfy({"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_".contains($0)}) else { throw RelayError.invalid("compact invitation encoding") }
+        let padded=text.replacingOccurrences(of:"-",with:"+").replacingOccurrences(of:"_",with:"/")+String(repeating:"=",count:(4-text.count%4)%4)
+        guard let raw=Data(base64Encoded:padded),base64url(raw)==text,let password=String(data:raw,encoding:.ascii) else { throw RelayError.invalid("compact invitation encoding") }
+        try RelayAccess.validate(password);return password
+    }
+    public static func parse(_ text: String, allowLocalTest: Bool = false) throws -> (url: String,id: String,key: Data,password: String?) {
         guard text.count<=2048,var u=URLComponents(string:text),u.scheme=="common-relay",let host=u.host,!host.isEmpty,u.user==nil,u.password==nil,u.query==nil,u.percentEncodedPath.hasPrefix("/i/"),let fragment=u.percentEncodedFragment else { throw RelayError.invalid("compact invitation URL") }
-        let id=try decode(String(u.percentEncodedPath.dropFirst(3)),size:16),key=try decode(fragment,size:32)
+        let parts=fragment.split(separator:".",maxSplits:1,omittingEmptySubsequences:false).map(String.init)
+        let id=try decode(String(u.percentEncodedPath.dropFirst(3)),size:16),key=try decode(parts[0],size:32)
+        let password=parts.count==2 ? try fragmentPassword(parts[1]) : nil // gitleaks:allow -- synthetic fixture or non-secret expression
         u.scheme=allowLocalTest && host=="127.0.0.1" ? "ws":"wss";u.path="/relay/v1/ws";u.fragment=nil
-        guard let url=u.string else { throw RelayError.invalid("invitation URL") };return (url,id.relayHex,key)
+        guard let url=u.string else { throw RelayError.invalid("invitation URL") };return (url,id.relayHex,key,password)
     }
 }

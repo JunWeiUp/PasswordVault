@@ -1,0 +1,35 @@
+import { expect, open, test } from "nsh/test";
+
+test("recovery requires transcription, separate storage and password; wrong password leaves setup retryable", async () => {
+  const app = await open("../ui/recovery/TestHarness.tsx", { width: 1000, height: 1000, platform: "macos" });
+  await app.press("text:准备测试库");
+  await app.waitFor("text:管理恢复密钥…");
+  await app.press("text:管理恢复密钥…");
+  await app.waitFor("text:生成密钥…");
+  await app.press("text:生成密钥…");
+  await app.waitFor("text:密钥只显示这一次");
+  const key = app.texts().find(s => /^[0-9a-f]{8}(-[0-9a-f]{8}){8}$/i.test(s))!;
+  expect(!!key).toBe(true);
+  await app.type("label:第 3 组字符", key.split("-")[2]);
+  await app.press("label:我已把密钥保存在这个密码库之外");
+  await app.type("label:当前主密码", "wrong-password");
+  await app.press("text:确认并启用");
+  await app.waitFor("text:主密码不正确，或加密数据已损坏。");
+  await app.clear("label:当前主密码");
+  await app.type("label:当前主密码", "synthetic-preview-password");
+  await app.press("text:确认并启用");
+  await app.waitFor("text:恢复密钥已启用");
+  expect(app.texts()).not.toContain(key);
+  await app.press("text:锁定并恢复");
+  await app.waitFor("text:使用恢复密钥重设主密码");
+  await app.type("label:恢复密钥", "invalid-key");
+  await app.type("label:新主密码", "synthetic-preview-password");
+  await app.type("label:确认新主密码", "synthetic-preview-password");
+  await app.press("text:恢复");
+  await app.press("text:确认恢复");
+  await app.waitFor("text:数据无效或不受支持。");
+  await app.clear("label:恢复密钥"); await app.type("label:恢复密钥", key);
+  await app.press("text:恢复"); await app.press("text:确认恢复");
+  await app.waitFor("text:管理恢复密钥…");
+  expect(app.texts()).not.toContain(key);
+});

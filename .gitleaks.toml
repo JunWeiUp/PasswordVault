@@ -13,4 +13,26 @@ secretGroup = 1
 # Published deterministic protocol fixtures, never operational credentials.
 [[allowlists]]
 description = "Common-relay public cryptographic test vectors"
-paths = ['''(^|/)vendor/common-relay/protocol/(group-vectors|invitation-link-vectors)\.json$''']
+paths = ['''(^|/)vendor/common-relay/protocol/(group-vectors|invitation-link-vectors|crypto-vectors)\.json$''']
+
+[[allowlists]]
+description = "Deterministic encrypted sharing interoperability fixture"
+paths = ['(^|/)crates/vault-core/tests/fixtures/share-v1\.json$']
+
+[[allowlists]]
+description = "Vendored SDK provenance file checksums"
+condition = "AND"
+regexTarget = "match"
+regexes = ['[0-9a-f]{64}']
+paths = ['(^|/)vendor/common-relay/(java|swift)/SOURCE\.json$']
+
+[[allowlists]]
+description = "Public Cargo dependency names, not an API credential"
+condition = "AND"
+paths = ['(^|/)Cargo\.lock$']
+regexTarget = "match"
+regexes = ['crypto_secretbox']
+
+[[allowlists]]
+description = "Published invitation-link interoperability tests using deterministic vector keys"
+paths = ['(^|/)vendor/common-relay/java/src/test/java/io/github/junweiup/commonrelay/InvitationLinksTest\.java$']

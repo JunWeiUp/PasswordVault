@@ -117,7 +117,7 @@ internal fun EntryCollection(
     val source =
         state.entries.filter {
             if (page == "trash") it.optBoolean("isDeleted")
-            else !it.optBoolean("isDeleted") && it.optString("type") == page
+            else !it.optBoolean("isDeleted") && (it.optString("type") == page || (page == "password" && it.optString("type") in listOf("creditCard", "identity")))
         }
     val configured =
         if (notes)

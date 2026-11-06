@@ -15,12 +15,12 @@ public final class RelayJournal {
     public RelayJournal(Path directory)throws Exception{this(directory,()->System.currentTimeMillis()/1000);}
     public RelayJournal(Path directory,LongSupplier clock)throws Exception{this.directory=directory;this.clock=clock;Files.createDirectories(directory);cleanup();}
     private static String digest(byte[] data)throws Exception{return Crypto.hex(MessageDigest.getInstance("SHA-256").digest(data));}
-    private Path path(String scope,String kind,String sender,String id)throws Exception{return directory.resolve(digest(new JSONArray().put(scope).put(kind).put(sender).put(id).toString().getBytes(StandardCharsets.UTF_8))+".json");}
+    private Path path(String scope,String kind,String sender,String id)throws Exception{return directory.resolve(digest(new JSONArray().put(scope).put(kind).put(sender).put(id).toString().replace("\\/","/").getBytes(StandardCharsets.UTF_8))+".json");}
     private JSONObject read(Path path)throws Exception{return Files.exists(path)?new JSONObject(new String(Files.readAllBytes(path),StandardCharsets.UTF_8)):null;}
     private void write(Path path,JSONObject record)throws Exception{
         Path temp=Files.createTempFile(directory,"journal-",".tmp");
         try{
-            try(FileOutputStream out=new FileOutputStream(temp.toFile())){out.write(record.toString().getBytes(StandardCharsets.UTF_8));out.getFD().sync();}
+            try(FileOutputStream out=new FileOutputStream(temp.toFile())){out.write(record.toString().replace("\\/","/").getBytes(StandardCharsets.UTF_8));out.getFD().sync();}
             Files.move(temp,path,StandardCopyOption.ATOMIC_MOVE,StandardCopyOption.REPLACE_EXISTING);
         }finally{Files.deleteIfExists(temp);}
     }

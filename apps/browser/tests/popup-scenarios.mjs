@@ -246,3 +246,18 @@ export async function runMacHeader(page, base = 'http://127.0.0.1:4390') {
   assert.equal(await page.evaluate(() => !!document.querySelector('.connection-panel a')), false);
   return ['header version matches package metadata', 'Mac launch dispatches without switching vault mode', 'missing host offers GitHub download and registration guidance', 'permission failure and locked Mac do not claim missing installation'];
 }
+
+export async function runAccountEdit(page, base = 'http://127.0.0.1:4388') {
+  await page.goto(base + '/tests/fixtures/popup-confirmation.html');
+  await page.waitForSelector('#capture-password');
+  await page.evaluate(() => { qa.pending=undefined; qa.state.readReady=true; });
+  await page.waitForSelector('.capture', {state:'detached'});
+  await page.click('.match-row:first-child > button.text-button');
+  await page.waitForSelector('form[aria-label="修改账号密码"]');
+  assert.equal(await page.evaluate(() => document.querySelector('#capture-password').type), 'password');
+  await page.fill('#capture-password', 'Synthetic-edited-password');
+  await page.click('.capture .primary');
+  await page.waitForSelector('.capture', {state:'detached'});
+  assert.equal(await page.evaluate(() => !!qa.saved.at(-1).updateId && qa.saved.at(-1).password === 'Synthetic-edited-password'), true);
+  return ['account editor opens on explicit click', 'edited password is masked and updates selected account'];
+}

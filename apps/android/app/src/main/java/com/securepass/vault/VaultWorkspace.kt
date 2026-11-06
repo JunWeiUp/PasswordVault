@@ -38,8 +38,15 @@ internal fun VaultWorkspace(
     var editing by remember { mutableStateOf(vault.pendingDraft?.let(::JSONObject)) }
     var editingRestored by remember { mutableStateOf(vault.pendingDraft != null) }
     var deleting by remember { mutableStateOf<JSONObject?>(null) }
+    var createChooser by remember { mutableStateOf(false) }
     var generator by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+    if (createChooser && vault.canWriteLibrary()) AlertDialog(onDismissRequest = { createChooser = false }, title = { Text(t("新建资料", "New record")) }, text = {
+        Column { for ((kind, label) in listOf("password" to t("账号", "Account"), "creditCard" to t("银行卡", "Payment card"), "identity" to t("身份资料", "Identity"))) {
+            TextButton(onClick = { createChooser = false; editingRestored = false; editing = VaultRepository.blank(kind) }) { Text(label) }
+        } }
+    }, confirmButton = { TextButton(onClick = { createChooser = false }) { Text(t("取消", "Cancel")) } })
+
     LaunchedEffect(state.recoveredDraft) {
         state.recoveredDraft?.let {
             editingRestored = true
@@ -169,19 +176,21 @@ internal fun VaultWorkspace(
         },
         floatingActionButton = {
             if (
-                page in destinations &&
+                vault.canWriteLibrary() && page in destinations &&
                     page != "settings" &&
                     current == null &&
                     collectionStates[page]?.selecting?.value != true
             )
                 FloatingActionButton(
                     onClick = {
+                        if (page == "password") { createChooser = true } else {
                         editingRestored = false
                         val preferences = collectionStates.getOrPut(page) { CollectionUiState() }
                         editing =
                             VaultRepository.blank(page).apply {
                                 put("category", preferences.category.value)
                             }
+                        }
                     },
                     containerColor = MaterialTheme.colorScheme.primary,
                     contentColor = MaterialTheme.colorScheme.onPrimary,
@@ -207,6 +216,14 @@ internal fun VaultWorkspace(
                     }
                 }
             Column(Modifier.weight(1f).fillMaxHeight()) {
+                val family = state.settings.optString("activePeerLibrary").isNotEmpty()
+                Text(
+                    if (family) t("家庭库：", "Family: ") + state.settings.optString("_peerLibraryName", t("家庭资料库", "Family library")) else t("个人资料库", "Personal library"),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 6.dp),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2,
+                )
                 state.notice?.let { notice ->
                     Row(
                         Modifier.fillMaxWidth().padding(horizontal = 20.dp),
@@ -250,6 +267,7 @@ internal fun VaultWorkspace(
                             { page = "trash" },
                             { page = "webdav" },
                             { page = "relay" },
+                            openEntry = { id -> selected = id; page = "password" },
                         )
                     page == "relay" -> RelaySettingsScreen(vault, t)
                     page == "webdav" -> WebDavScreen(vault, state, t)
@@ -265,7 +283,7 @@ internal fun VaultWorkspace(
                                     if (
                                         !it.optBoolean("isDeleted") &&
                                             vault.canEdit(it) &&
-                                            it.optString("type") in listOf("password", "crypto")
+                                            it.optString("type") in listOf("password", "crypto", "creditCard", "identity")
                                     ) {
                                         editingRestored = false
                                         editing = JSONObject(it.toString())

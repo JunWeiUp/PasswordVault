@@ -31,14 +31,9 @@
     [el.id, el.name, el.autocomplete].join("\u0000");
   function credentialField(el: HTMLInputElement) {
     const tokens = el.autocomplete.toLowerCase().split(/\s+/);
-    if (
-      tokens.some((token) =>
-        ["new-password", "username", "one-time-code"].includes(token),
-      )
-    ) {
-      passwordFields.delete(el);
-      return false;
-    }
+    if (tokens.includes("username") && ["text", "email", "tel"].includes(el.type)) return true;
+    if (tokens.includes("new-password") && ["text", "password"].includes(el.type)) return true;
+    if (tokens.includes("one-time-code") && ["text", "tel", "number"].includes(el.type)) return true;
     if (el.type === "password") {
       passwordFields.set(el, { form: el.form, identity: identity(el) });
       return true;
@@ -195,7 +190,36 @@
     const r = c.input.getBoundingClientRect();
     host.style.left = `${Math.max(8, Math.min(r.right - 300, innerWidth - 308))}px`;
     host.style.top = `${Math.max(8, Math.min(r.bottom + 6, innerHeight - 330))}px`;
-    const result = await send("inline-accounts");
+    if (c.input.autocomplete.split(/\s+/).includes("new-password")) {
+      status.textContent = "生成随机密码，仅填入当前字段；提交成功后请确认保存。";
+      const generate = document.createElement("button");
+      generate.textContent = "生成并填入 24 位密码";
+      generate.onclick = (event) => {
+        if (!event.isTrusted || ownRevision !== revision || !eligible(c.input) || c.input.form !== form || href !== location.href) return;
+        const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%&*+-";
+        let value = "";
+        while (value.length < 24) {
+          const bytes = crypto.getRandomValues(new Uint8Array(48));
+          for (const byte of bytes) {
+            const ceiling = Math.floor(256 / alphabet.length) * alphabet.length;
+            if (byte < ceiling && value.length < 24) value += alphabet[byte % alphabet.length];
+          }
+        }
+        const targets = c.input.form ? Array.from(c.input.form.querySelectorAll<HTMLInputElement>("input")).filter(input=>input.autocomplete.split(/\s+/).includes("new-password") && eligible(input)) : [c.input];
+        if (!targets.includes(c.input) || targets.length > 2) { value=""; return; }
+        for(const input of targets) {
+          if(!eligible(input) || input.form!==form || href!==location.href) break;
+          Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, value);
+          input.dispatchEvent(new Event("input", { bubbles: true }));
+          input.dispatchEvent(new Event("change", { bubbles: true }));
+        }
+        value = "";
+        close();
+        c.input.focus();
+      };
+      list.append(generate); generate.focus(); return;
+    }
+    const result = await send("inline-accounts", {field: c.input.autocomplete.split(/\s+/).includes("one-time-code") ? "otp" : "login"});
     if (ownRevision !== revision || panel !== host) return;
     if (!eligible(c.input)) {
       close();
@@ -252,6 +276,7 @@
           id: account.id,
           accountId: account.accountId,
           deliveryToken: token,
+          field: c.input.autocomplete.split(/\s+/).includes("one-time-code") ? "otp" : c.input.autocomplete.split(/\s+/).includes("username") ? "username" : "password",
         });
         if (ownRevision !== revision) return;
         delivery = undefined;
@@ -330,14 +355,13 @@
       }
     }
     for (const [input, c] of controls)
-      if (!count || !eligible(input) || !c.host.isConnected) {
+      if ((!count && !input.autocomplete.split(/\s+/).includes("new-password")) || !eligible(input) || !c.host.isConnected) {
         if (menuControl === c) close();
         c.host.remove();
         controls.delete(input);
       }
-    if (count)
-      for (const input of inputs.slice(0, 50))
-        if (!controls.has(input)) add(input);
+    for (const input of inputs.slice(0, 50))
+      if ((count || input.autocomplete.split(/\s+/).includes("new-password")) && !controls.has(input)) add(input);
     for (const c of controls.values()) position(c);
   }
   function schedule() {
@@ -350,11 +374,12 @@
   function usernameFor(
     password: HTMLInputElement,
   ): HTMLInputElement | undefined {
+    if (password.autocomplete.split(/\s+/).some(token => ["username", "one-time-code"].includes(token))) return undefined;
     const preceding = (scope: Element) =>
       Array.from(scope.querySelectorAll<HTMLInputElement>("input")).filter(
         (input) =>
           visible(input) &&
-          !credentialField(input) &&
+          (!credentialField(input) || input.autocomplete.split(/\s+/).includes("username")) &&
           ["text", "email", "tel"].includes(input.type) &&
           !input.autocomplete.split(/\s+/).includes("one-time-code") &&
           !!(
@@ -524,7 +549,7 @@
       respond({ ok: false });
       return;
     }
-    set(target.input, request.password);
+    set(target.input, target.input.autocomplete.split(/\s+/).includes("one-time-code") ? request.code : target.input.autocomplete.split(/\s+/).includes("username") ? request.username : request.password);
     respond({ ok: true });
   });
   let refresh: ReturnType<typeof setInterval> | undefined;

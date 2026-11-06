@@ -79,6 +79,7 @@ struct MobileEntryEditor: View {
           }
         } else if draft.type == "totp" {
           Section(store.t("验证器", "Authenticator")) {
+            TextField(store.t("网站", "Website"), text: field("url")).keyboardType(.URL).textInputAutocapitalization(.never).autocorrectionDisabled()
             TextField(store.t("账号", "Account"), text: field("username"))
             SecureField(store.t("设置密钥", "Setup key"), text: field("secret"))
             Stepper(
@@ -122,6 +123,7 @@ struct MobileEntryEditor: View {
             }
           }
         }
+        StructuredFieldsEditor(item: $draft, t: store.t)
         Section(store.t("备注 / Markdown", "Notes / Markdown")) {
           TextEditor(text: field("note")).frame(minHeight: 180).accessibilityLabel(
             store.t("备注", "Notes"))

@@ -11,7 +11,7 @@ from unittest import mock
 
 from check_repository import validate_tag, version
 from configure_signing import escape_property, write_signing_files
-from package_release import archive, package, verify_checksums
+from package_release import archive, verify_checksums
 from verify_android_signatures import verify_apk_certificates
 from validate_release_ref import resolve_release
 
@@ -56,6 +56,30 @@ class ReleaseToolsTest(unittest.TestCase):
             with zipfile.ZipFile(root / 'release.zip') as result:
                 self.assertEqual(set(result.namelist()), {'index.html', 'app.js', 'NOTICES.Z'})
 
+
+    def test_signing_cli_creates_private_directory_and_preserves_existing_key(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            script = root / 'tool/configure_signing.py'
+            script.parent.mkdir()
+            script.write_bytes(Path(__file__).with_name('configure_signing.py').read_bytes())
+            runner = root / 'runner'
+            runner.mkdir()
+            env = {**os.environ, 'RUNNER_TEMP': str(runner),
+                   'ANDROID_KEYSTORE_BASE64': 'ZmljdGlvbmFsLWtleQ==', # gitleaks:allow -- synthetic fixture or non-secret expression
+                   'ANDROID_STORE_PASSWORD': 'fixture-store', 'ANDROID_KEY_ALIAS': 'fixture',
+                   'ANDROID_KEY_PASSWORD': 'fixture-key'}
+            result = subprocess.run(['python3', str(script)], env=env, capture_output=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            props = root / 'private/signing/android/key.properties'
+            key = runner / 'passwordvault-release.jks'
+            self.assertEqual(props.stat().st_mode & 0o777, 0o600)
+            self.assertEqual(key.read_bytes(), b'fictional-key')
+            original = props.read_bytes()
+            result = subprocess.run(['python3', str(script)], env=env, capture_output=True)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertEqual(props.read_bytes(), original)
+            self.assertEqual(key.read_bytes(), b'fictional-key')
 
     def test_signing_setup_preserves_existing_material(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -141,40 +165,6 @@ class ReleaseRevisionTest(unittest.TestCase):
                 with self.assertRaises(SystemExit):
                     resolve_release(tag, 'HEAD')
 
-
-class ReleasePackagingTest(unittest.TestCase):
-    def test_complete_package_and_failed_inputs(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            subprocess.run(['git', 'init', '-q', str(root)], check=True)
-            subprocess.run(['git', '-C', str(root), '-c', 'user.name=Release Test', '-c', 'user.email=test@example.invalid', 'commit', '-q', '--allow-empty', '-m', 'fixture'], check=True)
-            files = ['.flutter-version', 'LICENSE', 'THIRD_PARTY_NOTICES.md',
-                     'docs/RELEASE_NOTES.md', 'android/release-certificate.sha256',
-                     'build/app/outputs/bundle/release/app-release.aab',
-                     'build/web/index.html', 'build/chrome_extension/index.html']
-            files += [f'build/app/outputs/flutter-apk/app-{abi}-release.apk' for abi in ['arm64-v8a', 'armeabi-v7a', 'x86_64']]
-            for name in files:
-                path = root / name
-                path.parent.mkdir(parents=True, exist_ok=True)
-                path.write_text('synthetic fixture')
-            missing = root / files[-1]
-            missing.unlink()
-            with self.assertRaises(SystemExit):
-                package(root, f'v{version()}-preview.1')
-            self.assertFalse((root / 'release_assets').exists())
-            missing.write_text('synthetic fixture')
-            package(root, f'v{version()}-preview.1')
-            output = root / 'release_assets'
-            verify_checksums(output)
-            metadata = json.loads((output / 'BUILD.json').read_text())
-            self.assertEqual(metadata['tag'], f'v{version()}-preview.1')
-            self.assertEqual(metadata['status'], 'developer-preview')
-            self.assertEqual(len(metadata['commit']), 40)
-            self.assertEqual(len(list(output.iterdir())), 12)
-            original = (output / 'SHA256SUMS').read_bytes()
-            with self.assertRaises(SystemExit):
-                package(root, f'v{version()}-preview.2')
-            self.assertEqual((output / 'SHA256SUMS').read_bytes(), original)
 
 
 if __name__ == '__main__':

@@ -9,19 +9,38 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.MultiFormatWriter
 
 @Composable
 internal fun RelayGroupPanel(vault: VaultRepository, state: RelayUi, t: (String, String) -> String) {
     val relay = vault.relay
-    var endpoint by remember { mutableStateOf(state.endpoint.ifEmpty { "wss://relay.example.test/relay/v1/ws" }) }
+    var endpoint by remember { mutableStateOf(state.endpoint) }
     var groupName by remember { mutableStateOf(t("我的设备", "My devices")) }
     var deviceName by remember { mutableStateOf(t("我的手机", "My phone")) }
     var input by remember { mutableStateOf("") }
     var scanning by remember { mutableStateOf(false) }
     var showInvite by remember(state.groupInvite) { mutableStateOf(false) }
-    var advanced by remember { mutableStateOf(false) }
+    var createPassword by remember { mutableStateOf("") }
+    var joinPassword by remember { mutableStateOf("") }
+    var savedPassword by remember { mutableStateOf("") }
+    var preview by remember { mutableStateOf<RelayInvitationPreview?>(null) }
+    var formError by remember { mutableStateOf<String?>(null) }
+    fun readInvitation(text: String) {
+        preview = null
+        try {
+            val read = RelayInvitationPreview.read(text)
+            preview = read
+            joinPassword = read.password
+            formError = null
+        } catch (_: Exception) { formError = t("邀请无效或已过期，请检查内容。", "Invalid or expired invitation; check the contents.") }
+    }
+    fun submit(block: () -> Unit) {
+        try { block(); formError = null }
+        catch (_: Exception) { formError = t("检查服务器地址、组名和密码（8–128 位可打印 ASCII，不含空格）。", "Check the endpoint, group name and password (8–128 printable ASCII characters, no spaces).") }
+    }
     var automaticJoin by remember { mutableStateOf(true) }
     var grantManager by remember { mutableStateOf(false) }
     var confirmation by remember { mutableStateOf<String?>(null) }
@@ -31,13 +50,29 @@ internal fun RelayGroupPanel(vault: VaultRepository, state: RelayUi, t: (String,
     LaunchedEffect(state.groupInvite) {
         if (state.groupInvite.isNotEmpty()) automaticJoin = state.automaticJoin
     }
+    LaunchedEffect(state.creating, state.endpoint, state.draftGroupName, state.draftDeviceName) {
+        if (state.creating) {
+            endpoint = state.endpoint
+            groupName = state.draftGroupName
+            deviceName = state.draftDeviceName
+        }
+    }
     val ready = !state.busy
     Text(t("设备组", "Device group"), style = MaterialTheme.typography.titleLarge)
     Text(t("安全接入后，仍需 Mac 单独授权密码库同步。", "Joining a group requires separate Mac authorization to sync vault data."))
     if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
+    formError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+    if (state.managed || state.legacy || state.joining || state.invalid) {
+        Text(t("服务器访问密码", "Server access password"), style = MaterialTheme.typography.titleMedium)
+        Text(t("更新密码会保留设备身份与密码库授权。", "Updating this password preserves device identity and vault authorization."))
+        RelayPasswordField(savedPassword, { savedPassword = it }, ready, t)
+        OutlinedButton(onClick = { submit { validateRelayPassword(savedPassword); relay.updateServerPassword(savedPassword) } }, enabled = ready && savedPassword.isNotEmpty()) {
+            Text(t("保存服务器密码", "Save server password"))
+        }
+    }
     when {
         state.invalid -> {
-            Text(t("接入已失效，缓存名单不可用于授权。", "Access invalid; cached membership is hidden."))
+            Text(t("接入需要重新验证。请先修改服务器密码并保存；原身份保留，缓存名单不可用于授权。", "Access needs revalidation. Update and save the server password; identity is retained and cached membership cannot authorize access."))
             OutlinedButton(onClick = { confirmation = "clear" }, enabled = ready) { Text(t("清除本机接入", "Clear local access")) }
         }
         state.legacy -> {
@@ -62,12 +97,12 @@ internal fun RelayGroupPanel(vault: VaultRepository, state: RelayUi, t: (String,
                 }
             }
             if (manager) {
-                Row { Checkbox(automaticJoin, { automaticJoin = it }, enabled = ready && state.groupInvite.isEmpty()); Text(t("扫描后自动加入", "Join automatically after scanning")) }
+                Row { Checkbox(automaticJoin, { automaticJoin = it }, enabled = ready && state.groupInvite.isEmpty()); Text(t("确认后免审批加入", "Join without approval after confirmation")) }
                 Button(onClick = { grantManager = false; relay.inviteToGroup(automaticJoin) }, enabled = ready) { Text(t("添加设备", "Add device")) }
             }
             if (state.groupFresh && state.groupInvite.isNotEmpty()) {
                 GroupQr(state.groupInvite, t("设备组邀请", "Group invitation"))
-                Text(if (state.automaticJoin) t("扫描即可加入普通成员；密码库需另行授权。", "Scan to join as a member; vault access requires separate authorization.") else t("需核对配对码并手动批准。", "Compare codes and approve manually."))
+                Text(if (state.automaticJoin) t("确认后加入普通成员；密码库需另行授权。", "Confirm to join as a member; vault access requires separate authorization.") else t("需核对配对码并手动批准。", "Compare codes and approve manually."))
                 Text(t("10 分钟内有效，仅一台设备可认领。请通过可信渠道传递。", "Valid for 10 minutes and one device. Share through a trusted channel."))
                 TextButton(onClick = { showInvite = !showInvite }) { Text(t("查看邀请内容（可复制）", "Show invitation text")) }
                 if (showInvite) SelectionContainer { Text(state.groupInvite, style = MaterialTheme.typography.bodySmall) }
@@ -86,16 +121,17 @@ internal fun RelayGroupPanel(vault: VaultRepository, state: RelayUi, t: (String,
         state.joining -> {
             Text(if (state.automaticJoin) t("自动加入尚未完成，请重试。", "Automatic join is incomplete. Retry to continue.") else t("请邀请方核对配对码并批准，再完成加入。", "Ask the inviter to compare this code and approve."))
             SelectionContainer { Text(state.groupCode, style = MaterialTheme.typography.headlineSmall) }
-            Button(onClick = relay::finishGroupJoin, enabled = ready) { Text(t("完成加入", "Finish joining")) }
+            Button(onClick = relay::finishGroupJoin, enabled = ready) { Text(t("刷新审批状态", "Refresh approval status")) }
             TextButton(onClick = relay::retryGroupJoin, enabled = ready) { Text(t("重新发送申请", "Resend request")) }
             TextButton(onClick = { confirmation = "clear" }, enabled = ready) { Text(t("放弃本机申请…", "Abandon local request…")) }
         }
         else -> {
-            OutlinedTextField(deviceName, { deviceName = it }, label = { Text(t("本机名称", "Device name")) }, enabled = ready, modifier = Modifier.fillMaxWidth())
-            OutlinedTextField(groupName, { groupName = it }, label = { Text(t("设备组名称", "Group name")) }, enabled = ready, modifier = Modifier.fillMaxWidth())
-            TextButton(onClick = { advanced = !advanced }, enabled = ready) { Text(t("服务地址", "Relay endpoint")) }
-            if (advanced) OutlinedTextField(endpoint, { endpoint = it }, label = { Text("wss://host/relay/v1/ws") }, enabled = ready && !state.creating, modifier = Modifier.fillMaxWidth())
-            Button(onClick = { relay.createGroup(endpoint, groupName, deviceName) }, enabled = ready && groupName.isNotBlank() && deviceName.isNotBlank()) {
+            OutlinedTextField(deviceName, { deviceName = it }, label = { Text(t("本机名称", "Device name")) }, enabled = ready && !state.creating, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(groupName, { groupName = it }, label = { Text(t("设备组名称", "Group name")) }, enabled = ready && !state.creating, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(endpoint, { endpoint = it }, label = { Text(t("服务器地址（必填）", "Server endpoint (required)")) }, placeholder = { Text("wss://host/relay/v1/ws") }, enabled = ready && !state.creating, modifier = Modifier.fillMaxWidth())
+            RelayPasswordField(createPassword, { createPassword = it }, ready, t)
+            Text(t("服务器密码仅用于访问中继，不是主密码或端到端密钥。", "This password grants relay access; it is not your master password or encryption key."))
+            Button(onClick = { submit { validateRelayEndpoint(endpoint); validateRelayPassword(createPassword); require(groupName.isNotBlank()); relay.createGroup(endpoint, groupName, deviceName, createPassword) } }, enabled = ready && endpoint.isNotBlank() && createPassword.isNotEmpty() && groupName.isNotBlank() && deviceName.isNotBlank()) {
                 Text(if (state.creating) t("重试创建", "Retry creation") else t("创建新设备组", "Create group"))
             }
             if (state.creating) {
@@ -105,18 +141,26 @@ internal fun RelayGroupPanel(vault: VaultRepository, state: RelayUi, t: (String,
                 HorizontalDivider()
                 Text(t("加入已有设备组", "Join an existing group"), style = MaterialTheme.typography.titleMedium)
                 OutlinedButton(onClick = { scanning = true }, enabled = ready) { Text(t("扫描设备组邀请", "Scan group invitation")) }
-                OutlinedTextField(input, { input = it }, label = { Text(t("或粘贴邀请内容", "Or paste invitation")) }, enabled = ready, modifier = Modifier.fillMaxWidth(), maxLines = 4)
-                Button(onClick = { relay.joinGroup(input, deviceName) }, enabled = ready && input.isNotBlank() && deviceName.isNotBlank()) { Text(t("提交加入申请", "Request to join")) }
+                OutlinedTextField(input, { input = it; preview = null }, label = { Text(t("或粘贴邀请内容", "Or paste invitation")) }, enabled = ready, modifier = Modifier.fillMaxWidth(), maxLines = 4)
+                OutlinedButton(onClick = { readInvitation(input) }, enabled = ready && input.isNotBlank()) { Text(t("读取邀请", "Read invitation")) }
+                preview?.let { invitation ->
+                    Text(t("确认加入", "Confirm joining"), style = MaterialTheme.typography.titleMedium)
+                    SelectionContainer { Text(invitation.endpoint) }
+                    Text(if (invitation.password.isNotEmpty()) t("已从邀请链接读取服务器密码，可显示或修改。", "Server password read from invitation; you can reveal or edit it.") else t("邀请未带密码，请向邀请人获取服务器密码。", "Ask the inviter for the server password."))
+                    RelayPasswordField(joinPassword, { joinPassword = it }, ready, t)
+                    Text(t("加入设备组不代表获得密码库权限。", "Joining does not grant access to vault data."))
+                    Button(onClick = { submit { validateRelayPassword(joinPassword); require(invitation.input == input.trim()); relay.joinGroup(invitation.input, deviceName, joinPassword) } }, enabled = ready && joinPassword.isNotEmpty() && deviceName.isNotBlank()) { Text(t("确认并提交加入", "Confirm and join")) }
+                }
             }
         }
     }
-    if (scanning) LiveQrScanner(vault, t, { input = it; scanning = false; relay.joinGroup(it, deviceName) }, { scanning = false }, rawPayload = true)
+    if (scanning) LiveQrScanner(vault, t, { input = it; scanning = false; readInvitation(it) }, { scanning = false }, rawPayload = true)
     confirmation?.let { operation ->
         AlertDialog(onDismissRequest = { confirmation = null }, title = { Text(t("确认设备组操作", "Confirm group action")) },
             text = { Text(when {
                 operation == "disband" -> t("撤销全组中继访问；已下载资料无法远程删除。", "Revoke access for every member. Downloaded vault data cannot be remotely erased.")
                 operation.startsWith("remove:") -> t("撤销此设备的中继访问。已下载资料无法远程删除。", "Revoke this device's relay access. Downloaded data remains on that device.")
-                operation == "clear" -> t("仅清除本机接入，不能代替服务器撤销。本地资料保留，旧同步记录加密归档，新接入使用新设备 ID。", "Clear local access only; this does not revoke remote access. Keep local data, archive sync history and rotate the device ID.")
+                operation == "clear" -> t("仅取消本机申请或接入，不能撤回已发送的申请，也不能代替服务器撤销。本地资料保留，旧同步记录加密归档，新接入使用新设备 ID。", "Cancel locally only; this cannot withdraw a sent request or revoke remote access. Keep local data, archive sync history and rotate the device ID.")
                 else -> t("本机停止中继同步，其他成员继续使用。本地资料保留，旧同步记录加密归档。最后一名管理员需先添加其他管理员或解散。", "Stop local sync and retain data and encrypted sync history. Other members stay connected. The last manager must add another manager or disband.")
             }) }, confirmButton = { TextButton(onClick = {
                 confirmation = null
@@ -140,4 +184,13 @@ private fun GroupQr(text: String, label: String) {
         }.asImageBitmap()
     }.getOrNull() }
     if (image != null) Image(image, contentDescription = label, modifier = Modifier.size(220.dp))
+}
+
+@Composable
+private fun RelayPasswordField(value: String, change: (String) -> Unit, enabled: Boolean, t: (String, String) -> String) {
+    var visible by remember { mutableStateOf(false) }
+    OutlinedTextField(value, change, label = { Text(t("服务器密码（必填）", "Server password (required)")) },
+        enabled = enabled, singleLine = true, modifier = Modifier.fillMaxWidth(),
+        visualTransformation = if (visible) VisualTransformation.None else PasswordVisualTransformation(),
+        trailingIcon = { TextButton(onClick = { visible = !visible }) { Text(if (visible) t("隐藏", "Hide") else t("显示", "Show")) } })
 }

@@ -16,7 +16,7 @@ await mkdir("dist/icons", { recursive: true });
 await cp("../../assets/icon/icon.png", "dist/icons/brand.png").catch(
   async () => {
     await cp(
-      "../macos/Resources/Assets.xcassets/BrandMark.imageset/brand.png",
+      "../macos-legacy/Resources/Assets.xcassets/BrandMark.imageset/brand.png",
       "dist/icons/brand.png",
     );
   },
@@ -32,6 +32,8 @@ const manifest = {
   permissions: ["storage", "activeTab", "scripting", "nativeMessaging", "idle", "alarms"],
   host_permissions: ["https://*/*", "http://*/*"],
   content_scripts: [
+    { matches: ["https://*/*"], js: ["passkey-page.js"], world: "MAIN", run_at: "document_start" },
+    { matches: ["https://*/*"], js: ["passkey-content.js"], run_at: "document_start" },
     {
       matches: ["https://*/*", "http://*/*"],
       js: ["login-observer.js"],
@@ -49,7 +51,9 @@ const manifest = {
   background: { service_worker: "background.js", type: "module" },
   options_page: "index.html",
   icons: { 128: "icons/brand.png" },
+  sandbox: { pages: ["note-editor.html"] },
   content_security_policy: {
+    sandbox: "sandbox allow-scripts; script-src 'self'; object-src 'none';",
     extension_pages:
       "script-src 'self' 'wasm-unsafe-eval'; object-src 'none'; base-uri 'none'",
   },

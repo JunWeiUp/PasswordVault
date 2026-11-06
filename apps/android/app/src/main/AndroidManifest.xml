@@ -12,5 +12,10 @@
       <intent-filter><action android:name="android.service.autofill.AutofillService" /></intent-filter>
       <meta-data android:name="android.autofill" android:resource="@xml/autofill_service" />
     </service>
+    <activity android:name=".PasskeyProviderActivity" android:exported="false" android:excludeFromRecents="true" />
+    <service android:name=".AndroidCredentialProvider" android:permission="android.permission.BIND_CREDENTIAL_PROVIDER_SERVICE" android:exported="true" android:enabled="@bool/passkey_provider_enabled">
+      <intent-filter><action android:name="android.service.credentials.CredentialProviderService" /></intent-filter>
+      <meta-data android:name="android.credentials.provider" android:resource="@xml/credential_provider" />
+    </service>
   </application>
 </manifest>

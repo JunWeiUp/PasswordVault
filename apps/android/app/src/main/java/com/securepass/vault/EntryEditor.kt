@@ -28,17 +28,8 @@ fun EntryEditor(
     restoredDraft: Boolean = false,
     close: () -> Unit,
 ) {
-    if (original.optString("noteFormat") == "rich-v1") {
-        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp)) {
-            Text(original.optString("title"), style = MaterialTheme.typography.headlineSmall)
-            Text(t("此图文笔记仅显示文字摘要。请在 Mac 编辑和备份，避免丢失格式或附件。", "Text summary only. Edit and back up on Mac to preserve formatting and attachments."))
-            Text(original.optString("note"))
-            TextButton(onClick = close) { Text(t("返回", "Back")) }
-        }
-        return
-    }
     if (original.optString("type") == "secureNote") {
-        NoteEditor(original, vault, t, restoredDraft, close)
+        RichNoteEditor(original, vault, t, close)
         return
     }
     var draftText by remember { mutableStateOf(original.toString()) }
@@ -291,6 +282,8 @@ fun EntryEditor(
                         title = {
                             Text(
                                 when (type) {
+                                    "creditCard" -> t("银行卡", "Payment card")
+                                    "identity" -> t("身份资料", "Identity")
                                     "crypto" ->
                                         if (existing) t("编辑钱包", "Edit wallet")
                                         else t("添加钱包", "Add wallet")
@@ -375,6 +368,12 @@ fun EntryEditor(
                         report = { error = it },
                         busyChanged = { working = it },
                     )
+                    PasskeyRecordsPanel(vault.state.value.entries.firstOrNull { it.optString("id") == draft.optString("id") } ?: draft, vault, t) { removed ->
+                        val next = JSONObject(draftText); val keys = next.optJSONArray("passkeys") ?: JSONArray(); val remaining = JSONArray()
+                        for (index in 0 until keys.length()) if (keys.getJSONObject(index).optString("credentialId") != removed) remaining.put(keys.getJSONObject(index))
+                        next.put("passkeys", remaining); draftText = next.toString()
+                    }
+                    StructuredFieldsEditor(draft, { draftText = it.toString() }, t)
                     if (existing)
                         OutlinedButton(
                             enabled = !busy,

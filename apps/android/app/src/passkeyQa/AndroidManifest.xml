@@ -1,0 +1,1 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools"><application android:label="PasswordVault Passkey QA" android:networkSecurityConfig="@xml/passkey_qa_network_security" tools:replace="android:label" /></manifest>
