@@ -14,7 +14,7 @@
 
 Native clients are in **developer preview**. [Platform availability](#choose-your-workspace) and the [security model](docs/SECURITY_MODEL.md) describe current limits; an independent security review is still pending.
 
-**Release 2.4.0:** [GitHub Release](https://github.com/JunWeiUp/PasswordVault/releases/tag/v2.4.0) · [Installation and limits](config/release/INSTALL.md). Includes current NSH Mac, legacy SwiftUI Mac, Android, extension, Web and iOS Simulator packages.
+**Release 2.4.0:** [GitHub Release](https://github.com/JunWeiUp/PasswordVault/releases/tag/v2.4.0) · [Installation and limits](config/release/INSTALL.md). Includes current NSH Mac, Android, extension, Web and iOS Simulator packages.
 
 **Mac client status:** [`apps/macos-nsh`](apps/macos-nsh/README.md) is the current development and local daily client (NSH 0.4.0, macOS 14+ / Apple Silicon). [`apps/macos-legacy`](apps/macos-legacy/README.md) is the retained legacy SwiftUI Mac client. References below to macOS 13+/Intel and older coordinated releases apply to that legacy client.
 
@@ -87,7 +87,7 @@ Standalone Web is also available with a smaller feature set. Windows and Linux h
 | **Standalone Web** | Independent encrypted vault, CRUD, TOTP, backup/import and utilities | Sharing/WebDAV/QR UI, full theme/language parity and automatic legacy OPFS migration remain incomplete |
 | **Windows / Linux desktop** | No native desktop client | Not implemented |
 
-The coordinated release is **2.4.0**: NSH Mac build **15**, legacy Mac build **35**, browser **2.4.0**, Android build **24000**, and iOS build **16**. This update adds encrypted personal relay sync, device-list access controls and bulk conflict handling with mobile reminders. Android requires 8.0+. Passing checks does not imply app-store availability or production security acceptance. See [installation](docs/NATIVE-RELEASE-NOTES.md) and [relay setup](docs/PERSONAL-RELAY.md).
+The coordinated release is **2.4.0**: NSH Mac build **15**, browser **2.4.0**, Android build **24000**, and iOS build **16**. This update adds encrypted personal relay sync, device-list access controls and bulk conflict handling with mobile reminders. Android requires 8.0+. Passing checks does not imply app-store availability or production security acceptance. See [installation](docs/NATIVE-RELEASE-NOTES.md) and [relay setup](docs/PERSONAL-RELAY.md).
 
 </details>
 
@@ -179,3 +179,5 @@ Device documents on the Native Shell Mac client support importing UTF-8 scripts 
 [Application directory](apps/README.md) · [NSH Mac tools](tool/macos-nsh/README.md)
 
 [2.4.0 installation](config/release/INSTALL.md) · [Release notes](config/release/NOTES.md)
+
+The legacy SwiftUI Mac is source-only with manual build tooling; its standalone CI is disabled and current releases do not include a legacy Mac package.

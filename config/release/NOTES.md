@@ -20,8 +20,6 @@ production security acceptance or an independent security audit.
 ## Choose a download
 
 - **Current Mac:** `macos-arm64-development.zip`, macOS 14+ on Apple Silicon.
-- **Legacy Mac:** `macos-legacy-universal-development.zip`, macOS 13+ on Apple
-  Silicon or Intel. This is the previous SwiftUI implementation.
 - **Android:** choose the ARM64 or x86_64 APK for Android 8.0+.
 - **Browser / Web:** unpacked Chromium extension or standalone HTTPS/localhost app.
 - **iOS:** simulator archive and source only; no signed iPhone installation package.
@@ -36,7 +34,7 @@ Do not uninstall the only copy of a vault to resolve a signing mismatch.
 
 本次新增 NSH 0.4 原生 Mac 客户端及官方富文本编辑器，底部字数/保存提示固定；
 同时整理设备资料、AI 访问、恢复历史、中继同步及浏览器保存功能。旧 SwiftUI Mac
-保留并明确标为 Legacy，Intel 用户可选择旧版通用包。
+仅保留源码并明确标为 Legacy，本次不构建或发布旧版 Mac 包。
 
 这是开发预览软件的常规 GitHub Release，仍有独立安全审计、真实输入法、无障碍及
 部分设备场景待验收。新 Mac 包支持 macOS 14+ / Apple Silicon，未公证；升级前保留

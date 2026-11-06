@@ -28,11 +28,8 @@ def validate_versions(root, tag=None):
     lock = json.loads((root / 'apps/browser/package-lock.json').read_text())
     if any(value != version for value in (package['version'], lock['version'], lock['packages']['']['version'])):
         raise SystemExit('Browser package and lockfile must match the native release.')
-    mac = plistlib.loads((root / 'apps/macos-legacy/Info.plist').read_bytes())
-    if (mac['CFBundleShortVersionString'], mac['CFBundleVersion']) != (version, str(data['macos_build'])):
-        raise SystemExit('Mac version/build differs from the native release.')
     nsh = json.loads((root / 'apps/macos-nsh/nsh.json').read_text())
-    if (nsh['version'], nsh['build']) != (version, data['nsh_macos_build']):
+    if (nsh['version'], nsh['build']) != (version, data['macos_build']):
         raise SystemExit('NSH Mac version/build differs from the native release.')
     android = (root / 'apps/android/app/build.gradle.kts').read_text()
     if f'versionName = "{version}"' not in android or f'versionCode = {data["android_version_code"]}\n' not in android:
@@ -104,7 +101,6 @@ def package(root, inputs, tag):
         f'{prefix}-android-arm64-v8a.apk': inputs / 'android-arm64-v8a.apk',
         f'{prefix}-android-x86_64.apk': inputs / 'android-x86_64.apk',
         f'{prefix}-macos-arm64-development.zip': inputs / 'PasswordVault-macos-arm64.zip',
-        f'{prefix}-macos-legacy-universal-development.zip': inputs / 'PasswordVault-macos-universal.zip',
         f'{prefix}-ios-simulator.zip': inputs / 'PasswordVault-ios-simulator.zip',
         'INSTALL.md': root / 'config/release/INSTALL.md',
         'LICENSE': root / 'LICENSE',
@@ -115,7 +111,6 @@ def package(root, inputs, tag):
         if not path.is_file() or path.is_symlink() or path.stat().st_size == 0:
             raise SystemExit(f'Missing release input: {path.name}')
     verify_app_archive(inputs / 'PasswordVault-macos-arm64.zip', data['version'], nsh=True)
-    verify_app_archive(inputs / 'PasswordVault-macos-universal.zip', data['version'])
     verify_app_archive(inputs / 'PasswordVault-ios-simulator.zip', data['version'], simulator=True)
     browser = inputs / 'browser'
     manifest = json.loads((browser / 'manifest.json').read_text())

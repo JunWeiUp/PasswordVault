@@ -125,7 +125,6 @@ jobs:
       - name: Stage only the intended public artifacts
         run: |
           cp downloaded/native-signed-android/*.apk release-input/
-          cp downloaded/native-macos-developer-preview/*.zip release-input/
           cp downloaded/native-macos-nsh-developer-preview/*.zip release-input/
           cp downloaded/native-ios-simulator-preview/*.zip release-input/
       - name: Package source, install guide and checksums

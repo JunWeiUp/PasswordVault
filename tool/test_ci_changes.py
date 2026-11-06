@@ -1,6 +1,7 @@
 """Regression coverage for CI routing, including fail-safe and release paths."""
 import json
 import os
+import re
 from pathlib import Path
 import subprocess
 import tempfile
@@ -20,6 +21,12 @@ class CIChangesTests(unittest.TestCase):
         for platform in ['macos', 'browser', 'android', 'ios']:
             self.assertEqual(classify([f'apps/{platform}/src/example.code']), {platform})
 
+    def test_legacy_mac_has_no_standalone_job_but_shared_sources_remain_covered(self):
+        self.assertEqual(classify(['apps/macos-legacy/Sources/UserFeedback.swift']), set())
+        self.assertEqual(classify(['apps/macos-legacy/Sources/Models.swift']), {'ios'})
+        self.assertEqual(classify(['apps/macos-legacy/Resources/BrowserIdentity.json']), {'macos', 'browser'})
+        self.assertEqual(classify(['apps/macos-nsh/ui/Detail.tsx']), {'macos'})
+
     def test_core_and_toolchain_changes_cover_every_native_consumer(self):
         for path in ['crates/vault-core/src/model.rs', 'Cargo.lock', '.cargo/config.toml', 'rust-toolchain.toml']:
             self.assertEqual(classify([path]), NATIVE)
@@ -35,7 +42,7 @@ class CIChangesTests(unittest.TestCase):
     def test_services_have_a_dedicated_always_on_job(self):
         self.assertEqual(classify(['services/share/src/server.ts', 'services/sync-gateway/src/gateway.mjs']), set())
         workflow = Path(__file__).resolve().parent.parent / '.github/workflows/native.yml'
-        section = workflow.read_text().split('  capability-services:')[1]
+        section = re.split(r'(?m)^  [a-z][a-z0-9-]*:', workflow.read_text().split('  capability-services:', 1)[1])[0]
         self.assertNotIn('    if:', section)
         self.assertIn('npm --prefix services/share test', section)
         self.assertIn('npm --prefix services/sync-gateway test', section)

@@ -89,7 +89,7 @@
 | **独立 Web** | 独立加密资料库、增删改查、TOTP、备份/导入和工具 | 共享/WebDAV/QR 界面、完整主题/语言对齐及旧 OPFS 自动迁移尚未完成 |
 | **Windows / Linux 桌面** | 无原生桌面客户端 | 尚未实现 |
 
-本次统一版本为 **2.4.0**：NSH Mac build **15**、旧 Mac build **35**、浏览器 **2.4.0**、Android build **24000**、iOS build **16**。新增个人密码库加密中继同步、设备授权开关、批量冲突处理和手机提醒；Android 需 8.0+。检查通过不代表已上架应用商店或通过生产安全验收，详见[安装说明](docs/NATIVE-RELEASE-NOTES.md)及[中继配置](docs/PERSONAL-RELAY.md)。
+本次统一版本为 **2.4.0**：NSH Mac build **15**、浏览器 **2.4.0**、Android build **24000**、iOS build **16**。新增个人密码库加密中继同步、设备授权开关、批量冲突处理和手机提醒；Android 需 8.0+。检查通过不代表已上架应用商店或通过生产安全验收，详见[安装说明](docs/NATIVE-RELEASE-NOTES.md)及[中继配置](docs/PERSONAL-RELAY.md)。
 
 </details>
 
@@ -181,3 +181,5 @@ Native Shell Mac 客户端的设备资料支持导入 Python、Shell、JavaScrip
 [应用目录](apps/README.md) · [NSH Mac 工具](tool/macos-nsh/README.md)
 
 [2.4.0 安装说明](config/release/INSTALL.md) · [发行说明](config/release/NOTES.md)
+
+旧 SwiftUI Mac 仅保留源码与手动构建入口，已关闭独立 CI，本次不发布旧 Mac 包。

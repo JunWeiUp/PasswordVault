@@ -21,6 +21,9 @@ paths = ['(^|/)crates/vault-core/tests/fixtures/share-v1\.json$']
 
 [[allowlists]]
 description = "Vendored SDK provenance file checksums"
+condition = "AND"
+regexTarget = "match"
+regexes = ['[0-9a-f]{64}']
 paths = ['(^|/)vendor/common-relay/(java|swift)/SOURCE\.json$']
 
 [[allowlists]]

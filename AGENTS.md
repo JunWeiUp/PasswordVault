@@ -51,3 +51,5 @@ Run XCTest with `bash tool/test_macos_isolated.sh` (optional `-only-testing:…`
 ## Current and legacy Mac clients
 
 `apps/macos-nsh` is the current NSH Mac client; `apps/macos-legacy` is the retained legacy SwiftUI client. Shared web-editor source lives in `apps/shared/note-editor`; its generated `dist/` is ignored. Mac NSH platform tools live in `tool/macos-nsh/`; `tool/nsh_mac.sh` remains the stable CLI entry point. Preserve legacy paths and identifiers still used by mobile/release tooling.
+
+The owner has retired the standalone SwiftUI Mac CI and release artifact. Only NSH Mac ships in new releases; iOS checks still cover shared legacy Swift inputs.

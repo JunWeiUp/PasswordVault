@@ -28,8 +28,13 @@ def classify(paths):
             selected |= {'macos', 'ios', 'android', 'browser'}
         elif path.startswith('services/'):
             continue  # Native workflow always runs the dedicated Node service job.
-        elif path.startswith(('apps/macos-legacy/', 'apps/macos-nsh/')):
-            selected |= {'macos', 'ios'}
+        elif path.startswith('apps/macos-nsh/'):
+            selected |= {'macos'}
+        elif path.startswith('apps/macos-legacy/'):
+            if path.startswith('apps/macos-legacy/Resources/'):
+                selected |= {'macos', 'browser'}
+            elif path in {'apps/macos-legacy/Sources/Models.swift', 'apps/macos-legacy/Sources/WebDAVListing.swift', 'apps/macos-legacy/Tests/WebDAVListingTests.swift'}:
+                selected |= {'ios'}
         elif path.startswith('apps/'):
             component = path.split('/')[1]
             selected |= {component} if component in NATIVE else set(SCOPES)

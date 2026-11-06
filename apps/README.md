@@ -3,7 +3,7 @@
 | Directory | Role | Status |
 | --- | --- | --- |
 | `macos-nsh/` | Native Shell 0.4 / Rust / TSX Mac client | Current Mac development and local daily application; macOS 14+, Apple Silicon |
-| `macos-legacy/` | SwiftUI / WebKit Mac client | **Legacy Mac client**; retained for compatibility, rollback and existing release tooling |
+| `macos-legacy/` | SwiftUI / WebKit Mac client | **Legacy Mac client**; retained for source archive and manual rollback; no legacy CI/release artifact |
 | `ios/` | SwiftUI mobile client and AutoFill extension | Active mobile client |
 | `android/` | Kotlin/Compose mobile client | Active mobile client |
 | `browser/` | Chromium extension and standalone Web | Active browser client |

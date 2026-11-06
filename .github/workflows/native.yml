@@ -44,49 +44,8 @@ jobs:
           component: core
       - run: rustup toolchain install 1.96.0 --profile minimal --component rustfmt,clippy
       - run: bash tool/check_native.sh core
-  mac-and-browser:
-    needs: changes
-    if: needs.changes.outputs.macos == 'true'
-    runs-on: macos-15
-    timeout-minutes: 35
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-        with:
-          persist-credentials: false
-      - uses: ./.github/actions/ci-rust-cache
-        with:
-          component: macos
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
-        with:
-          node-version: '22'
-          cache: npm
-          cache-dependency-path: apps/shared/note-editor/package-lock.json
-      - name: Install pinned build tools
-        run: |
-          rustup toolchain install 1.96.0 --profile minimal --component rustfmt,clippy --target aarch64-apple-darwin,x86_64-apple-darwin
-          export RUSTUP_TOOLCHAIN=1.96.0
-          source tool/cargo_fork_env.sh
-          brew install xcodegen
-          node --version
-      - run: bash tool/check_native.sh macos
-      - name: Native state tests
-        run: |
-          xcodebuild -project apps/macos-legacy/PasswordVault.xcodeproj -scheme PasswordVault -configuration Debug -derivedDataPath apps/macos-legacy/build -destination 'platform=macOS,arch=arm64' ARCHS=arm64 test
-      - name: Package Mac preview
-        run: |
-          app=apps/macos-legacy/build/Build/Products/Release/PasswordVault.app
-          lipo "$app/Contents/MacOS/PasswordVault" -verify_arch arm64 x86_64
-          lipo "$app/Contents/MacOS/PasswordVaultBridge" -verify_arch arm64 x86_64
-          codesign --verify --deep --strict "$app"
-          ditto -c -k --sequesterRsrc --keepParent "$app" apps/macos-legacy/build/PasswordVault-macos-universal.zip
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: native-macos-developer-preview
-          path: apps/macos-legacy/build/PasswordVault-macos-universal.zip
-          if-no-files-found: error
-          retention-days: 14
-
   android-native:
+    name: Build Android development APK
     needs: changes
     if: needs.changes.outputs.android == 'true'
     runs-on: ubuntu-latest
@@ -218,6 +177,7 @@ jobs:
           retention-days: 14
 
   browser-native:
+    name: Build Web and Chromium extension
     needs: changes
     if: needs.changes.outputs.browser == 'true'
     runs-on: ubuntu-latest
@@ -275,3 +235,24 @@ jobs:
       - run: npm --prefix services/share test
       - run: npm --prefix services/sync-gateway ci
       - run: npm --prefix services/sync-gateway test
+
+  native-validation:
+    name: Analyze, test, and validate
+    if: always()
+    needs: [changes, native-core, macos-nsh, android-native, ios-native, browser-native, capability-services]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require successful applicable native checks
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          python3 - <<'PYCODE'
+          import json, os
+          results = json.loads(os.environ['RESULTS'])
+          failed = {name: job['result'] for name, job in results.items() if job['result'] not in ('success', 'skipped')}
+          if failed:
+              raise SystemExit(f'Native validation failed: {failed}')
+          if results['changes']['result'] != 'success':
+              raise SystemExit('Component selection did not succeed')
+          print('All applicable native checks passed')
+          PYCODE

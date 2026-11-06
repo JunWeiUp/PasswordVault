@@ -7,10 +7,10 @@ remaining security and hardware validation work, not audited production releases
 ## Mac
 
 The current NSH package is Apple Silicon / macOS 14+. Extract PasswordVault.app
-and place it in Applications. The legacy universal package is SwiftUI / macOS 13+
-and also supports Intel. Do not run both clients against one vault simultaneously.
+and place it in Applications. The legacy SwiftUI client is retained as source only in this release; no new Intel
+Mac package is published. Do not run both clients against one vault simultaneously.
 Keep a verified complete encrypted backup before switching implementations.
-Both use the existing PasswordVaultNative data directory in these public packages;
+The NSH package uses the existing PasswordVaultNative data directory;
 new formats may require restoration of the pre-upgrade backup to use an older app.
 
 Public packages are ad-hoc signed and not notarized. macOS or managed-device policy
