@@ -80,6 +80,11 @@ struct MobileSettingsView: View {
             "Locks immediately in the background. Data on disk stays encrypted while unlocked."))
       }
       Section(store.t("资料管理", "Your data")) {
+        NavigationLink(store.t("迁入 CSV / 1Password .1pux", "Import CSV / 1Password .1pux")) {
+          ImportReviewView(perform: { request in let result = try await store.perform(request); if request["op"]?.string == "import-commit" { try await store.refresh() }; return result }, t: store.t)
+        }
+        NavigationLink(store.t("安全中心", "Security center")) { MobileSecurityCenter() }
+        NavigationLink(store.t("应急恢复", "Emergency recovery")) { MobileRecoveryView() }
         NavigationLink(store.t("备份与导入", "Backups & import")) { MobileBackupView() }
         NavigationLink(store.t("中继同步", "Relay sync")) { ScrollView { RelaySettingsView(relay: store.relay, t: store.t).padding() } }
         NavigationLink("WebDAV") { MobileWebDAVView() }
@@ -275,4 +280,14 @@ struct MobileAuditView: View {
     }
   }
 
+}
+
+private struct MobileSecurityCenter: View {
+  @EnvironmentObject private var store: MobileVaultStore
+  @State private var selected: VaultItem?
+  var body: some View {
+    SecurityCenterView(items: store.items, perform: store.perform, t: store.t, openItem: { id in selected = store.items.first { $0.id == id } })
+      .navigationTitle(store.t("安全中心", "Security center"))
+      .sheet(item: $selected) { item in NavigationStack { MobileEntryDetail(id: item.id) } }
+  }
 }

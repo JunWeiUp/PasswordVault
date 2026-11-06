@@ -28,23 +28,38 @@ public final class InvitationLinks {
         byte[] packet=Arrays.copyOf(nonce,nonce.length+cipher.length);System.arraycopy(cipher,0,packet,nonce.length,cipher.length);return Base64.getEncoder().encodeToString(packet);
     }
     public static JSONObject open(String packet,byte[] key)throws Exception{
-        byte[] raw=Base64.getDecoder().decode(packet);if(key.length!=32||raw.length<40||raw.length>16384)throw new IOException("Invitation packet size");
+        byte[] raw=CanonicalBase64.decode(packet);if(key.length!=32||raw.length<40||raw.length>16384)throw new IOException("Invitation packet size");
         byte[] nonce=Arrays.copyOf(raw,24),cipher=Arrays.copyOfRange(raw,24,raw.length),plain=new byte[cipher.length-16];
         Crypto.check(Crypto.S.crypto_secretbox_open_easy(plain,cipher,cipher.length,nonce,key));
         JSONObject value=new JSONObject(new String(plain,StandardCharsets.UTF_8));
         if(value.getInt("version")!=1||!value.getString("purpose").equals(PURPOSE))throw new IOException("Invitation packet scope");return value.getJSONObject("invitation");
     }
-    public static String make(JSONObject invitation,byte[] key)throws Exception{
-        URI u=new URI(invitation.getString("url"));return "common-relay://"+u.getRawAuthority()+"/i/"+base64url(Crypto.unhex(invitation.getString("id")))+"#"+base64url(key);
+    public static String make(JSONObject invitation,byte[] key)throws Exception{return make(invitation,key,null);}
+    /** @param password optional server access password, appended to the fragment (never sent over HTTP) as ".base64url(ASCII)". */
+    public static String make(JSONObject invitation,byte[] key,String password)throws Exception{
+        URI u=new URI(invitation.getString("url"));String suffix=password==null?"":"."+base64url(RelayAccess.validate(password).getBytes(StandardCharsets.US_ASCII));
+        return "common-relay://"+u.getRawAuthority()+"/i/"+base64url(Crypto.unhex(invitation.getString("id")))+"#"+base64url(key)+suffix;
     }
     public static final class Parsed {
         public final String url,id;public final byte[] key;
-        Parsed(String url,String id,byte[] key){this.url=url;this.id=id;this.key=key;}
+        /** Server access password carried by the link, or null. */
+        public final String password;
+        Parsed(String url,String id,byte[] key,String password){this.url=url;this.id=id;this.key=key;this.password=password;}
+    }
+    private static String fragmentPassword(String s)throws Exception{
+        if(!s.matches("[A-Za-z0-9_-]+"))throw new IOException("Invalid compact invitation");
+        byte[] raw;try{raw=Base64.getUrlDecoder().decode(s);}catch(IllegalArgumentException e){throw new IOException("Invalid compact invitation");}
+        if(!base64url(raw).equals(s))throw new IOException("Invalid compact invitation");
+        for(byte b:raw)if(b<0)throw new IOException("Invalid compact invitation");
+        try{return RelayAccess.validate(new String(raw,StandardCharsets.US_ASCII));}catch(IllegalArgumentException e){throw new IOException("Invalid compact invitation");}
     }
     public static Parsed parse(String text,boolean allowLocalTest)throws Exception{
         if(text.length()>2048)throw new IOException("Invitation too long");URI u=new URI(text);
         if(!"common-relay".equals(u.getScheme())||u.getHost()==null||u.getRawUserInfo()!=null||u.getRawQuery()!=null||!u.getRawPath().matches("/i/[A-Za-z0-9_-]{22}"))throw new IOException("Invalid compact invitation");
         String scheme=allowLocalTest&&u.getHost().equals("127.0.0.1")?"ws":"wss";
-        return new Parsed(scheme+"://"+u.getRawAuthority()+"/relay/v1/ws",Crypto.hex(decode(u.getRawPath().substring(3),16)),decode(u.getRawFragment(),32));
+        String fragment=u.getRawFragment();if(fragment==null)throw new IOException("Invalid compact invitation");
+        int dot=fragment.indexOf('.');String key=dot<0?fragment:fragment.substring(0,dot);
+        String password=dot<0?null:fragmentPassword(fragment.substring(dot+1));
+        return new Parsed(scheme+"://"+u.getRawAuthority()+"/relay/v1/ws",Crypto.hex(decode(u.getRawPath().substring(3),16)),decode(key,32),password);
     }
 }

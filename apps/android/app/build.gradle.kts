@@ -7,7 +7,7 @@ plugins {
 }
 
 // Release credentials are generated only in the protected CI environment.
-val releasePropertiesFile = rootProject.file("../../android/key.properties")
+val releasePropertiesFile = rootProject.file("../../private/signing/android/key.properties")
 val releaseProperties = Properties().apply {
     if (releasePropertiesFile.isFile) releasePropertiesFile.inputStream().use { load(it) }
 }
@@ -22,8 +22,8 @@ android {
         applicationId = "com.securepass.vault"
         minSdk = 26
         targetSdk = 36
-        versionCode = 23007
-        versionName = "2.3.2"
+        versionCode = 24000
+        versionName = "2.4.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         testProguardFile("test-proguard-rules.pro")
         ndk {
@@ -34,7 +34,7 @@ android {
     }
     signingConfigs {
         if (hasReleaseSigning) create("publicRelease") {
-            storeFile = file(releaseProperties.getProperty("storeFile"))
+            storeFile = releasePropertiesFile.parentFile.resolve(releaseProperties.getProperty("storeFile"))
             storePassword = releaseProperties.getProperty("storePassword")
             keyAlias = releaseProperties.getProperty("keyAlias")
             keyPassword = releaseProperties.getProperty("keyPassword")
@@ -57,6 +57,18 @@ android {
             matchingFallbacks += "release"
             if (hasReleaseSigning) signingConfig = signingConfigs.getByName("publicRelease")
         }
+        create("relayQa") {
+            initWith(getByName("debug"))
+            applicationIdSuffix = ".relayqa"
+            versionNameSuffix = "-relay-qa"
+            matchingFallbacks += "debug"
+        }
+        create("passkeyQa") {
+            initWith(getByName("debug"))
+            applicationIdSuffix = ".passkeyqa"
+            versionNameSuffix = "-passkey-qa"
+            matchingFallbacks += "debug"
+        }
         create("compact") {
             initWith(getByName("debug"))
             isMinifyEnabled = true
@@ -66,8 +78,10 @@ android {
             matchingFallbacks += "debug"
         }
     }
+    testOptions.unitTests.all { it.systemProperty("jna.library.path", System.getenv("SODIUM_LIBRARY_PATH") ?: "") }
     testBuildType = providers.gradleProperty("testBuildType").orElse("debug").get()
     sourceSets["main"].java.srcDir("src/main/generated")
+    sourceSets["main"].assets.srcDir(layout.buildDirectory.dir("generated/note-editor-assets"))
     compileOptions {
         isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = JavaVersion.VERSION_17
@@ -85,6 +99,7 @@ android {
 }
 
 dependencies {
+    implementation("androidx.credentials:credentials:1.5.0")
     implementation(project(":common-relay"))
     implementation("androidx.camera:camera-camera2:1.4.2")
     implementation("androidx.camera:camera-lifecycle:1.4.2")
@@ -102,6 +117,9 @@ dependencies {
     implementation("androidx.fragment:fragment-ktx:1.8.9")
     implementation("androidx.biometric:biometric:1.1.0")
     implementation("net.java.dev.jna:jna:5.17.0@aar")
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("org.json:json:20240303")
+    testImplementation("net.java.dev.jna:jna:5.17.0")
     androidTestImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
     androidTestImplementation("com.squareup.okhttp3:okhttp-tls:4.12.0")
     androidTestImplementation("androidx.test.ext:junit:1.3.0")
@@ -113,5 +131,19 @@ dependencies {
 tasks.configureEach {
     if (name == "prePreviewReleaseBuild") doFirst {
         check(hasReleaseSigning) { "Public native release requires protected signing configuration." }
+    }
+}
+
+// Reuse only the local editor bundle and its licenses; other Mac resources have Android equivalents.
+val bundleMobileNoteEditor by tasks.registering(Sync::class) {
+    from("../../shared/note-editor/dist") { include("NoteEditor.html", "NoteEditor-LICENSES.txt") }
+    into(layout.buildDirectory.dir("generated/note-editor-assets"))
+}
+tasks.named("preBuild") {
+    dependsOn(bundleMobileNoteEditor)
+    doFirst {
+        check(file("../../shared/note-editor/dist/NoteEditor.html").isFile && file("../../shared/note-editor/dist/NoteEditor-LICENSES.txt").isFile) {
+            "Missing local editor bundle; run bash tool/build_mobile_core.sh android before building."
+        }
     }
 }

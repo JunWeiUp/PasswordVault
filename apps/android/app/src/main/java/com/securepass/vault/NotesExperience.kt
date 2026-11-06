@@ -33,7 +33,13 @@ internal fun NoteReader(
     delete: () -> Unit,
     restore: () -> Unit,
 ) {
+    var richView by remember(item.optString("id")) { mutableStateOf(false) }
+    if (richView) RichNoteEditor(item, vault, t) { richView = false }
     var info by remember { mutableStateOf(false) }
+    var history by remember(item.optString("id")) { mutableStateOf(false) }
+    var share by remember(item.optString("id")) { mutableStateOf(false) }
+    if (share) ShareDialog(vault, item.getString("id"), t) { share = false }
+    if (history) HistoryDialog(vault, item.getString("id"), t) { history = false }
     Column(
         Modifier.fillMaxSize()
             .verticalScroll(rememberScrollState())
@@ -58,13 +64,16 @@ internal fun NoteReader(
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        if (item.optString("note").isNotEmpty()) MarkdownNote(item.optString("note"))
+        if (item.optString("noteFormat") == "rich-v1") Button(onClick = { richView = true }) { Text(t("打开图文笔记", "Open rich note")) }
+        else if (item.optString("note").isNotEmpty()) MarkdownNote(item.optString("note"))
         Spacer(Modifier.height(20.dp))
         TextButton(onClick = { info = true }) {
             Icon(Icons.Outlined.Info, null, Modifier.size(18.dp))
             Spacer(Modifier.width(8.dp))
             Text(t("笔记信息", "Note information"))
         }
+        TextButton(onClick = { history = true }) { Text(t("版本历史", "Version history")) }
+        TextButton(enabled = !item.optBoolean("isDeleted"), onClick = { share = true }) { Text(t("临时分享", "Temporary share")) }
         if (item.optBoolean("isDeleted") && vault.canEdit(item))
             Button(onClick = restore) { Text(t("恢复", "Restore")) }
         TextButton(
@@ -91,8 +100,7 @@ internal fun NoteReader(
                             entryTags(item).joinToString(" · ").ifEmpty { t("无", "None") }
                     )
                     Text(t("修改时间：", "Updated: ") + noteDate(item))
-                    if (item.optString("noteFormat") == "rich-v1") Text(t("此图文笔记仅显示文字摘要。请在 Mac 编辑和备份。", "Text summary only. Edit and back up this rich note on Mac."))
-                    else if (!vault.canEdit(item)) Text(t("此共享笔记为只读", "This shared note is read only"))
+                    if (!vault.canEdit(item)) Text(t("此共享笔记为只读", "This shared note is read only"))
                 }
             },
             confirmButton = { TextButton(onClick = { info = false }) { Text(t("完成", "Done")) } },

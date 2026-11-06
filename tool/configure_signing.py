@@ -44,7 +44,8 @@ def main():
     if not data:
         raise SystemExit('Empty keystore.')
     props = {'storeFile': str(path.resolve()), 'storePassword': os.environ['ANDROID_STORE_PASSWORD'], 'keyAlias': os.environ['ANDROID_KEY_ALIAS'], 'keyPassword': os.environ['ANDROID_KEY_PASSWORD']}
-    target = Path(__file__).resolve().parent.parent / 'android/key.properties'
+    target = Path(__file__).resolve().parent.parent / 'private/signing/android/key.properties'
+    target.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     write_signing_files(path, target, data, ''.join(f'{key}={escape_property(value)}\n' for key, value in props.items()))
     print('Ephemeral signing configuration created.')
 

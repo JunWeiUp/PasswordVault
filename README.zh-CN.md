@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/design/readme/hero-zh-CN.png" alt="PasswordVault — 笔记、密码，都有自己的位置。暖白背景上的深蓝资料库、笔记本与账号卡片插画。" width="1000">
+  <a href="docs/design/index.html#reference">查看统一设计稿</a>
 </p>
 
 <div align="center">
@@ -14,7 +14,9 @@
 
 原生客户端目前为**开发预览版**。[平台状态](#选择你的工作空间)与[安全模型](docs/SECURITY_MODEL.md)记录当前限制，独立安全审查仍待完成。
 
-**下载原生版 2.3.2：** [GitHub Release](https://github.com/JunWeiUp/PasswordVault/releases/tag/v2.3.2) · [安装方式与签名限制](docs/NATIVE-RELEASE-NOTES.md)。包含 Android、Mac 开发版、解压式插件、Web、iOS 模拟器包及源码。
+**下载原生版 2.4.0：** [GitHub Release](https://github.com/JunWeiUp/PasswordVault/releases/tag/v2.4.0) · [安装方式与签名限制](docs/NATIVE-RELEASE-NOTES.md)。包含 Android、Mac 开发版、解压式插件、Web、iOS 模拟器包及源码。
+
+**Mac 客户端说明：** 当前开发与本机日常版本位于 [`apps/macos-nsh`](apps/macos-nsh/README.md)（NSH 0.4.0，macOS 14+ / Apple Silicon）。[`apps/macos-legacy`](apps/macos-legacy/README.md) 是保留的旧版 SwiftUI Mac 客户端；下文涉及 macOS 13+/Intel 与旧协调发布的说明属于该旧版。
 
 ## 少一点翻找，多一点从容
 
@@ -32,14 +34,14 @@
 
 *下图为上一版 Markdown 工作区；2.3.0 增加上述图文编辑工具栏。*
 
-![上一版 Mac 笔记工作区：虚构笔记](docs/design/macos-native/current-notes.png)
+[上一版 Mac 笔记工作区：虚构笔记](docs/design/index.html#reference)
 
 <details>
 <summary><strong>展开账号详情</strong> — 密码、附加账号与关联验证码</summary>
 
 直接编辑资料，分别查看或复制密码，生成新密码并保留历史。多个网站、附加账号与关联验证码，都能收在同一条记录中。
 
-![PasswordVault Mac 账号详情：虚构资料与分组操作](docs/design/macos-native/current-password.png)
+[PasswordVault Mac 账号详情：虚构资料与分组操作](docs/design/index.html#reference)
 
 </details>
 
@@ -48,9 +50,9 @@
 原生移动预览版将笔记、账号、验证码与钱包带到手机。笔记采用适合阅读的独立布局，各页面保留一致的常用操作。
 
 <p align="center">
-  <img src="docs/design/android-native/notes.png" alt="Android 笔记网格：虚构笔记与统一的蓝色新建按钮" width="260">
+  <a href="docs/design/index.html#android">查看统一设计稿</a>
   &nbsp;&nbsp;
-  <img src="docs/design/android-native/account-editor.png" alt="Android 账号编辑器：虚构账号资料" width="260">
+  <a href="docs/design/index.html#android">查看统一设计稿</a>
 </p>
 
 <p align="center"><sub>Mac 与 Android 预览版的实际界面，展示内容均为虚构资料。</sub></p>
@@ -67,7 +69,8 @@
 
 | 平台 | 当前可用形式 | 使用入口 |
 | --- | --- | --- |
-| **Mac · macOS 13+** | 原生桌面预览版，笔记编辑与浏览器连接 | [Mac 配置](docs/NATIVE-MIGRATION.md#build-and-launch) |
+| **Mac · 当前 NSH** | macOS 14+ / Apple Silicon，官方原生富文本编辑器 | [当前 Mac](apps/macos-nsh/README.md) |
+| **Mac · 旧版 SwiftUI** | macOS 13+ / Apple Silicon 与 Intel，兼容与回退保留 | [旧 Mac 说明](apps/macos-legacy/README.md) |
 | **Android · 8.0+** | 原生移动预览版；Android 8+ 支持系统自动填充 | [Android 指南](apps/android/README.md) |
 | **iPhone / iPad · iOS 16+** | 原生模拟器预览；签名设备分发待完成 | [iOS 指南](apps/ios/README.md) |
 | **Chromium 浏览器** | 解压安装插件，连接 Mac 或创建独立资料库 | [插件配置](#快速开始) |
@@ -79,20 +82,20 @@
 
 | 客户端 | 当前能力 | 验证与交付状态 |
 | --- | --- | --- |
-| **macOS 13+** | SwiftUI 桌面应用，Apple Silicon/Intel 通用构建，本地 Tiptap 图文编辑器 | 开发版本。检查包含完整窗口连续回车与焦点、格式编辑、加密图片和备份失败路径。实体输入法覆盖、macOS 13/Intel 硬件、发行签名和公证仍待完成 |
+| **旧 Mac · SwiftUI** | SwiftUI 桌面应用，Apple Silicon/Intel 通用构建，本地 Tiptap 图文编辑器 | 开发版本。检查包含完整窗口连续回车与焦点、格式编辑、加密图片和备份失败路径。实体输入法覆盖、macOS 13/Intel 硬件、发行签名和公证仍待完成 |
 | **Android 8.0+** | Kotlin/Compose 预览；账号/验证码/钱包对齐旧版操作，笔记采用独立设计 | 已有模拟器 UI 和限定实机非 UI 检查；相机/指纹、旧设备与原生产签名升级仍待验收。系统自动填充需要 Android 8+ |
 | **iOS 16+ / iPadOS 16+** | SwiftUI 应用与 Password AutoFill 扩展 | 模拟器流程及设备架构编译通过；合格团队配置、签名设备安装和硬件验收仍未完成 |
 | **Chromium 扩展** | 轻量 MV3，Mac 连接和独立资料库，明确选择后填充/保存 | 已有限定 Edge/ego lite、DOM 和签名 helper 检查；更广的 Google Chrome/网站覆盖待完成，采用解压安装 |
 | **独立 Web** | 独立加密资料库、增删改查、TOTP、备份/导入和工具 | 共享/WebDAV/QR 界面、完整主题/语言对齐及旧 OPFS 自动迁移尚未完成 |
 | **Windows / Linux 桌面** | 无原生桌面客户端 | 尚未实现 |
 
-本次统一版本为 **2.3.2**：Mac build **32**、浏览器 **2.3.2**、Android build **23007**、iOS build **14**。新增个人密码库加密中继同步、设备授权开关、批量冲突处理和手机提醒；Android 需 8.0+。检查通过不代表已上架应用商店或通过生产安全验收，详见[安装说明](docs/NATIVE-RELEASE-NOTES.md)及[中继配置](docs/PERSONAL-RELAY.md)。
+本次统一版本为 **2.4.0**：NSH Mac build **15**、旧 Mac build **35**、浏览器 **2.4.0**、Android build **24000**、iOS build **16**。新增个人密码库加密中继同步、设备授权开关、批量冲突处理和手机提醒；Android 需 8.0+。检查通过不代表已上架应用商店或通过生产安全验收，详见[安装说明](docs/NATIVE-RELEASE-NOTES.md)及[中继配置](docs/PERSONAL-RELAY.md)。
 
 </details>
 
 ## 快速开始
 
-### Mac 与浏览器
+### 旧版 SwiftUI Mac 与浏览器
 
 先按[原生安装说明](docs/NATIVE-MIGRATION.md#build-and-launch)准备固定版本的 Rust、Node.js、Xcode 和 XcodeGen，再从仓库根目录运行：
 
@@ -104,7 +107,9 @@ bash tool/check_native.sh macos
 bash tool/check_native.sh browser
 ```
 
-Mac 应用生成于 `apps/macos/build/Build/Products/Release/PasswordVault.app`，解压扩展位于 `apps/browser/dist`。Mac 构建会将编辑器及依赖许可一同本地打包。评估时请使用原生指南中的**隔离虚构资料库**流程。
+`apps/macos-nsh` 中的 Mac 客户端已使用 NSH 0.4.0 和官方原生 `RichEditor`。项目 Rust 构建脚本要求使用 [huacnlee/cargo](https://huacnlee.github.io/cargo/)，并保留固定的 rustc 工具链。详见 [Mac 构建说明](apps/macos-nsh/README.md)。
+
+Mac 应用生成于 `apps/macos-legacy/build/Build/Products/Release/PasswordVault.app`，解压扩展位于 `apps/browser/dist`。Mac 构建会将编辑器及依赖许可一同本地打包。评估时请使用原生指南中的**隔离虚构资料库**流程。
 
 1. 在 `chrome://extensions` 或 `edge://extensions` 开启开发者模式，加载 `apps/browser/dist`。
 2. 使用 Mac 模式时，先在 **Mac 设置 → 浏览器**登记连接，再在插件选择**连接 Mac**，并在 Mac 中确认配对。
@@ -129,7 +134,7 @@ Mac 应用生成于 `apps/macos/build/Build/Products/Release/PasswordVault.app`�
 
 已实现功能、自动化检查和人工验收分开记录。剩余工作包括完整进程/GPU 内存对比、独立 Web 对齐、不支持的桌面 SQLite/Web OPFS 与旧共享迁移、更广的硬件/无障碍/服务器检查、生产签名和独立安全审查。插件体积更小，不等于总进程内存已经完成对比。
 
-详见[当前计划](TODO.md)、[安全限制](docs/SECURITY_MODEL.md)及[隐私说明](PRIVACY.md)。漏洞按 [SECURITY.md](SECURITY.md)报告，不要附上真实凭据或资料库导出文件。
+详见[当前计划](docs/TODO.md)、[安全限制](docs/SECURITY_MODEL.md)及[隐私说明](docs/PRIVACY.md)。漏洞按 [SECURITY.md](docs/SECURITY.md)报告，不要附上真实凭据或资料库导出文件。
 
 </details>
 
@@ -137,26 +142,42 @@ Mac 应用生成于 `apps/macos/build/Build/Products/Release/PasswordVault.app`�
 
 普通 PR 只运行受影响平台的任务，详见 [CI 范围、缓存与完整运行说明](docs/CI.md)。
 
-使用[开发检查](docs/DEVELOPMENT.md)、[产物登记](docs/REGISTRY.md)及[发布流程](docs/DEPLOYMENT.md)。原生工作流位于 [.github/workflows/native.yml](.github/workflows/native.yml)，报告 CI 状态时以实际 PR 运行结果为准。贡献使用虚构测试数据，并遵循 [CONTRIBUTING.md](CONTRIBUTING.md)与 [AGENTS.md](AGENTS.md)。
+使用[开发检查](docs/DEVELOPMENT.md)、[产物登记](docs/REGISTRY.md)及[发布流程](docs/DEPLOYMENT.md)。原生工作流位于 [.github/workflows/native.yml](.github/workflows/native.yml)，报告 CI 状态时以实际 PR 运行结果为准。贡献使用虚构测试数据，并遵循 [CONTRIBUTING.md](docs/CONTRIBUTING.md)与 [AGENTS.md](AGENTS.md)。
 
 | 主题 | 文档 |
 | --- | --- |
-| 产品与界面 | [项目规格](docs/PROJECT-SPEC.md) · [设计](DESIGN.md) · [页面结构](docs/PAGE-STRUCTURE.md) |
+| 产品与界面 | [项目规格](docs/PROJECT-SPEC.md) · [设计](docs/DESIGN.md) · [页面结构](docs/PAGE-STRUCTURE.md) |
 | 实现 | [架构](docs/ARCHITECTURE.md) · [组件规范](docs/COMPONENT-GUIDELINES.md) |
+| 能力补齐 | [应急恢复、完整历史与后续开发进度](docs/CAPABILITY-EXPANSION.md) |
+| 结构化资料与安全中心 | [条目、导入与能力目录](docs/STRUCTURED-IMPORT-SECURITY.md) |
+| 通行密钥与填充 | [Provider 信任边界与验证](docs/PASSKEYS.md) |
+| 对等资料库 | [因果同步与家庭库权限](docs/PEER-LIBRARIES.md) |
+| 设备与服务 | [格式 7、兼容性、加密附件与同步门禁](docs/DEVICE-ITEMS.md) |
+| 临时分享 | [自托管加密分享服务](services/share/README.md) |
 | 平台证据 | [原生迁移](docs/NATIVE-MIGRATION.md) · [Mac 字段对齐](docs/MAC-MOBILE-PARITY.md) · [移动端验收](docs/MOBILE-IMPLEMENTATION.md) · [安卓对齐](docs/ANDROID-LEGACY-PARITY.md) · [浏览器验收](docs/BROWSER-ACCEPTANCE.md) |
-| 进度 | [TODO](TODO.md) · [更新记录](CHANGELOG.md) |
+| 进度 | [TODO](docs/TODO.md) · [更新记录](docs/CHANGELOG.md) |
 
 <details>
 <summary>寻找旧版 Flutter 客户端？</summary>
 
-保留的 `lib/`、`android/`、`ios/`、`web/`、`chrome/` 客户端具有独立的存储与安全问题，等待对应替代及迁移路径验收后再移除。[旧 Flutter 预览下载](https://github.com/JunWeiUp/PasswordVault/releases/tag/v1.1.0-preview.4)、[历史 widget 图库](docs/images/README.md)及[安装指南](docs/GETTING_STARTED.md)描述该客户端，不对应上面的原生截图。其工具链仍固定在 [.flutter-version](.flutter-version)。
+已按项目所有者要求移除旧 Flutter 客户端及其构建、测试和发布工具；历史源码仍可从 Git 找回。原生客户端保留旧数据导入与兼容性测试。删除源码不代表迁移、实机或安全验收完成；当前开发请使用[原生配置指南](docs/NATIVE-MIGRATION.md)。
 
 </details>
 
 ## 许可证
 
-[MIT](LICENSE)。打包依赖保留各自许可证，详见[第三方声明](THIRD_PARTY_NOTICES.md)。
+[MIT](LICENSE)。打包依赖保留各自许可证，详见[第三方声明](docs/THIRD_PARTY_NOTICES.md)。
 
 ## 个人库中继同步
 
 Mac 作为主库，通过统一中继与 Android 8+、iOS 双向同步；浏览器插件沿用本机桥接。支持创建设备组、默认扫码自动加入、可选配对码审批及成员管理；在 Mac“我的设备”中开启对应设备的“查看并同步修改”即可授权密码库同步。配置、配对、冲突与恢复见[中继同步说明](docs/PERSONAL-RELAY.md)，实际验证范围见[验证记录](docs/PERSONAL-RELAY-VALIDATION.md)。当前验证范围与限制见上述记录。
+
+## 目录说明
+
+客户端源码放在 `apps/`，Rust 核心在 `crates/`，项目说明统一放在 `docs/`。公开签名配置在 `config/signing`，本机密钥与需要保留的备份在已忽略的 `private/`。Cargo、工具链和版本清单保留在根目录；`native-test-output/dist` 保留供已经加载的浏览器扩展使用。
+
+Native Shell Mac 客户端的设备资料支持导入 Python、Shell、JavaScript、配置等 UTF-8 文本，完整显示文件名，打开查看、编辑并复制全文；内容加密保存，导入时不执行脚本；点击运行直接交给首选终端（默认系统 Terminal）；选择会记住，输出、交互及停止由终端处理。回收站中的设备不再阻止重新导入。
+
+[应用目录](apps/README.md) · [NSH Mac 工具](tool/macos-nsh/README.md)
+
+[2.4.0 安装说明](config/release/INSTALL.md) · [发行说明](config/release/NOTES.md)

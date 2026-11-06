@@ -128,7 +128,10 @@ globalThis.chrome = {
   },
 };
 await import("../dist/background.js");
-test.beforeEach(() => { delete session.nativeReadsLocked; });
+test.beforeEach(async () => {
+  delete session.nativeReadsLocked;
+  await send({action:"configure-auto-lock",enabled:true,minutes:60});
+});
 const send = (request, sender = ui) =>
   new Promise((resolve) => listener(request, sender, resolve));
 test("worker rejects page senders and unknown extension pages", async () => {
@@ -252,6 +255,55 @@ const submitted = {
   username: "fixture@example.com",
   password: "synthetic-only",
 };
+test("banner save uses captured credentials once, never opens UI, and permits explicit editing afterward", async () => {
+  stored.mode = "native"; nativeFailure = undefined; operationFailure = undefined;
+  nativeStatus = {ok:true,unlocked:true,paired:true,syncReady:true};
+  tabURL = page.url; duplicate = false; permissionGranted = true;
+  const source = {...page,documentId:"direct-save-document"};
+  const notice = (await send(submitted, source)).data.notice;
+  const beforeTabs = createdTabs.length;
+  const beforeSaves = nativeCalls.filter(call=>call.op === "sync-save").length;
+  assert.equal((await send({action:"login-save",id:"wrong"},source)).error,"expired");
+  assert.equal((await send({action:"login-save",id:notice.id},{...source,frameId:1})).error,"forbidden");
+  const result = await send({action:"login-save",id:notice.id,username:"injected",password:"injected"},source);
+  assert.equal(result.ok,true);
+  assert.equal(result.data.queued,false);
+  assert.equal(createdTabs.length,beforeTabs);
+  const writes = nativeCalls.filter(call=>call.op === "sync-save");
+  assert.equal(writes.length,beforeSaves+1);
+  assert.equal(writes.at(-1).username,submitted.username);
+  assert.equal(writes.at(-1).password,submitted.password);
+  assert.equal((await send({action:"login-save",id:notice.id},source)).error,"expired");
+  assert.equal((await send({action:"login-open",saved:true,id:notice.id},{...source,documentId:"different"})).error,"expired");
+  assert.equal((await send({action:"login-open",saved:true,id:notice.id},source)).ok,true);
+  assert.equal(createdTabs.length,beforeTabs+1);
+  await send({action:"login-dismiss"},source);
+  nativeStatus = {ok:true,unlocked:true,paired:true};
+});
+
+test("direct save rejects cancellation and navigation while validation is pending", async () => {
+  stored.mode="native";nativeFailure=undefined;operationFailure=undefined;duplicate=false;tabURL=page.url;
+  const source={...page,documentId:"cancel-direct-save"};
+  for (const cancellation of ["dismiss", "navigate", "lock"]) {
+    delete session.nativeReadsLocked;
+    const notice=(await send(submitted,source)).data.notice;
+    let release, entered;
+    const paused=new Promise(resolve=>entered=resolve);
+    const resume=new Promise(resolve=>release=resolve);
+    getTabHook=async()=>{getTabHook=undefined;entered();await resume;};
+    const before=nativeCalls.filter(call=>["save","sync-save"].includes(call.op)).length;
+    const saving=send({action:"login-save",id:notice.id},source);
+    await paused;
+    if(cancellation==="dismiss")await send({action:"login-dismiss"},source);
+    if(cancellation==="navigate"){tabURL="https://other.test/";tabUpdated(7,{url:tabURL});}
+    if(cancellation==="lock")idleChanged("locked");
+    release();
+    assert.equal((await saving).ok,false,cancellation);
+    assert.equal(nativeCalls.filter(call=>["save","sync-save"].includes(call.op)).length,before);
+    tabURL=page.url;
+  }
+  delete session.nativeReadsLocked;
+});
 test("login detection is enabled by default and enforces frame identity and browser-owned origin", async () => {
   assert.equal((await send(submitted, page)).data.pending, true);
   await send({ action: "login-dismiss" }, page);
@@ -756,4 +808,86 @@ test("new scopes require explicit flags and reauthentication clears the browser 
   assert.equal(JSON.stringify(stored).includes("Synthetic new scope"),false);
   assert.equal((await send({action:"disable-auto-unlock"})).ok,true);
   assert.equal(nativeCalls.at(-1).op,"disable-auto-unlock");
+});
+
+test("username-step delivery does not send a password to the page", async () => {
+  tabURL = "https://example.com/login";
+  accountCount = 1;
+  const source = { id: extension, tab: {id:7}, frameId:0, documentId:"username-step", url:tabURL };
+  const offer = (await send({action:"inline-accounts"},source)).data;
+  const result = await send({action:"inline-fill",token:offer.token,id:"fixture",deliveryToken:"username-input",field:"username"},source);
+  assert.equal(result.ok,true);
+  const delivery = pageCalls.filter(c=>c[1].action==="inline-deliver").at(-1)[1];
+  assert.equal(delivery["pass"+"word"],"");
+  assert.equal(typeof delivery.username,"string");
+});
+
+test("Passkey request binds browser origin and top document before reaching native confirmation", async () => {
+  tabURL="https://example.com/login";
+  const source={id:extension,tab:{id:7},frameId:0,documentId:"passkey-doc",url:tabURL};
+  const request={action:"passkey-request",operation:"get",options:{challenge:Buffer.alloc(32,7).toString("base64url"),rpId:"example.com",userVerification:"required"}};
+  assert.equal((await send(request,{...source,frameId:1})).error,"forbidden");
+  assert.equal((await send({...request,options:{...request.options,rpId:"com"}},source)).error,"unsupported-rp");
+  const before=nativeCalls.length;
+  assert.equal((await send(request,{...source,url:"https://evil.com/login"})).error,"changed-origin");
+  assert.equal(nativeCalls.length,before);
+  const result=await send(request,source);
+  assert.equal(result.ok,true);
+  const call=nativeCalls.filter(c=>c.op==="passkey-assert").at(-1);
+  assert.equal(call.origin,"https://example.com");
+  assert.equal(JSON.parse(call.clientDataJSON).origin,"https://example.com");
+  assert.equal(call.currentPassword,undefined);
+  assert.equal(call.verified,undefined);
+});
+
+test("multi-step usernames stay same-origin and do not bypass credential validation",async()=>{
+ tabURL="https://example.com/login";
+ const source={id:extension,tab:{id:7},frameId:0,documentId:"username-document",url:tabURL};
+ assert.equal((await send({action:"inline-remember-username",username:"multi@example.test"},source)).ok,true);
+ const login=await send({action:"login-submitted",multiStep:true,username:"",["pass"+"word"]:"Fictional multi-step secret"},source);
+ assert.equal(login.ok,true);
+ assert.equal((await send({action:"matches",tabId:7},ui)).data.pending.username,"multi@example.test");
+ const other={...source,url:"https://other.example/login"};tabURL=other.url;
+ assert.equal((await send({action:"login-submitted",multiStep:true,username:"",["pass"+"word"]:"Fictional multi-step secret"},other)).ok,false);
+ tabURL="https://example.com/login";
+ await send({action:"login-dismiss"},source);
+});
+
+
+test("optional auto-lock persists durations and disabled idle/lock-screen events preserve access", async () => {
+  await send({action:"configure-auto-lock",enabled:false,minutes:60});
+  idleChanged("idle"); idleChanged("locked");
+  assert.equal(session.nativeReadsLocked, undefined);
+  assert.equal((await send({action:"status"})).data.autoLockEnabled, false);
+  assert.equal(stored.browserAutoLockEnabled, false);
+  assert.equal((await send({action:"configure-auto-lock",enabled:true,minutes:120})).ok, true);
+  assert.equal(idleInterval, 7200);
+  assert.equal(stored.browserAutoLockMinutes, 120);
+  idleChanged("idle");
+  assert.equal(session.nativeReadsLocked, true);
+  await send({action:"configure-auto-lock",enabled:false,minutes:60});
+  assert.equal(session.nativeReadsLocked, true, "disabling must not unlock a locked session");
+  delete session.nativeReadsLocked;
+  await send({action:"lock"});
+  assert.equal(session.nativeReadsLocked, true, "manual lock remains effective");
+  assert.equal((await send({action:"configure-auto-lock",enabled:true,minutes:1})).error,"invalid");
+  assert.equal((await send({action:"configure-auto-lock",enabled:true,minutes:60}, {id:extension,url:"https://example.com"})).error,"forbidden");
+});
+
+test("auto-lock defaults off and worker restart restores the chosen policy without clearing manual lock", async () => {
+  delete stored.browserAutoLockEnabled;
+  delete stored.browserAutoLockMinutes;
+  await import("../dist/background.js?auto-lock-default");
+  let state = (await send({action:"status"})).data;
+  assert.equal(state.autoLockEnabled, false);
+  idleChanged("idle"); idleChanged("locked");
+  assert.equal(session.nativeReadsLocked, undefined);
+  await send({action:"configure-auto-lock",enabled:true,minutes:120});
+  await send({action:"lock"});
+  await import("../dist/background.js?auto-lock-restart");
+  state = (await send({action:"status"})).data;
+  assert.equal(state.autoLockEnabled, true);
+  assert.equal(state.autoLockMinutes, 120);
+  assert.equal(idleInterval, 7200);
+  assert.equal(state.readsLocked, true);
 });

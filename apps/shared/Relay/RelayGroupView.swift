@@ -21,6 +21,11 @@ struct RelayGroupView: View {
       Label(t("设备组", "Device group"), systemImage: "network").font(.headline)
       Text(t("设备组用于安全接入中继。加入后仍需 Mac 单独授权，才会同步密码库。", "Join securely first, then authorize vault synchronization separately on Mac."))
         .font(.caption).foregroundStyle(.secondary)
+      #if os(iOS)
+      if relay.hasManagedGroup || relay.joiningGroup || relay.isLegacyGroup || relay.groupInvalid {
+        MobileRelayPasswordSettings(relay: relay, t: t)
+      }
+      #endif
       if relay.groupBusy { ProgressView(t("正在处理", "Working…")) }
       if relay.groupInvalid {
         Text(t("本机接入已失效，缓存名单不可用于授权。", "Access invalid; cached members are hidden."))
@@ -45,7 +50,7 @@ struct RelayGroupView: View {
                 .font(.caption).foregroundStyle(.secondary)
             }
             Spacer()
-            if relay.config.role == "hub" && member.id != relay.config.device {
+            if relay.config.role == "hub" && relay.config.peerLibrary == nil && member.id != relay.config.device {
               VStack(alignment: .trailing, spacing: 4) {
                 Toggle(t("查看并同步修改", "View and sync changes"), isOn: Binding(
                   get: { relay.vaultAccessEnabled(member.id) },
@@ -69,8 +74,13 @@ struct RelayGroupView: View {
           }
         }
         if relay.groupManager {
+          #if os(iOS)
+          Toggle(t("无需管理员审批", "No manager approval required"), isOn: $automaticJoin)
+            .disabled(!relay.groupInvite.isEmpty)
+          #else
           Toggle(t("扫描后自动加入", "Join automatically after scanning"), isOn: $automaticJoin)
             .disabled(!relay.groupInvite.isEmpty)
+          #endif
           Button(t("添加设备", "Add device")) { Task { grantManager = false; await relay.inviteToGroup(automatic: automaticJoin) } }
         }
         if !relay.groupInvite.isEmpty {
@@ -104,6 +114,12 @@ struct RelayGroupView: View {
         Button(t("重新发送申请", "Resend request")) { Task { await relay.retryGroupJoin() } }
         Button(t("放弃本机申请…", "Abandon local request…"), role: .destructive) { confirmation = "clear" }
       } else {
+        #if os(iOS)
+        MobileRelayEnrollment(relay: relay, t: t)
+        if relay.creatingGroup {
+          Button(t("清除本机创建草稿…", "Clear local creation draft…")) { confirmation = "clear" }
+        }
+        #else
         Text(t("本机名称", "Device name")).font(.subheadline)
         TextField(t("本机名称", "Device name"), text: $deviceName).textFieldStyle(.roundedBorder)
         Text(t("设备组名称", "Group name")).font(.subheadline)
@@ -127,6 +143,7 @@ struct RelayGroupView: View {
           Button(t("提交加入申请", "Request to join")) { Task { await relay.joinGroup(input, deviceName: deviceName) } }
             .disabled(input.isEmpty || deviceName.trimmingCharacters(in: .whitespaces).isEmpty)
         }
+        #endif
       }
     }
     .disabled(relay.groupBusy)
@@ -170,7 +187,7 @@ struct RelayGroupView: View {
       }.padding(24).frame(minWidth: 280)
     }
     #if os(iOS)
-    .sheet(isPresented: $scanning) { MobileQRImport(apply: { _ in }, payloadHandler: { value in input = value; scanning = false; Task { await relay.joinGroup(value, deviceName: deviceName) } }) }
+    .sheet(isPresented: $scanning) { MobileQRImport(apply: { _ in }, payloadHandler: { value in input = value; scanning = false }) }
     #endif
   }
 }

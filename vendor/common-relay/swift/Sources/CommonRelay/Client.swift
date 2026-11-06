@@ -15,9 +15,15 @@ public actor RelayClient {
     private var scope: String { [identity.app, identity.group, identity.device].joined(separator: "/") }
     public init(identity: RelayIdentity, journal: RelayJournal? = nil) { self.identity = identity; self.journal = journal }
     public func cleanup() throws { try journal?.cleanup() }
-    public func connect(url: URL, token: String, allowLocalTest: Bool = false) async throws -> AsyncThrowingStream<RelayEvent, Error> {
-        guard socket == nil, url.scheme == "wss" || (allowLocalTest && url.scheme == "ws" && url.host == "127.0.0.1") else { throw RelayError.invalid("WSS required") }
+    static func upgradeRequest(url: URL, token: String, password: String?) throws -> URLRequest {
+        try RelayAccess.validate(password)
         var request = URLRequest(url: url); request.setValue("Bearer " + token, forHTTPHeaderField: "Authorization"); request.setValue("common-relay.v1", forHTTPHeaderField: "Sec-WebSocket-Protocol")
+        RelayAccess.apply(password, to: &request); return request
+    }
+    /// `password` is the server-wide access password (sent as `Relay-Access`); required by production relays.
+    public func connect(url: URL, token: String, password: String? = nil, allowLocalTest: Bool = false) async throws -> AsyncThrowingStream<RelayEvent, Error> {
+        guard socket == nil, url.scheme == "wss" || (allowLocalTest && url.scheme == "ws" && url.host == "127.0.0.1") else { throw RelayError.invalid("WSS required") }
+        let request = try Self.upgradeRequest(url: url, token: token, password: password)
         let session = URLSession(configuration: .ephemeral); self.session = session
         let socket = session.webSocketTask(with: request); socket.maximumMessageSize = 270336; self.socket = socket; socket.resume()
         do {
@@ -166,7 +172,7 @@ public actor RelayStream {
         guard !closed, receiver == nil else { throw RelayError.invalid("concurrent receive or closed stream") }
         let item: (UInt64, Data)
         if queue.isEmpty { item = try await withCheckedThrowingContinuation { receiver = $0 } } else { item = queue.removeFirst() }
-        guard item.0 == rx, let decryptor else { throw RelayError.invalid("stream sequence") }
+        guard !closed, item.0 == rx, let decryptor else { throw RelayError.invalid("stream sequence") }
         let plain = try decryptor.pull(item.1, aad: identity.aad(from: peer, to: identity.device, id: id, sequence: rx)); rx += 1
         try await client.send(["type": "stream.credit", "id": id, "sequence": rx]); return plain
     }

@@ -54,11 +54,27 @@ impl Document {
             }
             serde_json::from_value(value).map_err(|_| VaultError::InvalidData)?
         };
-        if ![2, 3, 4].contains(&result.format_version) || result.items.len() > 100_000 {
-            return Err(VaultError::Unsupported);
+        if ![2, 3, 4, 5, 6, 7].contains(&result.format_version) || result.items.len() > 100_000 {
+            return Err(VaultError::UpdateRequired);
+        }
+        if result.format_version >= 7 {
+            result.settings["devicesEnabled"] = json!(true);
+        }
+        if result.format_version < 7 && result.items.iter().any(|i| i["type"] == "device") {
+            return Err(VaultError::DevicesUpgradeRequired);
         }
         if result.format_version < 3 && result.items.iter().any(|n| n["noteFormat"] == "rich-v1") {
             return Err(VaultError::Unsupported);
+        }
+        if result.format_version < 6
+            && result.items.iter().any(|item| {
+                crate::requires_structured_format(item) || item.get("passkeys").is_some()
+            })
+        {
+            return Err(VaultError::Unsupported);
+        }
+        if result.format_version == 5 {
+            result.settings["entryHistoryEnabled"] = json!(true);
         }
         let mut ids = HashSet::new();
         for item in &mut result.items {
@@ -70,7 +86,16 @@ impl Document {
         Ok(result)
     }
     pub fn upsert(&mut self, mut item: Value) -> Result<()> {
+        if item["type"] == "device" && self.format_version < 7 {
+            return Err(VaultError::DevicesUpgradeRequired);
+        }
         normalize_item(&mut item)?;
+        if crate::requires_structured_format(&item) || item.get("passkeys").is_some() {
+            if self.format_version == 5 {
+                self.settings["entryHistoryEnabled"] = json!(true);
+            }
+            self.format_version = self.format_version.max(6);
+        }
         if item["noteFormat"] == "rich-v1" {
             if item["noteDocument"]["type"] != "doc" || !item["noteDocument"]["content"].is_array()
             {
@@ -93,7 +118,13 @@ impl Document {
         Ok(())
     }
     pub fn merge(&mut self, incoming: Document) -> Result<usize> {
+        if self.format_version < 7 && incoming.format_version >= 7 {
+            return Err(VaultError::DevicesUpgradeRequired);
+        }
         self.format_version = self.format_version.max(incoming.format_version);
+        if self.format_version >= 7 {
+            self.settings["devicesEnabled"] = json!(true);
+        }
         // A restore must preserve the identity that can unwrap shared-vault keys.
         // Never silently combine two unrelated identities into unusable shared metadata.
         if let Some(identity) = incoming.settings.get("sharingIdentity") {
@@ -248,7 +279,17 @@ pub fn normalize_item(item: &mut Value) -> Result<()> {
         .get("type")
         .and_then(Value::as_str)
         .ok_or(VaultError::InvalidData)?;
-    if !["password", "totp", "crypto", "secureNote"].contains(&kind) {
+    if ![
+        "password",
+        "totp",
+        "crypto",
+        "secureNote",
+        "device",
+        "creditCard",
+        "identity",
+    ]
+    .contains(&kind)
+    {
         return Err(VaultError::Unsupported);
     }
     if !obj.get("title").is_some_and(Value::is_string) {
@@ -280,6 +321,18 @@ pub fn normalize_item(item: &mut Value) -> Result<()> {
     obj.entry("isFavorite").or_insert(json!(false));
     obj.entry("isPinned").or_insert(json!(false));
     obj.entry("tags").or_insert(json!([]));
+    crate::validate_device(item)?;
+    crate::validate_structured_item(item)?;
+    if let Some(passkeys) = item.get("passkeys") {
+        let records = passkeys
+            .as_array()
+            .filter(|records| records.len() <= 64)
+            .ok_or(VaultError::InvalidData)?;
+        for record in records {
+            let _: crate::PasskeyRecord =
+                serde_json::from_value(record.clone()).map_err(|_| VaultError::InvalidData)?;
+        }
+    }
     Ok(())
 }
 
@@ -297,6 +350,14 @@ pub fn update_settings(doc: &mut Document, settings: &Value) -> Result<()> {
             "syncSeen",
             "syncPending",
             "noteCategories",
+            "entryHistoryEnabled",
+            "devicesEnabled",
+            "activePeerLibrary",
+            "peerLibrarySnapshots",
+            "_peerLibraryRole",
+            "_peerLibraryReadOnly",
+            "_peerLibraryName",
+            "_peerLibraryName",
         ]
         .contains(&key.as_str())
         {

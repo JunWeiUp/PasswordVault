@@ -38,8 +38,8 @@ struct PasswordVaultApp: App {
         }
       }
       .task { await store.start() }
-      .sheet(item: $store.recoveredDraft) {
-        MobileEntryEditor(item: $0, recovered: true).environmentObject(store)
+      .sheet(item: $store.recoveredDraft) { item in
+        Group { if item.type == "secureNote" { MobileRichNoteEditor(item: item) } else { MobileEntryEditor(item: item, recovered: true) } }.environmentObject(store)
       }
       .onChange(of: phase) { value in
         if value == .background && !store.systemFileFlow { store.lock() }
@@ -154,6 +154,7 @@ struct MobileUnlockView: View {
         }
         if !store.exists {
           Section {
+            NavigationLink(store.t("使用恢复密钥", "Use recovery key")) { MobileRecoveryView() }
             Button(store.t("从已有备份创建资料库…", "Create vault from a backup…")) { importing = true }
               .disabled(password.isEmpty || password != confirmation || store.busy)
           } footer: {
@@ -171,6 +172,7 @@ struct MobileUnlockView: View {
             }.disabled(store.busy)
           }
         }
+        if store.exists { Section { NavigationLink(store.t("使用恢复密钥", "Use recovery key")) { MobileRecoveryView() } } }
         Section {
           Picker("Language", selection: $store.language) {
             Text("简体中文").tag("zh")

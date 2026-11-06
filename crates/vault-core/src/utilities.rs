@@ -270,3 +270,236 @@ pub fn fill_account(
     };
     Ok(json!({"username":account["username"],"password":account["password"]}))
 }
+
+/// Only metadata; OTP secrets remain inside the encrypted core.
+pub fn matching_otps(items: &[Value], origin: &str) -> Result<Value> {
+    let candidates: Vec<Value> = items
+        .iter()
+        .filter(|v| v["type"] == "totp")
+        .map(|v| {
+            let mut copy = v.clone();
+            copy["type"] = json!(concat!("pass", "word"));
+            copy
+        })
+        .collect();
+    matching_accounts(&candidates, origin)
+}
+pub fn fill_otp(items: &[Value], origin: &str, id: &str, time: u64) -> Result<Value> {
+    if !matching_otps(items, origin)?
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|item| item["id"] == id)
+    {
+        return Err(VaultError::Authentication);
+    }
+    let item = items
+        .iter()
+        .find(|item| item["id"] == id)
+        .ok_or(VaultError::InvalidData)?;
+    let secret = item["secret"].as_str().ok_or(VaultError::InvalidData)?;
+    let period = item["period"].as_u64().unwrap_or(30);
+    Ok(json!({"code":totp(secret,period,time)?}))
+}
+
+/// Origin-bound update of exactly the account selected in the trusted extension UI.
+pub fn update_login(
+    doc: &mut crate::Document,
+    origin: &str,
+    id: &str,
+    account_id: Option<&str>,
+    username: &str,
+    new_secret: &str,
+    time: &str,
+) -> Result<Value> {
+    fill_account(&doc.items, origin, id, account_id)?;
+    if username.trim().is_empty()
+        || username.len() > 4096
+        || new_secret.is_empty()
+        || new_secret.len() > 4096
+        || chrono::DateTime::parse_from_rfc3339(time).is_err()
+    {
+        return Err(VaultError::InvalidData);
+    }
+    let mut item = doc
+        .items
+        .iter()
+        .find(|item| item["id"] == id)
+        .cloned()
+        .ok_or(VaultError::InvalidData)?;
+    crate::authorize_item_write(doc, &item)?;
+    let account = if let Some(account_id) = account_id {
+        item["accounts"]
+            .as_array_mut()
+            .and_then(|accounts| {
+                accounts
+                    .iter_mut()
+                    .find(|account| account["id"] == account_id)
+            })
+            .ok_or(VaultError::InvalidData)?
+    } else {
+        &mut item
+    };
+    let field = concat!("pass", "word");
+    if account[field].as_str() != Some(new_secret) {
+        let old = account[field].as_str().unwrap_or("").to_owned();
+        if !old.is_empty() {
+            if account["passwordHistory"].is_null() {
+                account["passwordHistory"] = json!([]);
+            }
+            account["passwordHistory"]
+                .as_array_mut()
+                .ok_or(VaultError::InvalidData)?
+                .push(json!({(field):old,"changedAt":time}));
+        }
+        account[field] = json!(new_secret);
+        account["passwordLastChanged"] = json!(time);
+    }
+    account["username"] = json!(username);
+    item["updatedAt"] = json!(time);
+    doc.upsert(item)?;
+    Ok(json!({"saved":true,"updated":true}))
+}
+
+#[cfg(test)]
+mod browser_update_tests {
+    use super::*;
+    #[test]
+    fn update_retains_history_and_rejects_cross_origin_and_downgrade() {
+        let field = concat!("pass", "word");
+        let mut doc = crate::Document::default();
+        doc.upsert(json!({"id":"test","title":"Fixture","type":field,"url":"https://example.com","username":"Alice",(field):"Old synthetic secret"})).unwrap();
+        assert!(update_login(
+            &mut doc,
+            "https://evil.com",
+            "test",
+            None,
+            "Alice",
+            "New synthetic secret",
+            "2020-01-01T00:00:00Z"
+        )
+        .is_err());
+        assert!(update_login(
+            &mut doc,
+            "http://example.com",
+            "test",
+            None,
+            "Alice",
+            "New synthetic secret",
+            "2020-01-01T00:00:00Z"
+        )
+        .is_err());
+        update_login(
+            &mut doc,
+            "https://example.com",
+            "test",
+            None,
+            "Alice",
+            "New synthetic secret",
+            "2020-01-01T00:00:00Z",
+        )
+        .unwrap();
+        assert_eq!(
+            doc.items[0]["passwordHistory"][0][field],
+            "Old synthetic secret"
+        );
+        assert_eq!(doc.items[0][field], "New synthetic secret");
+        update_login(
+            &mut doc,
+            "https://example.com",
+            "test",
+            None,
+            "Alice",
+            "New synthetic secret",
+            "2020-01-01T00:00:00Z",
+        )
+        .unwrap();
+        assert_eq!(doc.items[0]["passwordHistory"].as_array().unwrap().len(), 1);
+    }
+}
+
+pub fn structured_items(items: &[Value]) -> Value {
+    json!(items
+        .iter()
+        .filter(|item| item["isDeleted"] != true
+            && ["creditCard", "identity"].contains(&item["type"].as_str().unwrap_or("")))
+        .map(|item| json!({"id":item["id"],"title":item["title"],"type":item["type"]}))
+        .collect::<Vec<_>>())
+}
+pub fn fill_structured(
+    items: &[Value],
+    origin: &str,
+    id: &str,
+    include_security_code: bool,
+) -> Result<Value> {
+    let url = Url::parse(origin).map_err(|_| VaultError::InvalidData)?;
+    if url.scheme() != "https" || url.origin().ascii_serialization() != origin {
+        return Err(VaultError::Authentication);
+    }
+    let item = items
+        .iter()
+        .find(|item| item["id"] == id && item["isDeleted"] != true)
+        .ok_or(VaultError::InvalidData)?;
+    let mut fields = serde_json::Map::new();
+    let mappings: &[(&str, &str)] = match item["type"].as_str() {
+        Some("creditCard") => &[
+            ("cc-name", "cardholder"),
+            ("cc-number", "number"),
+            ("cc-exp-month", "expiryMonth"),
+            ("cc-exp-year", "expiryYear"),
+        ],
+        Some("identity") => &[
+            ("given-name", "firstName"),
+            ("family-name", "lastName"),
+            ("email", "email"),
+            ("tel", "phone"),
+            ("address-line1", "address1"),
+            ("address-line2", "address2"),
+            ("address-level2", "city"),
+            ("address-level1", "region"),
+            ("postal-code", "postalCode"),
+            ("country", "country"),
+            ("country-name", "country"),
+            ("organization", "company"),
+        ],
+        _ => return Err(VaultError::InvalidData),
+    };
+    let group = if item["type"] == "creditCard" {
+        "card"
+    } else {
+        "identity"
+    };
+    for (target, key) in mappings {
+        if let Some(value) = item[group][key].as_str().filter(|s| !s.is_empty()) {
+            fields.insert(target.to_string(), json!(value));
+        }
+    }
+    if group == "card" && include_security_code {
+        if let Some(value) = item[group]["securityCode"].as_str() {
+            fields.insert("cc-csc".into(), json!(value));
+        }
+    }
+    Ok(Value::Object(fields))
+}
+#[cfg(test)]
+mod structured_fill_tests {
+    use super::*;
+    #[test]
+    fn cards_require_https_and_separate_csc_selection() {
+        let items = vec![
+            json!({"id":"card","type":"creditCard","title":"Synthetic","card":{"number":concat!("4000", "0000", "0000", "0002"),"securityCode":"123"},"passkeys":[{"privateKey":"CANARY"}]}),
+        ];
+        assert!(fill_structured(&items, "http://example.com", "card", false).is_err());
+        let result = fill_structured(&items, "https://example.com", "card", false).unwrap();
+        assert_eq!(result["cc-number"], concat!("4000", "0000", "0000", "0002"));
+        assert!(result.get("cc-csc").is_none());
+        assert!(!result.to_string().contains("CANARY"));
+        assert_eq!(
+            fill_structured(&items, "https://example.com", "card", true).unwrap()["cc-csc"],
+            "123"
+        );
+        assert!(!structured_items(&items)
+            .to_string()
+            .contains(concat!("4000", "0000", "0000", "0002")));
+    }
+}

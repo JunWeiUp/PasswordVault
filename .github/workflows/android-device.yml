@@ -45,6 +45,11 @@ jobs:
           rustup toolchain install 1.96.0 --profile minimal --target aarch64-linux-android,x86_64-linux-android
           sdkmanager 'platforms;android-36' 'build-tools;36.0.0' 'ndk;27.0.12077973'
       - run: bash tool/check_native.sh core
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: apps/shared/note-editor/package-lock.json
       - run: bash tool/build_mobile_core.sh android
       - name: Configure private signing key
         env:
@@ -79,4 +84,4 @@ jobs:
           retention-days: 7
       - name: Remove ephemeral signing material
         if: always()
-        run: rm -f android/key.properties "$RUNNER_TEMP/passwordvault-release.jks"
+        run: rm -f private/signing/android/key.properties "$RUNNER_TEMP/passwordvault-release.jks"

@@ -7,6 +7,8 @@ const {
   bootstrapCreate,
   bootstrapUnlock,
   BrowserVault,
+  bootstrapRecover,
+  bootstrapRestoreRecovery,
 } = require("../wasm-test/vault_core.cjs");
 const pass = "Synthetic browser test passphrase 2026";
 const call = (vault, r) => JSON.parse(vault.command(JSON.stringify(r)));
@@ -20,6 +22,18 @@ const open = () => {
     ),
   };
 };
+test("WASM share snapshots decrypt with WebCrypto and exclude unselected secrets", async () => {
+  const { vault } = open();
+  call(vault,{op:"save",item:{id:"share-fixture",type:"password",title:"Fixture",username:"fictional",password:"SHARE_CANARY",secret:"OTP_CANARY",passwordHistory:[{ password:"OLD_CANARY" }]}});
+  const snapshot=call(vault,{op:"share-seal",id:"share-fixture",fields:["title","username","password"]});
+  assert(!JSON.stringify(snapshot).includes("CANARY"));
+  const key=await crypto.subtle.importKey("raw",Buffer.from(snapshot.key,"base64url"),"AES-GCM",false,["decrypt"]);
+  const clear=await crypto.subtle.decrypt({name:"AES-GCM",iv:Buffer.from(snapshot.nonce,"base64"),additionalData:new TextEncoder().encode(`PasswordVaultShare/v1/${snapshot.id}`)},key,Buffer.from(snapshot.ciphertext,"base64"));
+  const item=JSON.parse(new TextDecoder().decode(clear));
+  assert.equal(item.fields.password,"SHARE_CANARY");assert.equal(item.fields.secret,undefined);assert.equal(item.fields.passwordHistory,undefined);
+  assert.throws(()=>call(vault,{op:"share-seal",id:"share-fixture",fields:["passwordHistory"]}));
+  vault.free();
+});
 test("browser storage remains encrypted, unlock validates, and an edited bundle is rejected", () => {
   const { vault } = open();
   const record = {
@@ -108,6 +122,8 @@ test("MV3 package uses lightweight origin-guarded login listeners, static worker
   );
   assert.equal(manifest.manifest_version, 3);
   assert.deepEqual(manifest.content_scripts, [
+    { matches: ["https://*/*"], js: ["passkey-page.js"], world: "MAIN", run_at: "document_start" },
+    { matches: ["https://*/*"], js: ["passkey-content.js"], run_at: "document_start" },
     {
       matches: ["https://*/*", "http://*/*"],
       js: ["login-observer.js"],
@@ -193,7 +209,7 @@ test("rich notes cannot be downgraded or imported without their encrypted attach
     title: "Fixture",
     note: "summary",
     noteFormat: "rich-v1",
-    noteDocument: { type: "doc", content: [{ type: "paragraph" }] },
+    noteDocument: { type: "doc", content: [{ type: "vaultAttachment", attrs: { attachmentId: "missing" } }] },
   };
   assert.throws(() => call(vault, { op: "save", item, richNotes: true }));
   assert.throws(() =>

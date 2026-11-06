@@ -1,7 +1,7 @@
 // Fictional in-memory bridge. Never sends a request to the installed extension.
 window.qa = {
   reads: 0, revealed: [], saved: [], dismissed: [], edited: [], filled: [], failSave: false,
-  state: { mode: 'native', available: true, unlocked: true, paired: true },
+  state: { mode: 'native', available: true, unlocked: true, paired: true, autoLockEnabled: false, autoLockMinutes: 60 },
   origin: 'https://accounts.example.test',
   pending: { id: 'fixture-1', tabId: 123, origin: 'https://accounts.example.test', username: 'fixture@example.test', password: 'Fictional-only-208!', expires: Date.now() + 120000 },
 };
@@ -23,6 +23,7 @@ window.chrome = {
       if (request.action === 'disable-sync') { qa.state.syncReady=false;qa.state.readReady=false;qa.state.autoUnlockReady=false;return {ok:true,data:{}}; }
       if (request.action === 'disable-auto-unlock') {qa.state.autoUnlockReady=false;return {ok:true,data:{}};}
       if (request.action === 'reveal-account') {qa.revealed.push(request);if(qa.delayReveal)await new Promise(resolve=>qa.releaseReveal=resolve);return {ok:true,data:{username:'fictional',password:'Fictional-existing-account!'}};}
+      if (request.action === 'configure-auto-lock') { qa.state.autoLockEnabled=request.enabled;qa.state.autoLockMinutes=request.minutes;return {ok:true,data:{}}; }
       if (request.action === 'status') return { ok: true, data: qa.state };
       if (request.action === 'matches') {
         qa.reads++;

@@ -60,7 +60,7 @@ async function key(): Promise<CryptoKey> {
 export async function queuedCount(): Promise<number> {
   return transaction("queue", false, (s) => s.count());
 }
-export async function enqueue(login: QueuedLogin): Promise<void> {
+export async function enqueue(login: QueuedLogin, beforeWrite?: () => Promise<void>): Promise<void> {
   if ((await queuedCount()) >= 500) throw new Error("offline-full");
   const id = crypto.randomUUID(),
     iv = crypto.getRandomValues(new Uint8Array(12));
@@ -71,6 +71,7 @@ export async function enqueue(login: QueuedLogin): Promise<void> {
       await key(),
       bytes,
     );
+    await beforeWrite?.();
     await transaction("queue", true, (s) => s.add({ id, iv, ciphertext }));
   } finally {
     bytes.fill(0);

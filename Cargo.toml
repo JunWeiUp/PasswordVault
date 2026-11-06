@@ -2,7 +2,18 @@
 members = ["crates/vault-core"]
 resolver = "2"
 
+# Keep local Debug/test artifacts small; opt in to debug info when needed.
+[profile.dev]
+debug = 0
+incremental = false
+strip = "debuginfo"
+
+# Prefer smaller release code while retaining loop vectorization for crypto.
 [profile.release]
+opt-level = "s"
+debug = 0
+incremental = false
 lto = "thin"
 codegen-units = 1
+# Keep symbols needed by native static linking and the UniFFI tooling.
 strip = "debuginfo"

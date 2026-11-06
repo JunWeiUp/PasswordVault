@@ -1,0 +1,14 @@
+{
+  "name": "passwordvault-share-service",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=24" },
+  "scripts": {
+    "start": "node src/main.ts",
+    "test": "node --test tests/*.test.ts",
+    "check": "tsc --noEmit"
+  },
+  "dependencies": { "nodemailer": "10.2.1" },
+  "devDependencies": { "@types/node": "26.6.5", "@types/nodemailer": "8.0.2", "typescript": "5.9.3" }
+}

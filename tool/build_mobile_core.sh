@@ -2,13 +2,21 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 rust_bin="$(dirname "$(rustup which --toolchain 1.96.0 rustc)")"
-export PATH="$rust_bin:$PATH"
+export RUSTUP_TOOLCHAIN=1.96.0
+source tool/cargo_fork_env.sh
 case "$(uname -s)" in
   Darwin) host_library=libvault_core.dylib; ndk_host=darwin-x86_64 ;;
   Linux) host_library=libvault_core.so; ndk_host=linux-x86_64 ;;
   *) echo 'Build on macOS or Linux.' >&2; exit 2 ;;
 esac
 
+mobile_editor_built=false
+bundle_editor() {
+  if [[ "$mobile_editor_built" == true ]]; then return; fi
+  npm --prefix apps/shared/note-editor ci --ignore-scripts
+  npm --prefix apps/shared/note-editor run build
+  mobile_editor_built=true
+}
 bindings() {
   MACOSX_DEPLOYMENT_TARGET=13.0 cargo build -p vault-core --release --locked
   MACOSX_DEPLOYMENT_TARGET=13.0 cargo run -p vault-core --features bindgen --bin uniffi-bindgen -- generate \
@@ -25,6 +33,7 @@ ios() {
     x86_64) simulator_targets=(x86_64-apple-ios) ;;
     *) echo 'Invalid PASSWORDVAULT_IOS_SIM_ARCH; use universal, host, arm64 or x86_64.' >&2; return 2 ;;
   esac
+  bundle_editor
   mkdir -p apps/ios/Generated/Headers
   bindings swift apps/ios/Generated
   cp apps/ios/Generated/VaultCoreFFI.h apps/ios/Generated/Headers/
@@ -58,6 +67,7 @@ android() {
   local ndk="${PASSWORDVAULT_NDK:-$sdk/ndk/27.0.12077973}"
   local bin="$ndk/toolchains/llvm/prebuilt/$ndk_host/bin"
   test -x "$bin/aarch64-linux-android24-clang"
+  bundle_editor
   bindings kotlin apps/android/app/src/main/generated
   for mobile_target in "${android_targets[@]}"; do
     local triple abi target_env

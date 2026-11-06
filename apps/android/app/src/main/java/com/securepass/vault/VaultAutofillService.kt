@@ -18,10 +18,12 @@ data class FillTarget(
     val packageName: String,
     val domain: String?,
     val userId: AutofillId?,
-    val passwordId: AutofillId,
+    val passwordId: AutofillId?,
     val created: Long = android.os.SystemClock.elapsedRealtime(),
     val saveUser: String? = null,
     val savePassword: String? = null,
+    val structuredFields: Map<String, AutofillId> = emptyMap(),
+    val kind: String = "password",
 )
 
 @RequiresApi(26)
@@ -70,19 +72,15 @@ class VaultAutofillService : AutofillService() {
                     if (Build.VERSION.SDK_INT >= 31) PendingIntent.FLAG_MUTABLE else 0,
             )
         val locked =
-            Dataset.Builder(view)
-                .setValue(target.passwordId, null as android.view.autofill.AutofillValue?)
-                .setAuthentication(pending.intentSender)
+            Dataset.Builder(view).setAuthentication(pending.intentSender)
+        target.passwordId?.let { locked.setValue(it, null as android.view.autofill.AutofillValue?) }
+        target.structuredFields.values.forEach { locked.setValue(it, null as android.view.autofill.AutofillValue?) }
         target.userId?.let { locked.setValue(it, null as android.view.autofill.AutofillValue?) }
-        val response =
-            FillResponse.Builder()
-                .addDataset(locked.build())
-                .setSaveInfo(
-                    SaveInfo.Builder(SaveInfo.SAVE_DATA_TYPE_PASSWORD, arrayOf(target.passwordId))
-                        .apply { target.userId?.let { setOptionalIds(arrayOf(it)) } }
-                        .build()
-                )
-                .build()
+        val responseBuilder = FillResponse.Builder().addDataset(locked.build())
+        target.passwordId?.let { id ->
+            responseBuilder.setSaveInfo(SaveInfo.Builder(SaveInfo.SAVE_DATA_TYPE_PASSWORD, arrayOf(id)).apply { target.userId?.let { setOptionalIds(arrayOf(it)) } }.build())
+        }
+        val response = responseBuilder.build()
         if (!cancellationSignal.isCanceled) callback.onSuccess(response)
     }
 
@@ -115,10 +113,17 @@ class VaultAutofillService : AutofillService() {
         var user: AssistStructure.ViewNode? = null
         var password: AssistStructure.ViewNode? = null
         var domain: String? = null
+        val structured = mutableMapOf<String, AutofillId>()
+        val ambiguous = mutableSetOf<String>()
         fun visit(node: AssistStructure.ViewNode) {
             val hints = node.autofillHints?.map { it.lowercase() }.orEmpty()
             val input = node.inputType and android.text.InputType.TYPE_MASK_VARIATION
             if (node.autofillId != null && node.visibility == View.VISIBLE) {
+                if (node.autofillType == View.AUTOFILL_TYPE_TEXT) {
+                    val keys = hints.mapNotNull(::structuredFillKey).distinct()
+                    if (keys.size > 1) ambiguous.addAll(keys)
+                    else for (key in keys) { if (structured.containsKey(key) && structured[key] != node.autofillId) ambiguous.add(key) else structured[key] = node.autofillId!! }
+                }
                 if (
                     hints.any { it.contains("password") } ||
                         input in
@@ -140,7 +145,15 @@ class VaultAutofillService : AutofillService() {
         for (i in 0 until structure.windowNodeCount) visit(
             structure.getWindowNodeAt(i).rootViewNode
         )
-        val secret = password ?: return null
+        val secret = password
+        if (secret == null) {
+            if (save) return null
+            val card = structured.containsKey("card.number")
+            val selected = structured.filterKeys { if (card) it.startsWith("card.") else it.startsWith("identity.") }.toMutableMap()
+            if (card) structured["identity.fullName"]?.let { selected["card.cardholder"] = it }
+            if (selected.isEmpty() || selected.keys.any { it in ambiguous } || (card && "identity.fullName" in ambiguous)) return null
+            return FillTarget(structure.activityComponent.packageName, domain, null, null, structuredFields = selected.toMap(), kind = if (card) "creditCard" else "identity")
+        }
         return FillTarget(
             structure.activityComponent.packageName,
             domain,

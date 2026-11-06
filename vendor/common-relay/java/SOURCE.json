@@ -1,28 +1,85 @@
 {
   "upstream": "https://github.com/JunWeiUp/common-relay",
-  "version": "0.1.0-dev",
+  "version": "0.1.5",
   "files": {
     "LICENSE": "272282293edccf0e0df0cc16ecc9e7d9bc112f4d2995422556ea173ba1795ef5",
     "build.gradle": "be0db21abca3e6265febf45be9036d92509fddc471ad789cd339afd6e7493468",
     "gradle.properties": "76c95c3c54b027d8553444c2ae8912d101c525c61e08a95669eda26f243c0867",
     "settings.gradle": "d9350c8e9de54a976a49e8653903a85cf0a17b6e3068332130d702777b097ad4",
-    "src/main/java/io/github/junweiup/commonrelay/Crypto.java": "99375163d44f71c4560c089ec57abebae5ec6fd00f3b4c14fbef1f66062f32c5",
-    "src/main/java/io/github/junweiup/commonrelay/InvitationLinks.java": "f98bc1ae6430fa27d309897d674ce3521cb33940846259740696a73988376218",
-    "src/main/java/io/github/junweiup/commonrelay/RelayClient.java": "c828f4893bd735232e080cd90bcac3bb87e6952fd893341a049849d48f26ac5b",
-    "src/main/java/io/github/junweiup/commonrelay/RelayFiles.java": "97dfa710f259b2ab2368fa309236ec7943601248c0e488b858d319abc02a8211",
-    "src/main/java/io/github/junweiup/commonrelay/RelayGroups.java": "d1206faf7f99fb12f57f270f51765cf1b0ddc6312ad2d95fd8162033cfd54d1d",
-    "src/main/java/io/github/junweiup/commonrelay/RelayJournal.java": "77f4c4f3ac023459a63ac66b5aa93be32c6def1414cae5222b537106a2f7d509",
-    "src/test/java/io/github/junweiup/commonrelay/GroupTest.java": "32afccd8bfc6fbe1a814f84dc43182222295ab934a1e384bc4f3dbdc6825265d",
-    "src/test/java/io/github/junweiup/commonrelay/InvitationLinksTest.java": "d446ea0b306854e501e179d3718e501a2022c553fede042aaf787c0911a921d5",
-    "src/test/java/io/github/junweiup/commonrelay/VaultGroupFlowTest.java": "0e9d908f9d7c0e67c4879fa2bd026143367820f1188c1c94fdb424be505cad69"
+    "src/main/java/io/github/junweiup/commonrelay/CanonicalBase64.java": "df0110f32b4f0e53f27ebbc2ca9fc2a0e7ecedc02806edeb233081d7829dc5df",
+    "src/main/java/io/github/junweiup/commonrelay/Crypto.java": "bb989d60b2cac1be528b69aac594e95cdcf5a8266f6b6763e953611150debc1b",
+    "src/main/java/io/github/junweiup/commonrelay/InvitationLinks.java": "bd90d688977ca7618daf55a09dddb81a0ef51a5efc0f8521958541f437d5b9cf",
+    "src/main/java/io/github/junweiup/commonrelay/RelayAccess.java": "76d07e74e53c0fe41dd29d09e46e3e65cad23800bee57863e55d22e40fdf72bf",
+    "src/main/java/io/github/junweiup/commonrelay/RelayClient.java": "30a5146be81238a3c972a17ee1b130c464af78708fa55f1923068f5bb599326c",
+    "src/main/java/io/github/junweiup/commonrelay/RelayFiles.java": "c2ea348eeaddaafbfd9ae1de0d71f073f1b64865241ac6b1682c90c895344bfa",
+    "src/main/java/io/github/junweiup/commonrelay/RelayGroups.java": "e5f239c94aa79047832749dc44636f0efa0995bc32bda7626c6f9a5b3c9782b1",
+    "src/main/java/io/github/junweiup/commonrelay/RelayJournal.java": "fb4be2de415dccfccd2efd4782906cfd4c9030f943182a2b51e71898abadcb52",
+    "src/main/java/io/github/junweiup/commonrelay/StrictPayload.java": "1a4c0507f7b40c829c689a1eb042b2d87dae3ee76f4e1a6fb13c3b8668794a87",
+    "src/test/java/io/github/junweiup/commonrelay/AccessOverrideTest.java": "da09b601f2691c4e6546f8e9162f2909c612471a93fa9db83b7e86b698db0c98",
+    "src/test/java/io/github/junweiup/commonrelay/AccessTest.java": "30e7c70c3845861770d22d4f7cc15c315f103eb81683d902b923266e048a8a19",
+    "src/test/java/io/github/junweiup/commonrelay/CryptoTest.java": "42df39b79d74f8e1c3f41cef31d0da3bc05918fba4511ff90c8eac2b1c82fa6e",
+    "src/test/java/io/github/junweiup/commonrelay/GroupTest.java": "ad5efd1251362ea39777487334a2fb6577c73a539d16a0cd8a73456bd25d80ce",
+    "src/test/java/io/github/junweiup/commonrelay/InvitationLinksTest.java": "6b206a85220910cf2a88f91f36cbac342a2f217394761799b822a1f78f0227f3",
+    "src/test/java/io/github/junweiup/commonrelay/JournalTest.java": "7d8da2a21bbf25be8ccaacb230e1e7d8cdc084ba9a20503da2f53f3b998bcc0e",
+    "src/test/java/io/github/junweiup/commonrelay/LifecycleTest.java": "a6a724b5d631ca037a7280def0e56721611af02ddb114256ea74f79327402f0a",
+    "src/test/java/io/github/junweiup/commonrelay/VaultGroupFlowTest.java": "d28b23446d4385bd3a7dd99b9cc2ba6cddc6040a53300e355c5d39859413bc10"
   },
-  "commit": "ff5ed1f29c7af1734016ab77c5a85c61acdbecd0",
+  "commit": "2c79e3f2218bd5d5e001a744d4e7e1cfdbec110f",
   "local_patches": [
-    "Automatic admission and encrypted invitation links from upstream working tree; checksums pin exact source.",
-    "Expose prepareJoin to durably save requests before network transmission.",
-    "Forward group.changed for immediate membership revalidation."
+    "Expose prepareJoin to persist signed requests before network transmission; preserve identity and request across retries.",
+    "Add resolveInvitation(text, accessOverride) consumer API: explicit validated password replaces link password; empty/null overrides fail before HTTP.",
+    "Retain consumer Gradle module and existing GroupTest/VaultGroupFlowTest; adapt upstream test vector paths to ../protocol; local tests use isolated service fixtures.",
+    "group.changed forwarding is now identical to upstream v0.1.5 (previous consumer patch retained through upstream implementation)."
   ],
-  "upstream_group_source_sha256": "61e2c2de32ac11d056a4ebef0fbb239af204676b219f4071904c850df30d88af",
-  "group_vectors_sha256": "6f891071bd7cf433c033d18ba28296a5e10e1127b10e7a1fcedd11d132311470",
-  "invitation_link_vectors_sha256": "c5b2c8c8a80975620db0a37243d807ebbdebe76802b1f932847b06826e75cdc4"
+  "upstream_group_source_sha256": "48a7d953b0d77c522a92e7afa0608592e393a03ab1855824bb2c90ffdb0b0e82",
+  "group_vectors_sha256": "be1683bf9eae339eb5a0bbe0680a3c766d165b54864a8f33bdeadfd0ec3af512",
+  "invitation_link_vectors_sha256": "1b7a742b0f3fb8e3f96a64340447d9325030d3b09930141b613167bc7166b56d",
+  "upstream_patches": [
+    {
+      "commit": "794a2396266ee6f26ab7406f6d6466732a269dbf",
+      "summary": "Strict signed group payload validation (protocol/README.md \u4e25\u683c\u8f7d\u8377); applied as a patch so existing local patches are kept.",
+      "files": [
+        "src/main/java/io/github/junweiup/commonrelay/RelayGroups.java",
+        "src/main/java/io/github/junweiup/commonrelay/StrictPayload.java"
+      ],
+      "vectors": "protocol/group-vectors.json: appended strict_payload generated from this copy (scripts/group-strict-vectors.py); existing vectors unchanged.",
+      "tests": [
+        "src/test/java/io/github/junweiup/commonrelay/GroupTest.java"
+      ]
+    },
+    {
+      "commit": "2c79e3f2218bd5d5e001a744d4e7e1cfdbec110f",
+      "summary": "Apply v0.1.5 Java source changes per file, including Relay-Access on HTTP/WSS/files, password-bearing invitation links, canonical Base64 and API26/lifecycle fixes; retain local prepareJoin and consumer tests.",
+      "files": [
+        "src/main/java/io/github/junweiup/commonrelay/CanonicalBase64.java",
+        "src/main/java/io/github/junweiup/commonrelay/Crypto.java",
+        "src/main/java/io/github/junweiup/commonrelay/InvitationLinks.java",
+        "src/main/java/io/github/junweiup/commonrelay/RelayAccess.java",
+        "src/main/java/io/github/junweiup/commonrelay/RelayClient.java",
+        "src/main/java/io/github/junweiup/commonrelay/RelayFiles.java",
+        "src/main/java/io/github/junweiup/commonrelay/RelayGroups.java",
+        "src/main/java/io/github/junweiup/commonrelay/RelayJournal.java",
+        "src/main/java/io/github/junweiup/commonrelay/StrictPayload.java"
+      ]
+    }
+  ],
+  "crypto_vectors_sha256": "2f9a8347b95f80927c07c15b21d248f3f9a52f0130b4043079697613d139df87",
+  "journal_vectors_sha256": "303b61de1d972e062747f9617749440a67b1f6a81a93dc27e09f03fa4794daad",
+  "upstream_files_sha256": {
+    "src/main/java/io/github/junweiup/commonrelay/CanonicalBase64.java": "df0110f32b4f0e53f27ebbc2ca9fc2a0e7ecedc02806edeb233081d7829dc5df",
+    "src/main/java/io/github/junweiup/commonrelay/Crypto.java": "bb989d60b2cac1be528b69aac594e95cdcf5a8266f6b6763e953611150debc1b",
+    "src/main/java/io/github/junweiup/commonrelay/InvitationLinks.java": "bd90d688977ca7618daf55a09dddb81a0ef51a5efc0f8521958541f437d5b9cf",
+    "src/main/java/io/github/junweiup/commonrelay/RelayAccess.java": "76d07e74e53c0fe41dd29d09e46e3e65cad23800bee57863e55d22e40fdf72bf",
+    "src/main/java/io/github/junweiup/commonrelay/RelayClient.java": "30a5146be81238a3c972a17ee1b130c464af78708fa55f1923068f5bb599326c",
+    "src/main/java/io/github/junweiup/commonrelay/RelayFiles.java": "c2ea348eeaddaafbfd9ae1de0d71f073f1b64865241ac6b1682c90c895344bfa",
+    "src/main/java/io/github/junweiup/commonrelay/RelayGroups.java": "48a7d953b0d77c522a92e7afa0608592e393a03ab1855824bb2c90ffdb0b0e82",
+    "src/main/java/io/github/junweiup/commonrelay/RelayJournal.java": "fb4be2de415dccfccd2efd4782906cfd4c9030f943182a2b51e71898abadcb52",
+    "src/main/java/io/github/junweiup/commonrelay/StrictPayload.java": "1a4c0507f7b40c829c689a1eb042b2d87dae3ee76f4e1a6fb13c3b8668794a87",
+    "src/test/java/io/github/junweiup/commonrelay/AccessTest.java": "8c6a0e3b81e887765f0dc70e78822164eb7b72b08b56236937ebff955dca1519",
+    "src/test/java/io/github/junweiup/commonrelay/CryptoTest.java": "0fdfd5e3a2b05c2465f47e9e5a378829afbe87f526b8095f6f2252f60d34c5d0",
+    "src/test/java/io/github/junweiup/commonrelay/GroupTest.java": "b4fa6dd05c1b6667ed3677e632a8ea758882ea6f9ec86f664ac8d6dad50e435d",
+    "src/test/java/io/github/junweiup/commonrelay/InvitationLinksTest.java": "14cbd7c610e30c395bc107d360617bab14b4e3b41c6a36f9ab04cb8aee0322eb",
+    "src/test/java/io/github/junweiup/commonrelay/JournalTest.java": "8e1c653e3876a425518f2f67cc4dd7a3a53ad02d61fdd750f4df74c3b1c19eaf",
+    "src/test/java/io/github/junweiup/commonrelay/LifecycleTest.java": "a6a724b5d631ca037a7280def0e56721611af02ddb114256ea74f79327402f0a"
+  }
 }

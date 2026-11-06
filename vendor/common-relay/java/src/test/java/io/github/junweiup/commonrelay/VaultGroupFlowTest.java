@@ -10,7 +10,8 @@ import java.util.UUID;
 public class VaultGroupFlowTest {
     private RelayGroups client(String url) throws Exception {
         return new RelayGroups(new JSONObject().put("app", "passwordvault").put("url", url)
-            .put("device", UUID.randomUUID().toString()).put("secret_key", Crypto.hex(Crypto.random(32))), true);
+            .put("device", UUID.randomUUID().toString()).put("secret_key", Crypto.hex(Crypto.random(32)))
+            .put("password", System.getenv("PV_GROUP_TEST_PASSWORD")), true);
     }
     @Test public void createApproveRenameRemoveAndDisband() throws Exception {
         String url = System.getenv("PV_GROUP_TEST_URL");

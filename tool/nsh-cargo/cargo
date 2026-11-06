@@ -1,0 +1,40 @@
+#!/usr/bin/env python3
+"""Run huacnlee/cargo and expose NSH runner binaries at its requested target-dir.
+
+The fork deliberately ignores target-dir for storage. Links adapt NSH's artifact
+lookup without duplicating its build cache or using the upstream Cargo binary.
+"""
+import os
+from pathlib import Path
+import subprocess
+import sys
+
+cargo = Path.home() / '.cargo/bin/cargo'
+version = subprocess.check_output([str(cargo), '--version'], text=True)
+if 'huacnlee/cargo' not in version:
+    sys.exit('huacnlee/cargo is required')
+args = sys.argv[1:]
+result = subprocess.run([str(cargo), *args])
+if result.returncode:
+    sys.exit(result.returncode)
+def option(name):
+    for i, arg in enumerate(args):
+        if arg.startswith(name + '='): return arg.split('=', 1)[1]
+        if arg == name and i + 1 < len(args): return args[i + 1]
+    return None
+manifest = Path(option('--manifest-path') or 'Cargo.toml').resolve()
+workspace = next((p for p in manifest.parents if p.name == 'rust' and p.parent.name == '.nsh'), None)
+requested = option('--target-dir') or os.environ.get('CARGO_TARGET_DIR')
+if workspace:
+    destination = Path(requested).resolve() if requested else workspace.parent.parent / 'target'
+    for profile in ('debug', 'release'):
+        source = workspace / 'target' / profile
+        for binary in source.glob('nsh-app-*'):
+            if not binary.is_file() or not os.access(binary, os.X_OK): continue
+            target = destination / profile / binary.name
+            if target == binary: continue
+            target.parent.mkdir(parents=True, exist_ok=True)
+            temp = target.with_name(target.name + '.fork-link')
+            temp.unlink(missing_ok=True)
+            temp.symlink_to(binary)
+            temp.replace(target)

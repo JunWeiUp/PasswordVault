@@ -1,0 +1,5 @@
+[toolchain]
+# nsh-core 0.4 uses APIs stabilized after the core crate's pinned 1.96.0.
+channel = "1.98.0"
+profile = "minimal"
+components = ["rustfmt", "clippy"]

@@ -1,17 +1,12 @@
 #!/usr/bin/env python3
-"""Package reviewed release assets and verify the complete checksum inventory."""
+"""Shared archive/checksum helpers for native releases."""
 import argparse
 import hashlib
 import json
-import os
 from pathlib import Path
 import re
-import shutil
-import subprocess
-import tempfile
 import zipfile
 
-from check_repository import ROOT, validate_tag
 
 
 def archive(source, target):
@@ -53,71 +48,12 @@ def verify_checksums(folder):
     print(f'Verified {len(expected)} release assets.')
 
 
-def package(root, tag):
-    """Stage atomically so a failed package cannot leave a partial release."""
-    output = root / 'release_assets'
-    if output.is_symlink() or (output.exists() and (not output.is_dir() or any(output.iterdir()))):
-        raise SystemExit('release_assets must be empty to avoid mixing versions.')
-    prefix = f'PasswordVault-{tag}'
-    files = {
-        f'{prefix}-android-{abi}.apk': root / f'build/app/outputs/flutter-apk/app-{abi}-release.apk'
-        for abi in ['arm64-v8a', 'armeabi-v7a', 'x86_64']
-    }
-    files.update({
-        f'{prefix}-android.aab': root / 'build/app/outputs/bundle/release/app-release.aab',
-        'SIGNING-CERTIFICATE-SHA256.txt': root / 'android/release-certificate.sha256',
-        'LICENSE': root / 'LICENSE',
-        'THIRD_PARTY_NOTICES.md': root / 'THIRD_PARTY_NOTICES.md',
-        'INSTALL.md': root / 'docs/RELEASE_NOTES.md',
-    })
-    builds = {'web': root / 'build/web', 'chrome-extension': root / 'build/chrome_extension'}
-    for path in [*files.values(), *(folder / 'index.html' for folder in builds.values())]:
-        if not path.is_file() or path.is_symlink() or not path.stat().st_size:
-            raise SystemExit(f'Missing or invalid release input: {path.relative_to(root)}')
-    commit = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=root, text=True).strip()
-    metadata = {
-        'product': 'PasswordVault',
-        'status': 'developer-preview',
-        'tag': tag,
-        'commit': commit,
-        'flutter': (root / '.flutter-version').read_text().strip(),
-        'android_certificate_sha256': (root / 'android/release-certificate.sha256').read_text().strip(),
-        'platforms': ['Android', 'Web', 'Chromium extension'],
-    }
-    if os.environ.get('GITHUB_RUN_ID') and os.environ.get('GITHUB_REPOSITORY'):
-        metadata['workflow_run'] = (
-            f'{os.environ.get("GITHUB_SERVER_URL", "https://github.com")}/'
-            f'{os.environ["GITHUB_REPOSITORY"]}/actions/runs/{os.environ["GITHUB_RUN_ID"]}'
-        )
-    with tempfile.TemporaryDirectory(prefix='.release-stage-', dir=root) as directory:
-        staging = Path(directory) / 'assets'
-        staging.mkdir()
-        for name, path in files.items():
-            shutil.copyfile(path, staging / name)
-        for name, folder in builds.items():
-            archive(folder, staging / f'{prefix}-{name}.zip')
-        (staging / 'BUILD.json').write_text(json.dumps(metadata, indent=2) + '\n', encoding='utf-8')
-        (staging / 'SHA256SUMS').write_text(''.join(
-            f'{digest(path)}  {path.name}\n' for path in sorted(staging.iterdir())
-        ), encoding='utf-8')
-        verify_checksums(staging)
-        if output.exists():
-            output.rmdir()  # Only an empty, pre-existing output directory is permitted.
-        staging.replace(output)
-    print(f'Packaged developer preview {tag} at {commit}.')
-
-
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--verify', type=Path, metavar='DIRECTORY', help='Verify a downloaded release asset directory.')
+    parser.add_argument('--verify', type=Path, required=True, metavar='DIRECTORY',
+                        help='Verify a downloaded release asset directory.')
     args = parser.parse_args()
-    if args.verify is not None:
-        verify_checksums(args.verify)
-        return
-    os.chdir(ROOT)
-    tag = os.environ.get('RELEASE_TAG', '')
-    validate_tag(tag)
-    package(ROOT, tag)
+    verify_checksums(args.verify)
 
 
 if __name__ == '__main__':

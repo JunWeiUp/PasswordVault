@@ -1,3 +1,4 @@
+import AuthenticationServices
 import Combine
 import Foundation
 import UIKit
@@ -7,6 +8,7 @@ import UniformTypeIdentifiers
 final class MobileVaultStore: ObservableObject {
   @Published var recoveredDraft: VaultItem?
   private var volatileRecovery: JSONValue?
+  var captureRichDraft: (() -> Task<VaultItem?, Never>)?
   var pendingDraft: VaultItem?
   var systemFileFlow = false
   @Published var unlocked = false { didSet { relay.setUnlocked(unlocked) } }
@@ -29,7 +31,7 @@ final class MobileVaultStore: ObservableObject {
     return try await self.perform(request)
   }, refresh: { [weak self] in try? await self?.refresh() })
   let directory: URL
-  private var core: MobileCore?
+  private(set) var core: MobileCore?
   private var epoch = 0
   private var closing: Task<Void, Never>?
   private var lastActivity: Date
@@ -69,8 +71,13 @@ final class MobileVaultStore: ObservableObject {
     lock()
     await closing?.value
   }
+  var canWriteLibrary: Bool {
+    if settings["_peerLibraryReadOnly"]?.bool == true { return false }
+    if !(settings["activePeerLibrary"]?.string ?? "").isEmpty { return ["admin", "editor"].contains(settings["_peerLibraryRole"]?.string ?? "") }
+    return true
+  }
   func canEdit(_ item: VaultItem) -> Bool {
-    if item.string("noteFormat") == "rich-v1" { return false }
+    guard canWriteLibrary else { return false }
     let shared = item.string("sharedVaultId")
     if shared.isEmpty { return true }
     let own = settings["sharingIdentity"]?.object["publicKey"]?.string ?? ""
@@ -195,7 +202,42 @@ final class MobileVaultStore: ObservableObject {
       activity()
     } catch { report(error) }
   }
+  func recover(key: String, newPassword: String, archive: String? = nil) async {
+    guard !busy, !unlocked, !newPassword.isEmpty else { return }
+    busy = true
+    error = nil
+    let generation = epoch
+    defer { busy = false }
+    do {
+      await closing?.value
+      let core = try connection()
+      var request: [String: JSONValue] = [
+        "op": .string(archive == nil ? "recovery-reset-password" : "recovery-restore-backup"),
+        "key": .string(key), "newPassword": .string(newPassword),
+      ]
+      if let archive { request["content"] = .string(archive) }
+      _ = try await core.call(request)
+      guard generation == epoch else { await core.close(); return }
+      let document = try await core.document()
+      guard generation == epoch else { await core.close(); return }
+      items = document.items; settings = document.settings; sharedMembers = document.sharedMembers
+      exists = true; legacyAvailable = false; unlocked = true
+      MobileBiometrics.remove()
+      UserDefaults.standard.set(false, forKey: "biometricEnabled")
+      activity()
+      if archive == nil { await recoverDraft(core) }
+    } catch {
+      if generation == epoch {
+        await core?.close(); core = nil
+        exists = FileManager.default.fileExists(atPath: directory.appendingPathComponent("vault").path)
+        report(error)
+      }
+    }
+  }
+
   func lock() {
+    let capturedRichDraft = captureRichDraft?()
+    captureRichDraft = nil
     sharedMembers = []
     epoch += 1
     unlocked = false
@@ -212,6 +254,7 @@ final class MobileVaultStore: ObservableObject {
     recoveredDraft = nil
     let background = UIApplication.shared.beginBackgroundTask(withName: "Seal draft")
     closing = Task {
+      let pending = await capturedRichDraft?.value ?? pending
       if let previous, let pending {
         do {
           let sealed = try await previous.call([
@@ -301,7 +344,7 @@ final class MobileVaultStore: ObservableObject {
   }
   func perform(_ request: [String: JSONValue]) async throws -> JSONValue {
     guard unlocked, let core else { throw VaultError.Locked }
-    if pendingDraft != nil, ["relay-init", "relay-receive"].contains(request["op"]?.string ?? "") { throw VaultError.InUse }
+    if pendingDraft != nil, ["relay-peer-switch", "relay-peer-create", "relay-peer-rekey", "relay-init", "relay-receive", "recovery-export", "history-enable", "history-restore", "history-prune", "share-seal"].contains(request["op"]?.string ?? "") { throw VaultError.InUse }
     let generation = epoch
     let value = try await core.call(request)
     guard generation == epoch, unlocked else { throw VaultError.Locked }
@@ -315,6 +358,41 @@ final class MobileVaultStore: ObservableObject {
     items = document.items
     settings = document.settings
     sharedMembers = document.sharedMembers
+    if #available(iOS 17.0, *) {
+      let index = try await core.call(["op": .string("passkey-index")])
+      guard generation == epoch, unlocked else { throw VaultError.Locked }
+      await refreshCredentialIndex(index.object["passkeys"]?.array ?? [])
+    }
+  }
+  @available(iOS 17.0, *)
+  private func refreshCredentialIndex(_ values: [JSONValue]) async {
+    func decoded(_ value: String) -> Data? {
+      var raw = value.replacingOccurrences(of: "-", with: "+").replacingOccurrences(of: "_", with: "/")
+      raw += String(repeating: "=", count: (4 - raw.count % 4) % 4)
+      return Data(base64Encoded: raw)
+    }
+    func identity(_ value: JSONValue) -> ASPasskeyCredentialIdentity? {
+      let fields = value.object
+      guard let rp = fields["rpId"]?.string, let user = fields["userName"]?.string,
+        let id = decoded(fields["id"]?.string ?? ""), !id.isEmpty,
+        let handle = decoded(fields["userHandle"]?.string ?? ""), !handle.isEmpty else { return nil }
+      return ASPasskeyCredentialIdentity(relyingPartyIdentifier: rp, userName: user, credentialID: id, userHandle: handle, recordIdentifier: fields["id"]?.string)
+    }
+    let preferences = UserDefaults(suiteName: Bundle.main.object(forInfoDictionaryKey: "VaultAppGroup") as? String)
+    let previous = preferences?.data(forKey: "passkey-identity-index").flatMap { try? JSONDecoder().decode([JSONValue].self, from: $0) } ?? []
+    let currentIDs = Set(values.map { ($0.object["rpId"]?.string ?? "") + ":" + ($0.object["id"]?.string ?? "") })
+    let removed = previous.filter { !currentIDs.contains(($0.object["rpId"]?.string ?? "") + ":" + ($0.object["id"]?.string ?? "")) }.compactMap(identity)
+    if !removed.isEmpty {
+      let success: Bool = await withCheckedContinuation { continuation in
+        ASCredentialIdentityStore.shared.removeCredentialIdentities(removed) { success, _ in continuation.resume(returning: success) }
+      }
+      if !success { return }
+    }
+    let identities = values.compactMap(identity)
+    let success: Bool = await withCheckedContinuation { continuation in
+      ASCredentialIdentityStore.shared.saveCredentialIdentities(identities) { success, _ in continuation.resume(returning: success) }
+    }
+    if success, let encoded = try? JSONEncoder().encode(values) { preferences?.set(encoded, forKey: "passkey-identity-index") }
   }
   @discardableResult
   func save(_ item: VaultItem) async -> Bool {
@@ -372,6 +450,8 @@ final class MobileVaultStore: ObservableObject {
   }
   func report(_ failure: Error) {
     switch failure {
+    case VaultError.StaleEdit:
+      error = t("此条目已在其他设备修改，草稿已保留。请对照新版本后重试。", "This entry changed on another device. Your draft is retained; review the latest version before retrying.")
     case VaultError.Authentication:
       error = t("密码不正确，或文件已损坏。", "Incorrect password or damaged file.")
     case VaultError.Locked: error = t("请先解锁资料库。", "Unlock your vault first.")

@@ -1,46 +1,27 @@
 //! Native rich-note storage. No editor or attachment plaintext is written outside SQLCipher.
 use super::*;
-use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 
-const FILE_LIMIT: usize = 25 * 1024 * 1024;
-const NOTE_LIMIT: usize = 250 * 1024 * 1024;
-pub(super) const ARCHIVE_LIMIT: usize = 1024 * 1024 * 1024;
-
-#[derive(Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(super) struct AttachmentMeta {
-    pub(super) id: String,
-    pub(super) note_id: String,
-    pub(super) name: String,
-    pub(super) mime: String,
-    pub(super) size: usize,
-}
-#[derive(Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct Archive {
-    format: String,
-    version: u32,
-    header: Header,
-    manifest: Sealed,
-    files: HashMap<String, Sealed>,
-}
-#[derive(Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct Manifest {
-    document: Document,
-    attachments: Vec<AttachmentMeta>,
-}
-fn aad(vault: &str, meta: &AttachmentMeta) -> Result<Vec<u8>> {
-    serde_json::to_vec(&(vault, meta)).map_err(|_| VaultError::InvalidData)
-}
+pub(super) use crate::archive::{
+    attachment_aad as aad, validate_attachments as validate, AttachmentMeta, ARCHIVE_LIMIT,
+    FILE_LIMIT, NOTE_LIMIT,
+};
 pub(super) fn table(conn: &Connection) -> Result<()> {
-    storage(conn.execute_batch("CREATE TABLE IF NOT EXISTS note_attachments(id TEXT PRIMARY KEY, note_id TEXT NOT NULL, metadata TEXT NOT NULL, payload BLOB NOT NULL)"))
+    storage(conn.execute_batch("CREATE TABLE IF NOT EXISTS note_attachments(id TEXT PRIMARY KEY, note_id TEXT NOT NULL, metadata TEXT NOT NULL, payload BLOB NOT NULL); CREATE INDEX IF NOT EXISTS note_attachments_owner ON note_attachments(note_id)"))
 }
 pub(super) fn metas(conn: &Connection) -> Result<Vec<AttachmentMeta>> {
     table(conn)?;
     let mut query = storage(conn.prepare("SELECT metadata FROM note_attachments ORDER BY id"))?;
     let rows = storage(query.query_map([], |row| row.get::<_, String>(0)))?;
+    rows.map(|row| serde_json::from_str(&storage(row)?).map_err(|_| VaultError::InvalidData))
+        .collect()
+}
+fn metas_for_note(conn: &Connection, note_id: &str) -> Result<Vec<AttachmentMeta>> {
+    table(conn)?;
+    let mut query = storage(
+        conn.prepare("SELECT metadata FROM note_attachments WHERE note_id=?1 ORDER BY id"),
+    )?;
+    let rows = storage(query.query_map([note_id], |row| row.get::<_, String>(0)))?;
     rows.map(|row| serde_json::from_str(&storage(row)?).map_err(|_| VaultError::InvalidData))
         .collect()
 }
@@ -82,64 +63,6 @@ pub(super) fn write(
         rusqlite::params![meta.id, meta.note_id, serde_json::to_string(meta).map_err(|_| VaultError::InvalidData)?, serde_json::to_vec(&sealed).map_err(|_| VaultError::InvalidData)?]))?;
     Ok(())
 }
-pub(super) fn refs(node: &Value, out: &mut HashSet<String>, depth: usize) -> Result<()> {
-    if depth > 100 {
-        return Err(VaultError::InvalidData);
-    }
-    if ["vaultImage", "vaultAttachment"].contains(&node["type"].as_str().unwrap_or("")) {
-        out.insert(
-            node["attrs"]["attachmentId"]
-                .as_str()
-                .filter(|s| !s.is_empty())
-                .ok_or(VaultError::InvalidData)?
-                .into(),
-        );
-    }
-    if let Some(children) = node["content"].as_array() {
-        for child in children {
-            refs(child, out, depth + 1)?;
-        }
-    }
-    Ok(())
-}
-pub(super) fn validate(doc: &Document, files: &[AttachmentMeta]) -> Result<()> {
-    let mut ids = HashSet::new();
-    let mut totals = HashMap::<&str, usize>::new();
-    for meta in files {
-        if meta.size > FILE_LIMIT
-            || !ids.insert(&meta.id)
-            || meta.name.len() > 1024
-            || meta.mime.len() > 128
-            || !doc
-                .items
-                .iter()
-                .any(|n| n["id"] == meta.note_id && n["type"] == "secureNote")
-        {
-            return Err(VaultError::InvalidData);
-        }
-        let total = totals.entry(&meta.note_id).or_default();
-        *total += meta.size;
-        if *total > NOTE_LIMIT {
-            return Err(VaultError::InvalidData);
-        }
-    }
-    for item in &doc.items {
-        if item["noteFormat"] != "rich-v1" {
-            continue;
-        }
-        if item["noteDocument"]["type"] != "doc" {
-            return Err(VaultError::InvalidData);
-        }
-        let mut used = HashSet::new();
-        refs(&item["noteDocument"], &mut used, 0)?;
-        for id in used {
-            if !files.iter().any(|m| m.id == id && item["id"] == m.note_id) {
-                return Err(VaultError::InvalidData);
-            }
-        }
-    }
-    Ok(())
-}
 pub(super) fn guard_legacy_write(doc: &Document, request: &Value) -> Result<()> {
     if request["richNotes"] == true {
         return Ok(());
@@ -163,7 +86,10 @@ impl DiskVault {
         }
         let mut used = HashSet::new();
         for item in &open.document.items {
-            refs(&item["noteDocument"], &mut used, 0)?;
+            crate::archive::item_attachment_refs(item, &mut used)?;
+        }
+        for revision in history::read(&open.connection, &open.root, &open.header.vault_id)? {
+            crate::archive::item_attachment_refs(&revision.item, &mut used)?;
         }
         let attachments = metas(&open.connection)?;
         let tx = storage(open.connection.transaction())?;
@@ -194,6 +120,12 @@ impl DiskVault {
             storage(tx.execute("DELETE FROM note_attachments WHERE note_id=?1", [id]))?;
         }
         save_document_row(&tx, &open.root, &open.header.vault_id, &next)?;
+        // Permanent deletion retains its existing privacy semantics, including history.
+        for revision in history::read(&tx, &open.root, &open.header.vault_id)? {
+            if revision.item_id == id {
+                storage(tx.execute("DELETE FROM entry_history WHERE id=?1", [&revision.id]))?;
+            }
+        }
         storage(tx.commit())?;
         open.document = next;
         Ok(json!({"ok":true}))
@@ -223,7 +155,7 @@ impl DiskVault {
     pub(super) fn validate_note_save(&mut self, request: &Value) -> Result<()> {
         let open = self.open()?;
         guard_legacy_write(&open.document, request)?;
-        if request["item"]["noteFormat"] == "rich-v1" {
+        if request["item"]["noteFormat"] == "rich-v1" || request["item"]["type"] == "device" {
             authorize_item_write(&open.document, &request["item"])?;
             if let Some(old) = open
                 .document
@@ -239,9 +171,17 @@ impl DiskVault {
             {
                 return Err(VaultError::Unsupported);
             }
-            let mut next = open.document.clone();
-            next.upsert(request["item"].clone())?;
-            validate(&next, &metas(&open.connection)?)?;
+            // Immutable prior revisions were checked when committed/imported. Saving one
+            // note must not decrypt unrelated history or every other library's records.
+            let mut candidate = Document {
+                format_version: open.document.format_version,
+                ..Document::default()
+            };
+            candidate.upsert(request["item"].clone())?;
+            let id = request["item"]["id"]
+                .as_str()
+                .ok_or(VaultError::InvalidData)?;
+            validate(&candidate, &metas_for_note(&open.connection, id)?)?;
             self.prepare_rich()?;
         }
         Ok(())
@@ -261,7 +201,11 @@ impl DiskVault {
             .document
             .items
             .iter()
-            .find(|n| n["id"] == note_id && n["type"] == "secureNote" && n["isDeleted"] != true)
+            .find(|n| {
+                n["id"] == note_id
+                    && matches!(n["type"].as_str(), Some("secureNote" | "device"))
+                    && n["isDeleted"] != true
+            })
             .ok_or(VaultError::InvalidData)?;
         authorize_item_write(&open.document, note)?;
         if note["sharedVaultId"]
@@ -290,6 +234,13 @@ impl DiskVault {
         let mut next = open.document.clone();
         next.format_version = next.format_version.max(3);
         let tx = storage(open.connection.transaction())?;
+        relay::peer::register_local_attachment(
+            &tx,
+            &open.root,
+            &open.header.vault_id,
+            &next,
+            &meta.id,
+        )?;
         write(&tx, &open.root, &open.header.vault_id, &meta, bytes)?;
         save_document_row(&tx, &open.root, &open.header.vault_id, &next)?;
         storage(tx.commit())?;
@@ -298,12 +249,9 @@ impl DiskVault {
     }
     fn read_attachment(&mut self, note_id: &str, id: &str) -> Result<Vec<u8>> {
         let open = self.open()?;
-        if !open
-            .document
-            .items
-            .iter()
-            .any(|n| n["id"] == note_id && n["type"] == "secureNote")
-        {
+        if !open.document.items.iter().any(|n| {
+            n["id"] == note_id && matches!(n["type"].as_str(), Some("secureNote" | "device"))
+        }) {
             return Err(VaultError::InvalidData);
         }
         let meta = metas(&open.connection)?
@@ -322,10 +270,29 @@ impl DiskVault {
             .ok_or(VaultError::InvalidData)?;
         authorize_item_write(&open.document, note)?;
         let mut used = HashSet::new();
-        refs(&note["noteDocument"], &mut used, 0)?;
+        crate::archive::item_attachment_refs(note, &mut used)?;
+        for revision in history::read(&open.connection, &open.root, &open.header.vault_id)? {
+            crate::archive::item_attachment_refs(&revision.item, &mut used)?;
+        }
+        let retained = relay::peer::with_library_records(
+            &open.connection,
+            &open.root,
+            &open.header.vault_id,
+            &open.document,
+        )?;
+        for item in retained.items {
+            crate::archive::item_attachment_refs(&item, &mut used)?;
+        }
         if used.contains(id) {
             return Err(VaultError::InvalidData);
         }
+        relay::peer::forget_local_attachment(
+            &open.connection,
+            &open.root,
+            &open.header.vault_id,
+            &open.document,
+            id,
+        )?;
         storage(open.connection.execute(
             "DELETE FROM note_attachments WHERE id=?1 AND note_id=?2",
             rusqlite::params![id, note_id],
@@ -333,49 +300,23 @@ impl DiskVault {
         Ok(())
     }
     pub(super) fn archive(&mut self, password: &str) -> Result<String> {
-        if password.chars().count() < 10 {
-            return Err(VaultError::InvalidData);
-        }
         let open = self.open()?;
         let attachments = metas(&open.connection)?;
-        validate(&open.document, &attachments)?;
-        let root = Zeroizing::new(random_bytes::<32>());
-        let header = Header::create(password, &root, new_id())?;
-        let mut files = HashMap::new();
-        let mut size = 0;
-        for meta in &attachments {
-            let bytes = read(&open.connection, &open.root, &open.header.vault_id, meta)?;
-            let sealed = seal(
-                &subkey(&root, b"note-attachments-v1"),
-                &bytes,
-                &aad(&header.vault_id, meta)?,
-            )?;
-            size += sealed.ciphertext.len();
-            if size > ARCHIVE_LIMIT / 2 {
-                return Err(VaultError::InvalidData);
-            }
-            files.insert(meta.id.clone(), sealed);
-        }
-        let bytes = Zeroizing::new(
-            serde_json::to_vec(&Manifest {
-                document: open.document.clone(),
-                attachments,
-            })
-            .map_err(|_| VaultError::InvalidData)?,
-        );
-        let manifest = seal(
-            &subkey(&root, b"archive-manifest-v3"),
-            &bytes,
-            header.vault_id.as_bytes(),
+        let history = history::read(&open.connection, &open.root, &open.header.vault_id)?;
+        let document = relay::peer::backup_document(
+            &open.connection,
+            &open.root,
+            &open.header.vault_id,
+            &open.document,
         )?;
-        serde_json::to_string(&Archive {
-            format: "PasswordVaultArchive".into(),
-            version: 3,
-            header,
-            manifest,
-            files,
-        })
-        .map_err(|_| VaultError::InvalidData)
+        crate::archive::encode_archive(
+            &document,
+            attachments,
+            history,
+            history::enabled(&open.connection)?,
+            password,
+            |meta| read(&open.connection, &open.root, &open.header.vault_id, meta),
+        )
     }
     pub(super) fn import_archive(
         &mut self,
@@ -383,39 +324,10 @@ impl DiskVault {
         password: &str,
         create_password: Option<&str>,
     ) -> Result<Value> {
-        if input.len() > ARCHIVE_LIMIT {
-            return Err(VaultError::InvalidData);
-        }
-        let archive: Archive = serde_json::from_str(input).map_err(|_| VaultError::InvalidData)?;
-        if archive.format != "PasswordVaultArchive" || archive.version != 3 {
-            return Err(VaultError::Unsupported);
-        }
-        let root = archive.header.unlock(password)?;
-        let clear = unseal(
-            &subkey(&root, b"archive-manifest-v3"),
-            &archive.manifest,
-            archive.header.vault_id.as_bytes(),
-        )?;
-        let mut manifest: Manifest =
-            serde_json::from_slice(&clear).map_err(|_| VaultError::InvalidData)?;
-        manifest.document = Document::parse(
-            &serde_json::to_vec(&manifest.document).map_err(|_| VaultError::InvalidData)?,
-        )?;
-        validate(&manifest.document, &manifest.attachments)?;
-        if manifest.attachments.len() != archive.files.len() {
-            return Err(VaultError::InvalidData);
-        }
-        // Authenticate every file before any vault mutation. Plaintext exists only in memory.
-        for meta in &manifest.attachments {
-            let data = unseal(
-                &subkey(&root, b"note-attachments-v1"),
-                archive.files.get(&meta.id).ok_or(VaultError::InvalidData)?,
-                &aad(&archive.header.vault_id, meta)?,
-            )?;
-            if data.len() != meta.size {
-                return Err(VaultError::InvalidData);
-            }
-        }
+        let decoded = crate::archive::decode_archive(input, password)?;
+        let archive = decoded.archive;
+        let root = decoded.root;
+        let manifest = decoded.manifest;
         let creating = create_password.is_some();
         if let Some(password) = create_password {
             self.create_document(password, Document::default())?;
@@ -423,7 +335,17 @@ impl DiskVault {
         let result = (|| {
             self.prepare_rich()?;
             let open = self.open()?;
+            if open.document.settings["activePeerLibrary"]
+                .as_str()
+                .is_some_and(|s| !s.is_empty())
+            {
+                return Err(VaultError::Unsupported);
+            }
             let mut next = open.document.clone();
+            if creating {
+                next.format_version = manifest.document.format_version;
+            }
+            let snapshots = manifest.document.settings["peerLibrarySnapshots"].clone();
             let count = next.merge(manifest.document)?;
             let existing = metas(&open.connection)?;
             // IDs are immutable. A conflicting blob must never replace a local attachment.
@@ -451,16 +373,43 @@ impl DiskVault {
                     .filter(|m| !existing.iter().any(|old| old.id == m.id))
                     .cloned(),
             );
-            validate(&next, &combined)?;
+            let mut combined_history =
+                history::read(&open.connection, &open.root, &open.header.vault_id)?;
+            combined_history.extend(manifest.history.clone());
+            let mut validation = relay::peer::with_library_records(
+                &open.connection,
+                &open.root,
+                &open.header.vault_id,
+                &history::with_history(&next, &combined_history),
+            )?;
+            if !snapshots.is_null() {
+                validation.settings["peerLibrarySnapshots"] = snapshots.clone();
+            }
+            validate(&validation, &combined)?;
             let tx = storage(open.connection.transaction())?;
+            if archive.version == 4 {
+                next.settings["entryHistoryEnabled"] = json!(true);
+                history::table(&tx)?;
+                for revision in &manifest.history {
+                    history::write(&tx, &open.root, &open.header.vault_id, revision)?;
+                }
+            }
             for meta in &manifest.attachments {
                 let data = unseal(
                     &subkey(&root, b"note-attachments-v1"),
                     &archive.files[&meta.id],
                     &aad(&archive.header.vault_id, meta)?,
                 )?;
+                relay::peer::register_local_attachment(
+                    &tx,
+                    &open.root,
+                    &open.header.vault_id,
+                    &next,
+                    &meta.id,
+                )?;
                 write(&tx, &open.root, &open.header.vault_id, meta, &data)?;
             }
+            relay::peer::restore_snapshots(&tx, &open.root, &open.header.vault_id, &snapshots)?;
             save_document_row(&tx, &open.root, &open.header.vault_id, &next)?;
             storage(tx.commit())?;
             open.document = next;
@@ -499,5 +448,41 @@ impl VaultSession {
             .lock()
             .map_err(|_| VaultError::Storage)?
             .discard_attachment(&note_id, &id)
+    }
+}
+
+#[cfg(test)]
+mod targeted_validation_tests {
+    use super::*;
+    #[test]
+    fn saving_a_rich_note_does_not_decrypt_unrelated_history() {
+        let directory = tempfile::tempdir().unwrap();
+        let mut vault = DiskVault::new(directory.path()).unwrap();
+        vault.create("synthetic validation fixture").unwrap();
+        vault.command(&json!({"op":"save","item":{"id":"unrelated","type":"secureNote","title":"Unrelated","note":"prior"}})).unwrap();
+        vault.command(&json!({"op":"history-enable"})).unwrap();
+        vault
+            .open()
+            .unwrap()
+            .connection
+            .execute(
+                "UPDATE entry_history SET payload=?1",
+                [b"damaged-unrelated-history".as_slice()],
+            )
+            .unwrap();
+        let item = json!({"id":"new-note","type":"secureNote","title":"Current","note":"body","noteFormat":"rich-v1","noteDocument":{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"body"}]}]}});
+        vault
+            .command(&json!({"op":"save","richNotes":true,"item":item}))
+            .unwrap();
+        assert!(vault
+            .command(&json!({"op":"history-list","id":"unrelated"}))
+            .is_err());
+        let mut damaged = item;
+        damaged["noteDocument"] = json!({"type":"doc","content":[{"type":"vaultImage","attrs":{"attachmentId":"missing-owner-file"}}]});
+        assert!(vault
+            .command(&json!({"op":"save","richNotes":true,"item":damaged}))
+            .is_err());
+        let state = vault.command(&json!({"op":"list"})).unwrap();
+        assert_eq!(state["items"][1]["note"], "body");
     }
 }

@@ -5,9 +5,8 @@ from pathlib import Path
 import re
 import subprocess
 
-SCOPES = ('legacy', 'legacy_android', 'legacy_web', 'core', 'macos', 'browser', 'android', 'ios')
+SCOPES = ('core', 'macos', 'browser', 'android', 'ios')
 NATIVE = {'core', 'macos', 'browser', 'android', 'ios'}
-LEGACY = {'legacy', 'legacy_android', 'legacy_web'}
 
 
 def classify(paths):
@@ -25,25 +24,17 @@ def classify(paths):
             selected |= NATIVE
         elif path == 'tool/build_mobile_core.sh':
             selected |= {'android', 'ios'}
-        elif path == '.github/workflows/ci.yml' or path == '.github/workflows/release.yml' or path.startswith('.github/actions/setup-flutter/'):
-            selected |= LEGACY
+        elif path.startswith('apps/shared/note-editor/'):
+            selected |= {'macos', 'ios', 'android', 'browser'}
+        elif path.startswith('services/'):
+            continue  # Native workflow always runs the dedicated Node service job.
+        elif path.startswith(('apps/macos-legacy/', 'apps/macos-nsh/')):
+            selected |= {'macos', 'ios'}
         elif path.startswith('apps/'):
             component = path.split('/')[1]
             selected |= {component} if component in NATIVE else set(SCOPES)
-        elif path.startswith(('lib/', 'assets/')) or path in {'pubspec.yaml', 'pubspec.lock', '.flutter-version', 'analysis_options.yaml', 'l10n.yaml', 'build.yaml'}:
-            selected |= LEGACY
-            if path.startswith('assets/'):
-                selected |= NATIVE  # Shared branding/resources can be consumed by native clients.
-        elif path.startswith('test/extension/'):
-            continue  # Always covered by the repository job.
-        elif path.startswith('test/'):
-            selected.add('legacy')
-        elif path.startswith('android/'):
-            selected |= {'legacy', 'legacy_android'}
-        elif path.startswith(('web/', 'chrome/')) or path == 'build_extension.sh':
-            selected |= {'legacy', 'legacy_web'}
-        elif path.startswith(('ios/', 'macos/', 'windows/', 'linux/')):
-            selected |= LEGACY
+        elif path.startswith('assets/'):
+            selected |= NATIVE
         else:
             selected |= set(SCOPES)
     return selected

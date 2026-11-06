@@ -185,6 +185,9 @@ pub fn export_csv(doc: &Document) -> Result<String> {
         .write_record(fields)
         .map_err(|_| VaultError::Storage)?;
     for item in &doc.items {
+        if item["type"] == "device" {
+            continue;
+        }
         let cells: Vec<String> = fields
             .iter()
             .map(|key| match &item[*key] {

@@ -109,7 +109,7 @@ class AutofillActivity : FragmentActivity() {
                                 val entries =
                                     candidates.filter {
                                         !it.optBoolean("isDeleted") &&
-                                            it.optString("type") == "password" &&
+                                            it.optString("type") == target.kind &&
                                             (it.optString("title").contains(query, true) ||
                                                 it.optString("username").contains(query, true))
                                     }
@@ -201,11 +201,15 @@ class AutofillActivity : FragmentActivity() {
             RemoteViews(packageName, android.R.layout.simple_list_item_1).apply {
                 setTextViewText(android.R.id.text1, "PasswordVault")
             }
-        val dataset =
-            Dataset.Builder(presentation)
-                .setValue(target.passwordId, AutofillValue.forText(account.optString("password")))
-        target.userId?.let {
-            dataset.setValue(it, AutofillValue.forText(account.optString("username")))
+        val dataset = Dataset.Builder(presentation)
+        if (target.passwordId != null) {
+            dataset.setValue(target.passwordId, AutofillValue.forText(account.optString("password")))
+            target.userId?.let { dataset.setValue(it, AutofillValue.forText(account.optString("username"))) }
+        } else {
+            if (fresh.optString("type") != target.kind) return finish()
+            val values = structuredFillValues(fresh, target.structuredFields.keys)
+            if (values.isEmpty()) return finish()
+            for ((key, value) in values) target.structuredFields[key]?.let { dataset.setValue(it, AutofillValue.forText(value)) }
         }
 
         setResult(

@@ -1,3 +1,5 @@
+import {StructuredFill} from "./StructuredFill";
+import {PasskeyApproval} from "./PasskeyApproval";
 import { render } from "preact";
 import { useEffect, useState, useRef } from "preact/hooks";
 import { authenticate, errorText, message, status, lock } from "./client";
@@ -291,6 +293,7 @@ function Popup() {
             <CaptureConfirmation
               key={`${captured.tabId}:${captured.origin}:${captured.id ?? "manual"}`}
               captured={captured}
+              accounts={matches?.accounts ?? []}
               busy={busy}
               error={error}
               onChange={setCaptured}
@@ -329,6 +332,7 @@ function Popup() {
               {matchesError}
             </p>
           )}
+          <StructuredFill/>
           <details
             class="site-accounts"
             open={!captured}
@@ -412,6 +416,12 @@ function Popup() {
                         </button>
                       )}
                       <AccountSecret account={account} origin={matches.origin} tabId={matches.id} disabled={busy} />
+                      <button type="button" class="text-button" disabled={busy}
+                        onClick={() => run(async () => {
+                          const value = await message({action:"reveal-account",tabId:matches.id,origin:matches.origin,id:account.id,accountId:account.accountId});
+                          setCaptured({tabId:matches.id,origin:matches.origin,mode:state.mode,username:value.username,password:value.password,updateId:account.id,updateAccountId:account.accountId});
+                          value.password = "";
+                        })}>修改账号密码</button>
                     </div>
                   ))
                 : !matchesError && (
@@ -466,8 +476,24 @@ function Popup() {
           )}
         </>
       )}
+      {state && (<details class="authorization-settings">
+            <summary>自动锁定{state.autoLockEnabled ? ` · ${state.autoLockMinutes / 60} 小时` : " · 未开启"}</summary>
+            <label class="authorization-option">
+              <input id="browser-auto-lock" type="checkbox" checked={state.autoLockEnabled === true} disabled={busy}
+                onChange={(event) => { const enabled = event.currentTarget.checked; void run(() => message({action:"configure-auto-lock", enabled, minutes:state.autoLockMinutes ?? 60})); }} />
+              空闲后需要重新输入主密码
+            </label>
+            {state.autoLockEnabled && <label>空闲时长
+              <select id="browser-auto-lock-minutes" value={state.autoLockMinutes ?? 60} disabled={busy}
+                onChange={(event) => { const minutes = Number(event.currentTarget.value); void run(() => message({action:"configure-auto-lock", enabled:true, minutes})); }}>
+                <option value={60}>1 小时</option>
+                <option value={120}>2 小时</option>
+              </select>
+            </label>}
+            <p class="muted">默认保持授权，不因空闲或电脑锁屏要求重新输入。开启后，达到所选空闲时长或电脑锁屏时锁定插件。手动锁定、撤销授权或修改主密码后仍需验证。</p>
+          </details>)}
       <footer class="popup-footer">
-        <span>自动锁定</span>
+        <span>{state?.autoLockEnabled ? `空闲 ${state.autoLockMinutes / 60} 小时后锁定` : "自动锁定未开启"}</span>
         <button class="text-button" onClick={manage}>
           管理资料库 ↗
         </button>
@@ -478,6 +504,7 @@ function Popup() {
 
 function CaptureConfirmation({
   captured,
+  accounts,
   busy,
   error,
   onChange,
@@ -485,6 +512,7 @@ function CaptureConfirmation({
   onCancel,
 }: {
   captured: any;
+  accounts: any[];
   busy: boolean;
   error: string;
   onChange: (value: any) => void;
@@ -507,19 +535,26 @@ function CaptureConfirmation({
     <form
       ref={form}
       class="capture"
-      aria-label={captured.manual ? "添加账号密码" : "确认保存账号"}
+      aria-label={captured.updateId ? "修改账号密码" : captured.manual ? "添加账号密码" : "确认保存账号"}
       onSubmit={(event) => {
         event.preventDefault();
         setRevealed(false);
         onSave();
       }}
     >
-      <h3>{captured.manual ? "添加账号密码" : "确认保存账号"}</h3>
+      <h3>{captured.updateId ? "修改账号密码" : captured.manual ? "添加账号密码" : "确认保存账号"}</h3>
       <p class="muted capture-hint">
         {captured.manual ? "为当前网站填写账号和密码。" : "可修改后保存。"}
         离线暂存使用此浏览器的设备密钥加密。
         {captured.expires ? "待保存信息将在两分钟后清除。" : "确认后加密保存。"}
       </p>
+      <label>保存方式<select disabled={busy} value={captured.updateId ? JSON.stringify([captured.updateId,captured.updateAccountId ?? null]) : ""} onChange={event=>{
+        const value=event.currentTarget.value;
+        const [updateId,updateAccountId]=value ? JSON.parse(value) : [undefined,undefined];
+        const account=accounts.find(a=>a.id===updateId && (a.accountId??null)===(updateAccountId??null));
+        onChange({...captured,updateId,updateAccountId:updateAccountId??undefined,username:account?.username??captured.username});
+      }}><option value="">另存为新账号</option>{accounts.map(account=><option value={JSON.stringify([account.id,account.accountId??null])}>更新：{account.title} · {account.username}</option>)}</select></label>
+      {captured.updateId && <p class="muted">更新所选账号并保留旧密码历史；需要资料库在线解锁。</p>}
       <label htmlFor="capture-username">账号</label>
       <input
         id="capture-username"
@@ -601,4 +636,4 @@ function CaptureConfirmation({
   );
 }
 
-render(<Popup />, document.getElementById("app")!);
+render(<><PasskeyApproval/><Popup /></>, document.getElementById("app")!);

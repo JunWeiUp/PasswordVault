@@ -11,8 +11,10 @@ import java.util.*;
 /** Blocking file API: invoke on an application I/O executor. Staging contains ciphertext only. */
 public final class RelayFiles {
     private final OkHttpClient http;
-    private final String base,token;
-    public RelayFiles(OkHttpClient http,String base,String token){if(!base.startsWith("https://"))throw new IllegalArgumentException("HTTPS required");this.http=http.newBuilder().followRedirects(false).followSslRedirects(false).build();this.base=base.replaceAll("/+$","");this.token=token;}
+    private final String base,token,password;
+    public RelayFiles(OkHttpClient http,String base,String token){this(http,base,token,null);}
+    /** @param password server access password sent as Relay-Access, or null. */
+    public RelayFiles(OkHttpClient http,String base,String token,String password){if(!base.startsWith("https://"))throw new IllegalArgumentException("HTTPS required");this.password=RelayAccess.validate(password);this.http=http.newBuilder().followRedirects(false).followSslRedirects(false).build();this.base=base.replaceAll("/+$","");this.token=token;}
     public static JSONObject prepare(Crypto crypto,String to,File source,File staging,JSONObject metadata)throws Exception{
         if(!staging.createNewFile())throw new IOException("Staging already exists");staging.setReadable(false,false);staging.setWritable(false,false);staging.setReadable(true,true);staging.setWritable(true,true);
         String id=Crypto.hex(Crypto.random(16));MessageDigest digest=MessageDigest.getInstance("SHA-256");
@@ -33,6 +35,7 @@ public final class RelayFiles {
     }
     private Response request(String method,String path,byte[] body,Map<String,String> headers)throws IOException{
         Request.Builder builder=new Request.Builder().url(base+path).header("Authorization","Bearer "+token);
+        if(password!=null)builder.header(RelayAccess.HEADER,password);
         for(Map.Entry<String,String> h:headers.entrySet())builder.header(h.getKey(),h.getValue());
         RequestBody payload=body==null?null:RequestBody.create(body,MediaType.get("application/octet-stream"));
         if((method.equals("POST")||method.equals("PUT"))&&payload==null)payload=RequestBody.create(new byte[0],null);
@@ -40,17 +43,17 @@ public final class RelayFiles {
     }
     public JSONObject upload(JSONObject info,File staging)throws Exception{
         String id=info.getString("id");JSONObject status;
-        try(Response r=request("POST","",info.toString().getBytes(StandardCharsets.UTF_8),Map.of())){
-            if(r.code()==409){try(Response existing=request("GET","/"+id,null,Map.of())){if(!existing.isSuccessful())throw new IOException("Upload conflict");status=new JSONObject(existing.body().string());}}
+        try(Response r=request("POST","",info.toString().getBytes(StandardCharsets.UTF_8),java.util.Collections.emptyMap())){
+            if(r.code()==409){try(Response existing=request("GET","/"+id,null,java.util.Collections.emptyMap())){if(!existing.isSuccessful())throw new IOException("Upload conflict");status=new JSONObject(existing.body().string());}}
             else{if(r.code()!=201)throw new IOException("File admission "+r.code());status=new JSONObject(r.body().string());}
         }
         for(String field:new String[]{"id","to","size","sha256","metadata"})if(!status.get(field).toString().equals(info.get(field).toString()))throw new IOException("Upload ID conflict");
-        long offset=status.getLong("offset");try(RandomAccessFile input=new RandomAccessFile(staging,"r")){input.seek(offset);byte[] buffer=new byte[1<<20];int count;while((count=input.read(buffer))>0){try(Response r=request("PUT","/"+id+"/data",Arrays.copyOf(buffer,count),Map.of("Upload-Offset",Long.toString(offset)))){if(!r.isSuccessful())throw new IOException("Upload failed "+r.code());offset=new JSONObject(r.body().string()).getLong("offset");}}}
-        try(Response r=request("POST","/"+id+"/commit",null,Map.of())){if(!r.isSuccessful())throw new IOException("Commit failed "+r.code());return new JSONObject(r.body().string());}
+        long offset=status.getLong("offset");if(offset<0||offset>info.getLong("size"))throw new IOException("Invalid upload offset");try(RandomAccessFile input=new RandomAccessFile(staging,"r")){input.seek(offset);byte[] buffer=new byte[1<<20];int count;while((count=input.read(buffer))>0){try(Response r=request("PUT","/"+id+"/data",Arrays.copyOf(buffer,count),java.util.Collections.singletonMap("Upload-Offset",Long.toString(offset)))){if(!r.isSuccessful())throw new IOException("Upload failed "+r.code());long next=new JSONObject(r.body().string()).getLong("offset");if(next!=offset+count||next>info.getLong("size"))throw new IOException("Invalid upload progress");offset=next;}}}
+        try(Response r=request("POST","/"+id+"/commit",null,java.util.Collections.emptyMap())){if(!r.isSuccessful())throw new IOException("Commit failed "+r.code());return new JSONObject(r.body().string());}
     }
-    public JSONArray inbox()throws Exception{try(Response r=request("GET","",null,Map.of())){if(!r.isSuccessful())throw new IOException("Inbox failed");return new JSONArray(r.body().string());}}
+    public JSONArray inbox()throws Exception{try(Response r=request("GET","",null,java.util.Collections.emptyMap())){if(!r.isSuccessful())throw new IOException("Inbox failed");return new JSONArray(r.body().string());}}
     public void download(JSONObject info,File staging)throws Exception{
-        long size=info.getLong("size");try(RandomAccessFile output=new RandomAccessFile(staging,"rw")){long offset=output.length();output.seek(offset);while(offset<size){long end=Math.min(size-1,offset+(1<<20)-1);try(Response r=request("GET","/"+info.getString("id")+"/data",null,Map.of("Range","bytes="+offset+"-"+end))){if(r.code()!=206)throw new IOException("Range refused");byte[] chunk=r.body().bytes();if(chunk.length!=end-offset+1)throw new IOException("Unexpected length");output.write(chunk);offset+=chunk.length;}}output.getFD().sync();}
+        long size=info.getLong("size");try(RandomAccessFile output=new RandomAccessFile(staging,"rw")){long offset=output.length();if(offset>size)throw new IOException("Staged file exceeds declared size");output.seek(offset);while(offset<size){long end=Math.min(size-1,offset+(1<<20)-1);try(Response r=request("GET","/"+info.getString("id")+"/data",null,java.util.Collections.singletonMap("Range","bytes="+offset+"-"+end))){if(r.code()!=206)throw new IOException("Range refused");byte[] chunk=r.body().bytes();if(chunk.length!=end-offset+1)throw new IOException("Unexpected length");output.write(chunk);offset+=chunk.length;}}output.getFD().sync();}
     }
-    public void acknowledge(String id)throws IOException{try(Response r=request("DELETE","/"+id,null,Map.of())){if(r.code()!=204)throw new IOException("Acknowledgement failed");}}
+    public void acknowledge(String id)throws IOException{try(Response r=request("DELETE","/"+id,null,java.util.Collections.emptyMap())){if(r.code()!=204)throw new IOException("Acknowledgement failed");}}
 }

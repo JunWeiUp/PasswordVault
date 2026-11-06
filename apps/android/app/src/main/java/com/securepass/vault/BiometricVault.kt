@@ -15,6 +15,15 @@ import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 
 class BiometricVault(private val activity: FragmentActivity) {
+    companion object {
+        fun clearAfterRecovery(context: Context): Boolean {
+            val prefs = context.getSharedPreferences("biometric-key", Context.MODE_PRIVATE)
+            val alias = prefs.getString("alias", context.packageName + ".root.biometric")!!
+            if (!prefs.edit().remove("ciphertext").remove("iv").remove("alias").commit()) return false
+            runCatching { KeyStore.getInstance("AndroidKeyStore").apply { load(null) }.deleteEntry(alias) }
+            return true
+        }
+    }
     private val prefs = activity.getSharedPreferences("biometric-key", Context.MODE_PRIVATE)
     private val aliasBase = activity.packageName + ".root.biometric"
     private val alias

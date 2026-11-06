@@ -19,3 +19,5 @@ android {
     }
     kotlinOptions { jvmTarget = "17" }
 }
+
+dependencies { implementation("androidx.credentials:credentials:1.5.0") }

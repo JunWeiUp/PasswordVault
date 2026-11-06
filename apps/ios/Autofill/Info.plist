@@ -17,15 +17,17 @@
 	<key>CFBundlePackageType</key>
 	<string>XPC!</string>
 	<key>CFBundleShortVersionString</key>
-	<string>2.3.2</string>
+	<string>2.3.3</string>
 	<key>CFBundleVersion</key>
-	<string>14</string>
+	<string>15</string>
 	<key>NSExtension</key>
 	<dict>
 		<key>NSExtensionAttributes</key>
 		<dict>
 			<key>ASCredentialProviderExtensionCapabilities</key>
 			<dict>
+				<key>ProvidesPasskeys</key>
+				<true/>
 				<key>ProvidesPasswords</key>
 				<true/>
 			</dict>

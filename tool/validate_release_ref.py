@@ -35,7 +35,7 @@ def resolve_release(tag, expected_commit, *, native=False, android_device=False)
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--native', action='store_true', help='Validate native manifests instead of legacy Flutter.')
+    parser.add_argument('--native', action='store_true', help='Validate all coordinated native platform manifests.')
     parser.add_argument('--android-device', action='store_true', help='Validate an Android-only signed build tag.')
     args = parser.parse_args()
     tag = os.environ.get('RELEASE_TAG', '')

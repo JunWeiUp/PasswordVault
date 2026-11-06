@@ -1,9 +1,30 @@
 //! Personal-vault replication. The relay transports bytes; only the Mac commits revisions.
 //! Every journal update shares the SQLCipher transaction with the document write.
 use super::*;
+#[path = "relay_peer.rs"]
+pub(super) mod peer;
 use base64::{engine::general_purpose::STANDARD, Engine};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
+
+#[path = "relay_capabilities.rs"]
+mod capabilities;
+
+// These operations implement their own authenticated personal-relay gate.
+pub(super) fn personal_operation(op: &str) -> bool {
+    matches!(
+        op,
+        "relay-init"
+            | "relay-trust"
+            | "relay-export"
+            | "relay-receive"
+            | "relay-resolve"
+            | "relay-resolve-batch"
+            | "relay-capabilities-challenge"
+            | "relay-capabilities-prove"
+            | "relay-capabilities-accept"
+    )
+}
 
 type Records = BTreeMap<String, Value>;
 #[derive(Clone, Serialize, Deserialize)]
@@ -24,6 +45,10 @@ struct Conflict {
 #[serde(rename_all = "camelCase")]
 struct State {
     version: u32,
+    #[serde(default)]
+    capabilities: BTreeMap<String, String>,
+    #[serde(default)]
+    challenges: BTreeMap<String, (String, u64)>,
     role: String,
     group: String,
     device: String,
@@ -51,7 +76,7 @@ pub(super) fn enabled(conn: &Connection) -> Result<bool> {
 }
 // Archived sync state can reference attachments absent from the current document.
 pub(super) fn retains_attachments(conn: &Connection) -> Result<bool> {
-    Ok(enabled(conn)? || storage(conn.query_row(
+    Ok(enabled(conn)? || !peer::list(conn)?.is_empty() || storage(conn.query_row(
         "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='personal_relay_archive'",
         [], |r| r.get::<_, i64>(0),
     ))? != 0)
@@ -94,7 +119,7 @@ fn install(doc: &mut Document, values: &Records) -> Result<()> {
         .map(|(_, v)| v.clone())
         .collect();
     doc.settings["noteCategories"] = values.get("categories").cloned().unwrap_or(json!([]));
-    doc.format_version = 4;
+    doc.format_version = doc.format_version.max(4);
     *doc = Document::parse(&serde_json::to_vec(doc).map_err(|_| VaultError::InvalidData)?)?;
     Ok(())
 }
@@ -113,6 +138,13 @@ pub(super) fn capture(
     vault: &str,
     doc: &Document,
 ) -> Result<()> {
+    peer::capture(conn, root, vault, doc)?;
+    if doc.settings["activePeerLibrary"]
+        .as_str()
+        .is_some_and(|s| !s.is_empty())
+    {
+        return Ok(());
+    }
     if !enabled(conn)? {
         return Ok(());
     }
@@ -155,12 +187,12 @@ fn attachments(open: &OpenVault, packet: &Value) -> Result<Value> {
     let mut needed = std::collections::HashSet::new();
     if let Some(records) = packet["records"].as_object() {
         for item in records.values() {
-            notes::refs(&item["noteDocument"], &mut needed, 0)?;
+            crate::archive::item_attachment_refs(item, &mut needed)?;
         }
     }
     if let Some(changes) = packet["changes"].as_array() {
         for change in changes {
-            notes::refs(&change["value"]["noteDocument"], &mut needed, 0)?;
+            crate::archive::item_attachment_refs(&change["value"], &mut needed)?;
         }
     }
     let mut files = Vec::new();
@@ -231,6 +263,12 @@ fn validate_files(conn: &Connection, doc: &Document) -> Result<()> {
 impl DiskVault {
     pub(super) fn relay_command(&mut self, request: &Value) -> Result<Value> {
         let op = string(request, "op")?;
+        if !personal_operation(op) {
+            guard_device_sync(self.open()?.document.format_version, op)?;
+        }
+        if op.starts_with("relay-peer-") {
+            return peer::command(self, request);
+        }
         if matches!(op, "relay-credentials-read" | "relay-credentials-write") {
             let directory = self.directory.join("relay-private");
             let path = directory.join("credentials.v1.enc");
@@ -269,6 +307,39 @@ impl DiskVault {
                     .is_object()
             {
                 return Err(VaultError::InvalidData);
+            }
+            // Invalidate cached proofs when pinned identity material changes, including
+            // key rotation away and back. Ordinary credential/status saves retain them.
+            if enabled(&open.connection)? {
+                let mut state = load(&open.connection, &open.root, &open.header.vault_id)?;
+                let identity = capabilities::Identity::parse(data, &state).ok();
+                state.capabilities.retain(|peer, binding| {
+                    identity
+                        .as_ref()
+                        .and_then(|i| i.binding(peer).ok())
+                        .as_ref()
+                        == Some(binding)
+                });
+                // Outstanding challenges bind their current recipient key at acceptance;
+                // clear them when their proof authority was changed.
+                if path.exists() {
+                    let envelope: Value = serde_json::from_slice(&storage(fs::read(&path))?)
+                        .map_err(|_| VaultError::InvalidData)?;
+                    let old_sealed: Sealed = serde_json::from_value(envelope["sealed"].clone())
+                        .map_err(|_| VaultError::InvalidData)?;
+                    let old_plain = Zeroizing::new(unseal(&key, &old_sealed, aad.as_bytes())?);
+                    let old = std::str::from_utf8(&old_plain)
+                        .ok()
+                        .and_then(|v| capabilities::Identity::parse(v, &state).ok());
+                    state.challenges.retain(|peer, _| match (&old, &identity) {
+                        (Some(a), Some(b)) => a
+                            .binding(peer)
+                            .ok()
+                            .is_some_and(|k| b.binding(peer).ok() == Some(k)),
+                        _ => false,
+                    });
+                }
+                store(&open.connection, &open.root, &open.header.vault_id, &state)?;
             }
             let sealed = seal(&key, data.as_bytes(), aad.as_bytes())?;
             let bytes = serde_json::to_vec(&json!({"version":1,"sealed":sealed}))
@@ -311,10 +382,12 @@ impl DiskVault {
             }
             let open = self.open()?;
             let mut next = open.document.clone();
-            next.format_version = 4;
+            next.format_version = next.format_version.max(4);
             let baseline = records(&next);
             let mut state = State {
                 version: 1,
+                capabilities: BTreeMap::new(),
+                challenges: BTreeMap::new(),
                 role: role.into(),
                 group: group.into(),
                 device: device.into(),
@@ -355,6 +428,15 @@ impl DiskVault {
             open.document = next;
             return Ok(json!({"ok":true}));
         }
+        let credentials = if op.starts_with("relay-capabilities-")
+            || matches!(op, "relay-export" | "relay-receive" | "relay-status")
+        {
+            self.relay_command(&json!({"op":"relay-credentials-read"}))?["data"]
+                .as_str()
+                .map(str::to_owned)
+        } else {
+            None
+        };
         let open = self.open()?;
         if !enabled(&open.connection)? {
             if op == "relay-status" {
@@ -363,6 +445,23 @@ impl DiskVault {
             return Err(VaultError::Unsupported);
         }
         let mut state = load(&open.connection, &open.root, &open.header.vault_id)?;
+        let identity = credentials
+            .as_deref()
+            .map(|data| capabilities::Identity::parse(data, &state))
+            .transpose();
+        if op.starts_with("relay-capabilities-") {
+            let identity = identity?.ok_or(VaultError::Authentication)?;
+            let result = identity.command(&mut state, request)?;
+            store(&open.connection, &open.root, &open.header.vault_id, &state)?;
+            return Ok(result);
+        }
+        let capable = |peer: &str| {
+            identity
+                .as_ref()
+                .ok()
+                .and_then(|i| i.as_ref())
+                .is_some_and(|i| i.ready(&state, peer))
+        };
         if op == "relay-detach" {
             if string(request, "group")? != state.group
                 || string(request, "device")? != state.device
@@ -380,13 +479,16 @@ impl DiskVault {
         if op == "relay-status" {
             let conflicts:BTreeMap<_,_>=state.conflicts.iter().map(|(id,c)|(id,json!({"peer":c.peer,"change":c.change,"local":state.canonical.get(&c.change.key)}))).collect();
             return Ok(
-                json!({"enabled":true,"role":state.role,"group":state.group,"device":state.device,"hub":state.hub,"peers":state.peers,"revision":state.revision,"cursor":state.cursor,"pending":state.pending.len(),"conflictCount":state.pending.values().filter(|c| state.blocked.contains(&c.id)).count(),"conflicts":conflicts}),
+                json!({"enabled":true,"role":state.role,"group":state.group,"device":state.device,"hub":state.hub,"peers":state.peers,"revision":state.revision,"cursor":state.cursor,"pending":state.pending.len(),"conflictCount":state.pending.values().filter(|c| state.blocked.contains(&c.id)).count(),"conflicts":conflicts,"capabilities":state.capabilities.keys().filter(|p| capable(p)).collect::<Vec<_>>()}),
             );
         }
         if op == "relay-export" {
             let peer = string(request, "peer")?;
             if !state.peers.contains(peer) {
                 return Err(VaultError::Authentication);
+            }
+            if open.document.format_version >= 7 && !capable(peer) {
+                return Err(VaultError::DevicesSyncBlocked);
             }
             let packet = if state.role == "hub" {
                 let cursor = *state.cursors.get(peer).unwrap_or(&0);
@@ -407,9 +509,14 @@ impl DiskVault {
                 json!({"version":1,"group":state.group,"hub":state.hub,"kind":"changes","cursor":state.cursor,"changes":state.pending.values().collect::<Vec<_>>()})
             };
             let mut packet = packet;
+            if capable(peer) {
+                packet["version"] = json!(2);
+                packet["formatVersion"] = json!(open.document.format_version);
+            }
             packet["files"] = attachments(open, &packet)?;
             return Ok(packet);
         }
+        let peer_capable = request["peer"].as_str().is_some_and(capable);
         let mut next = open.document.clone();
         let tx = storage(open.connection.transaction())?;
         match op {
@@ -425,6 +532,8 @@ impl DiskVault {
                     state.peers.insert(peer.into());
                 } else {
                     state.peers.remove(peer);
+                    state.capabilities.remove(peer);
+                    state.challenges.remove(peer);
                 }
             }
             "relay-receive" => {
@@ -433,7 +542,22 @@ impl DiskVault {
                     return Err(VaultError::Authentication);
                 }
                 let packet = &request["packet"];
-                if packet["version"] != 1
+                let version2 = packet["version"] == 2;
+                let packet_format = if version2 {
+                    packet["formatVersion"]
+                        .as_u64()
+                        .filter(|v| (2..=7).contains(v))
+                        .ok_or(VaultError::Unsupported)? as u32
+                } else {
+                    4
+                };
+                if (next.format_version >= 7 || version2) && (!peer_capable || !version2) {
+                    return Err(VaultError::DevicesSyncBlocked);
+                }
+                if version2 {
+                    next.format_version = next.format_version.max(packet_format);
+                }
+                if (!version2 && packet["version"] != 1)
                     || packet["group"] != state.group
                     || packet["hub"] != state.hub
                 {
@@ -469,7 +593,7 @@ impl DiskVault {
                         }
                         if !change.value.is_null() && change.key.starts_with("item:") {
                             let mut proposed = Document {
-                                format_version: 4,
+                                format_version: next.format_version,
                                 ..Document::default()
                             };
                             proposed.items.push(change.value.clone());
@@ -663,9 +787,9 @@ impl DiskVault {
                             if !value.is_null() {
                                 let id = new_id();
                                 value["id"] = json!(id);
-                                if value["noteFormat"] == "rich-v1" {
+                                if value["noteFormat"] == "rich-v1" || value["type"] == "device" {
                                     let mut used = std::collections::HashSet::new();
-                                    notes::refs(&value["noteDocument"], &mut used, 0)?;
+                                    crate::archive::item_attachment_refs(&value, &mut used)?;
                                     let available = notes::metas(&tx)?;
                                     for old_id in used {
                                         let old = available
@@ -686,6 +810,14 @@ impl DiskVault {
                                             &old_id,
                                             &meta.id,
                                         );
+                                        if let Some(files) = value["device"]["files"].as_array_mut()
+                                        {
+                                            for file in files {
+                                                if file["attachmentId"] == old_id {
+                                                    file["attachmentId"] = json!(meta.id);
+                                                }
+                                            }
+                                        }
                                         notes::write(
                                             &tx,
                                             &open.root,
@@ -723,6 +855,58 @@ impl DiskVault {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn capability_expiry_and_wrong_identity_do_not_mutate_state() {
+        use crypto_box::SecretKey;
+        let dir = tempfile::tempdir().unwrap();
+        let mut vault = DiskVault::new(dir.path()).unwrap();
+        vault.create("fixture").unwrap();
+        vault
+            .relay_command(
+                &json!({"op":"relay-init","role":"hub","group":"test","device":"mac","hub":"mac"}),
+            )
+            .unwrap();
+        let open = vault.open().unwrap();
+        let mut state = load(&open.connection, &open.root, &open.header.vault_id).unwrap();
+        let a = SecretKey::from([1u8; 32]);
+        let b = SecretKey::from([2u8; 32]);
+        let aid = capabilities::Identity::parse(&json!({"group":"test","device":"mac","secret":hex::encode(a.to_bytes()),"groups":{"trusted_peers":{"phone":hex::encode(b.public_key().as_bytes())}}}).to_string(), &state).unwrap();
+        let mut other = state.clone();
+        other.device = "phone".into();
+        let bid = capabilities::Identity::parse(&json!({"group":"test","device":"phone","secret":hex::encode(b.to_bytes()),"groups":{"trusted_peers":{"mac":hex::encode(a.public_key().as_bytes())}}}).to_string(), &other).unwrap();
+        let challenge = aid
+            .command(
+                &mut state,
+                &json!({"op":"relay-capabilities-challenge","peer":"phone"}),
+            )
+            .unwrap();
+        let proof = bid.command(&mut other,&json!({"op":"relay-capabilities-prove","peer":"mac","challenge":challenge["challenge"]})).unwrap();
+        state.challenges.get_mut("phone").unwrap().1 = 0;
+        let before = serde_json::to_value(&state).unwrap();
+        assert!(matches!(
+            aid.command(
+                &mut state,
+                &json!({"op":"relay-capabilities-accept","peer":"phone","proof":proof["proof"]})
+            ),
+            Err(VaultError::Authentication)
+        ));
+        assert_eq!(before, serde_json::to_value(&state).unwrap());
+        let renewed = aid
+            .command(
+                &mut state,
+                &json!({"op":"relay-capabilities-challenge","peer":"phone"}),
+            )
+            .unwrap();
+        assert_ne!(renewed, challenge);
+        let before = serde_json::to_value(&state).unwrap();
+        assert!(aid
+            .command(
+                &mut state,
+                &json!({"op":"relay-capabilities-accept","peer":"unknown","proof":proof["proof"]})
+            )
+            .is_err());
+        assert_eq!(before, serde_json::to_value(&state).unwrap());
+    }
     #[test]
     fn failed_journal_write_rolls_back_document() {
         let dir = tempfile::tempdir().unwrap();

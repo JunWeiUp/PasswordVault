@@ -17,9 +17,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
-      legacy: ${{ steps.select.outputs.legacy }}
-      legacy_android: ${{ steps.select.outputs.legacy_android }}
-      legacy_web: ${{ steps.select.outputs.legacy_web }}
       core: ${{ steps.select.outputs.core }}
       macos: ${{ steps.select.outputs.macos }}
       browser: ${{ steps.select.outputs.browser }}
@@ -63,29 +60,29 @@ jobs:
         with:
           node-version: '22'
           cache: npm
-          cache-dependency-path: apps/macos/NoteEditor/package-lock.json
+          cache-dependency-path: apps/shared/note-editor/package-lock.json
       - name: Install pinned build tools
         run: |
           rustup toolchain install 1.96.0 --profile minimal --component rustfmt,clippy --target aarch64-apple-darwin,x86_64-apple-darwin
-          toolchain_bin="$(dirname "$(rustup which --toolchain 1.96.0 rustc)")"
-          export PATH="$toolchain_bin:$PATH"
+          export RUSTUP_TOOLCHAIN=1.96.0
+          source tool/cargo_fork_env.sh
           brew install xcodegen
           node --version
       - run: bash tool/check_native.sh macos
       - name: Native state tests
         run: |
-          xcodebuild -project apps/macos/PasswordVault.xcodeproj -scheme PasswordVault -configuration Debug -derivedDataPath apps/macos/build -destination 'platform=macOS,arch=arm64' ARCHS=arm64 test
+          xcodebuild -project apps/macos-legacy/PasswordVault.xcodeproj -scheme PasswordVault -configuration Debug -derivedDataPath apps/macos-legacy/build -destination 'platform=macOS,arch=arm64' ARCHS=arm64 test
       - name: Package Mac preview
         run: |
-          app=apps/macos/build/Build/Products/Release/PasswordVault.app
+          app=apps/macos-legacy/build/Build/Products/Release/PasswordVault.app
           lipo "$app/Contents/MacOS/PasswordVault" -verify_arch arm64 x86_64
           lipo "$app/Contents/MacOS/PasswordVaultBridge" -verify_arch arm64 x86_64
           codesign --verify --deep --strict "$app"
-          ditto -c -k --sequesterRsrc --keepParent "$app" apps/macos/build/PasswordVault-macos-universal.zip
+          ditto -c -k --sequesterRsrc --keepParent "$app" apps/macos-legacy/build/PasswordVault-macos-universal.zip
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: native-macos-developer-preview
-          path: apps/macos/build/PasswordVault-macos-universal.zip
+          path: apps/macos-legacy/build/PasswordVault-macos-universal.zip
           if-no-files-found: error
           retention-days: 14
 
@@ -114,6 +111,11 @@ jobs:
         run: |
           rustup toolchain install 1.96.0 --profile minimal --target aarch64-linux-android
           sdkmanager 'platforms;android-36' 'build-tools;36.0.0' 'ndk;27.0.12077973'
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: apps/shared/note-editor/package-lock.json
       - run: bash tool/build_mobile_core.sh android
         env:
           PASSWORDVAULT_ANDROID_ABI: arm64-v8a
@@ -150,6 +152,11 @@ jobs:
           esac
           rustup toolchain install 1.96.0 --profile minimal --target "aarch64-apple-ios,$simulator_target"
           brew install xcodegen
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: apps/shared/note-editor/package-lock.json
       - run: bash tool/build_mobile_core.sh ios
         env:
           PASSWORDVAULT_IOS_SIM_ARCH: host
@@ -172,6 +179,41 @@ jobs:
         with:
           name: native-ios-simulator-preview
           path: apps/ios/build/PasswordVault-ios-simulator.zip
+          if-no-files-found: error
+          retention-days: 14
+
+  macos-nsh:
+    name: Current Mac NSH
+    needs: changes
+    if: needs.changes.outputs.macos == 'true'
+    runs-on: macos-15
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/ci-rust-cache
+        with:
+          component: macos-nsh
+      - name: Install pinned NSH and Rust
+        run: |
+          rustup toolchain install 1.98.0 --profile minimal
+          curl --fail --show-error --silent --location https://nsh.dev/install.sh -o "$RUNNER_TEMP/nsh-install.sh"
+          NSH_VERSION=v0.4.0 NSH_INSTALL_DIR="$HOME/.nsh-0.4.0" sh "$RUNNER_TEMP/nsh-install.sh"
+      - run: bash tool/nsh_mac.sh check
+      - name: Synthetic-vault native and interface tests
+        run: |
+          source tool/cargo_fork_env.sh
+          export RUSTUP_TOOLCHAIN=1.98.0
+          PASSWORDVAULT_VAULT_DIRECTORY="$(mktemp -d /tmp/pv-ci.XXXXXX)/vault"
+          export PASSWORDVAULT_VAULT_DIRECTORY
+          cargo run --manifest-path apps/macos-nsh/Cargo.toml --example seed -- "$PASSWORDVAULT_VAULT_DIRECTORY"
+          bash tool/nsh_mac.sh test
+      - run: bash tool/macos-nsh/package-ci.sh
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: native-macos-nsh-developer-preview
+          path: native-test-output/release/PasswordVault-macos-arm64.zip
           if-no-files-found: error
           retention-days: 14
 
@@ -202,8 +244,8 @@ jobs:
       - name: Install pinned WASM tool
         if: steps.wasm-tool.outputs.cache-hit != 'true'
         run: |
-          toolchain_bin="$(dirname "$(rustup which --toolchain 1.96.0 rustc)")"
-          export PATH="$toolchain_bin:$PATH"
+          export RUSTUP_TOOLCHAIN=1.96.0
+          source tool/cargo_fork_env.sh
           cargo install wasm-bindgen-cli --version 0.2.128 --locked
       - run: bash tool/check_native.sh browser
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -212,3 +254,24 @@ jobs:
           path: apps/browser/dist
           if-no-files-found: error
           retention-days: 14
+
+  capability-services:
+    name: Share and browser relay services
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: |
+            services/share/package-lock.json
+            services/sync-gateway/package-lock.json
+      - run: npm --prefix services/share ci
+      - run: npm --prefix services/share run check
+      - run: npm --prefix services/share test
+      - run: npm --prefix services/sync-gateway ci
+      - run: npm --prefix services/sync-gateway test

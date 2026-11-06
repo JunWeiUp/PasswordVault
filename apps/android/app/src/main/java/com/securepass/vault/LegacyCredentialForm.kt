@@ -90,7 +90,7 @@ internal fun LegacyCredentialForm(
             t,
             copy = false,
         )
-        if (kind != "crypto")
+        if (kind in listOf("password", "totp"))
             EditorField(
                 t("用户名", "Username"),
                 draft.optString("username"),

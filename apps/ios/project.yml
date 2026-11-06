@@ -25,18 +25,27 @@ targets:
     sources:
       - Sources
       - path: ../shared/Relay
-      - path: ../macos/Sources/WebDAVListing.swift
-      - path: ../macos/Sources/Models.swift
+      - path: ../shared/Share
+      - path: ../shared/Capabilities
+      - path: ../macos-legacy/Sources/WebDAVListing.swift
+      - path: ../macos-legacy/Sources/Models.swift
       - path: Generated/VaultCore.swift
+      - path: ../shared/note-editor/dist/NoteEditor.html
+        buildPhase: resources
+      - path: ../shared/note-editor/dist/NoteEditor-LICENSES.txt
+        buildPhase: resources
       - path: Resources
         buildPhase: resources
     info:
       path: Info.plist
       properties:
         VaultAppGroup: $(VAULT_APP_GROUP)
+        ASCredentialProviderExtensionCapabilities:
+          ProvidesPasskeys: true
+          ProvidesPasswords: true
         CFBundleDisplayName: PasswordVault
-        CFBundleShortVersionString: "2.3.2"
-        CFBundleVersion: "14"
+        CFBundleShortVersionString: "2.4.0"
+        CFBundleVersion: "16"
         UILaunchScreen: {}
         NSFaceIDUsageDescription: Unlock your encrypted PasswordVault with Face ID.
         NSCameraUsageDescription: Scan an authenticator setup QR code you choose.
@@ -64,9 +73,10 @@ targets:
     sources:
       - Tests
       - path: ../shared/RelayTests
+      - path: ../shared/ShareTests
       - path: ../../vendor/common-relay/protocol/group-vectors.json
         buildPhase: resources
-      - path: ../macos/Tests/WebDAVListingTests.swift
+      - path: ../macos-legacy/Tests/WebDAVListingTests.swift
     dependencies:
       - target: PasswordVault
     settings:
@@ -94,7 +104,7 @@ targets:
       - Autofill
       - Sources/MobileCore.swift
       - Sources/CredentialRequestLifetime.swift
-      - path: ../macos/Sources/Models.swift
+      - path: ../macos-legacy/Sources/Models.swift
       - Generated/VaultCore.swift
     settings:
       base:
@@ -108,8 +118,8 @@ targets:
       path: Autofill/Info.plist
       properties:
         CFBundleDisplayName: PasswordVault
-        CFBundleShortVersionString: "2.3.2"
-        CFBundleVersion: "14"
+        CFBundleShortVersionString: "2.4.0"
+        CFBundleVersion: "16"
         VaultAppGroup: $(VAULT_APP_GROUP)
         NSExtension:
           NSExtensionPointIdentifier: com.apple.authentication-services-credential-provider-ui
@@ -117,6 +127,7 @@ targets:
           NSExtensionAttributes:
             ASCredentialProviderExtensionCapabilities:
               ProvidesPasswords: true
+              ProvidesPasskeys: true
     dependencies:
       - framework: Generated/VaultCore.xcframework
         embed: false

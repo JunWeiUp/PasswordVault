@@ -65,11 +65,35 @@ export async function lock() {
     core.lock();
   }
 }
+
+export async function recover(recoveryKey:string,newPassword:string,content?:string,signal?:AbortSignal) {
+  const before=await readStorage();
+  if(content!==undefined&&before!==undefined)throw new Error("already-exists");
+  if(content===undefined&&before===undefined)throw new Error("missing");
+  if(signal?.aborted)throw new DOMException("Cancelled","AbortError");
+  const worker=new Worker(new URL("./kdf-worker.ts",import.meta.url),{type:"module"});
+  try {
+    const output=await new Promise<{storage:string;key:Uint8Array}>((resolve,reject)=>{
+      const abort=()=>{worker.terminate();reject(new DOMException("Cancelled","AbortError"));};
+      signal?.addEventListener("abort",abort,{once:true});
+      worker.onmessage=e=>{signal?.removeEventListener("abort",abort);e.data.error?reject(new Error("authentication")):resolve(e.data);};
+      worker.onerror=()=>{signal?.removeEventListener("abort",abort);reject(new Error("authentication"));};
+      worker.postMessage({recover:true,create:!before,password:"",storage:before,recoveryKey,newPassword,content});
+    });
+    try {
+      if(signal?.aborted)throw new DOMException("Cancelled","AbortError");
+      if(isExtension)await message({action:"recover",before,storage:output.storage,key:Array.from(output.key)});
+      else await (await import("./core")).recoverStorage(before,output.storage,output.key);
+      if(signal?.aborted){await lock();throw new DOMException("Cancelled","AbortError");}
+    }finally{output.key.fill(0);}
+  }finally{worker.terminate();recoveryKey="";newPassword="";}
+}
 export function errorText(error: unknown) {
   const code = error instanceof Error ? error.message : String(error);
   return (
     (
       {
+        "Record changed on another device; review before saving": "此条目已在其他设备修改，草稿已保留。请对照新版本后重试。",
         "sync-keychain": "无法保存后台授权，请检查 Mac 登录钥匙串是否已解锁。",
         "sync-authorization": "后台保存授权已失效，请重新输入 Mac 主密码配置。",
         "sync-busy": "Mac 正在切换资料库连接，账号已暂存，稍后自动重试。",

@@ -25,6 +25,7 @@ export async function readStorage(): Promise<string | undefined> {
 export async function writeStorage(
   value: string,
   expected: string | undefined,
+  retainMigrationCheckpoint = false,
 ): Promise<void> {
   const db = await openDB();
   try {
@@ -38,6 +39,13 @@ export async function writeStorage(
           return;
         }
         store.put(value, "vault");
+        if (retainMigrationCheckpoint && expected !== undefined) {
+          const checkpoint = store.get("before-capability-upgrade");
+          checkpoint.onsuccess = () => {
+            if (checkpoint.result === undefined)
+              store.put(expected, "before-capability-upgrade");
+          };
+        }
       };
       tx.oncomplete = () => resolve();
       tx.onabort = tx.onerror = () => reject(new Error("storage"));

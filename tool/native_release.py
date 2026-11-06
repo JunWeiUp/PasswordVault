@@ -28,9 +28,12 @@ def validate_versions(root, tag=None):
     lock = json.loads((root / 'apps/browser/package-lock.json').read_text())
     if any(value != version for value in (package['version'], lock['version'], lock['packages']['']['version'])):
         raise SystemExit('Browser package and lockfile must match the native release.')
-    mac = plistlib.loads((root / 'apps/macos/Info.plist').read_bytes())
+    mac = plistlib.loads((root / 'apps/macos-legacy/Info.plist').read_bytes())
     if (mac['CFBundleShortVersionString'], mac['CFBundleVersion']) != (version, str(data['macos_build'])):
         raise SystemExit('Mac version/build differs from the native release.')
+    nsh = json.loads((root / 'apps/macos-nsh/nsh.json').read_text())
+    if (nsh['version'], nsh['build']) != (version, data['nsh_macos_build']):
+        raise SystemExit('NSH Mac version/build differs from the native release.')
     android = (root / 'apps/android/app/build.gradle.kts').read_text()
     if f'versionName = "{version}"' not in android or f'versionCode = {data["android_version_code"]}\n' not in android:
         raise SystemExit('Android version/build differs from the native release.')
@@ -42,7 +45,7 @@ def validate_versions(root, tag=None):
 
 def verify_android(root, directory):
     expected = normalized(os.environ.get('ANDROID_CERT_SHA256', ''))
-    published = normalized((root / 'android/release-certificate.sha256').read_text())
+    published = normalized((root / 'config/signing/android-release-certificate.sha256').read_text())
     if len(expected) != 64 or expected != published:
         raise SystemExit('Release signing identity differs from the reviewed certificate.')
     sdk = Path(os.environ.get('ANDROID_HOME') or os.environ.get('ANDROID_SDK_ROOT', ''))
@@ -70,7 +73,7 @@ def verify_android_metadata(badging, data, abi):
         raise SystemExit('APK contains unexpected native architectures.')
 
 
-def verify_app_archive(path, version, simulator=False):
+def verify_app_archive(path, version, simulator=False, nsh=False):
     with zipfile.ZipFile(path) as bundle:
         prefix = 'PasswordVault.app/'
         info = plistlib.loads(bundle.read(prefix + ('Info.plist' if simulator else 'Contents/Info.plist')))
@@ -81,7 +84,13 @@ def verify_app_archive(path, version, simulator=False):
             raise SystemExit('Apple archive lost executable permissions.')
         if simulator and info.get('CFBundleSupportedPlatforms') != ['iPhoneSimulator']:
             raise SystemExit('Expected an iOS Simulator application, not a device IPA.')
-        if not simulator and prefix + 'Contents/MacOS/PasswordVaultBridge' not in bundle.namelist():
+        if nsh:
+            required = ['Contents/MacOS/pv-browser-host', 'Contents/MacOS/pv-mcp', 'Contents/Resources/BrowserIdentity.json']
+            if any(prefix + name not in bundle.namelist() for name in required):
+                raise SystemExit('NSH Mac helper or bridge identity missing.')
+            if info.get('CFBundleIdentifier') != 'com.securepass.vault.nshpreview' or info.get('PVVaultDirectoryName') != 'PasswordVaultNative':
+                raise SystemExit('NSH Mac installation identity differs from the reviewed app.')
+        if not simulator and not nsh and prefix + 'Contents/MacOS/PasswordVaultBridge' not in bundle.namelist():
             raise SystemExit('Mac browser bridge is missing.')
 
 
@@ -94,16 +103,18 @@ def package(root, inputs, tag):
     sources = {
         f'{prefix}-android-arm64-v8a.apk': inputs / 'android-arm64-v8a.apk',
         f'{prefix}-android-x86_64.apk': inputs / 'android-x86_64.apk',
-        f'{prefix}-macos-universal-development.zip': inputs / 'PasswordVault-macos-universal.zip',
+        f'{prefix}-macos-arm64-development.zip': inputs / 'PasswordVault-macos-arm64.zip',
+        f'{prefix}-macos-legacy-universal-development.zip': inputs / 'PasswordVault-macos-universal.zip',
         f'{prefix}-ios-simulator.zip': inputs / 'PasswordVault-ios-simulator.zip',
-        'INSTALL.md': root / 'docs/NATIVE-RELEASE-NOTES.md',
+        'INSTALL.md': root / 'config/release/INSTALL.md',
         'LICENSE': root / 'LICENSE',
-        'THIRD_PARTY_NOTICES.md': root / 'THIRD_PARTY_NOTICES.md',
-        'SIGNING-CERTIFICATE-SHA256.txt': root / 'android/release-certificate.sha256',
+        'THIRD_PARTY_NOTICES.md': root / 'config/release/THIRD_PARTY_NOTICES.md',
+        'SIGNING-CERTIFICATE-SHA256.txt': root / 'config/signing/android-release-certificate.sha256',
     }
     for path in sources.values():
         if not path.is_file() or path.is_symlink() or path.stat().st_size == 0:
             raise SystemExit(f'Missing release input: {path.name}')
+    verify_app_archive(inputs / 'PasswordVault-macos-arm64.zip', data['version'], nsh=True)
     verify_app_archive(inputs / 'PasswordVault-macos-universal.zip', data['version'])
     verify_app_archive(inputs / 'PasswordVault-ios-simulator.zip', data['version'], simulator=True)
     browser = inputs / 'browser'
@@ -123,7 +134,7 @@ def package(root, inputs, tag):
         metadata = dict(data, product='PasswordVault', status='developer-preview', tag=tag, commit=commit,
                         android_package='com.securepass.vault.nativepreview', macos_distribution='ad-hoc-signed, not notarized',
                         ios_distribution='simulator only; not installable on iPhone',
-                        android_certificate_sha256=(root / 'android/release-certificate.sha256').read_text().strip())
+                        android_certificate_sha256=(root / 'config/signing/android-release-certificate.sha256').read_text().strip())
         if os.environ.get('GITHUB_RUN_ID'):
             metadata['workflow_run'] = f"https://github.com/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{os.environ['GITHUB_RUN_ID']}"
         (staging / 'BUILD.json').write_text(json.dumps(metadata, indent=2) + '\n')
