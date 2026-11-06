@@ -81,7 +81,7 @@ jobs:
       - name: Build isolated preview and test applications
         run: |
           ./apps/android/gradlew -p apps/android :app:assembleCompact :app:assembleCompactAndroidTest :login-fixture:assembleDebug -PtestBuildType=compact -PtargetAbi=arm64-v8a
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: native-android-developer-preview
           path: |
@@ -130,7 +130,7 @@ jobs:
           xcodebuild -project apps/ios/PasswordVault.xcodeproj -scheme PasswordVault -configuration Debug -derivedDataPath apps/ios/build -destination "platform=iOS Simulator,id=$simulator_id" -test-timeouts-enabled YES -default-test-execution-time-allowance 120 -maximum-test-execution-time-allowance 300 test
       - name: Preserve failed iOS test diagnostics
         if: failure()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: native-ios-test-diagnostics
           path: apps/ios/build/Logs/Test/*.xcresult
@@ -138,7 +138,7 @@ jobs:
           retention-days: 7
       - name: Package simulator application preserving executable permissions
         run: ditto -c -k --sequesterRsrc --keepParent apps/ios/build/Build/Products/Debug-iphonesimulator/PasswordVault.app apps/ios/build/PasswordVault-ios-simulator.zip
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: native-ios-simulator-preview
           path: apps/ios/build/PasswordVault-ios-simulator.zip
@@ -173,7 +173,7 @@ jobs:
           cargo run --manifest-path apps/macos-nsh/Cargo.toml --example seed -- "$PASSWORDVAULT_VAULT_DIRECTORY"
           bash tool/nsh_mac.sh test
       - run: bash tool/macos-nsh/package-ci.sh
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: native-macos-nsh-developer-preview
           path: native-test-output/release/PasswordVault-macos-arm64.zip
@@ -212,7 +212,7 @@ jobs:
           source tool/cargo_fork_env.sh
           cargo install wasm-bindgen-cli --version 0.2.128 --locked
       - run: bash tool/check_native.sh browser
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: lightweight-browser-developer-preview
           path: apps/browser/dist
