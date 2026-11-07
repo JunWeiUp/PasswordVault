@@ -14,7 +14,7 @@
 
 原生客户端目前为**开发预览版**。[平台状态](#选择你的工作空间)与[安全模型](docs/SECURITY_MODEL.md)记录当前限制，独立安全审查仍待完成。
 
-**下载原生版 2.4.1：** [GitHub Release](https://github.com/JunWeiUp/PasswordVault/releases/tag/v2.4.1) · [安装方式与签名限制](docs/NATIVE-RELEASE-NOTES.md)。包含 Android、Mac、Windows x64、解压式插件、Web 和 iOS 模拟器包，各一个。
+**下载原生版 2.4.2：** [GitHub Release](https://github.com/JunWeiUp/PasswordVault/releases/tag/v2.4.2) · [安装方式与签名限制](docs/NATIVE-RELEASE-NOTES.md)。包含 Android、Mac、Windows x64、解压式插件、Web 和 iOS 模拟器包，各一个。
 
 **Mac 客户端说明：** 当前开发与本机日常版本位于 [`apps/desktop`](apps/desktop/README.md)（NSH 0.4.0，macOS 14+ / Apple Silicon）。[`apps/macos-legacy`](apps/macos-legacy/README.md) 是保留的旧版 SwiftUI Mac 客户端；下文涉及 macOS 13+/Intel 与旧协调发布的说明属于该旧版。
 
@@ -93,7 +93,7 @@
 | **Windows 桌面** | NSH x64 便携包，共用密码库、笔记与平台适配层 | Windows 11 ARM 虚拟机的真实窗口账号及富文本流程通过；浏览器/AI 本机通信、终端运行及更多硬件验收仍待完成 |
 | **Linux 桌面** | 无原生桌面客户端 | 尚未实现 |
 
-本次统一版本为 **2.4.1**：NSH Mac build **19**、浏览器 **2.4.1**、Android build **24001**、iOS build **17**。新增个人密码库加密中继同步、设备授权开关、批量冲突处理和手机提醒；Android 需 8.0+。检查通过不代表已上架应用商店或通过生产安全验收，详见[安装说明](docs/NATIVE-RELEASE-NOTES.md)及[中继配置](docs/PERSONAL-RELAY.md)。
+本次统一版本为 **2.4.2**：NSH Mac build **20**、浏览器 **2.4.2**、Android build **24002**、iOS build **18**。新增个人密码库加密中继同步、设备授权开关、批量冲突处理和手机提醒；Android 需 8.0+。检查通过不代表已上架应用商店或通过生产安全验收，详见[安装说明](docs/NATIVE-RELEASE-NOTES.md)及[中继配置](docs/PERSONAL-RELAY.md)。
 
 </details>
 
@@ -184,7 +184,7 @@ Native Shell Mac 客户端的设备资料支持导入 Python、Shell、JavaScrip
 
 [应用目录](apps/README.md) · [NSH Mac 工具](tool/macos-nsh/README.md)
 
-[2.4.1 安装说明](config/release/INSTALL.md) · [发行说明](config/release/NOTES.md)
+[2.4.2 安装说明](config/release/INSTALL.md) · [发行说明](config/release/NOTES.md)
 
 旧 SwiftUI Mac 仅保留源码与手动构建入口，已关闭独立 CI，本次不发布旧 Mac 包。
 
