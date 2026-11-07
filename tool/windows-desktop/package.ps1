@@ -9,6 +9,7 @@ $metadata = Get-Content (Join-Path $root 'apps\desktop\nsh.json') -Raw | Convert
 $bundle = Join-Path $output $metadata.name
 $archive = Join-Path $output ($metadata.name + '.zip')
 if (!(Test-Path (Join-Path $bundle ($metadata.name + '.exe')))) { throw 'NSH did not produce the expected executable' }
+Copy-Item (Join-Path $root 'config\release\INSTALL.md') (Join-Path $bundle 'README.md') -Force
 Copy-Item (Join-Path $root 'LICENSE') (Join-Path $bundle 'LICENSE.txt') -Force
 Copy-Item (Join-Path $root 'config\release\THIRD_PARTY_NOTICES.md') $bundle -Force
 Copy-Item (Join-Path $root 'config\release\licenses') $bundle -Recurse -Force

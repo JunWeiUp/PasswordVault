@@ -1,8 +1,8 @@
 # Windows desktop development
 
 The Windows client shares `apps/desktop` with macOS. Use Windows x64 tools;
-on Windows 11 ARM these run through Windows' x64 emulation. The portable package is included in regular releases from 2.4.1; it is unsigned. This is a
-port, not a signed release or a security acceptance claim.
+on Windows 11 ARM these run through Windows' x64 emulation. The portable package is included in regular releases from 2.4.1; it is unsigned. It is not a security acceptance claim.
+Users also need the Microsoft Visual C++ v14 x64 runtime; see the bundled installation guide.
 
 Install Visual Studio 2022 C++ tools and the Windows SDK, Rust 1.98.0 for
 `x86_64-pc-windows-msvc`, NSH 0.4.0 x64, huacnlee/cargo and native Strawberry
