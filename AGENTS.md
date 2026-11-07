@@ -42,7 +42,7 @@ Keep source directories aligned with the native toolchains. Security, privacy, i
 
 Every delivered browser-extension update must increment `apps/browser/package.json` and its lockfile version. Use `npm run release:local` to increment the patch version and validate/build; verify the loaded extension version after refreshing it. The manifest and popup version must come from package metadata, never independent hardcoded values.
 
-Current Mac code lives in `apps/macos-nsh`; `apps/macos-legacy` is the legacy SwiftUI client. Browser and core code live in `apps/browser` and `crates/vault-core`. Use the pinned Rust toolchain and `bash tool/check_native.sh core|macos|browser`; see `docs/NATIVE-MIGRATION.md` for Swift tests and fixture setup. The owner has authorized removal of legacy Flutter clients. Preserve native legacy-data readers and compatibility fixtures; source removal does not waive parity or migration gates. Do not test against a real vault or report compilation as Touch ID, device, browser integration, or production-security acceptance.
+Current Mac code lives in `apps/desktop`; `apps/macos-legacy` is the legacy SwiftUI client. Browser and core code live in `apps/browser` and `crates/vault-core`. Use the pinned Rust toolchain and `bash tool/check_native.sh core|macos|browser`; see `docs/NATIVE-MIGRATION.md` for Swift tests and fixture setup. The owner has authorized removal of legacy Flutter clients. Preserve native legacy-data readers and compatibility fixtures; source removal does not waive parity or migration gates. Do not test against a real vault or report compilation as Touch ID, device, browser integration, or production-security acceptance.
 
 ## Isolated macOS tests
 
@@ -50,7 +50,7 @@ Run XCTest with `bash tool/test_macos_isolated.sh` (optional `-only-testing:…`
 
 ## Current and legacy Mac clients
 
-`apps/macos-nsh` is the current NSH Mac client; `apps/macos-legacy` is the retained legacy SwiftUI client. Shared web-editor source lives in `apps/shared/note-editor`; its generated `dist/` is ignored. Mac NSH platform tools live in `tool/macos-nsh/`; `tool/nsh_mac.sh` remains the stable CLI entry point. Preserve legacy paths and identifiers still used by mobile/release tooling.
+`apps/desktop` is the current NSH Mac client; `apps/macos-legacy` is the retained legacy SwiftUI client. Shared web-editor source lives in `apps/shared/note-editor`; its generated `dist/` is ignored. Mac NSH platform tools live in `tool/macos-nsh/`; `tool/nsh_mac.sh` remains the stable CLI entry point. Preserve legacy paths and identifiers still used by mobile/release tooling.
 
 The owner has retired the standalone SwiftUI Mac CI and release artifact. Only NSH Mac ships in new releases; iOS checks still cover shared legacy Swift inputs.
 
@@ -62,4 +62,8 @@ without a new owner request. Dependency updates are reviewed and run manually.
 
 ## Release presentation
 
-Keep release notes concise and publish exactly five application packages: one Android ARM64 APK, one Chromium extension ZIP, one iOS Simulator ZIP, one NSH macOS ZIP and one Web ZIP. Do not publish extra x86 APKs, source archives or standalone metadata/documentation attachments. Keep internal signature/checksum verification and link license notices in the description.
+Keep release notes concise and publish exactly six application packages: one Android ARM64 APK, one Chromium extension ZIP, one iOS Simulator ZIP, one NSH macOS ZIP, one Windows x64 ZIP and one Web ZIP. Do not publish extra x86 APKs, source archives or standalone metadata/documentation attachments. Keep internal signature/checksum verification and link license notices in the description.
+
+## CI cost policy
+
+Keep automatic PR checks lightweight. Native builds run only on explicit workflow dispatch or releases; tests default off and are opt-in. Do not reintroduce main-push duplication, always-on service tests, metadata-only workflows or redundant release Android builds without an owner request. Preserve tag/signature/package verification and the six release artifacts.

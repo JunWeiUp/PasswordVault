@@ -8,7 +8,7 @@ import tempfile
 import unittest
 from unittest import mock
 
-from ci_changes import NATIVE, SCOPES, classify, select
+from ci_changes import NATIVE, SCOPES, classify, select, requested
 
 BASE, HEAD = 'a' * 40, 'b' * 40
 
@@ -25,7 +25,7 @@ class CIChangesTests(unittest.TestCase):
         self.assertEqual(classify(['apps/macos-legacy/Sources/UserFeedback.swift']), set())
         self.assertEqual(classify(['apps/macos-legacy/Sources/Models.swift']), {'ios'})
         self.assertEqual(classify(['apps/macos-legacy/Resources/BrowserIdentity.json']), {'macos', 'browser'})
-        self.assertEqual(classify(['apps/macos-nsh/ui/Detail.tsx']), {'macos'})
+        self.assertEqual(classify(['apps/desktop/ui/Detail.tsx']), {'macos', 'windows'})
 
     def test_core_and_toolchain_changes_cover_every_native_consumer(self):
         for path in ['crates/vault-core/src/model.rs', 'Cargo.lock', '.cargo/config.toml', 'rust-toolchain.toml']:
@@ -39,13 +39,17 @@ class CIChangesTests(unittest.TestCase):
         self.assertEqual(classify(['apps/shared/note-editor/editor.js']), {'macos', 'ios', 'android', 'browser'})
         self.assertEqual(classify(['apps/shared/note-editor/package-lock.json']), {'macos', 'ios', 'android', 'browser'})
 
-    def test_services_have_a_dedicated_always_on_job(self):
-        self.assertEqual(classify(['services/share/src/server.ts', 'services/sync-gateway/src/gateway.mjs']), set())
+    def test_native_runs_are_requested_and_tests_are_opt_in(self):
+        self.assertEqual(requested('release'), {'macos', 'windows', 'ios', 'browser'})
+        self.assertEqual(requested('macos'), {'macos'})
+        self.assertEqual(requested('services'), {'services'})
+        self.assertEqual(requested('all'), set(SCOPES) | {'services'})
+        with self.assertRaises(ValueError):
+            requested('typo')
         workflow = Path(__file__).resolve().parent.parent / '.github/workflows/native.yml'
         section = re.split(r'(?m)^  [a-z][a-z0-9-]*:', workflow.read_text().split('  capability-services:', 1)[1])[0]
-        self.assertNotIn('    if:', section)
-        self.assertIn('npm --prefix services/share test', section)
-        self.assertIn('npm --prefix services/sync-gateway test', section)
+        self.assertIn("if: needs.changes.outputs.services == 'true'", section)
+        self.assertIn('if: inputs.run_tests', section)
 
     def test_multiple_platform_changes_are_unioned(self):
         self.assertEqual(classify(['apps/android/a.kt', 'apps/browser/a.ts']), {'android', 'browser'})

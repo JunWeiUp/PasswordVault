@@ -32,10 +32,10 @@ copy=/tmp/pv-nsh-gui
 source "$root/tool/macos-nsh/stage.sh"
 stage_nsh_sources
 
-toolchain_bin="$(dirname "$(rustup which --toolchain "$(sed -n 's/^channel = "\(.*\)"/\1/p' "$root/apps/macos-nsh/rust-toolchain.toml")" rustc)")"
+toolchain_bin="$(dirname "$(rustup which --toolchain "$(sed -n 's/^channel = "\(.*\)"/\1/p' "$root/apps/desktop/rust-toolchain.toml")" rustc)")"
 seed=/tmp/pv-nsh-qa
 if [[ ! -d "$seed/vault" ]]; then
-  (cd "$copy/apps/macos-nsh" && PATH="$HOME/.cargo/bin:$toolchain_bin:$PATH" RUSTUP_TOOLCHAIN=1.98.0 cargo run -q --example seed -- "$seed/vault")
+  (cd "$copy/apps/desktop" && PATH="$HOME/.cargo/bin:$toolchain_bin:$PATH" RUSTUP_TOOLCHAIN=1.98.0 cargo run -q --example seed -- "$seed/vault")
 fi
 run=/tmp/pv-nsh-gui-vault
 rm -rf "$run" && cp -R "$seed" "$run"

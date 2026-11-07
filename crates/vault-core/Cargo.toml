@@ -53,3 +53,6 @@ wasm-bindgen = { version = "0.2", optional = true }
 name = "uniffi-bindgen"
 path = "src/bin/bindgen.rs"
 required-features = ["bindgen"]
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_Storage_FileSystem"] }

@@ -8,6 +8,7 @@ import plistlib
 import re
 import shutil
 import subprocess
+import struct
 import tempfile
 import zipfile
 
@@ -28,7 +29,7 @@ def validate_versions(root, tag=None):
     lock = json.loads((root / 'apps/browser/package-lock.json').read_text())
     if any(value != version for value in (package['version'], lock['version'], lock['packages']['']['version'])):
         raise SystemExit('Browser package and lockfile must match the native release.')
-    nsh = json.loads((root / 'apps/macos-nsh/nsh.json').read_text())
+    nsh = json.loads((root / 'apps/desktop/nsh.json').read_text())
     if (nsh['version'], nsh['build']) != (version, data['macos_build']):
         raise SystemExit('NSH Mac version/build differs from the native release.')
     android = (root / 'apps/android/app/build.gradle.kts').read_text()
@@ -91,6 +92,34 @@ def verify_app_archive(path, version, simulator=False, nsh=False):
             raise SystemExit('Mac browser bridge is missing.')
 
 
+def verify_windows_archive(path, version):
+    """Require the x64 NSH distribution and reject unsafe/unintended payloads."""
+    with zipfile.ZipFile(path) as bundle:
+        names = bundle.namelist()
+        if len(set(names)) != len(names) or any(
+            "\\" in n or n.startswith('/') or '..' in n.split('/')
+            or not n.startswith('PasswordVault/')
+            or '/vault/' in n.lower() or n.lower().endswith(('.pdb', '.enc', '.key'))
+            for n in names
+        ):
+            raise SystemExit('Unsafe or private Windows archive entry.')
+        required = ['PasswordVault.exe', 'nsh/app.json', 'nsh/bundle.nshc',
+                    'nsh/capabilities.json', 'LICENSE.txt', 'THIRD_PARTY_NOTICES.md']
+        if any('PasswordVault/' + n not in names for n in required):
+            raise SystemExit('Windows application payload is incomplete.')
+        app = json.loads(bundle.read('PasswordVault/nsh/app.json').decode('utf-8-sig'))
+        if app.get('version') != version or app.get('id') != 'com.securepass.vault.nshpreview':
+            raise SystemExit('Windows version or identity differs from release.')
+        exe = bundle.read('PasswordVault/PasswordVault.exe')
+        if len(exe) < 64 or exe[:2] != b'MZ':
+            raise SystemExit('Windows executable has no DOS header.')
+        offset = struct.unpack_from('<I', exe, 60)[0]
+        if offset + 6 > len(exe) or exe[offset:offset+4] != b'PE\0\0' or struct.unpack_from('<H', exe, offset+4)[0] != 0x8664:
+            raise SystemExit('Expected a Windows x64 PE executable.')
+        if bundle.testzip() is not None:
+            raise SystemExit('Windows archive CRC failed.')
+
+
 def public_asset_names(tag):
     """Exactly one download per supported distribution surface."""
     return [
@@ -99,6 +128,7 @@ def public_asset_names(tag):
         f'PasswordVault-iOS-Simulator-{tag}.zip',
         f'PasswordVault-Extension-{tag}.zip',
         f'PasswordVault-Web-{tag}.zip',
+        f'PasswordVault-Windows-x64-{tag}.zip',
     ]
 
 
@@ -112,12 +142,14 @@ def package(root, inputs, tag):
         names[0]: inputs / 'android-arm64-v8a.apk',
         names[1]: inputs / 'PasswordVault-macos-arm64.zip',
         names[2]: inputs / 'PasswordVault-ios-simulator.zip',
+        names[5]: inputs / 'PasswordVault-windows-x64.zip',
     }
     for path in sources.values():
         if not path.is_file() or path.is_symlink() or path.stat().st_size == 0:
             raise SystemExit(f'Missing release input: {path.name}')
     verify_app_archive(inputs / 'PasswordVault-macos-arm64.zip', data['version'], nsh=True)
     verify_app_archive(inputs / 'PasswordVault-ios-simulator.zip', data['version'], simulator=True)
+    verify_windows_archive(inputs / 'PasswordVault-windows-x64.zip', data['version'])
     browser = inputs / 'browser'
     manifest = json.loads((browser / 'manifest.json').read_text())
     if manifest['version'] != data['version'] or not (browser / 'index.html').is_file():
@@ -130,9 +162,10 @@ def package(root, inputs, tag):
             shutil.copyfile(source, staging / name)
         archive(browser, staging / names[3])
         archive(browser, staging / names[4])
-        metadata = dict(data, product='PasswordVault', status='developer-preview', tag=tag, commit=commit,
+        metadata = dict(data, product='PasswordVault', status='release', tag=tag, commit=commit,
                         android_package='com.securepass.vault.nativepreview', macos_distribution='ad-hoc-signed, not notarized',
                         ios_distribution='simulator only; not installable on iPhone',
+                        windows_distribution='unsigned Windows x64 portable application',
                         android_certificate_sha256=(root / 'config/signing/android-release-certificate.sha256').read_text().strip())
         if os.environ.get('GITHUB_RUN_ID'):
             metadata['workflow_run'] = f"https://github.com/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{os.environ['GITHUB_RUN_ID']}"

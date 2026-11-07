@@ -68,3 +68,6 @@ uniffi::setup_scaffolding!();
 
 mod wallet;
 pub use wallet::*;
+
+#[cfg(feature = "native")]
+pub mod native_file_ops;

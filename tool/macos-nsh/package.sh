@@ -12,7 +12,7 @@ root="$(cd "$(dirname "$0")/../.." && pwd)"
 source "$root/tool/cargo_fork_env.sh"
 config="$root/private/signing/macos/Signing.local.xcconfig"
 team="$(sed -n 's/^DEVELOPMENT_TEAM *= *//p' "$config" | tr -d ' ')"
-bundle_id="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["id"])' "$root/apps/macos-nsh/nsh.json")"
+bundle_id="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["id"])' "$root/apps/desktop/nsh.json")"
 work=/tmp/pv-nsh-sign
 rm -rf "$work" && mkdir -p "$work/Stub"
 
@@ -56,15 +56,15 @@ stage_nsh_sources
 out="$root/native-test-output/mac-nsh-preview"
 app="$out/PasswordVault NSH Preview.app"
 mkdir -p "$out" && rm -rf "$app"
-cp -R "$copy/apps/macos-nsh/.nsh/out/PasswordVault.app" "$app"
+cp -R "$copy/apps/desktop/.nsh/out/PasswordVault.app" "$app"
 bash "$root/tool/macos-nsh/icon.sh" "$app"
 /usr/libexec/PlistBuddy -c "Set :CFBundleName PasswordVault NSH Preview" "$app/Contents/Info.plist"
 cp "$stub/Contents/embedded.provisionprofile" "$app/Contents/embedded.provisionprofile"
 
 # --- Browser native messaging helper (preview bundle only) ------------------
-helper_channel="$(sed -n 's/^channel = "\(.*\)"/\1/p' "$root/apps/macos-nsh/rust-toolchain.toml")"
-(cd "$copy/apps/macos-nsh" && cargo +"$helper_channel" build --release --bin pv-browser-host)
-cp "$copy/apps/macos-nsh/target/release/pv-browser-host" "$app/Contents/MacOS/pv-browser-host"
+helper_channel="$(sed -n 's/^channel = "\(.*\)"/\1/p' "$root/apps/desktop/rust-toolchain.toml")"
+(cd "$copy/apps/desktop" && cargo +"$helper_channel" build --release --bin pv-browser-host)
+cp "$copy/apps/desktop/target/release/pv-browser-host" "$app/Contents/MacOS/pv-browser-host"
 cp "$root/apps/macos-legacy/Resources/BrowserIdentity.json" "$app/Contents/Resources/BrowserIdentity.json"
 codesign --force --options runtime --timestamp=none --sign "$identity_name" "$app/Contents/MacOS/pv-browser-host"
 codesign --verify --strict "$app/Contents/MacOS/pv-browser-host"
@@ -72,9 +72,9 @@ codesign --verify --strict "$app/Contents/MacOS/pv-browser-host"
 
 # --- AI MCP stdio / script helper (preview bundle only) ---------------------
 # Build separately from the app runtime, then sign before the enclosing bundle.
-ai_helper_channel="$(sed -n 's/^channel = "\(.*\)"/\1/p' "$root/apps/macos-nsh/rust-toolchain.toml")"
-(cd "$copy/apps/macos-nsh" && cargo +"$ai_helper_channel" build --release --bin pv-mcp --target-dir "$copy/apps/macos-nsh/target")
-cp "$copy/apps/macos-nsh/target/release/pv-mcp" "$app/Contents/MacOS/pv-mcp"
+ai_helper_channel="$(sed -n 's/^channel = "\(.*\)"/\1/p' "$root/apps/desktop/rust-toolchain.toml")"
+(cd "$copy/apps/desktop" && cargo +"$ai_helper_channel" build --release --bin pv-mcp --target-dir "$copy/apps/desktop/target")
+cp "$copy/apps/desktop/target/release/pv-mcp" "$app/Contents/MacOS/pv-mcp"
 codesign --force --options runtime --timestamp=none --sign "$identity_name" "$app/Contents/MacOS/pv-mcp"
 codesign --verify --strict "$app/Contents/MacOS/pv-mcp"
 # --- End AI helper ---------------------------------------------------------

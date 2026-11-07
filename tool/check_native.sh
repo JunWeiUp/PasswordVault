@@ -40,18 +40,20 @@ macos() {
 }
 browser() {
   "${cargo_cmd[@]}" build -p vault-core --release --locked --no-default-features --features browser --target wasm32-unknown-unknown
-  "${cargo_cmd[@]}" clippy -p vault-core --no-default-features --features browser --target wasm32-unknown-unknown --lib -- -D warnings
+  if [[ "${PV_BUILD_ONLY:-false}" != true ]]; then "${cargo_cmd[@]}" clippy -p vault-core --no-default-features --features browser --target wasm32-unknown-unknown --lib -- -D warnings; fi
   bindgen_cmd="$(command -v wasm-bindgen || true)"
   if [[ -z "$bindgen_cmd" ]]; then bindgen_cmd="$HOME/.cargo/bin/wasm-bindgen"; fi
   "$bindgen_cmd" --target web --out-dir apps/browser/wasm target/wasm32-unknown-unknown/release/vault_core.wasm
+  if [[ "${PV_BUILD_ONLY:-false}" != true ]]; then
   "$bindgen_cmd" --target nodejs --out-dir apps/browser/wasm-test target/wasm32-unknown-unknown/release/vault_core.wasm
   mv apps/browser/wasm-test/vault_core.js apps/browser/wasm-test/vault_core.cjs
+  fi
   npm --prefix apps/shared/note-editor ci --ignore-scripts
   npm --prefix apps/shared/note-editor run build
   npm --prefix apps/browser ci
   npm --prefix apps/browser run check
   npm --prefix apps/browser run build
-  npm --prefix apps/browser test
+  if [[ "${PV_BUILD_ONLY:-false}" != true ]]; then npm --prefix apps/browser test; fi
 }
 case "${1:-core}" in
   core) core ;;

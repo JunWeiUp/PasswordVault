@@ -6,11 +6,26 @@ from pathlib import Path
 import plistlib
 import tempfile
 import subprocess
+import struct
 from unittest import mock
 import unittest
 import zipfile
 
-from native_release import ROOT, validate_versions, verify_android_metadata, verify_app_archive, package, public_asset_names
+from native_release import ROOT, validate_versions, verify_android_metadata, verify_app_archive, package, public_asset_names, verify_windows_archive
+
+
+def windows_fixture(path, version, machine=0x8664, extra=None):
+    exe = bytearray(128)
+    exe[:2] = b'MZ'
+    struct.pack_into('<I', exe, 60, 64)
+    exe[64:68] = b'PE\0\0'
+    struct.pack_into('<H', exe, 68, machine)
+    with zipfile.ZipFile(path, 'w') as bundle:
+        bundle.writestr('PasswordVault/PasswordVault.exe', exe)
+        bundle.writestr('PasswordVault/nsh/app.json', json.dumps({'version': version, 'id': 'com.securepass.vault.nshpreview'}))
+        for name in ['nsh/bundle.nshc', 'nsh/capabilities.json', 'LICENSE.txt', 'THIRD_PARTY_NOTICES.md']:
+            bundle.writestr('PasswordVault/' + name, b'fixture')
+        if extra: bundle.writestr(extra, b'fixture')
 
 
 class NativeReleaseTests(unittest.TestCase):
@@ -58,7 +73,7 @@ class NativeReleaseTests(unittest.TestCase):
 
     def test_mismatched_browser_lock_is_rejected(self):
         files = ['native-version.json', 'apps/browser/package.json', 'apps/browser/package-lock.json',
-                 'apps/macos-nsh/nsh.json', 'apps/macos-legacy/Info.plist', 'apps/android/app/build.gradle.kts', 'apps/ios/project.yml']
+                 'apps/desktop/nsh.json', 'apps/macos-legacy/Info.plist', 'apps/android/app/build.gradle.kts', 'apps/ios/project.yml']
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             for name in files:
@@ -77,7 +92,7 @@ class NativeReleaseTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             for name in ['native-version.json', 'apps/browser/package.json', 'apps/browser/package-lock.json',
-                         'apps/macos-nsh/nsh.json', 'apps/macos-legacy/Info.plist', 'apps/android/app/build.gradle.kts', 'apps/ios/project.yml']:
+                         'apps/desktop/nsh.json', 'apps/macos-legacy/Info.plist', 'apps/android/app/build.gradle.kts', 'apps/ios/project.yml']:
                 target = root / name
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_bytes((ROOT / name).read_bytes())
@@ -160,11 +175,22 @@ class NativeReleaseTests(unittest.TestCase):
             make(identity='wrong.app')
             with self.assertRaises(SystemExit): verify_app_archive(path, '2.4.0', nsh=True)
 
+    def test_windows_archive_rejects_wrong_version_architecture_and_private_files(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / 'windows.zip'
+            windows_fixture(path, '2.4.1')
+            verify_windows_archive(path, '2.4.1')
+            for version, machine, extra in [('2.4.0', 0x8664, None), ('2.4.1', 0xaa64, None),
+                    ('2.4.1', 0x8664, 'PasswordVault/../private'), ('2.4.1', 0x8664, 'PasswordVault/vault/header.json'),
+                    ('2.4.1', 0x8664, 'PasswordVault/credentials.enc')]:
+                windows_fixture(path, version, machine, extra)
+                with self.assertRaises(SystemExit): verify_windows_archive(path, '2.4.1')
+
     def test_release_packages_exactly_one_download_per_platform(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             for name in ['native-version.json', 'apps/browser/package.json', 'apps/browser/package-lock.json',
-                         'apps/macos-nsh/nsh.json', 'apps/android/app/build.gradle.kts', 'apps/ios/project.yml',
+                         'apps/desktop/nsh.json', 'apps/android/app/build.gradle.kts', 'apps/ios/project.yml',
                          'config/signing/android-release-certificate.sha256']:
                 target = root / name
                 target.parent.mkdir(parents=True, exist_ok=True)
@@ -186,6 +212,7 @@ class NativeReleaseTests(unittest.TestCase):
                     if not simulator:
                         for path in ['Contents/MacOS/pv-browser-host', 'Contents/MacOS/pv-mcp', 'Contents/Resources/BrowserIdentity.json']:
                             bundle.writestr('PasswordVault.app/' + path, b'fixture')
+            windows_fixture(inputs / 'PasswordVault-windows-x64.zip', data['version'])
             browser = inputs / 'browser'
             browser.mkdir()
             (browser / 'manifest.json').write_text(json.dumps({'version': data['version']}))
@@ -195,8 +222,8 @@ class NativeReleaseTests(unittest.TestCase):
             output = root / 'release_assets'
             downloads = sorted(path.name for path in output.iterdir() if path.suffix in ('.apk', '.zip'))
             self.assertEqual(downloads, sorted(public_asset_names(tag)))
-            self.assertEqual(len(downloads), 5)
-            self.assertFalse(any('source.zip' in name or 'x86' in name for name in downloads))
+            self.assertEqual(len(downloads), 6)
+            self.assertFalse(any('source.zip' in name or 'x86-' in name for name in downloads))
             self.assertTrue((output / 'SHA256SUMS').is_file())
 
 

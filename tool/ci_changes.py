@@ -1,12 +1,13 @@
-"""Select CI components from Git diffs; unknown inputs conservatively run all checks."""
+"""Classify Git diffs for local tooling and select explicit CI build components."""
 import json
 import os
 from pathlib import Path
 import re
 import subprocess
+import sys
 
-SCOPES = ('core', 'macos', 'browser', 'android', 'ios')
-NATIVE = {'core', 'macos', 'browser', 'android', 'ios'}
+SCOPES = ('core', 'macos', 'windows', 'browser', 'android', 'ios')
+NATIVE = {'core', 'macos', 'windows', 'browser', 'android', 'ios'}
 
 
 def classify(paths):
@@ -27,9 +28,9 @@ def classify(paths):
         elif path.startswith('apps/shared/note-editor/'):
             selected |= {'macos', 'ios', 'android', 'browser'}
         elif path.startswith('services/'):
-            continue  # Native workflow always runs the dedicated Node service job.
-        elif path.startswith('apps/macos-nsh/'):
-            selected |= {'macos'}
+            continue  # Service builds are explicitly requested in the native workflow.
+        elif path.startswith('apps/desktop/'):
+            selected |= {'macos', 'windows'}
         elif path.startswith('apps/macos-legacy/'):
             if path.startswith('apps/macos-legacy/Resources/'):
                 selected |= {'macos', 'browser'}
@@ -64,7 +65,25 @@ def select(event_name, event, git_diff):
     return classify(paths)
 
 
+def requested(component):
+    allowed = set(SCOPES) | {'services'}
+    if component == 'release':
+        return {'macos', 'windows', 'ios', 'browser'}  # Android is signed once by the caller.
+    if component == 'all':
+        return allowed
+    if component in allowed:
+        return {component}
+    raise ValueError(f'Unknown CI component: {component}')
+
+
 def main():
+    if '--requested' in sys.argv:
+        selected = requested(os.environ['CI_COMPONENT'])
+        with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+            for scope in (*SCOPES, 'services'):
+                output.write(f'{scope}={str(scope in selected).lower()}\n')
+        print('Requested components: ' + ', '.join(sorted(selected)))
+        return
     event = json.loads(Path(os.environ['GITHUB_EVENT_PATH']).read_text())
     selected = select(os.environ['GITHUB_EVENT_NAME'], event, lambda revision: subprocess.check_output(
         ['git', 'diff', '--name-only', '--no-renames', '-z', revision, '--'], text=True).split('\0'))

@@ -41,6 +41,9 @@ jobs:
   checks:
     needs: prepare
     uses: ./.github/workflows/native.yml
+    with:
+      component: release
+      run_tests: false
   android:
     needs: prepare
     runs-on: ubuntu-latest
@@ -129,7 +132,8 @@ jobs:
           cp downloaded/native-signed-android/*.apk release-input/
           cp downloaded/native-macos-nsh-developer-preview/*.zip release-input/
           cp downloaded/native-ios-simulator-preview/*.zip release-input/
-      - name: Package five downloads and internal verification records
+          cp downloaded/native-windows-desktop/*.zip release-input/
+      - name: Package six downloads and internal verification records
         env:
           RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
         run: |

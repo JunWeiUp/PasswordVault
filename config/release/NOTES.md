@@ -1,13 +1,15 @@
-## 更新内容
+## Changes
 
-- Mac 升级 NSH 0.4 与原生富文本编辑器，字数及保存提示固定在底部。
-- 完善设备资料、恢复历史、中继同步和浏览器保存体验。
-- 整理项目结构，旧 SwiftUI Mac 归档；关闭自动依赖更新 PR。
+- Add a Windows x64 desktop download, sharing the NSH interface and vault core with Mac.
+- Identify the primary vault device and combine verified device admission with sync authorization; recover interrupted approvals without restoring revoked access.
+- Improve cross-platform storage, file dialogs and rich-note editing; keep automated PR checks lightweight.
 
-## 下载说明
+## Downloads
 
-提供 Android ARM64 APK、浏览器扩展、iOS 模拟器包、macOS ZIP 和 Web ZIP，各一个。
+Six packages: Android ARM64, macOS, Windows x64, iOS Simulator, Chromium extension and Web.
 
-macOS 支持 Apple Silicon / macOS 14+，公共包未公证；iOS 包仅用于模拟器，不能直接安装到 iPhone。软件仍为开发预览版，升级前请保留加密备份。
+Windows is an unsigned portable x64 package; extract the whole folder. Browser/AI local IPC, global shortcuts, terminal handoff and recovery printing remain unavailable on Windows. Primary transfer and mobile primary hosting are not included.
 
-[许可证](https://github.com/JunWeiUp/PasswordVault/blob/main/LICENSE) · [第三方组件](https://github.com/JunWeiUp/PasswordVault/blob/main/config/release/THIRD_PARTY_NOTICES.md)
+Mac requires Apple Silicon / macOS 14+ and is not notarized. The iOS package is simulator-only. Preserve an encrypted backup before upgrading. A regular release does not imply completed production-security acceptance.
+
+[Installation](https://github.com/JunWeiUp/PasswordVault/blob/main/config/release/INSTALL.md) · [License](https://github.com/JunWeiUp/PasswordVault/blob/main/LICENSE) · [Third-party notices](https://github.com/JunWeiUp/PasswordVault/blob/main/config/release/THIRD_PARTY_NOTICES.md)

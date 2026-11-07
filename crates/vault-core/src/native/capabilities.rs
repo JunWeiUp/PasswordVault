@@ -33,7 +33,7 @@ impl DiskVault {
             atomic_write(&temp.path().join(name), &bytes)?;
         }
         storage(fs::rename(temp.path(), &destination))?;
-        storage(File::open(&self.directory).and_then(|f| f.sync_all()))?;
+        storage(crate::native_file_ops::sync_directory(&self.directory))?;
         Ok(())
     }
 
