@@ -24,7 +24,7 @@ remain linked from the release description and repository.
 ## Windows
 
 The Windows x64 portable package is included in regular releases starting with
-2.4.1. Install the [Microsoft Visual C++ v14 x64 runtime](https://aka.ms/vc14/vc_redist.x64.exe)
+2.4.2. Install the [Microsoft Visual C++ v14 x64 runtime](https://aka.ms/vc14/vc_redist.x64.exe)
 if it is not already installed (see [Microsoft requirements](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist)). It was exercised on Windows 11 ARM using x64 emulation. The package is not
 Authenticode-signed; verify its release digest before running it. Existing vaults
 remain in `%LOCALAPPDATA%/PasswordVaultNSHPreview/vault` across upgrades. Close the

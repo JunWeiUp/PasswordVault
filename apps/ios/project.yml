@@ -44,8 +44,8 @@ targets:
           ProvidesPasskeys: true
           ProvidesPasswords: true
         CFBundleDisplayName: PasswordVault
-        CFBundleShortVersionString: "2.4.1"
-        CFBundleVersion: "17"
+        CFBundleShortVersionString: "2.4.2"
+        CFBundleVersion: "18"
         UILaunchScreen: {}
         NSFaceIDUsageDescription: Unlock your encrypted PasswordVault with Face ID.
         NSCameraUsageDescription: Scan an authenticator setup QR code you choose.
@@ -118,8 +118,8 @@ targets:
       path: Autofill/Info.plist
       properties:
         CFBundleDisplayName: PasswordVault
-        CFBundleShortVersionString: "2.4.1"
-        CFBundleVersion: "17"
+        CFBundleShortVersionString: "2.4.2"
+        CFBundleVersion: "18"
         VaultAppGroup: $(VAULT_APP_GROUP)
         NSExtension:
           NSExtensionPointIdentifier: com.apple.authentication-services-credential-provider-ui
