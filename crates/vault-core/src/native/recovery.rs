@@ -51,7 +51,7 @@ impl DiskVault {
             "recovery-disable" => {
                 self.open()?.header.unlock(string("currentPassword")?)?;
                 match fs::remove_file(self.directory.join("recovery.json")) {
-                    Ok(()) => storage(File::open(&self.directory).and_then(|f| f.sync_all()))?,
+                    Ok(()) => storage(crate::native_file_ops::sync_directory(&self.directory))?,
                     Err(e) if e.kind() == std::io::ErrorKind::NotFound => (),
                     Err(_) => return Err(VaultError::Storage),
                 }

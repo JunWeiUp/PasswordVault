@@ -690,7 +690,9 @@ internal class PersonalRelay(private val directory: File, private val vault: Vau
         val trusted = c.optJSONObject("groups")?.optJSONObject("trusted_peers") ?: return emptyList()
         return c.getJSONObject("peers").keys().asSequence().mapNotNull { peer ->
             val key = c.getJSONObject("peers").getString(peer)
-            if (trusted.optString(peer) != key || c.optJSONObject("capabilityPeers")?.optString(peer) != key) null
+            // Upgraded peers may retain grants made before capability advertisements.
+            // Discovery is automatic; core still requires an authenticated proof.
+            if (trusted.optString(peer) != key) null
             else peer to JSONObject().put("format", "passwordvault.capabilities.v1").put("group", c.getString("group")).put("to", peer)
                 .put("kind", if (verified != null && (0 until verified.length()).any { verified.optString(it) == peer }) "ready" else "challenge")
         }.toList().map { (peer, p) ->

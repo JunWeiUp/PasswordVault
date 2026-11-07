@@ -1,0 +1,48 @@
+[package]
+name = "nsh-app-passwordvault"
+version = "2.4.1"
+edition = "2024"
+license = "MIT"
+publish = false
+
+# Built by the nsh CLI as its own workspace, outside the repository's core workspace.
+[workspace]
+
+[dependencies]
+rqrr = "0.10"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp"] }
+comrak = { version = "=0.48.0", default-features = false }
+aes-gcm = "0.10"
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+libc = "0.2"
+socket2 = "0.6"
+sodiumoxide = "0.2.7"
+tungstenite = { version = "0.28", features = ["rustls-tls-native-roots"] }
+qrcode = { version = "0.14", default-features = false }
+url = "2"
+sha2 = "0.10"
+
+nsh-core = "=0.4.0"
+nsh-base = "=0.4.0"
+vault-core = { path = "../../crates/vault-core" }
+serde_json = "1"
+zeroize = "1.8"
+base64 = "0.22"
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls"] }
+roxmltree = "0.20"
+percent-encoding = "2"
+uuid = { version = "1", features = ["v4"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+dispatch2 = "0.3"
+objc2 = "0.6"
+objc2-foundation = { version = "0.3", features = ["block2"] }
+block2 = "0.6"
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSApplication", "NSResponder", "NSScreen", "NSWindow", "NSGraphics", "NSOpenPanel", "NSSavePanel", "NSPanel", "NSButton", "NSControl", "NSView"] }
+log = "0.4"
+core-foundation = "0.10"
+security-framework-sys = { version = "2.17", features = ["OSX_10_15"] }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+rfd = { version = "=0.17.2", default-features = false }
+windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_Storage_FileSystem", "Win32_Graphics_Gdi", "Win32_System_LibraryLoader", "Win32_System_RemoteDesktop", "Win32_System_SystemInformation", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_WindowsAndMessaging"] }

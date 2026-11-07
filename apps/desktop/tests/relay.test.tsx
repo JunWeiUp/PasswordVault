@@ -1,0 +1,90 @@
+import { expect, open, test } from "nsh/test";
+test("relay local status never claims connection and clears on lock", async () => {
+  const app = await open("../ui/relay/TestHarness.tsx", { width: 1000, height: 1200, platform: "macos" });
+  await app.press("text:准备中继测试库");
+  await app.waitFor("text:同步与设备");
+  await app.waitFor("text:本地没有设备组记录");
+  expect(app.texts()).toContain("中继未连接");
+  await app.press("text:启用格式 7 测试");
+  await app.waitFor("text:格式 7 测试已准备");
+  expect(app.texts()).not.toContain("部分设备尚未验证格式兼容性，正在自动协商");
+  await app.press("text:锁定测试库");
+  await app.waitFor("text:已锁定 · 同步已断开");
+  expect(app.texts()).not.toContain("同步与设备");
+});
+test("primary invitation requires manual code and combines membership with access", async () => {
+  const app = await open("../ui/relay/GroupHarness.tsx", { width: 1000, height: 1200, platform: "macos" });
+  expect(app.texts()).toContain("Mac · 主库 · 本机");
+  expect(app.texts()).not.toContain("自动加入普通成员");
+  await app.press("text:邀请设备");
+  await app.waitFor("text:ACTION:invite-personal:manual");
+  await app.press("text:显示手动申请");
+  await app.type("label:输入对方显示的配对码", "ABCD-1234-EF56");
+  await app.press("text:允许加入并同步");
+  await app.waitFor("text:ACTION:approve-and-grant:ABCD-1234-EF56");
+  await app.press("text:退出设备组");
+  await app.waitFor("text:同步日志将加密归档，本地资料保留，本机设备标识会更新。服务器退出结果会另行显示。");
+  await app.press("text:取消");
+  expect(app.texts()).not.toContain("ACTION:leave:");
+});
+test("receiver identifies primary and cannot invite through the personal UI", async () => {
+  const app = await open("../ui/relay/GroupHarness.tsx", { width: 1000, height: 1200, platform: "macos" });
+  await app.press("text:显示同步设备");
+  expect(app.texts()).toContain("Mac · 主库");
+  expect(app.texts()).toContain("Phone · 本机");
+  expect(app.texts()).not.toContain("邀请设备");
+  expect(app.texts()).not.toContain("允许加入并同步");
+});
+test("group exit confirms without a master password and local write failures remain visible", async () => {
+  const app = await open("../ui/relay/GroupHarness.tsx", { width: 1000, height: 1600, platform: "macos" });
+  await app.press("text:退出设备组");
+  expect(app.texts()).not.toContain("当前主密码");
+  await app.press("text:退出");
+  await app.waitFor("text:ACTION:leave:");
+  await app.press("text:模拟本地写入失败");
+  await app.press("text:解散设备组");
+  await app.press("text:解散");
+  await app.waitFor("text:操作未完成");
+  expect(app.texts()).not.toContain("ACTION:disband:");
+  await app.press("text:取消");
+  await app.press("text:连接设置");
+  await app.type("id:update-relay-password", "corrected-relay-access");
+  await app.press("text:保存中继密码并重连");
+  await app.waitFor("text:ACTION:update-password:with-password");
+  expect(app.value("id:update-relay-password")).toBe("");
+  await app.press("text:模拟服务器解散失败");
+  await app.waitFor("text:本机已退出，服务器解散未完成");
+});
+
+test("relay group creation requires the relay password; joining accepts a typed or link password", async () => {
+  const app = await open("../ui/relay/GroupHarness.tsx", { width: 1000, height: 1200, platform: "macos" });
+  await app.press("text:显示未入组");
+  await app.type("id:relay-endpoint", "wss://relay.example.test/relay/v1/ws");
+  await app.type("id:relay-password", "relay-access-1");
+  await app.press("text:创建设备组");
+  await app.waitFor("text:ACTION:create:with-password");
+  await app.type("label:粘贴 common-relay:// 邀请链接", "common-relay://relay.example.test/i/abc#key");
+  await app.press("text:加入设备组");
+  await app.waitFor("text:ACTION:join:");
+  await app.type("id:join-relay-password", "relay-access-1");
+  await app.press("text:加入设备组");
+  await app.waitFor("text:ACTION:join:with-password");
+});
+
+test("relay QR picker handles cancellation, bad images, and a validated invitation", async () => {
+  const app = await open("../ui/relay/GroupHarness.tsx", { width: 1000, height: 1500, platform: "macos" });
+  await app.press("text:显示未入组");
+  app.onPick(() => null);
+  await app.press("text:识别邀请二维码图片");
+  expect(app.value("label:粘贴 common-relay:// 邀请链接")).toBe("");
+  app.onPick(() => [{ name: "bad.png", type: "image/png", data: new Uint8Array([1, 2, 3]) }]);
+  await app.press("text:识别邀请二维码图片");
+  await app.waitFor("text:请选择只含一个有效设备组邀请二维码的图片。");
+  const bytes = Uint8Array.from(atob("iVBORw0KGgoAAAANSUhEUgAAAcgAAAHICAAAAADvyiU2AAARSElEQVR4Ae3AA6AkWZbG8f937o3IzKdyS2Oubdu2bdu2bdu2bWmMnpZKr54yMyLu+Xa3anqmhztr1a+aq/4PILjq/wKCq/4vILjq/wKCq/4vILjq/wKCq/4vILjq/wKCq/4vILjq/wKCq/4vILjq/wKCq/4vILjq/wKCq/4vILjq/wKCq/4vILjq/wKCq/4vILjq/wKCq/4vILjq/wKCq/4vILjq/wKCq/4vILjq/wKCq/4vILjq/wKCq/4vILjq/wKCq/4vILjq/wIq/wLxb2NeNOI5medPXGGuEFeYK8QV5grxb2Oek7jCXCGuMC8acYW5QvzbmBeK4Kr/Cwiu+r+A4Kr/Cwiu+r+A4Kr/Cwiu+r+A4Kr/C6i8iMyLRjx/4gpzhbjCXCGuEC+cuMI8f+I5mRdOXGGuEM+fuMJcIa4wz0m8aMyLRrxICK76v4Dgqv8LCK76v4Dgqv8LCK76v4Dgqv8LCK76v4DKv5J4/szzJ1405vkTV5jnJK4wz5+5Qjwnc4V4TuJfxzx/5grxohHPn/lXIbjq/wKCq/4vILjq/wKCq/4vILjq/wKCq/4vILjq/wIq/0XMFeI5iedknj9xhbnCPCfznMQV5grx/JkrxHMyV4jnJK4wz0lcYZ6T+S9BcNX/BQRX/V9AcNX/BQRX/V9AcNX/BQRX/V9AcNX/BVT+i4grzHMSV5jnJJ6TuUL864jnJK4wV4jnTzwn85zEC2f+SxFc9X8BwVX/FxBc9X8BwVX/FxBc9X8BwVX/FxBc9X8BlX8l829jrhDPn7jCXGFeOHOFuMJcIa4wz5+4QlxhrhBXmOdPPH/mOYkrzIvG/IcguOr/AoKr/i8guOr/AoKr/i8guOr/AoKr/i8guOr/AiovIvEfy1whrjBXiCvMFeIK828jrjDPyVwhrjBXiCvMFeIKc4W4wlwhrjDPn7jCPCfxH4rgqv8LCK76v4Dgqv8LCK76v4Dgqv8LCK76v4Dgqv8LkPnPJZ4/88KJK8wV4gpzhXjhzPMnnpN5TuIK88KJK8wLJ64w/6kIrvq/gOCq/wsIrvq/gOCq/wsIrvq/gOCq/wsIrvq/gMq/QFxhrhAvGnOFef7EFeYKcYW5wvz7iBfOPCfxnMQV5oUTz8lcIa4wz0m8aMy/CsFV/xcQXPV/AcFV/xcQXPV/AcFV/xcQXPV/AcFV/xdQeRGJK8yLRjx/5vkzV4grzPMnrjDPSVxh/muYF85cIZ6TuUI8f+YKcYV5kRBc9X8BwVX/FxBc9X8BwVX/FxBc9X8BwVX/FxBc9X8BlReReU7iX8dcIa4wz5+5Qjx/5jmJ5ySek3lO4jmZK8wV4grz/Il/G3OFuMJcIV44cYV5oQiu+r+A4Kr/Cwiu+r+A4Kr/Cwiu+r+A4Kr/Cwiu+r8AmRdOvHDm+RMvnHn+xBXmCvGczHMSz8k8f+IKc4V4Tub5E8/JXCGuMC+ceE7mCnGF+Q9BcNX/BQRX/V9AcNX/BQRX/V9AcNX/BQRX/V9AcNX/BVT+BeYK8ZzMFeIKc4V4TuYK8fyJK8xzEleYK8QV4jmZ5ySuMFeIK8wV4grznMQV5gpxhblCPH/ihTMvGnGFeU7iCvNCEVz1fwHBVf8XEFz1fwHBVf8XEFz1fwHBVf8XEFz1fwEyL5x4/sy/jbjCXCGuMM9JPH/m+RNXmCvEFeYKcYW5QlxhnpO4wlwhrjBXiOdkrhDPyTx/4jmZK8RzMv8qBFf9X0Bw1f8FBFf9X0Bw1f8FBFf9X0Bw1f8FBFf9X4DMCyeek7lCPCdzhbjCXCGuMM9JXGGek3hO5jmJ52ReOHGFef7EFeY5iedkrhDPyVwhnj/zbyOek3mhCK76v4Dgqv8LCK76v4Dgqv8LCK76v4Dgqv8LCK76v4DKfzDz/IkXjblCXCGek3n+xBXmX8c8J/GczBXiCnOFuEJcYZ6TeP7Ev455kRBc9X8BwVX/FxBc9X8BwVX/FxBc9X8BwVX/FxBc9X8BMi+ceP7McxLPyTwncYV5/sQLZ56TeE7mOYkXjblCPCfzohHPyTwn8cKZF05cYV4ogqv+LyC46v8Cgqv+LyC46v8Cgqv+LyC46v8Cgqv+L0DmhRPPyfzriBeNeU7iCvPCiSvMFeI5mSvEFeaFE8/JXCGuMFeI52ReNOIKc4W4wlwhrjBXiCvMC0Vw1f8FBFf9X0Bw1f8FBFf9X0Bw1f8FBFf9X0Bw1f8FVF5E5gpxhblCvGjMcxLPSTwnc4V4/swLZ64QV5grxHMyV4jnZJ6TeU7mCnGFuMJcIZ4/85zM8yeuMC8Sgqv+LyC46v8Cgqv+LyC46v8Cgqv+LyC46v8Cgqv+L0DmhRPPyVwhnj9zhbjCvHDi+TP/NcQV5j+WuMI8J3GFuUJcYf5dCK76v4Dgqv8LCK76v4Dgqv8LCK76v4Dgqv8LCK76v4DKv8C8aMwV4gpzhbjCXCGuMC8a8ZzM8ydeNOY5mecknj/znMTzZ56TuMJcYa4QV5grxHMyV4grzAtFcNX/BQRX/V9AcNX/BQRX/V9AcNX/BQRX/V9AcNX/BVT+g5krxBXm+RNXmOcknpN5TuI5medkrhBXmBeN+I9lnpN4/sRzMleIK8yLhOCq/wsIrvq/gOCq/wsIrvq/gOCq/wsIrvq/gOCq/wuQ+dcRV5grxIvGXCGuMFeI52SuEM/JvGjEv4554cQLZ64Qz8lcIV405vkTV5gXiuCq/wsIrvq/gOCq/wsIrvq/gOCq/wsIrvq/gOCq/wuo/Acxz594TuYKcYV5TuIK88KJ52Sek3n+xBXmOYnnZK4wV4grzBXi+TNXiOdknj9xhbjCXCH+VQiu+r+A4Kr/Cwiu+r+A4Kr/Cwiu+r+A4Kr/Cwiu+r+Ayr9APCdzhXj+xBXmX0dcYZ6TeNGI509cYf51xBXmOYkrzBXiCnOFuMJcIZ6TuMI8J3OFuMJcIV4kBFf9X0Bw1f8FBFf9X0Bw1f8FBFf9X0Bw1f8FBFf9X0DlP5j51xFXmCvEFeYKc4V4Tub5E8/JvHDihRNXmOcknpO4wlwhnj/zohFXmBcJwVX/FxBc9X8BwVX/FxBc9X8BwVX/FxBc9X8BwVX/FyDzwonnZJ6T+NcxV4grzPMnrjBXiOfPXCH+dczzJ64wz5+4wlwh/mOYK8TzZ14ogqv+LyC46v8Cgqv+LyC46v8Cgqv+LyC46v8Cgqv+L6DyIjJXiBfOPH/i+RMvnHhO5vkzV4jnZK4QV5grxHMyz594TuY5mSvE82eek3jhzBXiX4Xgqv8LCK76v4Dgqv8LCK76v4Dgqv8LCK76v4Dgqv8LkPnXEVeYK8QLZ54/8ZzMFeIKc4W4wlwhrjDPSVxhrhAvnPm3EVeYK8QV5jmJK8zzJ64wV4grzBXiOZkXiuCq/wsIrvq/gOCq/wsIrvq/gOCq/wsIrvq/gOCq/wuo/AvEFeYKc4W4wrxoxBXmX8c8J3OFeE7mCnGFuUJcYa4QV4grzBXi+TPPyVwhrjBXiCvM8yeek3nhzL8KwVX/FxBc9X8BwVX/FxBc9X8BwVX/FxBc9X8BwVX/F1B5EYkrzAsnrjBXiOcknpN5TuYK8ZzMFeIKc4W4Qjwn8ZzEFeYK8ZzMFeIKc4W4wvz7mOcknj/x/JkXiuCq/wsIrvq/gOCq/wsIrvq/gOCq/wsIrvq/gOCq/wuo/AcRV5jnZJ4/8ZzEczJXiCvEcxLPyTx/4gpzhXj+xBXmOZnnJK4wV4jnJK4wz5+4wjwn8ZzMFeJFQnDV/wUEV/1fQHDV/wUEV/1fQHDV/wUEV/1fQHDV/wXIvHDiRWOuEM/JPH/iX8dcIa4wV4grzBXi+TPPn7jCPCfxojHPSTwnc4W4wrxw4vkzLxTBVf8XEFz1fwHBVf8XEFz1fwHBVf8XEFz1fwHBVf8XUPkXmOckrjBXiCvEFeYK8ZzEczJXiCvMcxIvnLjCPCdzhXj+xPMnrjBXmCvEFeYKcYV5TuJFI56T+Q9BcNX/BQRX/V9AcNX/BQRX/V9AcNX/BQRX/V9AcNX/BVT+BeIK8/yZ5ySuMFeIK8wV4vkTV5grzHMSV5jnJF44c4W4wjwncYW5Qjx/4gpzhbjCXGGeP/H8mefPXCH+VQiu+r+A4Kr/Cwiu+r+A4Kr/Cwiu+r+A4Kr/Cwiu+r+Ayr+ReP7MC2euEM+feE7mCvPCmedPXGGuEM/JvGjMFeIK8/yJK8zzZ56TuMI8f+ZFQnDV/wUEV/1fQHDV/wUEV/1fQHDV/wUEV/1fQHDV/wXIvHDiCvOcxL+NuUI8J/P8iSvMFeIK85zEFeaFE1eYK8TzZ56TuMJcIZ4/c4X49zFXiCvMC0Vw1f8FBFf9X0Bw1f8FBFf9X0Bw1f8FBFf9X0Bw1f8FVP4F5gpxhXlO5gpxhXlO4jmJK8xzEleY52Sek7lCXGGek3j+zPNnrhDPn7jCPCdzhbjCvHDmOYkrzH8Igqv+LyC46v8Cgqv+LyC46v8Cgqv+LyC46v8Cgqv+L0DmRSOuMM+feE7mRSNeOPOcxPNnnpO4wjwn8ZzMCyeeP/OcxPNnrhDPn7lCvHDmhSK46v8Cgqv+LyC46v8Cgqv+LyC46v8Cgqv+LyC46v8CKv9K4jmZK8xzEleYK8QV5grxohHPyVwhnpO4wjwn8fyZK8QV5gpxhXn+zBXiCvOczHMSz8lcIZ6Tef7Ei4Tgqv8LCK76v4Dgqv8LCK76v4Dgqv8LCK76v4Dgqv8LqPwLxPNnnj/x/JnnZK4QV5grxHMyV4gXjfjXMVeIK8xzMi+ceP7E8yeek7jCXCH+TQiu+r+A4Kr/Cwiu+r+A4Kr/Cwiu+r+A4Kr/Cwiu+r+Ayr/A/OuY5ySek7lCXGGuEFeY589cIZ6TuUI8J/P8iRdOPH/mOZnnJF448/yJ52SuEFeYFwnBVf8XEFz1fwHBVf8XEFz1fwHBVf8XEFz1fwHBVf8XIPPCiX8b85zEczLPn3jhzBXiOZkrxBXmCnGFuUI8J/OcxHMyz0lcYa4Qz5+5QlxhrhBXmCvEczJXiOdkXiiCq/4vILjq/wKCq/4vILjq/wKCq/4vILjq/wKCq/4voPIiMi8a8ZzEFeY5iSvMFeI5mSvEcxLPn3j+zPNnrhBXmOdPvHDmCnGFuUI8f+b5M8/J/KsQXPV/AcFV/xcQXPV/AcFV/xcQXPV/AcFV/xcQXPV/AZV/JfH8mX8d8/yZF85cIa4wz0lcIV405gpxhblCXGGek3hO4jmJ50+8aMTzZ14ogqv+LyC46v8Cgqv+LyC46v8Cgqv+LyC46v8Cgqv+L6DyX0S8cOYK8ZzM82eek3hO5jmJF414/sQV5jmZK8TzZ64Qz8lcIa4QV5grxL8KwVX/FxBc9X8BwVX/FxBc9X8BwVX/FxBc9X8BwVX/F1D5b2KuEM/JXCGuEFeYK8RzMs+feE7mCvGcxBXmCnGF+bcxz0k8f+IK85zEvwnBVf8XEFz1fwHBVf8XEFz1fwHBVf8XEFz1fwHBVf8XUPlXMv865jmJ5088J3OFuEJcYZ4/c4V4TuYK8fyZ509cYZ4/8ZzMfyxzhXiREFz1fwHBVf8XEFz1fwHBVf8XEFz1fwHBVf8XEFz1fwGVF5H4txFXmOck/nOZK8QV5jmJK8wV4jmZ52Sek7lCXCGuMFeIK8zzJ64QV5grzBXiX4Xgqv8LCK76v4Dgqv8LCK76v4Dgqv8LCK76v4Dgqv8LkLnq/wCCq/4vILjq/wKCq/4vILjq/wKCq/4vILjq/wKCq/4vILjq/wKCq/4vILjq/wKCq/4vILjq/wKCq/4vILjq/wKCq/4vILjq/wKCq/4vILjq/wKCq/4vILjq/wKCq/4vILjq/wKCq/4vILjq/wKCq/4vILjq/wKCq/4vILjq/wKCq/4vILjq/wKCq/4v4B8B3zdE06/X0MIAAAAASUVORK5CYII="), c => c.charCodeAt(0));
+  app.onPick(() => [{ name: "invitation.png", type: "image/png", data: bytes }]);
+  await app.press("text:识别邀请二维码图片");
+  await app.waitFor("text:已识别邀请二维码，点击加入设备组继续。");
+  expect(app.value("label:粘贴 common-relay:// 邀请链接")).toContain("common-relay://");
+  await app.press("text:加入设备组");
+  await app.waitFor("text:ACTION:join:");
+});

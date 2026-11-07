@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Runs the nsh CLI for the Native Shell Mac preview (apps/macos-nsh) with the
+# Runs the nsh CLI for the Native Shell Mac preview (apps/desktop) with the
 # pinned rustc and required huacnlee/cargo fork. The artifact bridge adapts
-# NSH runner lookup without duplicating the fork's shared compilation cache.
+# NSH runner lookup while keeping build outputs managed by the fork.
 #
 #   bash tool/nsh_mac.sh check
 #   bash tool/nsh_mac.sh run App.tsx --target macos
@@ -9,13 +9,15 @@
 #   bash tool/nsh_mac.sh package App.tsx --target macos
 set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
-app="$root/apps/macos-nsh"
+app="$root/apps/desktop"
 rustup_cmd="${RUSTUP:-$(command -v rustup || echo "$HOME/.cargo/bin/rustup")}"
 channel="$(sed -n 's/^channel = "\(.*\)"/\1/p' "$app/rust-toolchain.toml")"
 toolchain_bin="$(dirname "$("$rustup_cmd" which --toolchain "$channel" rustc)")"
 # Keep the fork ahead of the toolchain's official Cargo, while pinning rustc.
 export PATH="$root/tool/nsh-cargo:$HOME/.cargo/bin:$toolchain_bin:$PATH"
 export RUSTUP_TOOLCHAIN="$channel"
+# Core and desktop pin different rustc versions; isolate dependency metadata.
+export CARGO_SHARED_DEPS="${CARGO_SHARED_DEPS:-0}"
 export CARGO="$root/tool/nsh-cargo/cargo"
 if ! "$CARGO" --version | grep -q 'huacnlee/cargo'; then
   printf 'huacnlee/cargo is required: https://huacnlee.github.io/cargo/\n' >&2

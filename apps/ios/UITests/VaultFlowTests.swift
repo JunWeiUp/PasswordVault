@@ -82,7 +82,11 @@ final class VaultFlowTests: XCTestCase {
     XCTAssertTrue(title.waitForExistence(timeout: 10))
     XCTAssertEqual(title.value as? String, "Unfinished encrypted draft")
     app.buttons["保存"].tap()
-    app.tabBars.buttons["全部笔记"].tap()
+    XCTAssertTrue(waitFor(title, "exists == false"), "Wait for the recovered editor to dismiss after saving")
+    let notes = app.tabBars.buttons["全部笔记"]
+    XCTAssertTrue(waitFor(notes, "hittable == true"))
+    notes.tap()
+    XCTAssertTrue(waitFor(notes, "selected == true"))
     XCTAssertTrue(app.staticTexts["Unfinished encrypted draft"].waitForExistence(timeout: 5))
   }
 

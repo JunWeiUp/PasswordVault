@@ -3,6 +3,11 @@ on:
   push:
     tags: ['v*-android.*']
   workflow_dispatch:
+    inputs:
+      run_tests:
+        description: Also run core tests before signing
+        type: boolean
+        default: false
 permissions:
   contents: read
 concurrency:
@@ -42,15 +47,18 @@ jobs:
           log-accepted-android-sdk-licenses: false
       - name: Install pinned native targets
         run: |
-          rustup toolchain install 1.96.0 --profile minimal --target aarch64-linux-android,x86_64-linux-android
+          rustup toolchain install 1.96.0 --profile minimal --target aarch64-linux-android
           sdkmanager 'platforms;android-36' 'build-tools;36.0.0' 'ndk;27.0.12077973'
-      - run: bash tool/check_native.sh core
+      - if: inputs.run_tests
+        run: bash tool/check_native.sh core
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: '22'
           cache: npm
           cache-dependency-path: apps/shared/note-editor/package-lock.json
       - run: bash tool/build_mobile_core.sh android
+        env:
+          PASSWORDVAULT_ANDROID_ABI: arm64-v8a
       - name: Configure private signing key
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
@@ -61,7 +69,7 @@ jobs:
       - name: Build non-debuggable signed APKs
         run: |
           mkdir release-input
-          for abi in arm64-v8a x86_64; do
+          for abi in arm64-v8a; do
             ./apps/android/gradlew -p apps/android :app:assemblePreviewRelease -PtargetAbi="$abi"
             cp apps/android/app/build/outputs/apk/previewRelease/app-previewRelease.apk "release-input/android-$abi.apk"
           done

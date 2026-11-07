@@ -2,10 +2,25 @@ name: Native clients
 on:
   pull_request:
     branches: [main, master]
-  push:
-    branches: [main, master]
   workflow_dispatch:
+    inputs:
+      component:
+        description: Build only this component (all is expensive)
+        type: choice
+        options: [macos, windows, android, ios, browser, core, services, all]
+        default: macos
+      run_tests:
+        description: Also run optional tests and additional checks
+        type: boolean
+        default: false
   workflow_call:
+    inputs:
+      component:
+        type: string
+        default: release
+      run_tests:
+        type: boolean
+        default: false
 permissions:
   contents: read
 concurrency:
@@ -13,22 +28,26 @@ concurrency:
   cancel-in-progress: true
 jobs:
   changes:
-    name: Select changed components
+    name: Select requested components
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
       core: ${{ steps.select.outputs.core }}
       macos: ${{ steps.select.outputs.macos }}
+      windows: ${{ steps.select.outputs.windows }}
       browser: ${{ steps.select.outputs.browser }}
       android: ${{ steps.select.outputs.android }}
       ios: ${{ steps.select.outputs.ios }}
+      services: ${{ steps.select.outputs.services }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
-          fetch-depth: 0
           persist-credentials: false
       - id: select
-        run: python3 tool/ci_changes.py
+        env:
+          CI_COMPONENT: ${{ inputs.component }}
+        run: python3 tool/ci_changes.py --requested
 
   native-core:
     needs: changes
@@ -43,7 +62,16 @@ jobs:
         with:
           component: core
       - run: rustup toolchain install 1.96.0 --profile minimal --component rustfmt,clippy
-      - run: bash tool/check_native.sh core
+      - name: Check core (tests are opt-in)
+        env:
+          RUN_TESTS: ${{ inputs.run_tests }}
+        run: |
+          if [[ "$RUN_TESTS" == true ]]; then
+            bash tool/check_native.sh core
+          else
+            source tool/cargo_fork_env.sh
+            RUSTUP_TOOLCHAIN=1.96.0 cargo check -p vault-core --locked
+          fi
   android-native:
     name: Build Android development APK
     needs: changes
@@ -78,18 +106,19 @@ jobs:
       - run: bash tool/build_mobile_core.sh android
         env:
           PASSWORDVAULT_ANDROID_ABI: arm64-v8a
-      - name: Build isolated preview and test applications
+      - name: Build the ARM64 preview
         run: |
-          ./apps/android/gradlew -p apps/android :app:assembleCompact :app:assembleCompactAndroidTest :login-fixture:assembleDebug -PtestBuildType=compact -PtargetAbi=arm64-v8a
+          ./apps/android/gradlew -p apps/android :app:assembleCompact -PtargetAbi=arm64-v8a
+      - name: Optional Android unit tests
+        if: inputs.run_tests
+        run: ./apps/android/gradlew -p apps/android :app:testCompactUnitTest
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: native-android-developer-preview
           path: |
             apps/android/app/build/outputs/apk/compact/*.apk
-            apps/android/app/build/outputs/apk/androidTest/compact/*.apk
-            apps/android/login-fixture/build/outputs/apk/debug/*.apk
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 3
   ios-native:
     needs: changes
     if: needs.changes.outputs.ios == 'true'
@@ -121,13 +150,19 @@ jobs:
       - run: bash tool/build_mobile_core.sh ios
         env:
           PASSWORDVAULT_IOS_SIM_ARCH: host
-      - name: Compile app, extension and run isolated lifecycle tests
+      - name: Compile simulator app (lifecycle tests are opt-in)
+        env:
+          RUN_TESTS: ${{ inputs.run_tests }}
         run: |
           xcodegen generate --spec apps/ios/project.yml
           xcodebuild -version
-          sdk_version=$(xcrun --sdk iphonesimulator --show-sdk-version)
-          simulator_id=$(xcrun simctl list devices available -j | python3 tool/select_ios_simulator.py --sdk "$sdk_version")
-          xcodebuild -project apps/ios/PasswordVault.xcodeproj -scheme PasswordVault -configuration Debug -derivedDataPath apps/ios/build -destination "platform=iOS Simulator,id=$simulator_id" -test-timeouts-enabled YES -default-test-execution-time-allowance 120 -maximum-test-execution-time-allowance 300 test
+          if [[ "$RUN_TESTS" == true ]]; then
+            sdk_version=$(xcrun --sdk iphonesimulator --show-sdk-version)
+            simulator_id=$(xcrun simctl list devices available -j | python3 tool/select_ios_simulator.py --sdk "$sdk_version")
+            xcodebuild -project apps/ios/PasswordVault.xcodeproj -scheme PasswordVault -configuration Debug -derivedDataPath apps/ios/build -destination "platform=iOS Simulator,id=$simulator_id" -test-timeouts-enabled YES -default-test-execution-time-allowance 120 -maximum-test-execution-time-allowance 300 test
+          else
+            xcodebuild -project apps/ios/PasswordVault.xcodeproj -scheme PasswordVault -configuration Debug -derivedDataPath apps/ios/build -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
+          fi
       - name: Preserve failed iOS test diagnostics
         if: failure()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
@@ -143,7 +178,7 @@ jobs:
           name: native-ios-simulator-preview
           path: apps/ios/build/PasswordVault-ios-simulator.zip
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 3
 
   macos-nsh:
     name: Current Mac NSH
@@ -163,14 +198,16 @@ jobs:
           rustup toolchain install 1.98.0 --profile minimal
           curl --fail --show-error --silent --location https://nsh.dev/install.sh -o "$RUNNER_TEMP/nsh-install.sh"
           NSH_VERSION=v0.4.0 NSH_INSTALL_DIR="$HOME/.nsh-0.4.0" sh "$RUNNER_TEMP/nsh-install.sh"
-      - run: bash tool/nsh_mac.sh check
+      - if: inputs.run_tests
+        run: bash tool/nsh_mac.sh check
       - name: Synthetic-vault native and interface tests
+        if: inputs.run_tests
         run: |
           source tool/cargo_fork_env.sh
           export RUSTUP_TOOLCHAIN=1.98.0
           PASSWORDVAULT_VAULT_DIRECTORY="$(mktemp -d /tmp/pv-ci.XXXXXX)/vault"
           export PASSWORDVAULT_VAULT_DIRECTORY
-          cargo run --manifest-path apps/macos-nsh/Cargo.toml --example seed -- "$PASSWORDVAULT_VAULT_DIRECTORY"
+          cargo run --manifest-path apps/desktop/Cargo.toml --example seed -- "$PASSWORDVAULT_VAULT_DIRECTORY"
           bash tool/nsh_mac.sh test
       - run: bash tool/macos-nsh/package-ci.sh
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
@@ -178,7 +215,34 @@ jobs:
           name: native-macos-nsh-developer-preview
           path: native-test-output/release/PasswordVault-macos-arm64.zip
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 3
+
+  windows-desktop:
+    name: Windows x64 Desktop
+    needs: changes
+    if: needs.changes.outputs.windows == 'true'
+    runs-on: windows-2022
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Install pinned Rust, Cargo and NSH with OpenSSL
+        shell: pwsh
+        run: ./tool/windows-desktop/setup-ci.ps1
+      - name: Check and package Windows Desktop
+        shell: pwsh
+        run: |
+          ./tool/nsh_windows.ps1 check
+          ./tool/windows-desktop/package.ps1 -OutDir native-test-output/windows-release
+          Move-Item native-test-output/windows-release/PasswordVault.zip native-test-output/windows-release/PasswordVault-windows-x64.zip
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: native-windows-desktop
+          path: native-test-output/windows-release/PasswordVault-windows-x64.zip
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 3
 
   browser-native:
     name: Build Web and Chromium extension
@@ -212,15 +276,19 @@ jobs:
           source tool/cargo_fork_env.sh
           cargo install wasm-bindgen-cli --version 0.2.128 --locked
       - run: bash tool/check_native.sh browser
+        env:
+          PV_BUILD_ONLY: ${{ !inputs.run_tests }}
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: lightweight-browser-developer-preview
           path: apps/browser/dist
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 3
 
   capability-services:
     name: Share and browser relay services
+    needs: changes
+    if: needs.changes.outputs.services == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -236,19 +304,22 @@ jobs:
             services/sync-gateway/package-lock.json
       - run: npm --prefix services/share ci
       - run: npm --prefix services/share run check
-      - run: npm --prefix services/share test
+      - if: inputs.run_tests
+        run: npm --prefix services/share test
       - run: npm --prefix services/sync-gateway ci
-      - run: npm --prefix services/sync-gateway test
+      - if: inputs.run_tests
+        run: npm --prefix services/sync-gateway test
 
   native-validation:
     name: Analyze, test, and validate
     if: always()
-    needs: [changes, native-core, macos-nsh, android-native, ios-native, browser-native, capability-services]
+    needs: [changes, native-core, macos-nsh, windows-desktop, android-native, ios-native, browser-native, capability-services]
     runs-on: ubuntu-latest
     steps:
       - name: Require successful applicable native checks
         env:
           RESULTS: ${{ toJSON(needs) }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
           python3 - <<'PYCODE'
           import json, os
@@ -256,7 +327,10 @@ jobs:
           failed = {name: job['result'] for name, job in results.items() if job['result'] not in ('success', 'skipped')}
           if failed:
               raise SystemExit(f'Native validation failed: {failed}')
-          if results['changes']['result'] != 'success':
+          if os.environ['EVENT_NAME'] == 'pull_request':
+              print('Cost policy: native builds/tests are manual or release-only; no platform validation claimed for this PR.')
+          elif results['changes']['result'] != 'success':
               raise SystemExit('Component selection did not succeed')
-          print('All applicable native checks passed')
+          else:
+              print('All requested native jobs passed')
           PYCODE

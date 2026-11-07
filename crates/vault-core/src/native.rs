@@ -54,8 +54,7 @@ fn atomic_write(path: &Path, data: &[u8]) -> Result<()> {
     let mut file = storage(tempfile::NamedTempFile::new_in(parent))?;
     storage(file.write_all(data))?;
     storage(file.as_file().sync_all())?;
-    storage(file.persist(path))?;
-    storage(File::open(parent).and_then(|f| f.sync_all()))?;
+    storage(crate::native_file_ops::replace_synced(file.path(), path))?;
     Ok(())
 }
 fn open_database(path: &Path, root: &[u8; 32], create: bool) -> Result<Connection> {
@@ -190,8 +189,10 @@ impl DiskVault {
             &temp.path().join("header.json"),
             &serde_json::to_vec(&header).map_err(|_| VaultError::InvalidData)?,
         )?;
-        storage(fs::rename(temp.path(), &self.directory))?;
-        storage(File::open(self.directory.parent().unwrap()).and_then(|f| f.sync_all()))?;
+        storage(crate::native_file_ops::replace_synced(
+            temp.path(),
+            &self.directory,
+        ))?;
         self.unlock_key(root, header)
     }
     fn unlock(&mut self, password: &str) -> Result<()> {

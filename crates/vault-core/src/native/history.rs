@@ -342,7 +342,7 @@ impl DiskVault {
                         )?;
                     }
                     storage(fs::rename(temp.path(), &destination))?;
-                    storage(File::open(&self.directory).and_then(|f| f.sync_all()))?;
+                    storage(crate::native_file_ops::sync_directory(&self.directory))?;
                 }
                 let open = self.open()?;
                 let mut next = open.document.clone();
