@@ -164,7 +164,7 @@
       root = host.attachShadow({ mode: "closed" });
     const style = document.createElement("style");
     style.textContent =
-      ":host{all:initial}.card{box-sizing:border-box;width:300px;max-width:calc(100vw - 16px);font:13px/1.5 system-ui;background:#fff;color:#1d2739;border:1px solid #d9dfeb;border-radius:12px;max-height:calc(100vh - 16px);display:flex;flex-direction:column;box-shadow:0 8px 32px #15254430;padding:8px}.head{font-weight:600;padding:8px}button{font:inherit;display:block;text-align:left;width:100%;border:0;border-radius:8px;background:white;color:inherit;padding:10px;cursor:pointer}button:hover,button:focus-visible{background:#eaf0ff;outline:2px solid #b8ceff}small{display:block;color:#65718a;overflow:hidden;text-overflow:ellipsis}strong{display:block;overflow:hidden;text-overflow:ellipsis}.list{max-height:240px;min-height:0;overflow:auto}.status{padding:10px;color:#65718a}";
+      ":host{all:initial}.card{box-sizing:border-box;width:300px;max-width:calc(100vw - 16px);font:13px/1.5 system-ui;background:#fff;color:#1d2739;border:1px solid #d9dfeb;border-radius:12px;max-height:calc(100vh - 16px);display:flex;flex-direction:column;box-shadow:0 8px 32px #15254430;padding:8px}.head{font-weight:600;padding:8px}button{font:inherit;display:block;text-align:left;width:100%;border:0;border-radius:8px;background:white;color:inherit;padding:10px;cursor:pointer}button:hover,button:focus-visible{background:#eaf0ff;outline:2px solid #b8ceff}small{display:block;color:#65718a;overflow:hidden;text-overflow:ellipsis}strong{display:block;overflow:hidden;text-overflow:ellipsis}.list{max-height:240px;min-height:0;overflow:auto}.generator{display:grid;gap:8px;padding:8px}.generator label{display:flex;align-items:center;gap:8px}.generator input[type=number]{width:72px;font:inherit}.generator input[type=checkbox]{accent-color:#2761d8}button:disabled{opacity:.5;cursor:default}.status{padding:10px;color:#65718a}";
     const card = document.createElement("section");
     card.className = "card";
     card.setAttribute("aria-label", "PasswordVault 匹配账号");
@@ -192,17 +192,57 @@
     host.style.top = `${Math.max(8, Math.min(r.bottom + 6, innerHeight - 330))}px`;
     if (c.input.autocomplete.split(/\s+/).includes("new-password")) {
       status.textContent = "生成随机密码，仅填入当前字段；提交成功后请确认保存。";
+      head.textContent = "PasswordVault · 生成密码";
+      const options = document.createElement("div");
+      options.className = "generator";
+      const lengthLabel = document.createElement("label");
+      lengthLabel.textContent = "密码长度（8–128）";
+      const lengthInput = document.createElement("input");
+      lengthInput.type = "number";
+      lengthInput.min = "8";
+      lengthInput.max = "128";
+      lengthInput.step = "1";
+      lengthInput.value = "24";
+      lengthLabel.append(lengthInput);
+      options.append(lengthLabel);
+      const groups = [
+        ["大写字母 A–Z", "ABCDEFGHIJKLMNOPQRSTUVWXYZ"],
+        ["小写字母 a–z", "abcdefghijklmnopqrstuvwxyz"],
+        ["数字 0–9", "0123456789"],
+        ["特殊字符 !@#$%&*+-", "!@#$%&*+-"],
+      ].map(([title, alphabet]) => {
+        const label = document.createElement("label");
+        const checkbox = document.createElement("input");
+        checkbox.type = "checkbox";
+        checkbox.checked = true;
+        label.append(checkbox, document.createTextNode(title));
+        options.append(label);
+        return { checkbox, alphabet };
+      });
       const generate = document.createElement("button");
-      generate.textContent = "生成并填入 24 位密码";
+      const validate = () => {
+        const length = lengthInput.valueAsNumber;
+        const valid = Number.isInteger(length) && length >= 8 && length <= 128 &&
+          groups.some(group => group.checkbox.checked);
+        generate.disabled = !valid;
+        generate.textContent = valid ? `生成并填入 ${length} 位密码` : "请输入有效长度并至少选择一种字符";
+        return valid;
+      };
+      options.addEventListener("input", validate);
+      validate();
       generate.onclick = (event) => {
         if (!event.isTrusted || ownRevision !== revision || !eligible(c.input) || c.input.form !== form || href !== location.href) return;
-        const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%&*+-";
+        if (!validate()) return;
+        const length = lengthInput.valueAsNumber;
+        const selected = groups.filter(group => group.checkbox.checked).map(group => group.alphabet);
+        const alphabet = selected.join("");
         let value = "";
-        while (value.length < 24) {
-          const bytes = crypto.getRandomValues(new Uint8Array(48));
+        while (value.length < length || !selected.every(group => [...value].some(char => group.includes(char)))) {
+          if (value.length === length) value = "";
+          const bytes = crypto.getRandomValues(new Uint8Array(128));
           for (const byte of bytes) {
             const ceiling = Math.floor(256 / alphabet.length) * alphabet.length;
-            if (byte < ceiling && value.length < 24) value += alphabet[byte % alphabet.length];
+            if (byte < ceiling && value.length < length) value += alphabet[byte % alphabet.length];
           }
         }
         const targets = c.input.form ? Array.from(c.input.form.querySelectorAll<HTMLInputElement>("input")).filter(input=>input.autocomplete.split(/\s+/).includes("new-password") && eligible(input)) : [c.input];
@@ -217,7 +257,18 @@
         close();
         c.input.focus();
       };
-      list.append(generate); generate.focus(); return;
+      list.append(options, generate);
+      const panelHeight = host.getBoundingClientRect().height;
+      host.style.top = `${Math.max(8, Math.min(r.bottom + 6, innerHeight - panelHeight - 8))}px`;
+      root.addEventListener("keydown", (event) => {
+        if (event instanceof KeyboardEvent && event.key === "Escape") {
+          event.preventDefault();
+          close();
+          c.input.focus();
+        }
+      });
+      lengthInput.focus();
+      return;
     }
     const result = await send("inline-accounts", {field: c.input.autocomplete.split(/\s+/).includes("one-time-code") ? "otp" : "login"});
     if (ownRevision !== revision || panel !== host) return;

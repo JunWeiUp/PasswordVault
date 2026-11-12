@@ -97,9 +97,22 @@ pub fn manifest_path(home: &Path, browser: &str) -> Result<PathBuf, String> {
     if !BROWSERS.contains(&browser) {
         return Err("invalid-request".into());
     }
-    Ok(home
-        .join("Library/Application Support")
-        .join(browser)
+    let support = home.join("Library/Application Support");
+    let profile = if browser == "ego lite" {
+        // Citro Labs' shipped macOS browser uses this profile directory. A
+        // NativeMessagingHosts directory alone is not evidence of the old
+        // profile: previous installers could create it in the wrong place.
+        let canonical = support.join("Citro Labs/ego lite");
+        let legacy = support.join("ego lite");
+        if !canonical.exists() && legacy.join("Local State").is_file() {
+            legacy
+        } else {
+            canonical
+        }
+    } else {
+        support.join(browser)
+    };
+    Ok(profile
         .join("NativeMessagingHosts")
         .join(format!("{HOST}.json")))
 }

@@ -239,3 +239,25 @@ fn startup_challenge_is_consumed_once_and_manual_lock_cancels_it() {
     assert_eq!(dispatch(&f.session,"test",request).unwrap_err(),"sync-authorization");
     assert_eq!(dispatch(&f.session,"test",message("status","")).unwrap()["unlocked"],false);
 }
+
+#[test]
+fn ego_registration_uses_the_actual_profile_not_a_stale_manifest_directory() {
+    let fixture = Fixture::new();
+    let home = &fixture.dir;
+    let support = home.join("Library/Application Support");
+    let legacy = support.join("ego lite");
+    std::fs::create_dir_all(legacy.join("NativeMessagingHosts")).unwrap();
+    let canonical = support.join("Citro Labs/ego lite");
+    let expected = canonical
+        .join("NativeMessagingHosts")
+        .join(format!("{}.json", wire::HOST));
+    assert_eq!(wire::manifest_path(home, "ego lite").unwrap(), expected);
+    // An actual old profile may still be used, until the canonical profile
+    // exists. Merely retaining an old registration must never win priority.
+    std::fs::write(legacy.join("Local State"), b"{}").unwrap();
+    assert!(wire::manifest_path(home, "ego lite")
+        .unwrap()
+        .starts_with(&legacy));
+    std::fs::create_dir_all(canonical.join("Default")).unwrap();
+    assert_eq!(wire::manifest_path(home, "ego lite").unwrap(), expected);
+}
