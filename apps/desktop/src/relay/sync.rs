@@ -1,7 +1,7 @@
 //! Core routing only accepts separately authorized, pinned transport identities.
 use super::{Result, invalid, protocol::*, service};
 use serde_json::{Value, json};
-use vault_core::VaultSession;
+use crate::session::VaultSession;
 fn allowed(c: &Value, from: &str, key: &str) -> Result<()> {
     if c["paused"] == true || key.is_empty() || c["peers"][from] != key {
         return Err("VaultAccessDenied".into());

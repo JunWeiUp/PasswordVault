@@ -1,8 +1,5 @@
-//! Closing the window hides it instead of ending the app (Native Shell 0.3.0's
-//! packaged runner has no keep-alive option): the close button and ⌘W order the
-//! window out; the Dock icon brings the same window back (the runner already
-//! handles reopen). The interface polls `Window.visible()` to release and
-//! restore its content.
+//! Closing saves drafts before exiting the UI; the headless owner stays alive.
+//! AppKit quit requests are deferred until the same save barrier completes.
 
 use nsh_core::prelude::*;
 
@@ -27,10 +24,48 @@ impl WindowCtl {
         imp::on_main(|window| {
             if let Some(mtm) = objc2::MainThreadMarker::new() {
                 #[allow(deprecated)]
-                objc2_app_kit::NSApplication::sharedApplication(mtm).activateIgnoringOtherApps(true);
+                objc2_app_kit::NSApplication::sharedApplication(mtm)
+                    .activateIgnoringOtherApps(true);
             }
             window.makeKeyAndOrderFront(None);
         });
+    }
+    /// Called only after the interface confirms all drafts were saved.
+    pub fn quit_requested() -> bool {
+        #[cfg(target_os = "macos")]
+        {
+            return imp::QUIT_REQUESTED.swap(false, std::sync::atomic::Ordering::SeqCst);
+        }
+        #[cfg(not(target_os = "macos"))]
+        false
+    }
+    /// Exits only the interface after its drafts have been saved.
+    pub fn finish_close() {
+        #[cfg(target_os = "macos")]
+        imp::on_main(|_| {
+            imp::ALLOW_TERMINATION.store(true, std::sync::atomic::Ordering::SeqCst);
+            if let Some(mtm) = objc2::MainThreadMarker::new() {
+                objc2_app_kit::NSApplication::sharedApplication(mtm).terminate(None);
+            }
+        });
+    }
+    /// Full quit: lock and stop the headless owner before terminating the UI.
+    pub async fn quit() -> Result<(), String> {
+        #[cfg(target_os = "macos")]
+        {
+            let directory = crate::vault_directory();
+            crate::service_ipc::begin_shutdown(&directory)?;
+            let result = blocking(move || {
+                crate::service_ipc::control(&directory, "shutdown", serde_json::json!({}))
+            })
+            .await;
+            if !matches!(&result, Ok(Ok(_))) {
+                crate::service_ipc::cancel_shutdown(&crate::vault_directory());
+                return Err("Storage".into());
+            }
+        }
+        Self::finish_close();
+        Ok(())
     }
     /// Whether the main window is currently shown (also true while minimized).
     pub fn visible() -> bool {
@@ -40,24 +75,68 @@ impl WindowCtl {
 
 #[cfg(target_os = "macos")]
 mod imp {
-    use objc2::{rc::Retained, sel, MainThreadMarker};
+    use objc2::{MainThreadMarker, rc::Retained, sel};
     use objc2_app_kit::{NSApplication, NSWindow, NSWindowButton};
     use objc2_foundation::NSOperationQueue;
-    use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::Once;
+    use std::sync::atomic::{AtomicBool, Ordering};
 
     pub static VISIBLE: AtomicBool = AtomicBool::new(true);
     static INSTALL: Once = Once::new();
+    pub static QUIT_REQUESTED: AtomicBool = AtomicBool::new(false);
+    pub static ALLOW_TERMINATION: AtomicBool = AtomicBool::new(false);
+    static ORIGINAL_TERMINATE: std::sync::atomic::AtomicPtr<std::ffi::c_void> =
+        std::sync::atomic::AtomicPtr::new(std::ptr::null_mut());
+    unsafe extern "C" {
+        fn class_getInstanceMethod(
+            class: *const std::ffi::c_void,
+            selector: objc2::runtime::Sel,
+        ) -> *mut std::ffi::c_void;
+        fn method_setImplementation(
+            method: *mut std::ffi::c_void,
+            implementation: *mut std::ffi::c_void,
+        ) -> *mut std::ffi::c_void;
+    }
+    unsafe extern "C" fn defer_terminate(
+        app: *mut objc2::runtime::AnyObject,
+        selector: objc2::runtime::Sel,
+        sender: *mut objc2::runtime::AnyObject,
+    ) {
+        if ALLOW_TERMINATION.load(Ordering::SeqCst) {
+            let original = ORIGINAL_TERMINATE.load(Ordering::SeqCst);
+            if !original.is_null() {
+                let call: unsafe extern "C" fn(
+                    *mut objc2::runtime::AnyObject,
+                    objc2::runtime::Sel,
+                    *mut objc2::runtime::AnyObject,
+                ) = unsafe { std::mem::transmute(original) };
+                unsafe { call(app, selector, sender) };
+            }
+        } else {
+            QUIT_REQUESTED.store(true, Ordering::SeqCst);
+        }
+    }
 
+    static MAIN_WINDOW: std::sync::atomic::AtomicPtr<NSWindow> =
+        std::sync::atomic::AtomicPtr::new(std::ptr::null_mut());
     fn main_window(mtm: MainThreadMarker) -> Option<Retained<NSWindow>> {
+        // A hidden window may no longer be eligible to become the main window.
+        // Keep this application's original window alive for visibility polling.
+        let stored = MAIN_WINDOW.load(Ordering::SeqCst);
+        if !stored.is_null() {
+            return unsafe { Retained::retain(stored) };
+        }
         let app = NSApplication::sharedApplication(mtm);
-        let windows = app.windows();
-        windows.iter().find(|w| w.canBecomeMainWindow())
+        let window = app.windows().iter().find(|w| w.canBecomeMainWindow())?;
+        MAIN_WINDOW.store(Retained::into_raw(window.clone()), Ordering::SeqCst);
+        Some(window)
     }
 
     pub fn on_main(f: impl Fn(&NSWindow) + 'static) {
         let block = block2::RcBlock::new(move || {
-            let Some(mtm) = MainThreadMarker::new() else { return };
+            let Some(mtm) = MainThreadMarker::new() else {
+                return;
+            };
             if let Some(window) = main_window(mtm) {
                 f(&window);
             }
@@ -72,6 +151,21 @@ mod imp {
             return;
         }
         INSTALL.call_once(|| {
+            // Interpose only this process's AppKit quit entry point. The original
+            // implementation runs after the native/UI save barrier acknowledges.
+            unsafe {
+                let method = class_getInstanceMethod(
+                    objc2::class!(NSApplication) as *const _ as *const std::ffi::c_void,
+                    sel!(terminate:),
+                );
+                if !method.is_null() {
+                    ORIGINAL_TERMINATE.store(
+                        method_setImplementation(method, defer_terminate as *mut std::ffi::c_void),
+                        Ordering::SeqCst,
+                    );
+                }
+            }
+
             // Route the red close button to `orderOut:` on the window itself.
             on_main(|window| {
                 if let Some(button) = window.standardWindowButton(NSWindowButton::CloseButton) {
@@ -83,9 +177,16 @@ mod imp {
                 }
             });
             // Track visibility for the interface (Dock reopen shows the window again).
-            std::thread::spawn(|| loop {
-                std::thread::sleep(std::time::Duration::from_millis(400));
-                on_main(|window| VISIBLE.store(window.isVisible() || window.isMiniaturized(), Ordering::SeqCst));
+            std::thread::spawn(|| {
+                loop {
+                    std::thread::sleep(std::time::Duration::from_millis(400));
+                    on_main(|window| {
+                        VISIBLE.store(
+                            window.isVisible() || window.isMiniaturized(),
+                            Ordering::SeqCst,
+                        )
+                    });
+                }
             });
         });
     }

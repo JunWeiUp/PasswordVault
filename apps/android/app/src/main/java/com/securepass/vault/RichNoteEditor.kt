@@ -10,6 +10,14 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.outlined.Info
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -23,6 +31,7 @@ import org.json.JSONObject
 import java.io.ByteArrayInputStream
 import java.util.UUID
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun RichNoteEditor(original: JSONObject, vault: VaultRepository, t: (String, String) -> String, close: () -> Unit) {
     val context = LocalContext.current; val scope = rememberCoroutineScope()
@@ -30,6 +39,15 @@ internal fun RichNoteEditor(original: JSONObject, vault: VaultRepository, t: (St
     var session by remember { mutableStateOf<AndroidNoteSession?>(null) }
     var message by remember { mutableStateOf("") }; var saving by remember { mutableStateOf(false) }; var discard by remember { mutableStateOf(false) }
     var exportData by remember { mutableStateOf<ByteArray?>(null) }
+    var info by remember { mutableStateOf(false) }
+    var dirty by remember { mutableStateOf(false) }
+    LaunchedEffect(session) {
+        if (session == null) return@LaunchedEffect
+        while (isActive) {
+            dirty = title != original.optString("title") || vault.pendingDraft?.let { it != original.toString() } == true
+            delay(350)
+        }
+    }
     val export = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
         val data = exportData; exportData = null
         if (uri != null && data != null) scope.launch { try { withContext(Dispatchers.IO) { context.contentResolver.openOutputStream(uri)?.use { it.write(data) } ?: error("Cannot export") } } catch (_: Exception) { message = t("导出失败，原件已保留", "Export failed; original retained") } }
@@ -47,23 +65,45 @@ internal fun RichNoteEditor(original: JSONObject, vault: VaultRepository, t: (St
             } catch (_: Exception) { active.uploadError() }
         }
     }
-    BackHandler { discard = true }
-    Dialog(onDismissRequest = { discard = true }, properties = DialogProperties(usePlatformDefaultWidth = false, dismissOnClickOutside = false)) {
-        Surface(Modifier.fillMaxSize()) {
-            Column(Modifier.fillMaxSize().imePadding().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    TextButton(enabled = !saving, onClick = { discard = true }) { Text(t("取消", "Cancel")) }
-                    Button(enabled = vault.canEdit(original) && !saving && title.isNotBlank(), onClick = { scope.launch {
-                        saving = true
-                        try {
-                            val text = session?.capture(false)?.await() ?: error("Cannot capture")
-                            val draft = JSONObject(text).put("title", title)
-                            if (vault.save(draft)) { vault.captureRichDraft = null; vault.discardDraft(); session?.capture(true); close() }
-                        } catch (_: Exception) { message = t("保存未完成，草稿已保留", "Save incomplete; draft retained") } finally { saving = false }
-                    } }) { Text(t("保存", "Save")) }
-                }
-                OutlinedTextField(title, { title = it; session?.setTitle(it) }, label = { Text(t("标题", "Title")) }, enabled = vault.canEdit(original), modifier = Modifier.fillMaxWidth())
-                if (message.isNotEmpty()) Text(message, color = MaterialTheme.colorScheme.error)
+    BackHandler { if (!saving) discard = true }
+    Dialog(onDismissRequest = { if (!saving) discard = true }, properties = DialogProperties(usePlatformDefaultWidth = false, dismissOnClickOutside = false, dismissOnBackPress = false, decorFitsSystemWindows = false)) {
+        EditorDialogBars()
+        Scaffold(
+            containerColor = MaterialTheme.colorScheme.background,
+            topBar = {
+                TopAppBar(
+                    expandedHeight = 55.dp,
+                    colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background),
+                    navigationIcon = { IconButton(enabled = !saving, onClick = { discard = true }) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, t("返回", "Back")) } },
+                    title = { Text(if (dirty) t("未保存的修改", "Unsaved changes") else t("没有修改", "No changes"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) },
+                    actions = {
+                        IconButton(onClick = { info = true }) { Icon(Icons.Outlined.Info, t("笔记信息", "Note information")) }
+                        Button(enabled = vault.canEdit(original) && !saving && title.isNotBlank(), modifier = Modifier.padding(end = 12.dp), contentPadding = PaddingValues(horizontal = 18.dp, vertical = 8.dp), onClick = { scope.launch {
+                            saving = true
+                            message = ""
+                            try {
+                                val text = session?.capture(false)?.await() ?: error("Cannot capture")
+                                val draft = JSONObject(text).put("title", title)
+                                if (vault.save(draft)) { vault.captureRichDraft = null; vault.discardDraft(); session?.capture(true); close() }
+                                else message = t("保存未完成，草稿已保留", "Save incomplete; draft retained")
+                            } catch (_: Exception) { message = t("保存未完成，草稿已保留", "Save incomplete; draft retained") } finally { saving = false }
+                        } }) { Text(if (saving) t("保存中…", "Saving…") else t("保存", "Save")) }
+                    },
+                )
+            },
+        ) { padding ->
+            Column(Modifier.fillMaxSize().padding(padding).imePadding(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                BasicTextField(
+                    value = title,
+                    onValueChange = { title = it; dirty = true; session?.setTitle(it) },
+                    enabled = vault.canEdit(original) && !saving,
+                    textStyle = MaterialTheme.typography.headlineSmall.copy(fontSize = 24.sp, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onBackground),
+                    cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                    modifier = Modifier.fillMaxWidth().padding(start = 18.dp, end = 18.dp, top = 4.dp),
+                    decorationBox = { field -> Box { if (title.isEmpty()) Text(t("标题", "Title"), style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.onSurfaceVariant); field() } },
+                )
+                Text(listOf(noteDate(original), original.optString("category")).filter { it.isNotBlank() }.joinToString(" · "), Modifier.padding(horizontal = 18.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (message.isNotEmpty()) Text(message, Modifier.padding(horizontal = 18.dp), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
                 AndroidView(modifier = Modifier.fillMaxWidth().weight(1f), factory = { ctx ->
                     runCatching { AndroidNoteSession(ctx, original, vault, scope, t,
                         choose = { picker.launch(arrayOf("*/*")) },
@@ -76,6 +116,15 @@ internal fun RichNoteEditor(original: JSONObject, vault: VaultRepository, t: (St
             }
         }
     }
+    if (info) AlertDialog(onDismissRequest = { info = false }, title = { Text(t("笔记信息", "Note information")) }, text = {
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text(title.ifBlank { t("无标题", "Untitled") }, style = MaterialTheme.typography.titleMedium)
+            Text(t("修改时间 · ", "Modified · ") + noteDate(original))
+            if (original.optString("category").isNotBlank()) Text(t("分类 · ", "Category · ") + original.optString("category"))
+            Text(t("图文原件与附件保存在加密库中。", "The original rich document and attachments are stored in the encrypted vault."), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }, confirmButton = { TextButton(onClick = { info = false }) { Text(t("完成", "Done")) } })
+
     if (discard) AlertDialog(onDismissRequest = { discard = false }, title = { Text(t("放弃未保存的修改？", "Discard unsaved changes?")) }, confirmButton = {
         TextButton(onClick = { vault.captureRichDraft = null; vault.discardDraft(); session?.discard(); close() }) { Text(t("放弃修改", "Discard changes")) }
     }, dismissButton = { TextButton(onClick = { discard = false }) { Text(t("继续编辑", "Keep editing")) } })
@@ -109,7 +158,44 @@ internal class AndroidNoteSession(
     private val uploads = mutableMapOf<String, Upload>()
     val view = WebView(context)
     init {
-        val html = context.assets.open("NoteEditor.html").bufferedReader().use { it.readText() }.replace("</style>", "html,body{overflow:auto!important;min-height:100%}#editor{padding:8px}input,select,textarea{font-size:16px}</style>")
+        val dark = when (vault.state.value.settings.optString("theme")) {
+            "dark" -> true
+            "light" -> false
+            else -> context.resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK == android.content.res.Configuration.UI_MODE_NIGHT_YES
+        }
+        val hostCss = """
+            :root{color-scheme:${if (dark) "dark" else "light"};font-size:14px;--panel:${if (dark) "#1c2027" else "#fff"};--line:${if (dark) "#2d333e" else "#e4e8ef"};--accent:${if (dark) "#7aa2ff" else "#3265db"}}
+            html,body{overflow:auto!important;min-height:100%;background:${if (dark) "#121419" else "#f3f5f8"};color:${if (dark) "#e8ebf1" else "#242a35"}}
+            #editor{padding:8px 18px 120px}.ProseMirror{font-size:14px;line-height:24px;min-height:calc(100vh - 78px)}
+            .editor-tools{position:fixed;left:0;right:0;bottom:0;z-index:30;display:flex;flex-direction:column;background:var(--panel);border-top:1px solid var(--line)}
+            .toolbar{order:10;display:flex;flex-direction:row;flex-wrap:nowrap;align-items:center;gap:8px;min-height:52px;margin:0;padding:6px 8px;border:0;border-radius:0;background:var(--panel);overflow-x:auto;overflow-y:hidden;white-space:nowrap}
+            .toolbar-row{display:contents}.toolbar-row+.toolbar-row{border:0;padding:0}.toolbar-label{display:none}
+            .toolbar .toolgroup{display:contents}.toolbar .color-tools{display:inline-flex;order:30}.toolbar>*,.toolbar-row>*{flex-shrink:0}
+            .toolbar button,.toolbar select,.toolbar summary{min-height:36px;white-space:nowrap;border:0;background:transparent;color:inherit;padding:4px 6px;font-size:12px}.toolbar .toolmenu button{white-space:normal}
+            .toolbar button{order:50}
+            .toolbar button[aria-pressed="true"]{color:var(--accent);background:#3265db18}
+            .toolbar select{order:0;width:64px;padding:4px 0}.toolbar details{order:40}.toolbar .color-picker{order:30}
+            .toolbar .toolgroup>button[data-action],.toolbar-row>button[data-action]{min-width:32px;font-size:0}
+            .toolbar .toolgroup>button[data-action]::before,.toolbar-row>button[data-action]::before{font-size:17px;line-height:24px;content:attr(title)}
+            .toolbar [data-action="toggleBold"]{order:1}.toolbar [data-action="toggleBold"]::before{content:"B"!important}
+            .toolbar [data-action="toggleItalic"]{order:2}.toolbar [data-action="toggleItalic"]::before{content:"I"!important}
+            .toolbar [data-action="toggleBulletList"]{order:3}.toolbar [data-action="toggleBulletList"]::before{content:"☷"!important}
+            .toolbar [data-action="toggleOrderedList"]{order:4}.toolbar [data-action="toggleOrderedList"]::before{content:"≡"!important}
+            .toolbar [data-action="toggleTaskList"]{order:5}.toolbar [data-action="toggleTaskList"]::before{content:"☑"!important}
+            .toolbar [data-action="link"]{order:6}.toolbar [data-action="link"]::before{content:"↗"!important}
+            .toolbar [data-action="image"]{order:7}.toolbar [data-action="image"]::before{content:"▧"!important}
+            .toolbar [data-action="attachment"]{order:8}.toolbar [data-action="attachment"]::before{content:"＋"!important}
+            .toolbar [data-action="insertTable"]{order:9}.toolbar [data-action="insertTable"]::before{content:"▦"!important}
+            .toolbar [data-action="find"]{order:31}.toolbar [data-action="find"]::before{content:"⌕"!important}
+            .toolbar [data-action="toggleUnderline"]{order:20}.toolbar [data-action="toggleUnderline"]::before{content:"U"!important}
+            .toolbar [data-action="toggleStrike"]{order:21}.toolbar [data-action="toggleStrike"]::before{content:"S"!important}
+            .toolbar [data-action="undo"]{order:22}.toolbar [data-action="undo"]::before{content:"↶"!important}
+            .toolbar [data-action="redo"]{order:23}.toolbar [data-action="redo"]::before{content:"↷"!important}
+            .toolbar .toolmenu,.toolbar .color-panel{position:fixed!important;top:auto!important;bottom:60px;left:8px!important;right:auto!important;max-width:calc(100vw - 16px);max-height:50vh;overflow:auto;white-space:normal}
+            .context,.findbar,.notice{margin:0;padding:6px 10px;max-height:30vh;overflow:auto}.stats{display:none}
+            input,select,textarea{font-size:16px}
+        """.trimIndent()
+        val html = context.assets.open("NoteEditor.html").bufferedReader().use { it.readText() }.replace("</style>", "$hostCss</style>")
         view.settings.javaScriptEnabled = true
         view.settings.domStorageEnabled = false
         view.settings.cacheMode = WebSettings.LOAD_NO_CACHE

@@ -8,12 +8,12 @@ use std::{
     sync::{Arc, Mutex, OnceLock},
     time::{Duration, Instant},
 };
-use vault_core::VaultSession;
+use crate::session::VaultSession;
 #[cfg(target_os = "macos")]
 mod socket;
 #[cfg(not(target_os = "macos"))]
 mod socket {
-    pub fn start(_: std::sync::Arc<vault_core::VaultSession>) -> super::Result<String> {
+    pub fn start(_: std::sync::Arc<crate::session::VaultSession>) -> super::Result<String> {
         Err("Unsupported".into())
     }
 }
@@ -469,7 +469,11 @@ impl Ai {
 }
 fn control(s: &VaultSession, r: Value) -> Result<Value> {
     let _guard = SERIAL.lock().unwrap();
-    let d = doc(s)?;
+    // Approval polling only needs policy metadata. Never serialize every note
+    // and account across the service connection to display an empty status.
+    let d = if r["op"] == "status" {
+        json!({"settings":core(s, json!({"op":"read-settings"}))?})
+    } else { doc(s)? };
     match r["op"].as_str().unwrap_or("") {
         "status" => {
             if !state().deferred_audit.is_empty() {

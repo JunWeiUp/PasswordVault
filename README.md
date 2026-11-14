@@ -12,18 +12,20 @@
 
 **Local-first · Encrypted storage · Open source**
 
-Native clients are in **developer preview**. [Platform availability](#choose-your-workspace) and the [security model](docs/SECURITY_MODEL.md) describe current limits; an independent security review is still pending.
+Native clients are in **developer preview**. [Platform availability](#choose-your-workspace) and the [security model](docs/security/SECURITY_MODEL.md) describe current limits; an independent security review is still pending.
 
 **Release 2.4.2:** [GitHub Release](https://github.com/JunWeiUp/PasswordVault/releases/tag/v2.4.2) · [Installation and limits](config/release/INSTALL.md). Includes current NSH Mac, Windows x64, Android, extension, Web and iOS Simulator packages.
 
 **Mac client status:** [`apps/desktop`](apps/desktop/README.md) is the current development and local daily client (NSH 0.4.0, macOS 14+ / Apple Silicon). [`apps/macos-legacy`](apps/macos-legacy/README.md) is the retained legacy SwiftUI Mac client. References below to macOS 13+/Intel and older coordinated releases apply to that legacy client.
+
+Mac development builds use a separate Rust background service. Closing the window saves drafts and exits the interface; authorized browser queries and lock management stay available. Reopen the app to edit, or choose Quit to stop both processes. See the [desktop guide](apps/desktop/README.md) for verification and limits.
 
 The shared desktop source is named **Desktop** (`apps/desktop`): Mac and Windows share the NSH interface and vault business logic, with OS services behind platform adapters. Windows installation, development and remaining limitations are documented in the [Windows build guide](tool/windows-desktop/README.md).
 
 ## Less searching. More doing.
 
 - **Write freely.** On Mac, notes feel like documents, with rich formatting, tables, images, attachments, undo/redo and encrypted autosave. Organize with folders, search, favorites and pins.
-- **Keep the details together.** Passwords, additional logins, authenticator codes and wallet records, with the fields you actually need.
+- **Keep the details together.** Passwords, additional logins, authenticator codes and wallet records, with the fields you actually need. Desktop search covers visible details and note contents, with multiple keywords across fields.
 - **Get back to your day.** Choose an account beside a supported password field. Review new logins before saving them, and edit existing ones on Mac.
 
 Deleted something? Recover it from Trash. Moving your data? Create an encrypted backup or manage backups on your own WebDAV server.
@@ -32,7 +34,7 @@ Deleted something? Recover it from Trash. Moving your data? Create an encrypted 
 
 ### A desktop workspace with room to think
 
-A familiar three-column Mac layout keeps folders, notes and your document in view. Headings, lists and tasks take shape as you type. Personal notes add contextual table/image tools and encrypted attachments; Markdown export is explicitly lossy. See [rich-note compatibility and backup](docs/RICH-NOTES.md).
+A familiar three-column Mac layout keeps folders, notes and your document in view. Headings, lists and tasks take shape as you type. Personal notes add contextual table/image tools and encrypted attachments; Markdown export is explicitly lossy. See [rich-note compatibility and backup](docs/product/RICH-NOTES.md).
 
 *The screenshot below shows the earlier Markdown workspace; 2.3.0 adds the rich editing toolbar described above.*
 
@@ -61,9 +63,9 @@ Native mobile previews bring notes, accounts, codes and wallets into a touch-fri
 
 Choose a saved account next to a supported password field. Review a detected login before saving it, or open an existing account in Mac to edit its details. Filling never submits the form for you.
 
-The lightweight Chromium extension connects to Mac or uses its own **separate encrypted vault**. It has no Flutter or CanvasKit runtime. [Explore browser setup →](docs/NATIVE-MIGRATION.md#build-and-launch) Use **Add account/password** in the popup to save credentials for the current website even without a login form. Native mode also supports [offline login/signup saving and later Mac synchronization](docs/BROWSER-OFFLINE-SAVE.md).
+The lightweight Chromium extension connects to Mac or uses its own **separate encrypted vault**. It has no Flutter or CanvasKit runtime. [Explore browser setup →](docs/migrations/NATIVE-MIGRATION.md#build-and-launch) Use **Add account/password** in the popup to save credentials for the current website even without a login form. Native mode also supports [offline login/signup saving and later Mac synchronization](docs/browser/BROWSER-OFFLINE-SAVE.md).
 
-Browser 2.2.11 / Mac 2.2.11 can show and fill current-site accounts while Mac is quit, with a numeric toolbar badge and masked passwords. Verify the Mac master password in the extension; the visible **Automatically unlock Mac on launch** option also enables startup unlock. Components run only on demand. Existing save-only grants require reauthorization. [Setup and limits →](docs/BROWSER-AUTHORIZATION.md) The popup header shows the extension version and an Open Mac shortcut, with a GitHub download link when the native connection is missing.
+Browser 2.2.11 / Mac 2.2.11 can show and fill current-site accounts while Mac is quit, with a numeric toolbar badge and masked passwords. Verify the Mac master password in the extension; the visible **Automatically unlock Mac on launch** option also enables startup unlock. Components run only on demand. Existing save-only grants require reauthorization. [Setup and limits →](docs/browser/BROWSER-AUTHORIZATION.md) The popup header shows the extension version and an Open Mac shortcut, with a GitHub download link when the native connection is missing.
 
 ## Choose your workspace
 
@@ -91,7 +93,7 @@ Standalone Web is also available with a smaller feature set. Windows has a nativ
 | **Windows desktop** | NSH x64 portable package; shared vault, notes and platform adapters | Windows 11 ARM VM: native-window account and rich-editor flows pass. Browser/AI IPC, terminal handoff and broader hardware acceptance remain open |
 | **Linux desktop** | No native desktop client | Not implemented |
 
-The coordinated release is **2.4.2**: NSH Mac build **20**, browser **2.4.2**, Android build **24002**, and iOS build **18**. This update adds encrypted personal relay sync, device-list access controls and bulk conflict handling with mobile reminders. Android requires 8.0+. Passing checks does not imply app-store availability or production security acceptance. See [installation](docs/NATIVE-RELEASE-NOTES.md) and [relay setup](docs/PERSONAL-RELAY.md).
+The coordinated release is **2.5.0**: NSH Mac build **35**, browser **2.5.0**, Android build **25000**, and iOS build **19**. This update replaces primary-device sync with symmetric bidirectional sync: devices that join a group by scanning an invitation sync both ways automatically, and the newer edit wins with older versions kept in entry history. Android requires 8.0+. Passing checks does not imply app-store availability or production security acceptance. See [installation](docs/releases/NATIVE-RELEASE-NOTES.md) and [relay setup](docs/architecture/PERSONAL-RELAY.md).
 
 </details>
 
@@ -99,7 +101,7 @@ The coordinated release is **2.4.2**: NSH Mac build **20**, browser **2.4.2**, A
 
 ### Legacy SwiftUI Mac and browser
 
-Install the pinned Rust, Node.js, Xcode and XcodeGen tools from [native setup](docs/NATIVE-MIGRATION.md#build-and-launch), then run from the repository root:
+Install the pinned Rust, Node.js, Xcode and XcodeGen tools from [native setup](docs/migrations/NATIVE-MIGRATION.md#build-and-launch), then run from the repository root:
 
 ```bash
 git clone https://github.com/JunWeiUp/PasswordVault.git
@@ -136,43 +138,45 @@ Native V2 uses SQLCipher/authenticated document encryption, salted Argon2id root
 
 Implemented features, automated checks and manual acceptance are recorded separately. Remaining work includes full process/GPU memory comparisons, standalone Web parity, unsupported desktop SQLite/Web OPFS and legacy-sharing migration, broader hardware/accessibility/server checks, production signing and independent security review. A smaller extension package is not proof of lower total process memory.
 
-See [current plans](docs/TODO.md), [security limitations](docs/SECURITY_MODEL.md) and [privacy](docs/PRIVACY.md). Report vulnerabilities through [SECURITY.md](docs/SECURITY.md); never attach real credentials or vault exports.
+See [current plans](docs/product/TODO.md), [security limitations](docs/security/SECURITY_MODEL.md) and [privacy](docs/security/PRIVACY.md). Report vulnerabilities through [SECURITY.md](docs/security/SECURITY.md); never attach real credentials or vault exports.
 
 </details>
 
 ## Build with us
 
-Normal PRs run lightweight repository/secret checks only. Native builds are manual or release-only, with tests opt-in; main-branch pushes do not repeat builds. See [CI cost policy](docs/CI.md).
+Normal PRs run lightweight repository/secret checks only. Native builds are manual or release-only, with tests opt-in; main-branch pushes do not repeat builds. See [CI cost policy](docs/development/CI.md).
 
-Use [development checks](docs/DEVELOPMENT.md), the [artifact registry](docs/REGISTRY.md) and [release procedure](docs/DEPLOYMENT.md). Native workflow source is in [.github/workflows/native.yml](.github/workflows/native.yml); use actual PR results when reporting CI status. Contribute with synthetic fixtures and follow [CONTRIBUTING.md](docs/CONTRIBUTING.md) and [AGENTS.md](AGENTS.md).
+Use [development checks](docs/development/DEVELOPMENT.md), the [artifact registry](docs/releases/REGISTRY.md) and [release procedure](docs/releases/DEPLOYMENT.md). Native workflow source is in [.github/workflows/native.yml](.github/workflows/native.yml); use actual PR results when reporting CI status. Contribute with synthetic fixtures and follow [CONTRIBUTING.md](docs/development/CONTRIBUTING.md) and [AGENTS.md](AGENTS.md).
+
+[Browse all local documentation by topic](docs/README.md).
 
 | Topic | Guides |
 | --- | --- |
-| Product and interface | [Project specification](docs/PROJECT-SPEC.md) · [Design](docs/DESIGN.md) · [Page structure](docs/PAGE-STRUCTURE.md) |
-| Implementation | [Architecture](docs/ARCHITECTURE.md) · [Component guidelines](docs/COMPONENT-GUIDELINES.md) |
-| Capability workstream | [Recovery, history and planned capability expansion](docs/CAPABILITY-EXPANSION.md) |
-| Structured data and security | [Records, imports and security catalog](docs/STRUCTURED-IMPORT-SECURITY.md) |
-| Passkeys and filling | [Provider trust boundaries and verification](docs/PASSKEYS.md) |
-| Peer libraries | [Causal synchronization and family roles](docs/PEER-LIBRARIES.md) |
-| Devices and services | [Format 7, compatibility, encrypted attachments and sync gate](docs/DEVICE-ITEMS.md) |
+| Product and interface | [Project specification](docs/product/PROJECT-SPEC.md) · [Design](docs/design/DESIGN.md) · [Page structure](docs/design/PAGE-STRUCTURE.md) |
+| Implementation | [Architecture](docs/architecture/ARCHITECTURE.md) · [Component guidelines](docs/design/COMPONENT-GUIDELINES.md) |
+| Capability workstream | [Recovery, history and planned capability expansion](docs/product/CAPABILITY-EXPANSION.md) |
+| Structured data and security | [Records, imports and security catalog](docs/security/STRUCTURED-IMPORT-SECURITY.md) |
+| Passkeys and filling | [Provider trust boundaries and verification](docs/browser/PASSKEYS.md) |
+| Peer libraries | [Causal synchronization and family roles](docs/architecture/PEER-LIBRARIES.md) |
+| Devices and services | [Format 7, compatibility, encrypted attachments and sync gate](docs/architecture/DEVICE-ITEMS.md) |
 | Temporary sharing | [Self-hosted share service](services/share/README.md) |
-| Platform evidence | [Native migration](docs/NATIVE-MIGRATION.md) · [Mac field parity](docs/MAC-MOBILE-PARITY.md) · [Mobile acceptance](docs/MOBILE-IMPLEMENTATION.md) · [Android parity](docs/ANDROID-LEGACY-PARITY.md) · [Browser acceptance](docs/BROWSER-ACCEPTANCE.md) |
-| Progress | [TODO](docs/TODO.md) · [Changelog](docs/CHANGELOG.md) |
+| Platform evidence | [Native migration](docs/migrations/NATIVE-MIGRATION.md) · [Mac field parity](docs/platforms/MAC-MOBILE-PARITY.md) · [Mobile acceptance](docs/platforms/MOBILE-IMPLEMENTATION.md) · [Android parity](docs/platforms/ANDROID-LEGACY-PARITY.md) · [Browser acceptance](docs/browser/BROWSER-ACCEPTANCE.md) |
+| Progress | [TODO](docs/product/TODO.md) · [Changelog](docs/releases/CHANGELOG.md) |
 
 <details>
 <summary>Looking for the older Flutter client?</summary>
 
-The Flutter clients and their build/test/release tooling have been removed at the owner's request. Historical source remains in Git. Native legacy-data readers and synthetic compatibility fixtures remain supported; removing source does not complete migration, device or security acceptance. Use [native setup](docs/NATIVE-MIGRATION.md) for current development.
+The Flutter clients and their build/test/release tooling have been removed at the owner's request. Historical source remains in Git. Native legacy-data readers and synthetic compatibility fixtures remain supported; removing source does not complete migration, device or security acceptance. Use [native setup](docs/migrations/NATIVE-MIGRATION.md) for current development.
 
 </details>
 
 ## License
 
-[MIT](LICENSE). Bundled dependencies retain their own licenses; see [third-party notices](docs/THIRD_PARTY_NOTICES.md).
+[MIT](LICENSE). Bundled dependencies retain their own licenses; see [third-party notices](docs/security/THIRD_PARTY_NOTICES.md).
 
 ## Personal vault relay sync
 
-Mac coordinates encrypted bidirectional sync with Android 8+ and iOS. Browser extensions retain local native synchronization. Create/join signed device groups with automatic admission by default or optional code approval, manage members, then enable **View and sync changes** beside each device on Mac. Setup, pairing, conflicts and recovery: [personal relay sync](docs/PERSONAL-RELAY.md). See the tested scope in [validation](docs/PERSONAL-RELAY-VALIDATION.md).
+Mac, Windows, Android 8+ and iOS sync both ways as equal members of a signed device group; there is no primary device, per-device authorization or conflict list. Scan an invitation to join; the newer edit wins and older versions stay in entry history. Existing groups migrate in place with an encrypted snapshot. Browser extensions retain local native synchronization. Setup, pairing, conflicts and recovery: [personal relay sync](docs/architecture/PERSONAL-RELAY.md). See the tested scope in [validation](docs/architecture/PERSONAL-RELAY-VALIDATION.md).
 
 ## Repository layout
 

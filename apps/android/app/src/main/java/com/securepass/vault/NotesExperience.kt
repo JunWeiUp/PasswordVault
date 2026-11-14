@@ -33,78 +33,38 @@ internal fun NoteReader(
     delete: () -> Unit,
     restore: () -> Unit,
 ) {
-    var richView by remember(item.optString("id")) { mutableStateOf(false) }
-    if (richView) RichNoteEditor(item, vault, t) { richView = false }
-    var info by remember { mutableStateOf(false) }
-    var history by remember(item.optString("id")) { mutableStateOf(false) }
-    var share by remember(item.optString("id")) { mutableStateOf(false) }
-    if (share) ShareDialog(vault, item.getString("id"), t) { share = false }
-    if (history) HistoryDialog(vault, item.getString("id"), t) { history = false }
-    Column(
-        Modifier.fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 24.dp, vertical = 18.dp),
-        verticalArrangement = Arrangement.spacedBy(20.dp),
-    ) {
-        Text(
-            item.optString("title").ifEmpty { t("未命名笔记", "Untitled note") },
-            style = MaterialTheme.typography.headlineMedium,
-        )
-        Text(
-            listOf(
-                    noteDate(item),
-                    item.optString("category"),
-                    t(
-                        "${item.optString("note").length} 字符",
-                        "${item.optString("note").length} characters",
-                    ),
-                )
-                .filter { it.isNotEmpty() }
-                .joinToString(" · "),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        if (item.optString("noteFormat") == "rich-v1") Button(onClick = { richView = true }) { Text(t("打开图文笔记", "Open rich note")) }
-        else if (item.optString("note").isNotEmpty()) MarkdownNote(item.optString("note"))
-        Spacer(Modifier.height(20.dp))
-        TextButton(onClick = { info = true }) {
-            Icon(Icons.Outlined.Info, null, Modifier.size(18.dp))
-            Spacer(Modifier.width(8.dp))
-            Text(t("笔记信息", "Note information"))
-        }
-        TextButton(onClick = { history = true }) { Text(t("版本历史", "Version history")) }
-        TextButton(enabled = !item.optBoolean("isDeleted"), onClick = { share = true }) { Text(t("临时分享", "Temporary share")) }
-        if (item.optBoolean("isDeleted") && vault.canEdit(item))
-            Button(onClick = restore) { Text(t("恢复", "Restore")) }
-        TextButton(
-            enabled =
-                vault.canEdit(item) &&
-                    !(item.optBoolean("isDeleted") && item.optString("sharedVaultId").isNotEmpty()),
-            onClick = delete,
+    DetailPrivacy(vault, item.optString("id")) {
+        val rich = item.optString("noteFormat") == "rich-v1"
+        val scroll = rememberScrollState()
+        Column(
+            Modifier.fillMaxSize()
+                .then(if (rich) Modifier else Modifier.verticalScroll(scroll))
+                .padding(horizontal = 18.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            Text(t("删除…", "Delete…"), color = MaterialTheme.colorScheme.error)
+            Text(
+                item.optString("title").ifEmpty { t("未命名笔记", "Untitled note") },
+                style = MaterialTheme.typography.headlineMedium,
+            )
+            Text(
+                listOf(
+                        noteDate(item),
+                        item.optString("category"),
+                        if (item.optBoolean("isFavorite")) t("收藏", "Favorite") else "",
+                    )
+                    .filter { it.isNotEmpty() }
+                    .joinToString(" · "),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            if (item.optBoolean("isDeleted") && vault.canEdit(item)) Button(onClick = restore) { Text(t("恢复", "Restore")) }
+            if (rich) RichNoteReader(item, vault, t, Modifier.fillMaxWidth().weight(1f))
+            else {
+                if (item.optString("note").isNotEmpty()) MarkdownNote(item.optString("note"))
+                Spacer(Modifier.height(80.dp))
+            }
         }
     }
-    if (info)
-        AlertDialog(
-            onDismissRequest = { info = false },
-            title = { Text(t("笔记信息", "Note information")) },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text(
-                        t("分类：", "Folder: ") +
-                            item.optString("category").ifEmpty { t("未分类", "Unfiled") }
-                    )
-                    Text(
-                        t("标签：", "Tags: ") +
-                            entryTags(item).joinToString(" · ").ifEmpty { t("无", "None") }
-                    )
-                    Text(t("修改时间：", "Updated: ") + noteDate(item))
-                    if (!vault.canEdit(item)) Text(t("此共享笔记为只读", "This shared note is read only"))
-                }
-            },
-            confirmButton = { TextButton(onClick = { info = false }) { Text(t("完成", "Done")) } },
-        )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -116,6 +76,8 @@ internal fun NoteEditor(
     restoredDraft: Boolean,
     close: () -> Unit,
 ) {
+    val state by vault.state.collectAsState()
+    var undo by remember { mutableStateOf<TextFieldValue?>(null) }
     var title by remember { mutableStateOf(original.optString("title")) }
     var body by remember { mutableStateOf(TextFieldValue(original.optString("note"))) }
     var category by remember { mutableStateOf(original.optString("category")) }
@@ -149,7 +111,7 @@ internal fun NoteEditor(
             body.text != original.optString("note") ||
             category != original.optString("category") ||
             tags != entryTags(original).joinToString(", ") ||
-            vault.state.value.recoveredDraft != null
+            state.recoveredDraft != null
     val canSave = title.isNotBlank() || body.text.isNotBlank()
     fun cancel() {
         if (changed) leaving = true
@@ -187,6 +149,7 @@ internal fun NoteEditor(
         val start = minOf(body.selection.start, body.selection.end)
         val end = maxOf(body.selection.start, body.selection.end)
         val selected = body.text.substring(start, end)
+        undo = body
         body =
             TextFieldValue(
                 body.text.replaceRange(start, end, prefix + selected + suffix),
@@ -211,23 +174,23 @@ internal fun NoteEditor(
             containerColor = MaterialTheme.colorScheme.background,
             topBar = {
                 TopAppBar(
+                    expandedHeight = 55.dp,
                     colors =
                         TopAppBarDefaults.topAppBarColors(
                             containerColor = MaterialTheme.colorScheme.background
                         ),
                     title = {
-                        Text(t("编辑笔记", "Edit note"), style = MaterialTheme.typography.titleMedium)
+                        Text(if (changed) t("未保存的修改", "Unsaved changes") else t("没有修改", "No changes"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     },
                     navigationIcon = {
-                        TextButton(enabled = !saving, onClick = ::cancel) {
-                            Text(t("取消", "Cancel"))
-                        }
+                        IconButton(enabled = !saving, onClick = ::cancel) { Icon(Icons.Outlined.ArrowBack, t("取消", "Cancel")) }
                     },
                     actions = {
+                        IconButton(enabled = !saving && undo != null, onClick = { undo?.let { previous -> val now = body; body = previous; undo = now; track() } }) { Icon(Icons.Outlined.Undo, t("撤销", "Undo")) }
                         IconButton(enabled = !saving, onClick = { information = true }) {
                             Icon(Icons.Outlined.Info, t("笔记信息", "Note information"))
                         }
-                        TextButton(enabled = !saving && canSave, onClick = ::save) {
+                        Button(enabled = !saving && canSave, onClick = ::save, contentPadding = PaddingValues(horizontal = 18.dp, vertical = 6.dp), modifier = Modifier.padding(end = 12.dp).height(36.dp)) {
                             Text(if (saving) t("保存中…", "Saving…") else t("保存", "Save"))
                         }
                     },
@@ -267,6 +230,8 @@ internal fun NoteEditor(
                         IconButton(enabled = !saving, onClick = { format("\n- ") }) {
                             Icon(Icons.Outlined.FormatListBulleted, t("项目列表", "Bulleted list"))
                         }
+                        IconButton(enabled = !saving, onClick = { format("\n- [ ] ") }) { Icon(Icons.Outlined.Checklist, t("待办清单", "Checklist")) }
+                        IconButton(enabled = !saving, onClick = { format("\n> ") }) { Icon(Icons.Outlined.FormatQuote, t("引用", "Quote")) }
                         Spacer(Modifier.weight(1f))
                         TextButton(enabled = !saving, onClick = { preview = !preview }) {
                             Text(if (preview) t("编辑", "Edit") else t("预览", "Preview"))
@@ -289,52 +254,34 @@ internal fun NoteEditor(
                         modifier = Modifier.padding(8.dp),
                     )
                 }
-                TextField(
+                androidx.compose.foundation.text.BasicTextField(
                     value = title,
-                    onValueChange = {
-                        title = it
-                        track()
-                    },
+                    onValueChange = { title = it; track() },
                     enabled = !saving && !preview,
-                    placeholder = { Text(t("标题", "Title")) },
-                    modifier = Modifier.fillMaxWidth(),
-                    textStyle = MaterialTheme.typography.headlineMedium,
-                    colors = noteFieldColors(),
-                    keyboardOptions =
-                        androidx.compose.foundation.text.KeyboardOptions(autoCorrectEnabled = false),
+                    modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                    textStyle = MaterialTheme.typography.headlineMedium.copy(color = MaterialTheme.colorScheme.onSurface),
+                    cursorBrush = androidx.compose.ui.graphics.SolidColor(MaterialTheme.colorScheme.primary),
+                    decorationBox = { field -> Box { if (title.isEmpty()) Text(t("标题", "Title"), style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.onSurfaceVariant); field() } },
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(autoCorrectEnabled = false),
                 )
                 Text(
-                    t("${body.text.length} 字符", "${body.text.length} characters") +
-                        " · " +
-                        if (changed) t("未保存", "Unsaved")
-                        else noteDate(original).ifEmpty { t("新笔记", "New note") },
-                    Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                    listOf(noteDate(original).ifEmpty { t("新笔记", "New note") }, category).filter { it.isNotBlank() }.joinToString(" · "),
+                    Modifier.padding(vertical = 6.dp),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                if (preview) Box(Modifier.padding(16.dp)) { MarkdownNote(body.text) }
-                else
-                    TextField(
-                        value = body,
-                        onValueChange = {
-                            body = it
-                            track()
-                        },
-                        enabled = !saving,
-                        placeholder = { Text(t("开始记录…", "Start writing…")) },
-                        modifier = Modifier.fillMaxWidth().heightIn(min = 280.dp),
-                        minLines = 10,
-                        textStyle =
-                            MaterialTheme.typography.bodyLarge.copy(
-                                fontSize = 18.sp,
-                                lineHeight = 30.sp,
-                            ),
-                        colors = noteFieldColors(),
-                        keyboardOptions =
-                            androidx.compose.foundation.text.KeyboardOptions(
-                                autoCorrectEnabled = false
-                            ),
-                    )
+                if (preview) MarkdownNote(body.text)
+                else androidx.compose.foundation.text.BasicTextField(
+                    value = body,
+                    onValueChange = { undo = body; body = it; track() },
+                    enabled = !saving,
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 280.dp),
+                    minLines = 10,
+                    textStyle = MaterialTheme.typography.bodyLarge.copy(fontSize = 14.sp, lineHeight = 24.sp, color = MaterialTheme.colorScheme.onSurface),
+                    cursorBrush = androidx.compose.ui.graphics.SolidColor(MaterialTheme.colorScheme.primary),
+                    decorationBox = { field -> Box { if (body.text.isEmpty()) Text(t("开始记录…", "Start writing…"), color = MaterialTheme.colorScheme.onSurfaceVariant); field() } },
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(autoCorrectEnabled = false),
+                )
                 Spacer(Modifier.height(24.dp))
             }
         }

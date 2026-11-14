@@ -36,11 +36,9 @@ pub fn write(w: &mut impl Write, value: &Value) -> Result<(), String> {
 }
 pub fn bundle() -> Result<PathBuf, String> {
     let exe = std::env::current_exe().map_err(|_| "unavailable")?;
-    let contents = exe.parent().and_then(Path::parent).ok_or("unavailable")?;
-    if contents.file_name().and_then(|v| v.to_str()) != Some("Contents") {
-        return Err("Signed preview bundle required".into());
-    }
-    Ok(contents.to_path_buf())
+    exe.ancestors()
+        .find(|p| p.file_name().is_some_and(|v|v=="Contents") && p.join("Resources/BrowserIdentity.json").is_file())
+        .map(Path::to_path_buf).ok_or("Signed preview bundle required".into())
 }
 pub fn identity(contents: &Path) -> Result<String, String> {
     let value: Value = serde_json::from_slice(
@@ -97,9 +95,22 @@ pub fn manifest_path(home: &Path, browser: &str) -> Result<PathBuf, String> {
     if !BROWSERS.contains(&browser) {
         return Err("invalid-request".into());
     }
-    Ok(home
-        .join("Library/Application Support")
-        .join(browser)
+    let support = home.join("Library/Application Support");
+    let profile = if browser == "ego lite" {
+        // Citro Labs' shipped macOS browser uses this profile directory. A
+        // NativeMessagingHosts directory alone is not evidence of the old
+        // profile: previous installers could create it in the wrong place.
+        let canonical = support.join("Citro Labs/ego lite");
+        let legacy = support.join("ego lite");
+        if !canonical.exists() && legacy.join("Local State").is_file() {
+            legacy
+        } else {
+            canonical
+        }
+    } else {
+        support.join(browser)
+    };
+    Ok(profile
         .join("NativeMessagingHosts")
         .join(format!("{HOST}.json")))
 }

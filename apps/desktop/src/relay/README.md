@@ -1,7 +1,11 @@
 # Native Shell relay port
 
-The app now has device-group orchestration, presence, explicit vault authorization
-and replication. Protocol primitives are adapted from the vendored CommonRelay
+The app has device-group orchestration, presence and symmetric bidirectional sync
+(`mesh.rs`, core `relay-mesh-*`): every member of the signed roster exchanges changed
+records with every other member; joining is the only admission step. The newest
+hybrid-logical stamp wins and older versions stay in entry history. Vault grants,
+primary identification, pause and conflict resolution were removed; sections below
+that mention grants/ACK describe history or peer libraries. Protocol primitives are adapted from the vendored CommonRelay
 Swift SDK, copyright JunWeiUp, under its [MIT license](../../../../vendor/common-relay/swift/LICENSE).
 Automated local tests use loopback services and synthetic vaults. A separate, explicitly
 authorized production run verified admission and WSS with disposable vaults and a

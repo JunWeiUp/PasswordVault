@@ -1,6 +1,11 @@
 package com.securepass.vault
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
@@ -11,6 +16,12 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import org.json.JSONObject
 
 internal data class GeneratorOptions(
@@ -51,56 +62,78 @@ internal fun PasswordGeneratorControls(vault: VaultRepository, t: (String, Strin
                 vault.report()
             }
     }
-    Column(
-        Modifier.heightIn(max = 560.dp).verticalScroll(rememberScrollState()),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        Text(
-            value.ifEmpty {
-                if (options.enabled) t("正在生成…", "Generating…")
-                else t("请至少选择一种字符类型", "Select at least one character type")
-            },
-            fontFamily = FontFamily.Monospace,
-        )
-        Text(t("长度：", "Length: ") + options.length)
-        Slider(
-            options.length.toFloat(),
-            { options = options.copy(length = it.toInt()) },
-            valueRange = 4f..64f,
-            steps = 59,
-            modifier = Modifier.semantics { contentDescription = t("密码长度", "Password length") },
-        )
-        listOf(
-                Triple(t("大写字母", "Uppercase"), options.upper, "upper"),
-                Triple(t("小写字母", "Lowercase"), options.lower, "lower"),
-                Triple(t("数字", "Digits"), options.digits, "digits"),
-                Triple(t("符号", "Symbols"), options.symbols, "symbols"),
-            )
-            .forEach { (label, checked, key) ->
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(label, Modifier.weight(1f))
-                    Switch(
-                        checked,
-                        { enabled ->
-                            options =
-                                when (key) {
-                                    "upper" -> options.copy(upper = enabled)
-                                    "lower" -> options.copy(lower = enabled)
-                                    "digits" -> options.copy(digits = enabled)
-                                    else -> options.copy(symbols = enabled)
-                                }
-                        },
-                        Modifier.semantics { contentDescription = label },
-                    )
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Surface(shape = RoundedCornerShape(20.dp), border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant), color = MaterialTheme.colorScheme.background) {
+            Row(Modifier.fillMaxWidth()) {
+                Surface(Modifier.weight(1f), color = MaterialTheme.colorScheme.secondaryContainer) {
+                    Box(Modifier.heightIn(min = 40.dp), contentAlignment = Alignment.Center) {
+                        Text(t("随机字符", "Random characters"), fontSize = 13.sp, color = MaterialTheme.colorScheme.primary)
+                    }
+                }
+                Box(Modifier.weight(1f).heightIn(min = 40.dp), contentAlignment = Alignment.Center) {
+                    Text(t("单词组合", "Passphrase"), fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f))
                 }
             }
-        Row {
-            TextButton(onClick = { revision++ }, enabled = options.enabled) {
-                Text(t("重新生成", "Regenerate"))
+        }
+        SettingsCard {
+            val normal = MaterialTheme.colorScheme.onSurface
+            val number = MaterialTheme.colorScheme.primary
+            val symbol = if (MaterialTheme.colorScheme.background.luminance() < 0.5f) Color(0xFFE3A04F) else Color(0xFFB86A12)
+            Text(
+                if (value.isEmpty()) buildAnnotatedString {
+                    append(if (options.enabled) t("正在生成…", "Generating…") else t("至少选择一种字符类型", "Select at least one character type"))
+                } else buildAnnotatedString {
+                    value.forEach { character ->
+                        withStyle(SpanStyle(color = when {
+                            character.isDigit() -> number
+                            !character.isLetterOrDigit() -> symbol
+                            else -> normal
+                        })) { append(character) }
+                    }
+                },
+                Modifier.fillMaxWidth().padding(17.dp),
+                fontFamily = FontFamily.Monospace, fontSize = 16.sp, lineHeight = 25.sp,
+                color = if (!options.enabled) MaterialTheme.colorScheme.error else normal,
+            )
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(onClick = { revision++ }, enabled = options.enabled, contentPadding = PaddingValues(horizontal = 16.dp), modifier = Modifier.heightIn(min = 40.dp)) {
+                Icon(Icons.Default.Refresh, null, Modifier.size(16.dp))
+                Spacer(Modifier.width(6.dp))
+                Text(t("重新生成", "Regenerate"), fontSize = 14.sp)
             }
-            TextButton(onClick = { vault.copy(value) }, enabled = value.isNotEmpty()) {
-                Text(t("复制", "Copy"))
+            Button(onClick = { vault.copy(value) }, enabled = value.isNotEmpty(), modifier = Modifier.heightIn(min = 40.dp)) {
+                Icon(Icons.Default.ContentCopy, null, Modifier.size(16.dp))
+                Spacer(Modifier.width(6.dp))
+                Text(t("复制", "Copy"), fontSize = 14.sp)
             }
         }
+        SettingsCard {
+            Column(Modifier.padding(horizontal = 15.dp, vertical = 11.dp)) {
+                Text(t("长度 ${options.length}", "Length ${options.length}"), fontSize = 14.sp)
+                Slider(options.length.toFloat(), { options = options.copy(length = it.toInt()) },
+                    valueRange = 4f..64f, steps = 59,
+                    modifier = Modifier.semantics { contentDescription = t("密码长度", "Password length") })
+            }
+            listOf(
+                Triple(t("大写字母 A–Z", "Uppercase A–Z"), options.upper, "upper"),
+                Triple(t("小写字母 a–z", "Lowercase a–z"), options.lower, "lower"),
+                Triple(t("数字 0–9", "Digits 0–9"), options.digits, "digits"),
+                Triple(t("符号 !@#…", "Symbols !@#…"), options.symbols, "symbols"),
+            ).forEach { (label, checked, key) ->
+                SettingsRule()
+                SettingsOption(label) {
+                    Switch(checked, { enabled -> options = when (key) {
+                        "upper" -> options.copy(upper = enabled)
+                        "lower" -> options.copy(lower = enabled)
+                        "digits" -> options.copy(digits = enabled)
+                        else -> options.copy(symbols = enabled)
+                    } }, Modifier.semantics { contentDescription = label })
+                }
+            }
+            SettingsRule()
+            SettingsOption(t("排除易混淆字符", "Exclude ambiguous characters"), t("当前核心暂不支持此规则", "Not supported by the current core"))
+        }
+        SettingsHint(t("生成在本机完成，范围 4–64；规则由原生核心再次校验。生成历史不保存。单词组合尚未接入。", "Generated locally, 4–64 characters; rules are validated by the native core. No generation history is saved. Passphrases are not yet supported."))
     }
 }

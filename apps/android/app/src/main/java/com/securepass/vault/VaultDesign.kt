@@ -11,7 +11,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-// Mirrors lib/core/theme/app_theme.dart. Notes add their own restrained yellow accent.
+// Shared Mac / Android design tokens. Persisted appearance settings remain compatible.
 @Composable
 fun LegacyVaultTheme(dark: Boolean, content: @Composable () -> Unit) {
     val colors =
@@ -19,33 +19,35 @@ fun LegacyVaultTheme(dark: Boolean, content: @Composable () -> Unit) {
             darkColorScheme(
                 secondaryContainer = Color(0xFF283653),
                 onSecondaryContainer = Color(0xFFC8D5FF),
-                primary = Color(0xFFAFC2FF),
-                onPrimary = Color(0xFF102B78),
-                background = Color(0xFF171A21),
-                surface = Color(0xFF1D212A),
-                surfaceContainer = Color(0xFF242935),
-                surfaceContainerLow = Color(0xFF1D212A),
-                surfaceContainerHigh = Color(0xFF2A303D),
+                primary = Color(0xFF7AA2FF),
+                onPrimary = Color(0xFF0C1834),
+                primaryContainer = Color(0xFF243250),
+                onPrimaryContainer = Color(0xFFDFe8FF),
+                background = Color(0xFF121419),
+                surface = Color(0xFF1C2027),
+                surfaceContainer = Color(0xFF262B34),
+                surfaceContainerLow = Color(0xFF1C2027),
+                surfaceContainerHigh = Color(0xFF2B313B),
                 onSurface = Color(0xFFF0F1F5),
                 onSurfaceVariant = Color(0xFFB6BECC),
                 outlineVariant = Color(0xFF363D4B),
             )
         else
             lightColorScheme(
-                secondaryContainer = Color(0xFFDFE4FF),
-                onSecondaryContainer = Color(0xFF315CE7),
-                primary = Color(0xFF315CE7),
+                secondaryContainer = Color(0xFFE8EEFB),
+                onSecondaryContainer = Color(0xFF3265DB),
+                primary = Color(0xFF3265DB),
                 onPrimary = Color.White,
-                primaryContainer = Color(0xFFDFE4FF),
+                primaryContainer = Color(0xFFE8EEFB),
                 onPrimaryContainer = Color(0xFF173469),
-                background = Color(0xFFFAF9F6),
+                background = Color(0xFFF3F5F8),
                 surface = Color.White,
-                surfaceContainer = Color(0xFFEEEDE8),
-                surfaceContainerLow = Color(0xFFF3F2EE),
-                surfaceContainerHigh = Color(0xFFE9E8E3),
-                onSurface = Color(0xFF202634),
-                onSurfaceVariant = Color(0xFF5D6575),
-                outlineVariant = Color(0xFFDFE1E7),
+                surfaceContainer = Color(0xFFEEF1F6),
+                surfaceContainerLow = Color(0xFFF7F8FA),
+                surfaceContainerHigh = Color(0xFFEDF0F4),
+                onSurface = Color(0xFF242A35),
+                onSurfaceVariant = Color(0xFF5C6573),
+                outlineVariant = Color(0xFFE4E8EF),
             )
     val base = Typography()
     MaterialTheme(
@@ -56,14 +58,14 @@ fun LegacyVaultTheme(dark: Boolean, content: @Composable () -> Unit) {
                     base.headlineLarge.copy(fontSize = 32.sp, fontWeight = FontWeight.Bold),
                 headlineMedium =
                     base.headlineMedium.copy(
-                        fontSize = 28.sp,
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = (-0.7).sp,
+                        fontSize = 24.sp,
+                        fontWeight = FontWeight.Medium,
+                        letterSpacing = 0.sp,
                     ),
-                titleLarge = base.titleLarge.copy(fontSize = 22.sp, fontWeight = FontWeight.Bold),
+                titleLarge = base.titleLarge.copy(fontSize = 20.sp, fontWeight = FontWeight.Medium),
                 titleMedium =
-                    base.titleMedium.copy(fontSize = 16.sp, fontWeight = FontWeight.SemiBold),
-                bodyLarge = base.bodyLarge.copy(fontSize = 16.sp, lineHeight = 24.sp),
+                    base.titleMedium.copy(fontSize = 14.sp, fontWeight = FontWeight.Medium),
+                bodyLarge = base.bodyLarge.copy(fontSize = 14.sp, lineHeight = 21.sp),
                 bodyMedium = base.bodyMedium.copy(fontSize = 14.sp, lineHeight = 21.sp),
             ),
         shapes =

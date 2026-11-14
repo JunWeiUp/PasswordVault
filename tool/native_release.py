@@ -83,7 +83,7 @@ def verify_app_archive(path, version, simulator=False, nsh=False):
         if simulator and info.get('CFBundleSupportedPlatforms') != ['iPhoneSimulator']:
             raise SystemExit('Expected an iOS Simulator application, not a device IPA.')
         if nsh:
-            required = ['Contents/MacOS/pv-browser-host', 'Contents/MacOS/pv-mcp', 'Contents/Resources/BrowserIdentity.json']
+            required = ['Contents/MacOS/pv-browser-host', 'Contents/MacOS/pv-mcp', 'Contents/Library/PasswordVault Background.app/Contents/MacOS/pv-background', 'Contents/Resources/BrowserIdentity.json']
             if any(prefix + name not in bundle.namelist() for name in required):
                 raise SystemExit('NSH Mac helper or bridge identity missing.')
             if info.get('CFBundleIdentifier') != 'com.securepass.vault.nshpreview' or info.get('PVVaultDirectoryName') != 'PasswordVaultNative':

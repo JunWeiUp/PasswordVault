@@ -109,7 +109,7 @@ final class RelayCredentialTests: XCTestCase {
     let relay = VaultRelay(directory: path, role: "hub", call: { try await core.call($0) }, refresh: {},
       credentialReader: { _, interactive in reads.append(interactive); guard allow && interactive else { throw RelayError.closed }; return legacy })
     relay.setUnlocked(true); try await wait { relay.credentialAccessBlocked }
-    await relay.clearLocalGroup(); await relay.setPaused(false)
+    await relay.clearLocalGroup()
     XCTAssertFalse(FileManager.default.fileExists(atPath: path.appendingPathComponent("vault/relay-private/credentials.v1.enc").path))
     await relay.restoreCredentialAccess(); XCTAssertTrue(relay.credentialAccessBlocked)
     allow = true; await relay.restoreCredentialAccess()

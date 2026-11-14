@@ -5,7 +5,7 @@ import { captureNotes } from "./notes/capture";
 import { batch, computed, effect, signal } from "nsh";
 import { Vault } from "passwordvault/native";
 import { bindNativeVault } from "./native";
-import { deviceSearchText } from "./devices/model";
+import { clearSearchIndex, searchItems } from "./search";
 import { Browser } from "passwordvault/native";
 
 export type ItemType = "password" | "totp" | "crypto" | "secureNote" | "creditCard" | "identity" | "device";
@@ -100,17 +100,9 @@ export function inDest(item: Item, d: Dest): boolean {
 }
 export const countIn = (d: Dest) => items().filter((i) => inDest(i, d)).length;
 
-function haystack(i: Item) {
-  if (i.type === "device") return deviceSearchText(i).toLowerCase();
-  return [i.title, i.username, i.url, i.issuer, i.note, i.category, ...(i.tags ?? []), i.network, i.address]
-    .filter(Boolean)
-    .join(" ")
-    .toLowerCase();
-}
-
 export const visible = computed<Item[]>(() => {
   const d = dest();
-  const q = query().trim().toLowerCase();
+  const q = query();
   const issues = audit();
   let list = items().filter((i) => inDest(i, d));
   if (d === "notes" && noteCategory()) list = list.filter((i) => i.category === noteCategory());
@@ -120,12 +112,11 @@ export const visible = computed<Item[]>(() => {
   if (f === "card") list = list.filter((i) => i.type === "creditCard");
   if (f === "identity") list = list.filter((i) => i.type === "identity");
   if (f === "crypto") list = list.filter((i) => i.type === "crypto");
-  if (q) list = list.filter((i) => haystack(i).includes(q));
-  return [...list].sort(
+  return searchItems([...list].sort(
     (a, b) =>
       Number(!!b.isPinned) - Number(!!a.isPinned) ||
       String(b.updatedAt ?? "").localeCompare(String(a.updatedAt ?? "")),
-  );
+  ), q);
 });
 
 export const selected = computed<Item | undefined>(() => {
@@ -188,6 +179,35 @@ export async function load() {
   refreshAudit();
 }
 
+const SUMMARY_ONLY = new Set(["noteDocument", "noteOriginal", "noteSummary", "__noteSearchText"]);
+function summaryKey(item: Item): string {
+  const fields: Record<string, unknown> = {};
+  for (const key of Object.keys(item).sort()) {
+    if (!SUMMARY_ONLY.has(key) && !key.startsWith("_")) fields[key] = item[key];
+  }
+  return JSON.stringify(fields);
+}
+/** Background refresh (relay sync): replaces only what changed. Unsaved local
+ *  edits stay on screen and an open note keeps its loaded full structures, so
+ *  the editor is not torn down while the record itself did not change. */
+export async function refreshItems() {
+  const doc = await call<{ items: Item[]; settings: Record<string, any> }>({ op: "list", summaries: true });
+  if (phase() !== "unlocked") return;
+  const current = new Map(items().map((i) => [i.id, i]));
+  const next = (doc.items ?? []).map((item) => {
+    const local = pending.get(item.id);
+    if (local) return current.get(item.id) ?? local;
+    const old = current.get(item.id);
+    if (old && !old.noteSummary && item.noteSummary && summaryKey(old) === summaryKey(item)) return old;
+    return item;
+  });
+  batch(() => {
+    items.set(next);
+    settings.set(doc.settings ?? {});
+  });
+  refreshAudit();
+}
+
 export async function create(password: string) {
   await call({ op: "create", password });
   await load();
@@ -202,13 +222,14 @@ export async function lock() {
   // Revoke a pending one-time browser startup unlock before anything else, so a
   // manual or system lock can never be undone by the extension.
   try {
-    Browser.cancelStartup();
+    await Browser.cancelStartup();
   } catch {}
   await flush();
   try {
     await call({ op: "lock" });
   } finally {
     batch(() => {
+      clearSearchIndex();
       items.set([]);
       settings.set({});
       audit.set({});
@@ -225,6 +246,7 @@ export async function lock() {
 export async function releaseForHiddenWindow() {
   await flush();
   batch(() => {
+    clearSearchIndex();
     items.set([]);
     audit.set({});
     editing.set(false);

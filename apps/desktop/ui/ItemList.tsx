@@ -214,10 +214,12 @@ export function ItemList() {
           </View>
         </View>
         <If when={dest() === "devices"}><View desktop={{ windowDrag: false }} style={{ marginBottom: 10 }}><Btn label="导入设备资料…" testID="import-device-documents" onPress={() => void importDeviceDocuments()} /></View></If>
-        <View desktop={{ windowDrag: false }} style={{ flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: c().field, borderRadius: 7, paddingHorizontal: 9 }}>
+        <View desktop={{ windowDrag: false }} tooltip="搜索当前列表；多个关键词用空格分隔。在「全部项目」中可跨类型搜索。" style={{ flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: c().field, borderRadius: 7, paddingHorizontal: 9 }}>
           <Icon name="search" size={13} tint={c().faint} />
           <SearchInput ref={(r: any) => (input = r)} />
-          <T size={11} color={c().faint}>{shortcutLabel("⌘K")}</T>
+          <If when={query()} else={<T size={11} color={c().faint}>{shortcutLabel("⌘K")}</T>}>
+            <IconBtn icon="x" label="清除搜索" size={13} onPress={() => { query.set(""); input?.focus?.(); }} />
+          </If>
         </View>
         <View desktop={{ windowDrag: false }} style={{ flexDirection: "row", alignItems: "center", gap: 4, marginTop: 10, minHeight: 24 }}>
           {/* Rebuilt per destination: a component body runs only once. */}
@@ -230,7 +232,7 @@ export function ItemList() {
         </If>
       </Scroll>
       <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 16, paddingVertical: 9, borderTopWidth: 1, borderTopColor: c().line }}>
-        <T size={11} color={c().faint}>{visible().length} 个项目</T>
+        <T size={11} color={c().faint}>{visible().length} {query().trim() ? "个搜索结果" : "个项目"}</T>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
           <Icon name="lock" size={11} tint={c().faint} />
           <T size={11} color={c().faint}>已加密</T>
@@ -247,8 +249,8 @@ function SearchInput(props: { ref: (r: any) => void }) {
       ref={props.ref}
       testID="search"
       value={query()}
-      placeholder={dest() === "notes" ? "搜索笔记" : "搜索标题、用户名、网站或标签"}
-      accessibilityLabel="搜索"
+      placeholder={dest() === "notes" ? "搜索标题、正文、分类或附件名" : "搜索名称、账号、备注等"}
+      accessibilityLabel={`搜索${DEST_NAME[dest()]}，多个关键词用空格分隔`}
       autoCorrect={false}
       onChange={({ value }) => query.set(value)}
       style={{ flex: 1, fontSize: fs(12.5), paddingVertical: 6, color: c().ink, backgroundColor: "transparent", borderWidth: 0 }}
@@ -258,7 +260,7 @@ function SearchInput(props: { ref: (r: any) => void }) {
 
 function ListEmpty(): JSX.Element {
   if (query()) {
-    return <Empty icon="search" title="没有匹配的项目" text="试试其他关键词，或清除搜索。" action={<Btn label="清除搜索" onPress={() => query.set("")} />} />;
+    return <Empty icon="search" title="没有匹配的项目" text="试试更少的关键词，或在「全部项目」中搜索。" action={<Btn label="清除搜索" onPress={() => query.set("")} />} />;
   }
   if (dest() === "trash") return <Empty icon="trash" title="回收站是空的" text="删除的项目会出现在这里，可随时恢复。" />;
   return (

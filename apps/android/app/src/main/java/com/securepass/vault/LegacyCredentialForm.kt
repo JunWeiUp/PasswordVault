@@ -37,7 +37,7 @@ internal val legacyColors =
         "青色" to Color(0xFF009688),
     )
 
-@OptIn(ExperimentalLayoutApi::class)
+@OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
 internal fun LegacyCredentialForm(
     draft: JSONObject,
@@ -81,15 +81,15 @@ internal fun LegacyCredentialForm(
         }
     }
     EditorFormSection {
-        EditorHeading(t("基本信息", "Basic information"))
         EditorField(
-            if (kind == "crypto") t("钱包名称", "Wallet name") else t("账号名称", "Account name"),
+            t("标题 *", "Title *"),
             draft.optString("title"),
             { set("title", it) },
             vault,
             t,
             copy = false,
         )
+        if (kind in listOf("password", "totp")) EditorHeading(t("登录信息", "Login information"))
         if (kind in listOf("password", "totp"))
             EditorField(
                 t("用户名", "Username"),
@@ -142,17 +142,26 @@ internal fun LegacyCredentialForm(
                 set("network", it)
             }
         }
-        ChoiceEditor(
-            t("分类", "Category"),
-            draft.optString("category"),
-            (legacyCategories + vault.state.value.entries.map { it.optString("category") })
-                .filter { it.isNotBlank() }
-                .distinct(),
-            t,
-        ) {
-            set("category", it)
+        if (kind == "password") {
+            EditorField(t("网站", "Website"), draft.optString("url"), { set("url", it) }, vault, t, copy = false)
+            Text(t("浏览器与 Android 自动填充按精确主机名匹配", "Browser and Android autofill match the exact hostname"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+
+    }
+    if (kind in listOf("creditCard", "identity")) AlignedStructuredGroup(draft, vault, set, t)
+    if (kind == "password") DetailGroup {
+        Surface(onClick = { secretInput = draft.optString("secret"); twoFactor = true }, enabled = enabled, color = MaterialTheme.colorScheme.surface) {
+            Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Icon(Icons.Outlined.QrCode, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                Column(Modifier.weight(1f)) {
+                    Text(t("一次性验证码", "One-time code"), style = MaterialTheme.typography.bodyMedium)
+                    Text(if (draft.optString("secret").isBlank()) t("扫描二维码或输入密钥", "Scan a QR code or enter a setup key") else t("已配置", "Configured"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Icon(Icons.Outlined.ChevronRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
         }
     }
+
     if (kind in listOf("password", "totp")) {
         EditorFormSection {
             EditorHeading(t("附加账号", "Additional accounts"))
@@ -236,23 +245,7 @@ internal fun LegacyCredentialForm(
                 Text(t("添加另一个账号", "Add another account"))
             }
         }
-        if (kind == "password")
-            EditorFormSection {
-                EditorHeading(t("二次验证", "Two-step verification"))
-                Text(
-                    if (draft.optString("secret").isBlank()) t("未配置", "Not configured")
-                    else t("已配置", "Configured")
-                )
-                EditorActionButton(
-                    enabled = enabled,
-                    onClick = {
-                        secretInput = draft.optString("secret")
-                        twoFactor = true
-                    },
-                ) {
-                    Text(t("配置二次验证", "Configure two-step verification"))
-                }
-            }
+
     }
     if (kind == "totp")
         EditorFormSection {
@@ -330,10 +323,11 @@ internal fun LegacyCredentialForm(
         }
     }
     EditorFormSection {
-        EditorHeading(t("可选信息", "Optional information"))
+        EditorHeading(t("分类与备注", "Category and notes"))
+        ChoiceEditor(t("分类", "Category"), draft.optString("category"), (listOf("个人", "工作", "家庭", "金融") + legacyCategories + vault.state.value.entries.map { it.optString("category") }).filter { it.isNotBlank() }.distinct(), t) { set("category", it) }
         if (kind != "crypto") {
             EditorField(t("邮箱", "Email"), draft.optString("email"), { set("email", it) }, vault, t)
-            EditorField(
+            if (kind != "password") EditorField(
                 t("网站 / 域名", "Websites / domains"),
                 draft.optString("url"),
                 { set("url", it) },
@@ -342,14 +336,6 @@ internal fun LegacyCredentialForm(
                 lines = 2,
             )
         }
-        EditorField(
-            t("备注", "Notes"),
-            draft.optString("note"),
-            { set("note", it) },
-            vault,
-            t,
-            lines = 3,
-        )
         Text(t("标签", "Tags"), style = MaterialTheme.typography.labelLarge)
         FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             entryTags(draft).forEach { tag ->
@@ -387,7 +373,17 @@ internal fun LegacyCredentialForm(
                 Text(t("添加", "Add"))
             }
         }
+        EditorField(
+            t("备注", "Notes"),
+            draft.optString("note"),
+            { set("note", it) },
+            vault,
+            t,
+            lines = 3,
+        )
+
     }
+    EditorVaultDestination(draft, vault, set, t)
     if (kind in listOf("password", "totp"))
         EditorFormSection {
             EditorHeading(t("密码安全", "Password security"))
@@ -451,44 +447,30 @@ internal fun LegacyCredentialForm(
                 TextButton(onClick = { removeAccount = null }) { Text(t("取消", "Cancel")) }
             },
         )
-    if (twoFactor)
-        AlertDialog(
-            onDismissRequest = { twoFactor = false },
-            title = { Text(t("配置二次验证", "Configure two-step verification")) },
-            text = {
-                EditorField(
-                    t("设置密钥", "Setup key"),
-                    secretInput,
-                    { secretInput = it },
-                    vault,
-                    t,
-                    secret = true,
-                )
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        set("secret", secretInput.filterNot { it.isWhitespace() }.uppercase())
-                        twoFactor = false
-                    }
-                ) {
-                    Text(t("确认", "Confirm"))
+    if (twoFactor) ModalBottomSheet(onDismissRequest = { twoFactor = false }, containerColor = MaterialTheme.colorScheme.surface) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp).navigationBarsPadding().imePadding().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text(t("添加验证码", "Add verification code"), style = MaterialTheme.typography.titleLarge)
+            Text(t("扫描二维码或手动输入设置密钥。", "Scan a QR code or enter the setup key."), color = MaterialTheme.colorScheme.onSurfaceVariant)
+            QrImport(vault, t, result = { uri ->
+                busyChanged(true)
+                scope.launch {
+                    try {
+                        val parsed = vault.command("parse-totp", JSONObject().put("uri", uri))
+                        secretInput = parsed.getString("secret")
+                        if (parsed.has("period")) set("period", parsed.get("period"))
+                    } catch (_: Exception) { report(t("设置链接无效，输入已保留。", "Invalid setup link; your input is preserved.")) }
+                    finally { busyChanged(false) }
                 }
-            },
-            dismissButton = {
-                Row {
-                    TextButton(
-                        onClick = {
-                            set("secret", "")
-                            twoFactor = false
-                        }
-                    ) {
-                        Text(t("清除", "Clear"))
-                    }
-                    TextButton(onClick = { twoFactor = false }) { Text(t("取消", "Cancel")) }
-                }
-            },
-        )
+            }, error = { report(t("未识别到二维码，可手动输入密钥。", "No QR found; enter the setup key instead.")) })
+            EditorField(t("设置密钥", "Setup key"), secretInput, { secretInput = it }, vault, t, secret = true, copy = false)
+            Button(enabled = enabled && secretInput.isNotBlank(), onClick = {
+                set("secret", secretInput.filterNot { it.isWhitespace() }.uppercase()); twoFactor = false
+            }, modifier = Modifier.fillMaxWidth()) { Text(t("确认", "Confirm")) }
+            TextButton(enabled = enabled, onClick = { set("secret", ""); twoFactor = false }, modifier = Modifier.fillMaxWidth()) { Text(t("清除配置", "Clear configuration")) }
+            Spacer(Modifier.height(16.dp))
+        }
+    }
+
 }
 
 @Composable
@@ -510,7 +492,7 @@ internal fun EditorField(
     vault: VaultRepository,
     t: (String, String) -> String,
     secret: Boolean = false,
-    copy: Boolean = true,
+    copy: Boolean = false,
     lines: Int = 1,
     generate: (() -> Unit)? = null,
     numeric: Boolean = false,
@@ -550,15 +532,15 @@ internal fun EditorField(
                     }
             }
         }
-        Column {
-            TextField(
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(label, Modifier.padding(start = 5.dp), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            OutlinedTextField(
                 value,
                 change,
                 modifier = Modifier.fillMaxWidth().semantics { contentDescription = label },
                 enabled = enabled,
                 singleLine = lines == 1,
                 minLines = lines,
-                label = { Text(label) },
                 textStyle = MaterialTheme.typography.bodyLarge,
                 visualTransformation =
                     if (secret && !visible) PasswordVisualTransformation()
@@ -576,12 +558,12 @@ internal fun EditorField(
                     else null,
                 shape = androidx.compose.foundation.shape.RoundedCornerShape(10.dp),
                 colors =
-                    TextFieldDefaults.colors(
+                    OutlinedTextFieldDefaults.colors(
                         focusedContainerColor = accountFieldColor(),
                         unfocusedContainerColor = accountFieldColor(),
                         disabledContainerColor = accountFieldColor(),
-                        unfocusedIndicatorColor = Color.Transparent,
-                        disabledIndicatorColor = Color.Transparent,
+                        unfocusedBorderColor = Color.Transparent,
+                        disabledBorderColor = Color.Transparent,
                     ),
             )
             if (separateActions && (secret || copy || generate != null))
@@ -665,11 +647,10 @@ internal fun ChoiceEditor(
                 Modifier.heightIn(min = 48.dp).padding(horizontal = 16.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(
-                    "$label · " + value.ifEmpty { t("无", "None") },
-                    Modifier.weight(1f),
-                    style = MaterialTheme.typography.bodyMedium,
-                )
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                    Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(value.ifEmpty { t("无", "None") }, style = MaterialTheme.typography.bodyMedium)
+                }
                 Icon(
                     Icons.Outlined.ExpandMore,
                     null,
@@ -746,6 +727,14 @@ private fun RecoveryWordsEditor(
 ) {
     var revealed by remember { mutableStateOf(false) }
     var paste by remember { mutableStateOf(false) }
+    var confirmReveal by remember { mutableStateOf(false) }
+    if (confirmReveal) AlertDialog(
+        onDismissRequest = { confirmReveal = false },
+        title = { Text(t("显示助记词？", "Reveal recovery phrase?")) },
+        text = { Text(t("任何看到助记词的人都能控制钱包。请确认周围没有他人或屏幕共享。", "Anyone who sees this phrase can control the wallet. Check for people nearby or screen sharing.")) },
+        confirmButton = { TextButton(onClick = { confirmReveal = false; revealed = true }) { Text(t("显示", "Reveal")) } },
+        dismissButton = { TextButton(onClick = { confirmReveal = false }) { Text(t("取消", "Cancel")) } },
+    )
     val words = value.split(' ')
     val count = maxOf(12, words.size)
     val columns = if (LocalDensity.current.fontScale > 1.2f) 2 else 3
@@ -756,7 +745,7 @@ private fun RecoveryWordsEditor(
     var focused by remember { mutableIntStateOf(-1) }
     val enabled = LocalEditorEnabled.current
     Row {
-        TextButton(onClick = { revealed = !revealed }) {
+        TextButton(onClick = { if (revealed) revealed = false else confirmReveal = true }) {
             Text(
                 if (revealed) t("隐藏助记词", "Hide recovery phrase")
                 else t("显示助记词", "Show recovery phrase")
@@ -764,9 +753,6 @@ private fun RecoveryWordsEditor(
         }
         TextButton(enabled = enabled, onClick = { paste = !paste }) {
             Text(t("粘贴整段", "Paste phrase"))
-        }
-        IconButton(enabled = value.isNotBlank(), onClick = { vault.copy(value) }) {
-            Icon(Icons.Outlined.ContentCopy, t("复制助记词", "Copy recovery phrase"))
         }
     }
     if (paste)
@@ -777,6 +763,7 @@ private fun RecoveryWordsEditor(
             vault,
             t,
             secret = true,
+            copy = false,
             lines = 2,
         )
     (0 until count).chunked(columns).forEach { indices ->
@@ -839,4 +826,119 @@ internal fun legacyItemColor(label: String): Color? {
             .indexOfFirst { it.equals(label, true) }
             .takeIf { it >= 0 }
             ?.let { legacyColors.values.toList()[it] }
+}
+
+
+/** Keeps imported/legacy keys editable while arranging the standard card and identity fields first. */
+@Composable
+internal fun AlignedStructuredFieldsEditor(
+    draft: JSONObject,
+    vault: VaultRepository,
+    set: (String, Any) -> Unit,
+    t: (String, String) -> String,
+) {
+    val fields = draft.optJSONArray("customFields") ?: JSONArray()
+    EditorFormSection {
+        EditorHeading(t("自定义字段", "Custom fields"))
+        for (index in 0 until fields.length()) {
+            val field = fields.getJSONObject(index)
+            fun change(name: String, value: String) {
+                val next = JSONArray(fields.toString()); next.getJSONObject(index).put(name, value); set("customFields", next)
+            }
+            key(field.optString("id"), index) {
+                EditorField(t("字段名称", "Field label"), field.optString("label"), { change("label", it) }, vault, t, copy = false)
+                EditorField(t("分组", "Group"), field.optString("group"), { change("group", it) }, vault, t, copy = false)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(t("隐藏内容", "Concealed"), Modifier.weight(1f))
+                    Switch(field.optString("kind") == "concealed", { change("kind", if (it) "concealed" else "text") }, enabled = LocalEditorEnabled.current)
+                }
+                EditorField(t("内容", "Value"), field.optString("value"), { change("value", it) }, vault, t, secret = field.optString("kind") == "concealed", copy = false)
+                TextButton(enabled = LocalEditorEnabled.current, onClick = { val next = JSONArray(fields.toString()); next.remove(index); set("customFields", next) }) { Text(t("移除字段", "Remove field")) }
+            }
+        }
+        TextButton(enabled = LocalEditorEnabled.current && fields.length() < 256, onClick = {
+            set("customFields", JSONArray(fields.toString()).put(JSONObject().put("id", java.util.UUID.randomUUID().toString()).put("label", "").put("kind", "concealed").put("value", "")))
+        }) { Icon(Icons.Outlined.Add, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text(t("添加字段", "Add field")) }
+    }
+    ImportedEditorAttachments(draft, t)
+}
+
+@Composable
+private fun AlignedStructuredGroup(draft: JSONObject, vault: VaultRepository, set: (String, Any) -> Unit, t: (String, String) -> String) {
+    val type = draft.optString("type")
+    val groupName = when (type) { "creditCard" -> "card"; "identity" -> "identity"; else -> null }
+    if (groupName != null) {
+        val group = draft.optJSONObject(groupName) ?: JSONObject()
+        val standard = if (type == "creditCard") listOf("bank", "brand", "cardholder", "number", "expiryMonth", "expiryYear", "securityCode", "pin") else listOf("fullName", "documentType", "documentNumber", "issuingAuthority", "expiryDate", "firstName", "lastName", "email", "phone", "address1", "address2", "city", "region", "postalCode", "country", "company")
+        EditorFormSection {
+            EditorHeading(if (type == "creditCard") t("银行卡信息", "Card information") else t("证件信息", "Identity information"))
+            (standard + group.keys().asSequence().toList().filter { it !in standard }.sorted()).forEach { field ->
+                EditorField(structuredFieldLabel(field, t), group.optString(field), { value ->
+                    set(groupName, JSONObject(group.toString()).put(field, value))
+                }, vault, t, secret = field in listOf("number", "securityCode", "pin", "documentNumber", "idNumber", "passportNumber"), copy = false)
+            }
+        }
+    }
+}
+
+@Composable
+private fun ImportedEditorAttachments(draft: JSONObject, t: (String, String) -> String) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var pending by remember { mutableStateOf<JSONObject?>(null) }
+    var error by remember { mutableStateOf(false) }
+    val export = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
+        val attachment = pending; pending = null
+        if (uri != null && attachment != null) scope.launch {
+            try {
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    val bytes = android.util.Base64.decode(attachment.getString("data"), android.util.Base64.DEFAULT)
+                    context.contentResolver.openOutputStream(uri)?.use { it.write(bytes) } ?: throw IllegalStateException("Cannot export")
+                }
+            } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+            catch (_: Exception) { error = true }
+        }
+    }
+    val attachments = draft.optJSONObject("importSource")?.optJSONArray("attachments") ?: JSONArray()
+    if (attachments.length() > 0) EditorFormSection {
+        EditorHeading(t("附件", "Attachments"))
+        attachments.objects().forEach { attachment ->
+            TextButton(enabled = LocalEditorEnabled.current, onClick = {
+                pending = attachment
+                export.launch(attachment.optString("name", "attachment").substringAfterLast('/').substringAfterLast('\\'))
+            }) { Icon(Icons.Outlined.Description, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text(attachment.optString("name")) }
+        }
+        if (error) Text(t("无法导出附件", "Could not export attachment"), color = MaterialTheme.colorScheme.error)
+    }
+}
+
+
+@Composable
+private fun EditorVaultDestination(draft: JSONObject, vault: VaultRepository, set: (String, Any) -> Unit, t: (String, String) -> String) {
+    var open by remember { mutableStateOf(false) }
+    val state by vault.state.collectAsState()
+    val current = state.sharedVaults.firstOrNull { it.optString("id") == draft.optString("sharedVaultId") }
+    EditorFormSection {
+        Text(t("保存到", "Save to"), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Surface(onClick = { open = true }, enabled = LocalEditorEnabled.current, color = MaterialTheme.colorScheme.surface, shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp)) {
+            Row(Modifier.fillMaxWidth().heightIn(min = 50.dp).padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(current?.optString("name") ?: if (draft.optString("sharedVaultId").isBlank()) t("个人库", "Personal vault") else t("共享资料库", "Shared vault"), Modifier.weight(1f))
+                Icon(Icons.Outlined.ExpandMore, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        Text(t("只读共享库不可选择；权限由核心再次校验", "Read-only shared vaults cannot be selected; the core verifies permissions again"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+    if (open) AlertDialog(onDismissRequest = { open = false }, title = { Text(t("保存到", "Save to")) }, text = {
+        Column(Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState())) {
+            TextButton(enabled = vault.canEdit(JSONObject().put("sharedVaultId", "")), onClick = { set("sharedVaultId", ""); open = false }, modifier = Modifier.fillMaxWidth()) { Text(t("个人库", "Personal vault"), Modifier.weight(1f)); if (draft.optString("sharedVaultId").isBlank()) Icon(Icons.Outlined.Check, null) }
+            state.sharedVaults.forEach { shared ->
+                val id = shared.optString("id")
+                val writable = vault.canEdit(JSONObject().put("sharedVaultId", id))
+                TextButton(enabled = writable, onClick = { set("sharedVaultId", id); open = false }, modifier = Modifier.fillMaxWidth()) {
+                    Text(shared.optString("name") + if (writable) "" else t("（只读）", " (read-only)"), Modifier.weight(1f))
+                    if (id == draft.optString("sharedVaultId")) Icon(Icons.Outlined.Check, null)
+                }
+            }
+        }
+    }, confirmButton = {}, dismissButton = { TextButton(onClick = { open = false }) { Text(t("取消", "Cancel")) } })
 }

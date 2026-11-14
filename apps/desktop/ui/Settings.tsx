@@ -208,7 +208,7 @@ function About() {
         <T size={12} color={c().muted}>加密核心 vault-core · SQLCipher</T>
       </Group>
       <View style={{ height: 12 }} />
-      <Banner tone="warn" title="尚未完成独立安全审计">请保留加密备份；完整限制见 docs/SECURITY_MODEL.md。此预览版与 SwiftUI 版并行开发，尚未达到功能对等。</Banner>
+      <Banner tone="warn" title="尚未完成独立安全审计">请保留加密备份；完整限制见 docs/security/SECURITY_MODEL.md。此预览版与 SwiftUI 版并行开发，尚未达到功能对等。</Banner>
     </>
   );
 }

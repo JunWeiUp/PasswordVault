@@ -74,7 +74,7 @@ known read parameters and never exposes its control plane through the socket.
 | `get_secret` | `id: string`, `field: password\|token\|privateKey\|nodeLink\|notes` | One string field after a fresh app approval; accounts support `password`, devices read the nested field |
 
 No wallets, identity documents, cards, crypto records or TOTP secrets are exposed.
-Device projection follows `docs/DEVICE-ITEMS.md`: host/port/username/authMethod,
+Device projection follows `docs/architecture/DEVICE-ITEMS.md`: host/port/username/authMethod,
 aliases, service identity/kind/ports, and only commands explicitly marked
 `secret:false`. Device notes, service paths, unclassified commands and files are
 excluded. Commands are returned only as data. Service-path and individual private

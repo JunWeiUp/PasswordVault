@@ -5,6 +5,7 @@ mod history;
 mod notes;
 mod passkey_backups;
 mod passkeys;
+mod queries;
 mod recovery;
 mod relay;
 use fs2::FileExt;
@@ -24,6 +25,7 @@ struct OpenVault {
     root: Secret,
     header: Header,
     document: Document,
+    document_loaded: bool,
 }
 pub struct DiskVault {
     directory: PathBuf,
@@ -76,7 +78,7 @@ fn open_database(path: &Path, root: &[u8; 32], create: bool) -> Result<Connectio
         row.get::<_, i64>(0)
     })
     .map_err(|_| VaultError::Authentication)?;
-    storage(conn.execute_batch("PRAGMA foreign_keys=ON; PRAGMA secure_delete=ON; PRAGMA temp_store=MEMORY; PRAGMA journal_mode=DELETE;"))?;
+    storage(conn.execute_batch("PRAGMA foreign_keys=ON; PRAGMA secure_delete=ON; PRAGMA temp_store=MEMORY; PRAGMA cache_size=-512; PRAGMA journal_mode=DELETE;"))?;
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
@@ -116,6 +118,7 @@ fn save_document_row(
     let sealed = seal(&subkey(root, b"document"), &bytes, vault_id.as_bytes())?;
     let encrypted = serde_json::to_vec(&sealed).map_err(|_| VaultError::InvalidData)?;
     storage(conn.execute("INSERT INTO vault_state(id,payload) VALUES(1,?1) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload",[encrypted]))?;
+    queries::rebuild(conn, root, vault_id, doc)?;
     Ok(())
 }
 
@@ -201,14 +204,24 @@ impl DiskVault {
         self.unlock_key(root, header)
     }
     fn unlock_key(&mut self, root: Secret, header: Header) -> Result<()> {
-        let connection = open_database(&self.directory.join("vault.sqlite"), &root, false)?;
-        let document = load_document(&connection, &root, &header.vault_id)?;
+        let mut connection = open_database(&self.directory.join("vault.sqlite"), &root, false)?;
+        let (document, document_loaded) = if queries::current(&connection, &root, &header.vault_id)?
+        {
+            (Document::default(), false)
+        } else {
+            let document = load_document(&connection, &root, &header.vault_id)?;
+            let tx = storage(connection.transaction())?;
+            queries::rebuild(&tx, &root, &header.vault_id, &document)?;
+            storage(tx.commit())?;
+            (document, true)
+        };
         self.lock();
         self.unlocked = Some(OpenVault {
             connection,
             root,
             header,
             document,
+            document_loaded,
         });
         Ok(())
     }
@@ -226,8 +239,23 @@ impl DiskVault {
             wipe_value(&mut open.document.settings);
         }
     }
-    fn open(&mut self) -> Result<&mut OpenVault> {
+    fn connection_only(&mut self) -> Result<&mut OpenVault> {
         self.unlocked.as_mut().ok_or(VaultError::Locked)
+    }
+    fn open(&mut self) -> Result<&mut OpenVault> {
+        let open = self.unlocked.as_mut().ok_or(VaultError::Locked)?;
+        if !open.document_loaded {
+            open.document = load_document(&open.connection, &open.root, &open.header.vault_id)?;
+            open.document_loaded = true;
+        }
+        Ok(open)
+    }
+    fn release_document(&mut self) {
+        if let Some(open) = &mut self.unlocked {
+            queries::wipe_document(&mut open.document);
+            open.document = Document::default();
+            open.document_loaded = false;
+        }
     }
     fn mutate(&mut self, f: impl FnOnce(&mut Document) -> Result<Value>) -> Result<Value> {
         let open = self.open()?;
@@ -245,6 +273,16 @@ impl DiskVault {
     fn command(&mut self, request: &Value) -> Result<Value> {
         let op = request["op"].as_str().ok_or(VaultError::InvalidData)?;
         let string = |key: &str| request[key].as_str().ok_or(VaultError::InvalidData);
+        if matches!(op, "read-settings" | "matches" | "fill") {
+            let open = self.unlocked.as_ref().ok_or(VaultError::Locked)?;
+            return queries::query(&open.connection, &open.root, &open.header.vault_id, request);
+        }
+        if op == "relay-credentials-read" {
+            return self.relay_command(request);
+        }
+        if !matches!(op, "status" | "lock" | "unlock" | "create") && self.unlocked.is_some() {
+            self.open()?;
+        }
         if self
             .unlocked
             .as_ref()
@@ -995,6 +1033,35 @@ impl VaultSession {
     }
 }
 
+/// Searchable rich-note attributes that are absent from the plain-text body.
+/// Walk only the document tree and known display attributes, never arbitrary JSON.
+fn note_search_metadata(node: &Value, depth: usize, output: &mut Vec<String>) {
+    if depth > 64 {
+        return;
+    }
+    let mut add = |value: &Value| {
+        if let Some(text) = value.as_str().filter(|text| !text.is_empty()) {
+            output.push(text.to_owned());
+        }
+    };
+    if node["type"] == "vaultImage" || node["type"] == "vaultAttachment" {
+        add(&node["attrs"]["name"]);
+        add(&node["attrs"]["caption"]);
+    }
+    if let Some(marks) = node["marks"].as_array() {
+        for mark in marks {
+            if mark["type"] == "link" {
+                add(&mark["attrs"]["href"]);
+            }
+        }
+    }
+    if let Some(children) = node["content"].as_array() {
+        for child in children {
+            note_search_metadata(child, depth + 1, output);
+        }
+    }
+}
+
 /// A copy of `doc` whose items omit rich note structures (marked `noteSummary`),
 /// built item by item so no full copy of the large structures is made.
 fn summary_document(doc: &Document) -> Document {
@@ -1010,6 +1077,10 @@ fn summary_document(doc: &Document) -> Document {
                     .filter(|(key, _)| *key != "noteDocument" && *key != "noteOriginal")
                     .map(|(key, value)| (key.clone(), value.clone()))
                     .collect();
+                let mut metadata = Vec::new();
+                note_search_metadata(&item["noteDocument"], 0, &mut metadata);
+                // Transient interface projection; desktop strips __ fields on save.
+                lite.insert("__noteSearchText".into(), json!(metadata.join("\n")));
                 lite.insert("noteSummary".into(), Value::Bool(true));
                 Value::Object(lite)
             }
@@ -1028,6 +1099,47 @@ fn summary_document(doc: &Document) -> Document {
 #[cfg(test)]
 mod note_summary_tests {
     use super::*;
+
+    #[test]
+    fn summaries_keep_searchable_attachment_names_and_links_without_private_metadata() {
+        let note = json!({"id":"rich-search","type":"secureNote","title":"Fixture",
+        "note":"Visible caption", "noteFormat":"rich-v1",
+        "noteOriginal":{"source":"retained-private-original"},
+        "noteDocument":{"type":"doc","content":[
+            {"type":"vaultImage","attrs":{"name":"receipt-2026.png","caption":"Visible caption","attachmentId":"private-image-id","src":"private-runtime-url"}},
+            {"type":"paragraph","content":[{"type":"text","text":"Documentation","marks":[{"type":"link","attrs":{"href":"https://docs.example.test/reference"}}]}]},
+            {"type":"vaultAttachment","attrs":{"name":"contract.pdf","attachmentId":"private-file-id"}},
+            {"type":"unknown","attrs":{"secret":"private-unknown-attribute"}}
+        ]}});
+        let doc = Document {
+            items: vec![note.clone()],
+            ..Document::default()
+        };
+        let summary = &summary_document(&doc).items[0];
+        let search = summary["__noteSearchText"].as_str().unwrap();
+        for expected in [
+            "receipt-2026.png",
+            "Visible caption",
+            "contract.pdf",
+            "https://docs.example.test/reference",
+        ] {
+            assert!(search.contains(expected));
+        }
+        for excluded in [
+            "private-image-id",
+            "private-runtime-url",
+            "private-file-id",
+            "private-unknown-attribute",
+            "retained-private-original",
+        ] {
+            assert!(!search.contains(excluded));
+        }
+        assert!(summary.get("noteDocument").is_none());
+        assert!(summary.get("noteOriginal").is_none());
+        assert_eq!(summary["note"], note["note"]);
+        assert_eq!(doc.items[0], note);
+        assert!(doc.items[0].get("__noteSearchText").is_none());
+    }
 
     #[test]
     fn summaries_omit_rich_structures_get_restores_them_and_summaries_cannot_be_saved() {
@@ -1117,5 +1229,16 @@ mod background_transaction_tests {
             .unwrap();
         vault.background_save(&grant, &request).unwrap();
         assert_eq!(vault.open().unwrap().document.items.len(), 1);
+    }
+}
+
+impl VaultSession {
+    /// Drop the full document while retaining the encrypted connection and session.
+    pub fn release_idle_document(&self) -> Result<()> {
+        self.inner
+            .lock()
+            .map_err(|_| VaultError::Storage)?
+            .release_document();
+        Ok(())
     }
 }

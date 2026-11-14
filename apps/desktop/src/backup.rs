@@ -32,11 +32,11 @@ fn limited(reader: impl Read, limit: u64) -> Result<Zeroizing<Vec<u8>>, String> 
     }
     Ok(bytes)
 }
-fn command(session: &vault_core::VaultSession, value: Value) -> Result<String, String> {
+fn command(session: &crate::session::VaultSession, value: Value) -> Result<String, String> {
     let request = Zeroizing::new(value.to_string());
     session.command(request.to_string()).map_err(error_code)
 }
-fn archive(session: &vault_core::VaultSession, password: &str) -> Result<String, String> {
+fn archive(session: &crate::session::VaultSession, password: &str) -> Result<String, String> {
     let response = command(
         session,
         json!({"op":"export","password":password,"richNotes":true}),
@@ -45,7 +45,7 @@ fn archive(session: &vault_core::VaultSession, password: &str) -> Result<String,
     Ok(value["content"].as_str().ok_or("InvalidData")?.into())
 }
 fn merge(
-    session: &vault_core::VaultSession,
+    session: &crate::session::VaultSession,
     data: &[u8],
     password: &str,
 ) -> Result<String, String> {
@@ -277,7 +277,7 @@ fn write_new(path: &Path, bytes: &[u8]) -> Result<(), String> {
     result.map_err(String::from)
 }
 fn structured_file(
-    session: &vault_core::VaultSession,
+    session: &crate::session::VaultSession,
     path: &str,
     options: &str,
 ) -> Result<String, String> {
@@ -438,9 +438,9 @@ mod tests {
         let root = std::env::temp_dir().join(format!("pv-backup-test-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir(&root).unwrap();
         let source =
-            vault_core::VaultSession::new(root.join("source").to_string_lossy().into()).unwrap();
+            crate::session::VaultSession::new(root.join("source").to_string_lossy().into()).unwrap();
         let destination =
-            vault_core::VaultSession::new(root.join("destination").to_string_lossy().into())
+            crate::session::VaultSession::new(root.join("destination").to_string_lossy().into())
                 .unwrap();
         for s in [&source, &destination] {
             command(s, json!({"op":"create","password":"synthetic-master"})).unwrap();
@@ -480,7 +480,7 @@ mod import_tests {
         let root = std::env::temp_dir().join(format!("pv-import-test-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir(&root).unwrap();
         let session =
-            vault_core::VaultSession::new(root.join("vault").to_string_lossy().into()).unwrap();
+            crate::session::VaultSession::new(root.join("vault").to_string_lossy().into()).unwrap();
         command(
             &session,
             json!({"op":"create","password":"synthetic-master"}),

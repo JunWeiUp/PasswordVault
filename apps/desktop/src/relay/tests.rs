@@ -189,7 +189,7 @@ fn credentials_stay_encrypted_and_summary_is_lock_gated() {
     let directory = std::path::PathBuf::from("/tmp")
         .join(format!("pv-relay-credentials-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir(&directory).unwrap();
-    let session = vault_core::VaultSession::new(directory.to_string_lossy().into()).unwrap();
+    let session = crate::session::VaultSession::new(directory.to_string_lossy().into()).unwrap();
     session
         .command(json!({"op":"create","password":"synthetic-relay-test-password"}).to_string())
         .unwrap();

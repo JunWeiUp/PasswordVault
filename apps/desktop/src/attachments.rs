@@ -145,7 +145,7 @@ mod ownership_tests {
             .unwrap();
         assert!(output.status.success());
         let directory = String::from_utf8(output.stdout).unwrap().trim().to_string();
-        let session = vault_core::VaultSession::new(format!("{directory}/vault")).unwrap();
+        let session = crate::session::VaultSession::new(format!("{directory}/vault")).unwrap();
         let run = |v: Value| session.command(v.to_string()).unwrap();
         run(json!({"op":"create", "password":"attachment-test-password"}));
         for id in ["owner", "other"] {

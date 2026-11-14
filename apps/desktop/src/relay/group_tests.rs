@@ -199,7 +199,7 @@ impl Fixture {
                                             }
                                             if e["offline"] == true {
                                                 let _ = ws.send(tungstenite::Message::Text(
-                                                    json!({"type":"queued","id":e["id"]})
+                                                    json!({"type":"stored","id":e["id"]})
                                                         .to_string()
                                                         .into(),
                                                 ));
@@ -552,7 +552,7 @@ fn relay_presence_reconnects_polls_and_lock_disconnects() {
         .join(format!("pv-relay-lifecycle-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir(&directory).unwrap();
     let session =
-        Arc::new(vault_core::VaultSession::new(directory.to_string_lossy().into()).unwrap());
+        Arc::new(crate::session::VaultSession::new(directory.to_string_lossy().into()).unwrap());
     service::core(&session, json!({"op":"create","password":TEST_PASSWORD})).unwrap();
     service::execute(
         &session,
@@ -579,224 +579,49 @@ fn relay_presence_reconnects_polls_and_lock_disconnects() {
     std::fs::remove_dir_all(directory).unwrap();
 }
 #[test]
-fn relay_local_grant_ack_sync_and_local_first_revoke() {
-    use base64::Engine;
+fn joined_members_sync_both_ways_without_authorization() {
     sodiumoxide::init().unwrap();
     let server = Fixture::new();
-    let root =
-        std::env::temp_dir().join(format!("pv-relay-sync-{}", uuid::Uuid::new_v4()));
+    let root = std::env::temp_dir().join(format!("pv-relay-mesh-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir(&root).unwrap();
-    let mac =
-        Arc::new(vault_core::VaultSession::new(root.join("mac").to_string_lossy().into()).unwrap());
-    let phone = Arc::new(
-        vault_core::VaultSession::new(root.join("phone").to_string_lossy().into()).unwrap(),
-    );
+    let mac = Arc::new(crate::session::VaultSession::new(root.join("mac").to_string_lossy().into()).unwrap());
+    let phone = Arc::new(crate::session::VaultSession::new(root.join("phone").to_string_lossy().into()).unwrap());
     for s in [&mac, &phone] {
         service::core(s, json!({"op":"create","password":TEST_PASSWORD})).unwrap();
     }
-    service::execute(
-        &mac,
-        json!({"op":"create","endpoint":server.url,"relayPassword":RELAY_ACCESS,"name":"QA","deviceName":"Mac"}),
-        true,
-    )
-    .unwrap();
-    let invite: Value = serde_json::from_str(
-        &service::execute(&mac, json!({"op":"invite","mode":"auto"}), true).unwrap(),
-    )
-    .unwrap();
-    service::execute(
-        &phone,
-        json!({"op":"join","link":invite["invitationLink"],"deviceName":"Phone"}),
-        true,
-    )
-    .unwrap();
-    let c = service::read(&phone).unwrap();
-    assert_eq!(c["role"], "mobile", "an ordinary desktop joiner must receive the hub grant");
-    assert_eq!(service::read(&mac).unwrap()["role"], "hub");
-    service::core(&phone, json!({"op":"save","item":{"id":"local-before-upgrade","type":"secureNote","title":"Keep local","note":"synthetic retained content","noteFormat":"plain"}})).unwrap();
-    // Reproduce an already-joined old desktop, without touching its vault contents.
-    let mut legacy = c.clone();
-    legacy["role"] = json!("hub"); legacy["hub"] = legacy["device"].clone();
-    let mut legacy_group = service::group(&legacy).unwrap();
-    legacy_group.as_object_mut().unwrap().remove("vault_authority");
-    legacy["groupState"] = json!(base64::engine::general_purpose::STANDARD.encode(canonical(&legacy_group)));
-    // Explicit peer-library configurations must never be silently converted.
-    legacy["peerLibrary"] = json!("synthetic-existing-library");
-    service::write(&phone, &legacy).unwrap();
-    service::execute(&phone, json!({"op":"refresh"}), true).unwrap();
-    assert_eq!(service::read(&phone).unwrap()["role"], "hub");
-    legacy["peerLibrary"] = Value::Null;
-    service::write(&phone, &legacy).unwrap();
-    service::execute(&phone, json!({"op":"refresh"}), true).unwrap();
-    let c = service::read(&phone).unwrap();
-    let g = service::group(&c).unwrap();
-    assert_eq!(c["role"], "mobile");
-    assert!(service::core(&phone, json!({"op":"list"})).unwrap()["items"].as_array().unwrap().iter().any(|i| i["id"] == "local-before-upgrade"));
-    let peer = c["device"].as_str().unwrap().to_string();
+    service::core(&mac, json!({"op":"save","item":{"id":"mac-before","type":"password","title":"Mac existing"}})).unwrap();
+    service::core(&phone, json!({"op":"save","item":{"id":"phone-before","type":"password","title":"Phone existing"}})).unwrap();
+    service::execute(&mac, json!({"op":"create","endpoint":server.url,"relayPassword":RELAY_ACCESS,"name":"QA","deviceName":"Mac"}), true).unwrap();
+    let invite: Value = serde_json::from_str(&service::execute(&mac, json!({"op":"invite","mode":"auto"}), true).unwrap()).unwrap();
+    service::execute(&phone, json!({"op":"join","link":invite["invitationLink"],"deviceName":"Phone"}), true).unwrap();
     service::execute(&mac, json!({"op":"refresh"}), true).unwrap();
-    let before = service::read(&mac).unwrap();
-    assert!(before["peers"].as_object().unwrap().is_empty());
-    super::access::set(&mac, &peer, true).unwrap();
-    let awaiting = service::read(&mac).unwrap();
-    assert_eq!(awaiting["peers"][&peer], awaiting["vaultGrants"][&peer]["key"]);
-    assert_eq!(awaiting["paused"], false);
-    assert_eq!(awaiting["vaultGrants"][&peer]["acknowledged"], false);
-    assert_eq!(super::sync::outgoing(&mac).unwrap().len(), 1);
-    // A transport receipt cannot grant permissions or resume a later local pause.
-    let mut ack = super::access::message(
-        &c,
-        before["device"].as_str().unwrap(),
-        &awaiting["vaultGrants"][&peer],
-        "ack",
-    );
-    ack["revision"] = json!(99);
-    super::access::receive(&mac, &peer, "00", &ack).unwrap();
-    assert_eq!(service::read(&mac).unwrap()["vaultGrants"][&peer]["acknowledged"], false);
-    assert_eq!(service::read(&mac).unwrap()["peers"], awaiting["peers"]);
-    super::access::pause(&mac, true).unwrap();
-    ack["revision"] = awaiting["vaultGrants"][&peer]["revision"].clone();
-    let key = awaiting["vaultGrants"][&peer]["key"].as_str().unwrap();
-    let mut wrong_group = ack.clone();
-    wrong_group["group"] = json!("other-group");
-    super::access::receive(&mac, &peer, key, &wrong_group).unwrap();
-    assert_eq!(service::read(&mac).unwrap()["vaultGrants"][&peer]["acknowledged"], false);
-    super::access::receive(&mac, &peer, key, &ack).unwrap();
-    assert_eq!(service::read(&mac).unwrap()["paused"], true);
-    assert_eq!(service::read(&mac).unwrap()["vaultGrants"][&peer]["acknowledged"], true);
-    // Upgrade an old ack-gated pending grant on an explicit Mac sync action.
-    let mut old_pending = service::read(&mac).unwrap();
-    old_pending["peers"] = json!({});
-    old_pending["vaultGrants"][&peer]["acknowledged"] = json!(false);
-    service::write(&mac, &old_pending).unwrap();
-    super::access::resume(&mac).unwrap();
-    assert_eq!(service::read(&mac).unwrap()["paused"], false);
-    assert_eq!(service::read(&mac).unwrap()["peers"][&peer], awaiting["peers"][&peer]);
-    service::core(&mac,json!({"op":"save","item":{"id":"relay-fixture","type":"password","title":"QA item","password":"synthetic-secret","updatedAt":"2020-01-01T00:00:00Z"}})).unwrap();
-    // Deliver data before control: no import and no receipt until authorization.
-    let packet = super::sync::outgoing(&mac).unwrap().remove(0).2;
-    let hub = before["device"].as_str().unwrap();
-    let hub_key = g["trusted_peers"][hub].as_str().unwrap();
-    assert_eq!(super::sync::receive(&phone, hub, hub_key, &packet).unwrap_err(), "VaultAccessDenied");
-    let control = super::access::pending(&service::read(&mac).unwrap()).unwrap().remove(0).1;
-    let mut invalid_control = control.clone();
-    invalid_control["group"] = json!("other-group");
-    assert!(super::access::receive(&phone, hub, hub_key, &invalid_control).unwrap().is_none());
-    assert!(service::read(&phone).unwrap()["peers"].as_object().unwrap().is_empty());
-    let reply = super::access::receive(&phone, hub, hub_key, &control).unwrap().unwrap();
-    assert_eq!(reply["kind"], "ack");
-    // Lose the first ack. Repeated control is accepted automatically and safe.
-    assert_eq!(super::access::receive(&phone, hub, hub_key, &control).unwrap().unwrap(), reply);
-    assert_eq!(service::read(&mac).unwrap()["vaultGrants"][&peer]["acknowledged"], false);
-    super::sync::receive(&phone, hub, hub_key, &packet).unwrap();
     runtime::start(mac.clone(), root.join("mac"), true).unwrap();
     runtime::start(phone.clone(), root.join("phone"), true).unwrap();
+    let title = |s: &crate::session::VaultSession, id: &str| -> Option<String> {
+        service::core(s, json!({"op":"list"})).unwrap()["items"].as_array().unwrap().iter()
+            .find(|i| i["id"] == id).and_then(|i| i["title"].as_str().map(str::to_owned))
+    };
     let wait = |f: &dyn Fn() -> bool| {
-        let end = std::time::Instant::now() + std::time::Duration::from_secs(35);
+        let end = std::time::Instant::now() + std::time::Duration::from_secs(40);
         while !f() && std::time::Instant::now() < end {
             std::thread::sleep(std::time::Duration::from_millis(100));
         }
-        assert!(
-            f(),
-            "mac={:?} phone={:?}",
-            runtime::view(&mac),
-            runtime::view(&phone)
-        );
+        assert!(f(), "mac={:?} phone={:?}", runtime::view(&mac), runtime::view(&phone));
     };
-    wait(&|| service::read(&mac).unwrap()["vaultGrants"][&peer]["acknowledged"] == true);
-    wait(&|| {
-        service::core(&phone, json!({"op":"list"})).unwrap()["items"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|i| i["id"] == "relay-fixture")
-    });
-    runtime::stop(&mac);
-    runtime::stop(&phone);
-    assert!(service::core(&phone, json!({"op":"list"})).unwrap()["items"].as_array().unwrap().iter().any(|i| i["id"] == "local-before-upgrade"), "existing local records must survive authorization and sync");
-    // Never rewrite an already-initialized replication identity, even if its
-    // encrypted adapter configuration is inconsistent after an old upgrade.
-    let protected_session = vault_core::VaultSession::new(root.join("protected-hub").to_string_lossy().into()).unwrap();
-    service::core(&protected_session, json!({"op":"create","password":TEST_PASSWORD})).unwrap();
-    let mut protected = service::read(&phone).unwrap();
-    protected["role"] = json!("hub"); protected["hub"] = protected["device"].clone();
-    protected["peers"] = json!({});
-    let mut protected_group = service::group(&protected).unwrap();
-    protected_group.as_object_mut().unwrap().remove("vault_authority");
-    protected["groupState"] = json!(base64::engine::general_purpose::STANDARD.encode(canonical(&protected_group)));
-    service::write(&protected_session, &protected).unwrap();
-    super::access::initialize(&protected_session, &protected).unwrap();
-    let core_before = service::core(&protected_session, json!({"op":"relay-status"})).unwrap();
-    service::execute(&protected_session, json!({"op":"refresh"}), true).unwrap();
-    assert_eq!(service::read(&protected_session).unwrap()["role"], "hub");
-    assert_eq!(service::core(&protected_session, json!({"op":"relay-status"})).unwrap(), core_before);
-    drop(protected_session);
-    // An upgrade must discover capabilities without replaying old authorization.
-    for session in [&mac, &phone] {
-        let mut config = service::read(session).unwrap();
-        config.as_object_mut().unwrap().remove("capabilityPeers");
-        service::write(session, &config).unwrap();
-        assert!(!super::access::capability_challenges(session, &config).unwrap().is_empty());
-        let mut untrusted = config.clone();
-        for key in untrusted["peers"].as_object_mut().unwrap().values_mut() {
-            *key = json!("untrusted-key");
-        }
-        assert!(super::access::capability_challenges(session, &untrusted).unwrap().is_empty());
+    // No grant, acknowledgement or approval: group membership alone starts sync.
+    wait(&|| title(&phone, "mac-before").is_some() && title(&mac, "phone-before").is_some());
+    service::core(&phone, json!({"op":"save","item":{"id":"mac-before","type":"password","title":"Edited on phone"}})).unwrap();
+    wait(&|| title(&mac, "mac-before").as_deref() == Some("Edited on phone"));
+    service::core(&mac, json!({"op":"save","item":{"id":"from-mac","type":"secureNote","title":"New on Mac"}})).unwrap();
+    wait(&|| title(&phone, "from-mac").as_deref() == Some("New on Mac"));
+    for s in [&mac, &phone] {
+        let status = service::core(s, json!({"op":"relay-status"})).unwrap();
+        assert_eq!(status["mode"], "mesh");
+        assert_eq!(status["pending"], 0);
+        assert!(service::read(s).unwrap()["vaultGrants"].as_object().is_none_or(|g| g.is_empty()));
     }
-    super::access::pause(&mac, true).unwrap();
-    assert!(super::sync::outgoing(&mac).unwrap().is_empty());
-    super::access::pause(&mac, false).unwrap();
-    service::core(
-        &mac,
-        json!({"op":"devices-enable","currentPassword":TEST_PASSWORD,"confirm":true}),
-    )
-    .unwrap();
-    service::core(&mac, json!({"op":"save","item":{"id":"format7-after","type":"secureNote","title":"Format seven relay canary"}})).unwrap();
-    runtime::start(mac.clone(), root.join("mac"), true).unwrap();
-    runtime::start(phone.clone(), root.join("phone"), true).unwrap();
-    wait(&|| service::core(&phone, json!({"op":"list"})).unwrap()["items"].as_array().unwrap().iter().any(|i| i["id"] == "format7-after"));
-    assert_eq!(service::core(&phone, json!({"op":"devices-status"})).unwrap()["formatVersion"], 7);
-    assert!(service::core(&mac, json!({"op":"relay-status"})).unwrap()["capabilities"].as_array().unwrap().contains(&json!(peer)));
-    assert!(service::core(&phone, json!({"op":"relay-status"})).unwrap()["capabilities"].as_array().unwrap().contains(&json!(hub)));
     runtime::stop(&mac);
     runtime::stop(&phone);
-    super::access::set(&mac, &peer, false).unwrap();
-    let revoked = service::read(&mac).unwrap();
-    assert!(revoked["peers"].get(&peer).is_none());
-    assert_eq!(revoked["vaultGrants"][&peer]["revision"], 3);
-    super::access::receive(&mac, &peer, key, &ack).unwrap();
-    assert!(service::read(&mac).unwrap()["peers"].get(&peer).is_none());
-    assert!(
-        super::sync::receive(
-            &mac,
-            &peer,
-            revoked["vaultGrants"][&peer]["key"].as_str().unwrap(),
-            b"{}"
-        )
-        .is_err()
-    );
-    let before_id = revoked["device"].clone();
-    service::execute(&mac, json!({"op":"disband"}), true).unwrap();
-    assert_ne!(service::read(&mac).unwrap()["device"], before_id);
-    assert_eq!(
-        service::core(&mac, json!({"op":"relay-status"})).unwrap()["enabled"],
-        false
-    );
-    assert!(
-        service::core(&mac, json!({"op":"list"})).unwrap()["items"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|i| i["id"] == "relay-fixture")
-    );
-    runtime::stop(&phone);
-    service::execute(&mac, json!({"op":"clear-local"}), true).unwrap();
-    assert_eq!(service::read(&mac).unwrap()["token"], "");
-    service::execute(&phone, json!({"op":"clear-local"}), true).unwrap();
-    assert_eq!(service::read(&phone).unwrap()["role"], "hub");
-    let new_server = Fixture::new();
-    service::execute(&phone, json!({"op":"create","endpoint":new_server.url,"relayPassword":RELAY_ACCESS,"name":"New desktop group","deviceName":"Desktop"}), true).unwrap();
-    assert_eq!(service::read(&phone).unwrap()["role"], "hub");
-    assert!(service::core(&phone, json!({"op":"list"})).unwrap()["items"].as_array().unwrap().iter().any(|i| i["id"] == "local-before-upgrade"));
     drop(mac);
     drop(phone);
     std::thread::sleep(std::time::Duration::from_millis(300));
@@ -810,9 +635,9 @@ fn relay_peer_chunk_router_requires_library_identity() {
         std::env::temp_dir().join(format!("pv-relay-peer-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir(&root).unwrap();
     let a =
-        Arc::new(vault_core::VaultSession::new(root.join("a").to_string_lossy().into()).unwrap());
+        Arc::new(crate::session::VaultSession::new(root.join("a").to_string_lossy().into()).unwrap());
     let b =
-        Arc::new(vault_core::VaultSession::new(root.join("b").to_string_lossy().into()).unwrap());
+        Arc::new(crate::session::VaultSession::new(root.join("b").to_string_lossy().into()).unwrap());
     for s in [&a, &b] {
         service::core(s, json!({"op":"create","password":TEST_PASSWORD})).unwrap();
     }
@@ -898,23 +723,20 @@ fn relay_peer_chunk_router_requires_library_identity() {
     assert!(super::sync::receive(&b, &ad, "00", b"{}").is_err());
     let data = super::sync::outgoing(&a).unwrap();
     assert!(data.iter().any(|(_, id, _)| id == &lib));
-    super::access::set(&a, &bd, false).unwrap();
-    assert!(service::read(&a).unwrap()["peers"].get(&bd).is_none());
-    assert!(super::sync::outgoing(&a).unwrap().is_empty());
     drop(a);
     drop(b);
     std::thread::sleep(std::time::Duration::from_millis(300));
     std::fs::remove_dir_all(root).unwrap();
 }
 
-fn enrolled_fixture(server: &Fixture) -> (std::path::PathBuf, Arc<vault_core::VaultSession>) {
+fn enrolled_fixture(server: &Fixture) -> (std::path::PathBuf, Arc<crate::session::VaultSession>) {
     let directory = std::env::temp_dir().join(format!("pv-relay-local-exit-{}", uuid::Uuid::new_v4()));
-    let session = Arc::new(vault_core::VaultSession::new(directory.to_string_lossy().into()).unwrap());
+    let session = Arc::new(crate::session::VaultSession::new(directory.to_string_lossy().into()).unwrap());
     service::core(&session, json!({"op":"create","password":TEST_PASSWORD})).unwrap();
     service::execute(&session, json!({"op":"create","endpoint":server.url,"relayPassword":RELAY_ACCESS,"name":"QA","deviceName":"Mac"}), true).unwrap();
     (directory, session)
 }
-fn wait_exit(session: &Arc<vault_core::VaultSession>, expected: &str) {
+fn wait_exit(session: &Arc<crate::session::VaultSession>, expected: &str) {
     let until = std::time::Instant::now() + std::time::Duration::from_secs(20);
     while runtime::view(session)["exit"]["remote"] == "pending" && std::time::Instant::now() < until {
         std::thread::sleep(std::time::Duration::from_millis(20));
@@ -927,7 +749,7 @@ fn local_exit_is_immediate_for_success_401_and_timeout() {
         let server = Fixture::new();
         let (directory, session) = enrolled_fixture(&server);
         let before = service::read(&session).unwrap();
-        super::access::initialize(&session, &before).unwrap();
+        service::core(&session, json!({"op":"relay-mesh-init","group":before["group"],"device":before["device"]})).unwrap();
         if mode == "401" { server.reject_exit.store(true, Ordering::SeqCst); }
         if mode == "timeout" { server.hold_group.store(true, Ordering::SeqCst); }
         let start = std::time::Instant::now();
@@ -1000,7 +822,7 @@ fn remote_exit_and_admission_recovery_preserve_identity() {
     for op in ["leave", "disband"] {
         let server = Fixture::new();
         let directory = std::env::temp_dir().join(format!("pv-relay-exit-{}", uuid::Uuid::new_v4()));
-        let session = Arc::new(vault_core::VaultSession::new(directory.to_string_lossy().into()).unwrap());
+        let session = Arc::new(crate::session::VaultSession::new(directory.to_string_lossy().into()).unwrap());
         service::core(&session, json!({"op":"create","password":TEST_PASSWORD})).unwrap();
         service::execute(&session, json!({"op":"create","endpoint":server.url,"relayPassword":RELAY_ACCESS,"name":"QA","deviceName":"Mac"}), true).unwrap();
         let original = service::read(&session).unwrap();
@@ -1051,7 +873,7 @@ fn remote_exit_and_admission_recovery_preserve_identity() {
 fn creation_retry_can_correct_admission_password_without_new_identity() {
     let server = Fixture::new();
     let directory = std::env::temp_dir().join(format!("pv-relay-retry-{}", uuid::Uuid::new_v4()));
-    let session = vault_core::VaultSession::new(directory.to_string_lossy().into()).unwrap();
+    let session = crate::session::VaultSession::new(directory.to_string_lossy().into()).unwrap();
     service::core(&session, json!({"op":"create","password":TEST_PASSWORD})).unwrap();
     let mut request = json!({"op":"create","endpoint":server.url,"relayPassword":"incorrect-admission","name":"QA","deviceName":"Mac"});
     assert_eq!(service::execute(&session, request.clone(), true).unwrap_err(), "RelayHttp401");
@@ -1112,7 +934,6 @@ fn approval_recovers_exact_committed_entry_after_lost_reply_and_restart() {
 fn in_flight_refresh_preserves_local_pause_and_revocation() {
     let server = Fixture::new();
     let (directory, session) = enrolled_fixture(&server);
-    access::pause(&session, false).unwrap();
     server.hold_group.store(true, Ordering::SeqCst);
     let task_session = session.clone();
     let task = std::thread::spawn(move || service::execute(&task_session, json!({"op":"refresh"}), true));
@@ -1138,75 +959,6 @@ fn in_flight_refresh_preserves_local_pause_and_revocation() {
     assert_eq!(after["accessRevision"], 17);
     drop(session);
     std::fs::remove_dir_all(directory).unwrap();
-}
-
-#[test]
-fn single_confirmation_admission_recovers_without_regranting_revoked_access() {
-    for mode in ["normal", "restart", "revoked", "paused", "changed-key"] {
-        let server = Fixture::new();
-        let (directory, primary) = enrolled_fixture(&server);
-        let receiver_dir = std::env::temp_dir().join(format!("pv-admission-{}", uuid::Uuid::new_v4()));
-        let receiver = vault_core::VaultSession::new(receiver_dir.to_string_lossy().into()).unwrap();
-        service::core(&receiver, json!({"op":"create","password":TEST_PASSWORD})).unwrap();
-        let invitation: Value = serde_json::from_str(&service::execute(&primary, json!({"op":"invite-personal","mode":"auto"}), true).unwrap()).unwrap();
-        service::execute(&receiver, json!({"op":"join","link":invitation["invitationLink"],"deviceName":"Windows QA"}), true).unwrap();
-        let request: Value = serde_json::from_str(&service::execute(&primary, json!({"op":"check-request"}), true).unwrap()).unwrap();
-        assert_eq!(invitation["invitationMode"], "manual");
-        let peer = service::read(&receiver).unwrap()["device"].as_str().unwrap().to_string();
-        assert!(service::execute(&primary, json!({"op":"approve-and-grant","code":"WRONG"}), true).is_err());
-        assert!(service::read(&primary).unwrap()["pendingAdmission"].is_null());
-        if mode == "normal" {
-            service::execute(&primary, json!({"op":"approve-and-grant","code":request["code"]}), true).unwrap();
-        } else {
-            // Persist the user's decision, then simulate process interruption after
-            // membership commits but before the access transaction is attempted.
-            {
-                let _lock = service::CONTROL.lock().unwrap();
-                let mut c = service::read(&primary).unwrap();
-                let g = service::group(&c).unwrap();
-                admission::prepare(&primary, &mut c, &g, request["code"].as_str().unwrap()).unwrap();
-            }
-            service::execute(&primary, json!({"op":"approve","code":request["code"],"manager":false}), true).unwrap();
-            assert!(service::read(&primary).unwrap()["vaultGrants"][&peer].is_null());
-            if mode == "revoked" { access::set(&primary, &peer, false).unwrap(); }
-            if mode == "paused" { access::pause(&primary, true).unwrap(); }
-            if mode == "changed-key" {
-                let _lock = service::CONTROL.lock().unwrap();
-                let mut c = service::read(&primary).unwrap();
-                c["pendingAdmission"]["key"] = json!("different-identity");
-                service::write(&primary, &c).unwrap();
-            }
-            let result = service::execute(&primary, json!({"op":"refresh"}), true);
-            if mode == "changed-key" {
-                assert_eq!(result.unwrap_err(), "AdmissionIdentityChanged");
-                assert!(service::read(&primary).unwrap()["vaultGrants"][&peer].is_null());
-            } else { result.unwrap(); }
-        }
-        if mode != "changed-key" {
-            let c = service::read(&primary).unwrap();
-            assert_eq!(c["vaultGrants"][&peer]["enabled"], mode != "revoked");
-            let revision = c["vaultGrants"][&peer]["revision"].clone();
-            service::execute(&primary, json!({"op":"refresh"}), true).unwrap();
-            assert_eq!(service::read(&primary).unwrap()["vaultGrants"][&peer]["revision"], revision);
-            if mode == "paused" { assert_eq!(c["paused"], true); }
-            if mode != "revoked" {
-                assert!(c["pendingAdmission"].is_null());
-                assert_eq!(c["vaultGrants"][&peer]["acknowledged"], false);
-                service::execute(&receiver, json!({"op":"finish-join"}), true).unwrap();
-                let rc = service::read(&receiver).unwrap();
-                let pc = service::read(&primary).unwrap();
-                let pd = pc["device"].as_str().unwrap();
-                let pk = service::group(&pc).unwrap()["public_key"].as_str().unwrap().to_string();
-                let (_, grant) = access::pending(&pc).unwrap().into_iter().find(|(id, _)| id == &peer).unwrap();
-                assert!(access::receive(&receiver, pd, &pk, &grant).unwrap().is_some());
-                assert_eq!(service::read(&receiver).unwrap()["accessEnabled"], true);
-                assert_eq!(rc["role"], "mobile");
-            }
-        }
-        drop(primary); drop(receiver);
-        std::fs::remove_dir_all(directory).unwrap();
-        std::fs::remove_dir_all(receiver_dir).unwrap();
-    }
 }
 
 #[test]

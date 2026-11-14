@@ -8,11 +8,13 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.staggeredgrid.LazyVerticalStaggeredGrid
 import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells
 import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridItemSpan
 import androidx.compose.foundation.lazy.staggeredgrid.items as gridItems
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -27,6 +29,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import java.time.Instant
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -54,6 +57,7 @@ internal class CollectionUiState {
     val category = mutableStateOf("")
     val tag = mutableStateOf("")
     val favorites = mutableStateOf(false)
+    val kind = mutableStateOf("")
     val selecting = mutableStateOf(false)
     val selectedIds = mutableStateOf(setOf<String>())
     val grid = mutableStateOf(true)
@@ -61,1004 +65,374 @@ internal class CollectionUiState {
     val masonry = androidx.compose.foundation.lazy.staggeredgrid.LazyStaggeredGridState()
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun EntryCollection(
-    page: String,
-    title: String,
-    state: VaultState,
-    vault: VaultRepository,
-    t: (String, String) -> String,
-    open: (JSONObject) -> Unit,
-    edit: (JSONObject) -> Unit,
-    delete: (JSONObject) -> Unit,
-    manageCategories: () -> Unit,
-    ui: CollectionUiState,
-    operationScope: kotlinx.coroutines.CoroutineScope,
+    page: String, title: String, state: VaultState, vault: VaultRepository,
+    t: (String, String) -> String, open: (JSONObject) -> Unit, edit: (JSONObject) -> Unit,
+    delete: (JSONObject) -> Unit, manageCategories: () -> Unit, ui: CollectionUiState,
+    operationScope: kotlinx.coroutines.CoroutineScope, openNavigation: (() -> Unit)? = null,
+    openHealth: () -> Unit = {},
 ) {
-    DisposableEffect(page) {
-        onDispose {
-            ui.selectedIds.value = emptySet()
-            ui.selecting.value = false
-        }
-    }
+    val scope = rememberCoroutineScope()
     val notes = page == "secureNote"
     var search by ui.search
     var category by ui.category
-    var tag by ui.tag
+    var kind by ui.kind
     var favorites by ui.favorites
-    val scope = rememberCoroutineScope()
-    val sort =
-        state.settings.optJSONObject("collectionSort")?.optString(page, "updatedDesc")
-            ?: "updatedDesc"
-    fun setSort(value: String) {
-        scope.launch {
-            val sorts =
-                JSONObject(state.settings.optJSONObject("collectionSort")?.toString() ?: "{}")
-            sorts.put(page, value)
-            vault.mutate(
-                "settings",
-                JSONObject().put("settings", JSONObject().put("collectionSort", sorts)),
-            )
-        }
-    }
-    fun openItem(item: JSONObject) {
-        if (ui.selecting.value) {
-            if (vault.canEdit(item)) {
-                val id = item.optString("id")
-                ui.selectedIds.value =
-                    if (id in ui.selectedIds.value) ui.selectedIds.value - id
-                    else ui.selectedIds.value + id
-            }
-        } else open(item)
-    }
-    var sortMenu by remember { mutableStateOf(false) }
-    var folderMenu by remember { mutableStateOf(false) }
+    var tag by ui.tag
     var grid by ui.grid
-    val source =
-        state.entries.filter {
-            if (page == "trash") it.optBoolean("isDeleted")
-            else !it.optBoolean("isDeleted") && (it.optString("type") == page || (page == "password" && it.optString("type") in listOf("creditCard", "identity")))
+    var sortSheet by remember { mutableStateOf(false) }
+    var categoriesSheet by remember { mutableStateOf(false) }
+    var toolsSheet by remember { mutableStateOf(false) }
+    var categoryName by remember { mutableStateOf("") }
+    var addingCategory by remember { mutableStateOf(false) }
+    var categoryBusy by remember { mutableStateOf(false) }
+    var categoryToRemove by remember { mutableStateOf<String?>(null) }
+    var audit by remember { mutableStateOf(emptyList<JSONObject>()) }
+    DisposableEffect(page) { onDispose { ui.selectedIds.value = emptySet(); ui.selecting.value = false } }
+    LaunchedEffect(ui.selecting.value) { if (ui.selecting.value) toolsSheet = false }
+    LaunchedEffect(state.entries) {
+        audit = runCatching { vault.audit().objects() }.getOrDefault(emptyList())
+    }
+    val findings = audit.associateBy { it.optString("id") }
+    val source = state.entries.filter { matchesWorkspaceDestination(it, page) }
+    val categories = (state.settings.optJSONArray("noteCategories")?.let { a -> (0 until a.length()).map { a.optString(it) } }.orEmpty() + source.map { it.optString("category") })
+        .filter { it.isNotBlank() }.distinct().sorted()
+    val sort = state.settings.optJSONObject("collectionSort")?.optString(page, "updatedDesc") ?: "updatedDesc"
+    val filtered = source.filter { item ->
+        (kind.isEmpty() || (if (kind == "issue") item.optString("id") in findings else item.optString("type") == kind)) &&
+        (category.isEmpty() || item.optString("category") == category) &&
+        (!favorites || item.optBoolean("isFavorite")) &&
+        (tag.isEmpty() || tag in entryTags(item)) &&
+        (search.isBlank() || listOf("title", "username", "email", "url", "category", "note").any { item.optString(it).contains(search, true) } ||
+            entryTags(item).any { it.contains(search, true) } || item.optJSONObject("device")?.let { listOf("host", "username").any { key -> it.optString(key).contains(search, true) } } == true)
+    }.sortedWith(compareByDescending<JSONObject> { it.optBoolean("isPinned") }.thenComparator { a, b ->
+        when (sort) {
+            "titleAsc" -> a.optString("title").compareTo(b.optString("title"), true)
+            "titleDesc" -> b.optString("title").compareTo(a.optString("title"), true)
+            "updatedAsc" -> a.optString("updatedAt").compareTo(b.optString("updatedAt"))
+            else -> b.optString("updatedAt").compareTo(a.optString("updatedAt"))
         }
-    val configured =
-        if (notes)
-            state.settings
-                .optJSONArray("noteCategories")
-                ?.let { a -> (0 until a.length()).map { a.optString(it) } }
-                .orEmpty()
-        else emptyList()
-    val categories =
-        (source.map { it.optString("category") } + configured)
-            .filter { it.isNotBlank() }
-            .distinct()
-            .sorted()
-    val tags = source.flatMap(::entryTags).distinct().sorted()
-    val filtered =
-        source
-            .filter { item ->
-                (category.isEmpty() || item.optString("category") == category) &&
-                    (tag.isEmpty() || tag in entryTags(item)) &&
-                    (!favorites || item.optBoolean("isFavorite")) &&
-                    (search.isBlank() ||
-                        listOf("title", "username", "email", "url", "category", "note").any {
-                            item.optString(it).contains(search, true)
-                        } ||
-                        entryTags(item).any { it.contains(search, true) })
-            }
-            .sortedWith(
-                compareByDescending<JSONObject> { it.optBoolean("isPinned") }
-                    .thenComparator { a, b ->
-                        when (sort) {
-                            "titleAsc" ->
-                                a.optString("title")
-                                    .compareTo(b.optString("title"), ignoreCase = true)
-                            "titleDesc" ->
-                                b.optString("title")
-                                    .compareTo(a.optString("title"), ignoreCase = true)
-                            "updatedAsc" ->
-                                a.optString("updatedAt").compareTo(b.optString("updatedAt"))
-                            else -> b.optString("updatedAt").compareTo(a.optString("updatedAt"))
-                        }
-                    }
-            )
-    val compact =
-        WindowInsets.ime.getBottom(LocalDensity.current) > 0 ||
-            LocalConfiguration.current.screenHeightDp < 500
-    val inlineNoteTools = notes && !compact && !ui.selecting.value
-    val headerInset = if (notes) 0.dp else 20.dp
+    })
+    fun clearSelection() { ui.selectedIds.value = emptySet() }
+    fun select(item: JSONObject) {
+        if (!vault.canEdit(item)) return
+        ui.selecting.value = true
+        val id = item.optString("id")
+        ui.selectedIds.value = if (id in ui.selectedIds.value) ui.selectedIds.value - id else ui.selectedIds.value + id
+    }
+    fun openItem(item: JSONObject) { if (ui.selecting.value) select(item) else open(item) }
+    val headerGutter = if (notes && grid) 10.dp else 0.dp
     val header: @Composable () -> Unit = {
         Column {
-            if (notes)
-                Row(
-                    Modifier.fillMaxWidth().heightIn(min = 64.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        t("笔记", "Notes"),
-                        Modifier.weight(1f),
-                        style = MaterialTheme.typography.headlineSmall,
-                        fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
-                    )
-                    IconButton(onClick = vault::lock) { Icon(Icons.Outlined.Lock, t("锁定", "Lock")) }
+            if (ui.selecting.value) {
+                Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = { ui.selecting.value = false; clearSelection() }) { Icon(Icons.Outlined.Close, t("取消选择", "Cancel selection")) }
+                    Text(t("已选择 ${ui.selectedIds.value.size} 项", "${ui.selectedIds.value.size} selected"), Modifier.weight(1f))
+                    IconButton(onClick = { ui.selectedIds.value = filtered.filter { vault.canEdit(it) }.map { it.optString("id") }.toSet() }) { Icon(Icons.Outlined.DoneAll, t("全选", "Select all")) }
+                    IconButton(enabled = ui.selectedIds.value.isNotEmpty(), onClick = { ui.tools.operation.value = "favorite" }) { Icon(Icons.Outlined.StarOutline, t("收藏所选", "Favorite selected")) }
+                    IconButton(enabled = ui.selectedIds.value.isNotEmpty(), onClick = { ui.tools.operation.value = "category" }) { Icon(Icons.Outlined.FolderOpen, t("移动到分类", "Move to category")) }
+                    IconButton(enabled = ui.selectedIds.value.isNotEmpty(), onClick = { ui.tools.operation.value = "delete" }) { Icon(Icons.Outlined.DeleteOutline, t("移到回收站", "Move to Trash")) }
                 }
-            if (!compact && !notes)
-                Column(
-                    Modifier.padding(horizontal = headerInset).padding(top = 16.dp, bottom = 18.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
-                ) {
-                    Text(
-                        if (notes) t("笔记", "Notes") else title,
-                        style = MaterialTheme.typography.headlineMedium,
-                    )
-                    Text(
-                        when (page) {
-                            "password" -> t("登录信息，随时取用。", "Your logins, ready when you need them.")
-                            "totp" -> t("验证码就在手边。", "Your verification codes, at a glance.")
-                            "crypto" ->
-                                t("集中管理钱包与恢复信息。", "Wallets and recovery information, together.")
-                            "secureNote" ->
-                                t("记下想法，也收好重要的事。", "A place for ideas and things that matter.")
-                            else -> t("删除的资料可以在这里恢复。", "Restore deleted entries here.")
-                        },
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            OutlinedTextField(
-                value = search,
-                onValueChange = {
-                    search = it
-                    ui.selectedIds.value = emptySet()
-                },
-                singleLine = true,
-                placeholder = {
-                    Text(
-                        if (notes) t("搜索笔记", "Search notes")
-                        else t("搜索名称、账号或网站", "Search titles, usernames, domains…"),
-                        maxLines = 1,
-                    )
-                },
-                leadingIcon = { Icon(Icons.Outlined.Search, null) },
-                trailingIcon = {
-                    if (search.isNotEmpty())
-                        IconButton(
-                            onClick = {
-                                search = ""
-                                ui.selectedIds.value = emptySet()
-                            }
-                        ) {
-                            Icon(Icons.Outlined.Close, t("清空搜索", "Clear search"))
-                        }
-                },
-                shape = RoundedCornerShape(if (notes) 16.dp else 12.dp),
-                colors =
-                    OutlinedTextFieldDefaults.colors(
-                        unfocusedContainerColor = MaterialTheme.colorScheme.surface,
-                        focusedContainerColor = MaterialTheme.colorScheme.surface,
-                        unfocusedBorderColor =
-                            if (notes) Color.Transparent
-                            else MaterialTheme.colorScheme.outlineVariant,
-                    ),
-                modifier = Modifier.fillMaxWidth().padding(horizontal = headerInset),
-            )
-            if (!compact) {
-                if (notes)
-                    Row(
-                        Modifier.fillMaxWidth().padding(top = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Box(Modifier.weight(1f)) {
-                            TextButton(
-                                onClick = { folderMenu = true },
-                                modifier = Modifier.fillMaxWidth(),
-                            ) {
-                                if (LocalDensity.current.fontScale <= 1.25f) {
-                                    Icon(Icons.Outlined.FolderOpen, null, Modifier.size(18.dp))
-                                    Spacer(Modifier.width(6.dp))
-                                }
-                                Text(
-                                    category.ifEmpty { t("全部笔记", "All notes") },
-                                    modifier = Modifier.weight(1f),
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
-                                Icon(Icons.Outlined.ExpandMore, null)
-                            }
-                            DropdownMenu(
-                                expanded = folderMenu,
-                                onDismissRequest = { folderMenu = false },
-                            ) {
-                                (listOf("") + categories).forEach { value ->
-                                    DropdownMenuItem(
-                                        text = { Text(value.ifEmpty { t("全部笔记", "All notes") }) },
-                                        onClick = {
-                                            category = value
-                                            ui.selectedIds.value = emptySet()
-                                            folderMenu = false
-                                        },
-                                    )
-                                }
-                                HorizontalDivider()
-                                DropdownMenuItem(
-                                    text = { Text(t("管理分类", "Manage folders")) },
-                                    onClick = {
-                                        folderMenu = false
-                                        manageCategories()
-                                    },
-                                )
-                            }
-                        }
-                        Text(
-                            "${filtered.size}",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            } else {
+                Surface(modifier = Modifier.fillMaxWidth().padding(start = 14.dp - headerGutter, end = 14.dp - headerGutter, top = 4.dp, bottom = 6.dp), shape = RoundedCornerShape(28.dp), color = MaterialTheme.colorScheme.surfaceContainer) {
+                    Row(Modifier.height(50.dp).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(onClick = { openNavigation?.invoke() }) { Icon(Icons.Outlined.MoreHoriz, t("打开导航", "Open navigation"), Modifier.size(20.dp)) }
+                        androidx.compose.foundation.text.BasicTextField(
+                            value = search, onValueChange = { search = it; clearSelection() }, singleLine = true,
+                            modifier = Modifier.weight(1f), textStyle = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.onSurface),
+                            cursorBrush = androidx.compose.ui.graphics.SolidColor(MaterialTheme.colorScheme.primary),
+                            decorationBox = { inner -> Box { if (search.isEmpty()) Text(when (page) {
+                                "secureNote" -> t("搜索笔记", "Search notes")
+                                "password" -> t("搜索账号", "Search accounts")
+                                "totp" -> t("搜索验证码", "Search codes")
+                                "wallets" -> t("搜索钱包", "Search wallets")
+                                else -> t("搜索$title", "Search $title")
+                            }, maxLines = 1, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium); inner() } },
                         )
-                        IconButton(onClick = { grid = !grid }) {
-                            Icon(
-                                if (grid) Icons.Outlined.ViewAgenda else Icons.Outlined.GridView,
-                                if (grid) t("切换列表", "List view") else t("切换网格", "Grid view"),
-                            )
-                        }
-                        Box {
-                            IconButton(onClick = { sortMenu = true }) {
-                                Icon(
-                                    if (favorites) Icons.Outlined.Star else Icons.Outlined.Sort,
-                                    t("筛选与排序", "Filter and sort"),
-                                )
-                            }
-                            DropdownMenu(
-                                expanded = sortMenu,
-                                onDismissRequest = { sortMenu = false },
-                            ) {
-                                DropdownMenuItem(
-                                    text = {
-                                        Text(
-                                            if (favorites) t("查看全部笔记", "Show all notes")
-                                            else t("仅看收藏", "Favorites only")
-                                        )
-                                    },
-                                    onClick = {
-                                        favorites = !favorites
-                                        ui.selectedIds.value = emptySet()
-                                        sortMenu = false
-                                    },
-                                )
-                                DropdownMenuItem(
-                                    text = { Text(t("最近修改", "Recently updated")) },
-                                    onClick = {
-                                        setSort("updatedDesc")
-                                        sortMenu = false
-                                    },
-                                )
-                                DropdownMenuItem(
-                                    text = { Text(t("最早修改", "Oldest updated")) },
-                                    onClick = {
-                                        setSort("updatedAsc")
-                                        sortMenu = false
-                                    },
-                                )
-                                DropdownMenuItem(
-                                    text = { Text(t("标题降序", "Title Z–A")) },
-                                    onClick = {
-                                        setSort("titleDesc")
-                                        sortMenu = false
-                                    },
-                                )
-                                DropdownMenuItem(
-                                    text = { Text(t("按标题", "By title")) },
-                                    onClick = {
-                                        setSort("titleAsc")
-                                        sortMenu = false
-                                    },
-                                )
-                            }
-                        }
-                        if (inlineNoteTools)
-                            CollectionTools(
-                                page,
-                                ui,
-                                filtered,
-                                state,
-                                vault,
-                                t,
-                                manageCategories,
-                                operationScope,
-                                compactActions = true,
-                            )
-                    }
-                else if (categories.isNotEmpty()) {
-                    Row(
-                        Modifier.horizontalScroll(rememberScrollState())
-                            .padding(horizontal = 16.dp, vertical = 10.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        (listOf("") + categories).forEach { value ->
-                            FilterChip(
-                                selected = category == value,
-                                onClick = {
-                                    category = value
-                                    ui.selectedIds.value = emptySet()
-                                },
-                                label = { Text(value.ifEmpty { t("全部", "All") }) },
-                                shape = RoundedCornerShape(24.dp),
-                                colors =
-                                    FilterChipDefaults.filterChipColors(
-                                        selectedContainerColor = MaterialTheme.colorScheme.primary,
-                                        selectedLabelColor = MaterialTheme.colorScheme.onPrimary,
-                                    ),
-                            )
-                        }
+                        if (search.isNotEmpty()) IconButton(onClick = { search = ""; clearSelection() }) { Icon(Icons.Outlined.Close, t("清空搜索", "Clear search"), Modifier.size(20.dp)) }
+                        IconButton(onClick = vault::lock) { Icon(Icons.Outlined.Lock, t("锁定", "Lock"), Modifier.size(20.dp)) }
                     }
                 }
-                if (!notes && tags.isNotEmpty())
-                    Row(
-                        Modifier.horizontalScroll(rememberScrollState())
-                            .padding(horizontal = 16.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        (listOf("") + tags).forEach { value ->
-                            FilterChip(
-                                selected = tag == value,
-                                onClick = {
-                                    tag = value
-                                    ui.selectedIds.value = emptySet()
-                                },
-                                label = { Text(value.ifEmpty { t("全部标签", "All tags") }) },
-                            )
-                        }
-                    }
+
             }
-            if (page != "trash" && !inlineNoteTools)
-                CollectionTools(
-                    page,
-                    ui,
-                    filtered,
-                    state,
-                    vault,
-                    t,
-                    manageCategories,
-                    operationScope,
-                )
-            if (!notes)
-                Row(
-                    Modifier.fillMaxWidth().padding(horizontal = headerInset),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        t(
-                            "${filtered.size} ${if (notes) "篇笔记" else "项资料"}",
-                            "${filtered.size} ${if (notes) "notes" else "items"}",
-                        ),
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Spacer(Modifier.weight(1f))
-                    IconToggleButton(
-                        checked = favorites,
-                        onCheckedChange = {
-                            favorites = it
-                            ui.selectedIds.value = emptySet()
-                        },
-                    ) {
-                        Icon(
-                            if (favorites) Icons.Outlined.Star else Icons.Outlined.StarOutline,
-                            t("仅看收藏", "Favorites only"),
-                        )
-                    }
+            Row(Modifier.fillMaxWidth().padding(start = 18.dp - headerGutter, end = 6.dp).heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(title, Modifier.weight(1f), style = MaterialTheme.typography.headlineMedium)
+                if (notes) {
+                    IconButton(onClick = { grid = !grid }) { Icon(if (grid) Icons.Outlined.ViewAgenda else Icons.Outlined.GridView, if (grid) t("切换列表", "List view") else t("切换网格", "Grid view"), Modifier.size(20.dp)) }
+                    IconButton(onClick = { sortSheet = true }) { Icon(Icons.Outlined.SwapVert, t("排序", "Sort"), Modifier.size(20.dp)) }
+                } else {
                     Box {
-                        IconButton(onClick = { sortMenu = true }) {
-                            Icon(Icons.Outlined.Sort, t("排序", "Sort"))
-                        }
-                        DropdownMenu(expanded = sortMenu, onDismissRequest = { sortMenu = false }) {
-                            DropdownMenuItem(
-                                text = { Text(t("最近修改", "Recently updated")) },
-                                onClick = {
-                                    setSort("updatedDesc")
-                                    sortMenu = false
-                                },
-                            )
-                            DropdownMenuItem(
-                                text = { Text(t("标题降序", "Title Z–A")) },
-                                onClick = {
-                                    setSort("titleDesc")
-                                    sortMenu = false
-                                },
-                            )
-                            DropdownMenuItem(
-                                text = { Text(t("最早修改", "Oldest updated")) },
-                                onClick = {
-                                    setSort("updatedAsc")
-                                    sortMenu = false
-                                },
-                            )
-                            DropdownMenuItem(
-                                text = { Text(t("按标题", "By title")) },
-                                onClick = {
-                                    setSort("titleAsc")
-                                    sortMenu = false
-                                },
-                            )
-                        }
+                        IconButton(onClick = { toolsSheet = true }) { Icon(Icons.Outlined.MoreHoriz, t("资料工具", "Collection tools"), Modifier.size(20.dp)) }
                     }
                 }
+            }
+            if (page != "favorites" && page != "trash") Row(
+                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(start = 14.dp - headerGutter, end = 14.dp - headerGutter, bottom = 10.dp),
+                horizontalArrangement = Arrangement.spacedBy(7.dp), verticalAlignment = Alignment.CenterVertically,
+            ) {
+                @Composable fun chip(label: String, selected: Boolean, action: () -> Unit) {
+                    FilterChip(selected = selected, modifier = Modifier.height(32.dp), onClick = { action(); clearSelection() }, label = { Text(label, style = MaterialTheme.typography.labelMedium) },
+                        shape = RoundedCornerShape(8.dp), border = BorderStroke(1.dp, if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.outlineVariant),
+                        colors = FilterChipDefaults.filterChipColors(containerColor = MaterialTheme.colorScheme.surface, selectedContainerColor = MaterialTheme.colorScheme.primaryContainer, selectedLabelColor = MaterialTheme.colorScheme.primary),
+                    )
+                }
+                if (notes) {
+                    chip(t("全部 ${source.size}", "All ${source.size}"), category.isEmpty()) { category = "" }
+                    categories.forEach { name -> chip("$name ${source.count { it.optString("category") == name }}", category == name) { category = name } }
+                    chip(t("管理", "Manage"), false) { categoriesSheet = true }
+                } else if (page == "wallets") {
+                    listOf("" to t("全部", "All"), "creditCard" to t("银行卡", "Cards"), "identity" to t("证件", "Identities"), "crypto" to t("加密货币", "Crypto")).forEach { (value, label) -> chip(label, kind == value) { kind = value } }
+                } else {
+                    chip(t("全部", "All"), !favorites && kind.isEmpty() && category.isEmpty()) { favorites = false; kind = ""; category = "" }
+                    chip(t("收藏", "Favorites"), favorites) { favorites = !favorites; kind = ""; category = "" }
+                    if (page == "password") {
+                        chip(t("需要处理", "Needs attention"), kind == "issue") { kind = if (kind == "issue") "" else "issue"; favorites = false; category = "" }
+                        categories.forEach { name -> chip(name, category == name) { category = name; kind = ""; favorites = false } }
+                    }
+                }
+            }
+            if (page == "totp") Text(t("点按复制当前验证码 · 时间以手机系统时钟为准", "Tap to copy the current code · Uses your device clock"),
+                Modifier.padding(start = 16.dp, end = 16.dp, bottom = 12.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (page == "password" && audit.isNotEmpty() && search.isBlank() && !favorites && kind.isEmpty()) Surface(
+                onClick = openHealth, modifier = Modifier.fillMaxWidth().padding(start = 10.dp, end = 10.dp, bottom = 12.dp), shape = RoundedCornerShape(14.dp), color = Color(0xFFB86A12).copy(alpha = .10f),
+            ) { Row(Modifier.padding(14.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Icon(Icons.Outlined.GppMaybe, null, tint = Color(0xFFB86A12), modifier = Modifier.size(22.dp))
+                Column { Text(t("${audit.size} 个账号需要处理", "${audit.size} accounts need attention"), style = MaterialTheme.typography.titleMedium)
+                    Text(t("弱密码、重复使用或已过期 · 查看密码健康", "Weak, reused or expired passwords · View password health"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            } }
+            if (page == "trash" && source.isNotEmpty()) Surface(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp), color = MaterialTheme.colorScheme.primaryContainer, shape = RoundedCornerShape(14.dp)) {
+                Row(Modifier.padding(14.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) { Icon(Icons.Outlined.Info, null, tint = MaterialTheme.colorScheme.primary); Column {
+                    Text(t("已删除的项目", "Deleted items"), style = MaterialTheme.typography.titleMedium)
+                    Text(t("恢复后回到原位置并保留全部字段与历史。", "Restore to the original location with all fields and history."), style = MaterialTheme.typography.bodySmall)
+                } }
+            }
         }
     }
-    val emptyState: @Composable () -> Unit = {
-        Column(
-            Modifier.fillMaxWidth().padding(24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            Icon(
-                if (notes) Icons.Outlined.Description else Icons.Outlined.Search,
-                null,
-                Modifier.size(36.dp),
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Text(
-                if (page == "trash" && source.isEmpty()) t("回收站为空", "Trash is empty")
-                else if (source.isEmpty()) t("还没有资料", "Nothing here yet")
-                else t("没有匹配的资料", "No matching entries"),
-                style = MaterialTheme.typography.titleMedium,
-            )
-            Text(
-                if (page == "trash" && source.isEmpty())
-                    t("删除的资料会显示在这里。", "Deleted entries will appear here.")
-                else if (source.isEmpty()) t("点击右下角 +，开始记录。", "Tap + to create your first entry.")
-                else t("试试其他关键词，或清除筛选。", "Try another search or clear your filters."),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            if (source.isNotEmpty())
-                TextButton(
-                    onClick = {
-                        search = ""
-                        category = ""
-                        tag = ""
-                        favorites = false
-                        ui.selectedIds.value = emptySet()
-                    }
-                ) {
-                    Text(t("清除筛选", "Clear filters"))
-                }
+    val empty: @Composable () -> Unit = {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 28.dp, vertical = 50.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Icon(if (search.isNotBlank()) Icons.Outlined.Search else if (notes) Icons.Outlined.Description else if (page == "favorites") Icons.Outlined.StarOutline else Icons.Outlined.Inbox, null, Modifier.size(42.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = .55f))
+            Text(when {
+                search.isNotBlank() -> t("没有找到“$search”", "No results for “$search”")
+                notes -> t("这个分类还没有笔记", "No notes in this category")
+                page == "favorites" -> t("还没有收藏", "No favorites yet")
+                page == "trash" -> t("回收站是空的", "Trash is empty")
+                page == "totp" -> t("还没有验证码", "No codes yet")
+                else -> t("这里还没有内容", "Nothing here yet")
+            }, style = MaterialTheme.typography.titleMedium)
+            Text(when {
+                search.isNotBlank() -> t("试试用户名、网站、标签或分类。", "Try a username, website, tag or category.")
+                notes -> t("删除分类只会清空归类，不会删除笔记。", "Removing a category keeps its notes.")
+                page == "favorites" -> t("在详情页点星标即可收藏。", "Tap the star in a detail to add a favorite.")
+                page == "totp" -> t("扫描网站提供的二维码，或手动输入密钥。", "Scan a QR code or enter a setup key.")
+                page == "trash" -> t("删除的项目会显示在这里。", "Deleted items appear here.")
+                else -> t("点“新建”添加第一项。", "Tap New to add the first item.")
+            }, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (search.isNotEmpty()) OutlinedButton(onClick = { search = "" }) { Text(t("清除搜索", "Clear search")) }
         }
     }
     if (notes && grid) {
-        val minimum = if (LocalDensity.current.fontScale > 1.2f) 210.dp else 160.dp
-        LazyVerticalStaggeredGrid(
-            columns = StaggeredGridCells.Adaptive(minimum),
-            state = ui.masonry,
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 100.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalItemSpacing = 12.dp,
-        ) {
-            item(key = "collection-controls", span = StaggeredGridItemSpan.FullLine) { header() }
-            if (filtered.isEmpty())
-                item(key = "empty", span = StaggeredGridItemSpan.FullLine) { emptyState() }
+        LazyVerticalStaggeredGrid(columns = StaggeredGridCells.Fixed(if (LocalDensity.current.fontScale > 1.2f) 1 else 2), state = ui.masonry,
+            modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 10.dp, end = 10.dp, bottom = 100.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalItemSpacing = 8.dp) {
+            item(key = "controls", span = StaggeredGridItemSpan.FullLine) { header() }
+            if (filtered.isEmpty()) item(key = "empty", span = StaggeredGridItemSpan.FullLine) { empty() }
             gridItems(filtered, key = { it.getString("id") }) { item ->
-                NoteCard(
-                    item,
-                    vault,
-                    t,
-                    { openItem(item) },
-                    { edit(item) },
-                    { delete(item) },
-                    selection =
-                        if (ui.selecting.value) item.optString("id") in ui.selectedIds.value
-                        else null,
-                )
+                NoteCard(item, vault, t, { openItem(item) }, { edit(item) }, { delete(item) }, if (ui.selecting.value) item.optString("id") in ui.selectedIds.value else null)
             }
         }
-    } else {
-        LazyColumn(
-            state = ui.list,
-            modifier = Modifier.fillMaxSize(),
-            contentPadding =
-                PaddingValues(
-                    start = if (notes) 20.dp else 0.dp,
-                    end = if (notes) 20.dp else 0.dp,
-                    bottom = 100.dp,
-                ),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            item(key = "collection-controls") { header() }
-            if (filtered.isEmpty()) item(key = "empty") { emptyState() }
-            items(filtered, key = { it.getString("id") }) { item ->
-                Box(Modifier.padding(horizontal = if (notes) 0.dp else 20.dp)) {
-                    if (item.optString("type") == "secureNote")
-                        NoteCard(
-                            item,
-                            vault,
-                            t,
-                            { openItem(item) },
-                            { edit(item) },
-                            { delete(item) },
-                            selection =
-                                if (ui.selecting.value) item.optString("id") in ui.selectedIds.value
-                                else null,
-                        )
-                    else
-                        CredentialCard(
-                            item,
-                            vault,
-                            t,
-                            { openItem(item) },
-                            { edit(item) },
-                            { delete(item) },
-                            selection =
-                                if (ui.selecting.value) item.optString("id") in ui.selectedIds.value
-                                else null,
-                        )
+    } else LazyColumn(state = ui.list, modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 100.dp)) {
+        item(key = "controls") { header() }
+        if (filtered.isEmpty()) item(key = "empty") { empty() }
+        itemsIndexed(filtered, key = { _, item -> item.getString("id") }) { index, item ->
+            Surface(modifier = Modifier.padding(horizontal = 10.dp), color = MaterialTheme.colorScheme.surface,
+                shape = RoundedCornerShape(topStart = if (index == 0) 16.dp else 0.dp, topEnd = if (index == 0) 16.dp else 0.dp, bottomStart = if (index == filtered.lastIndex) 16.dp else 0.dp, bottomEnd = if (index == filtered.lastIndex) 16.dp else 0.dp)) {
+                Column {
+                    CredentialCard(item, vault, t, { openItem(item) }, { edit(item) }, { delete(item) }, if (ui.selecting.value) item.optString("id") in ui.selectedIds.value else null, { select(item) }, findings[item.optString("id")])
+                    if (index != filtered.lastIndex) HorizontalDivider(Modifier.padding(start = 60.dp), thickness = .5.dp, color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = .45f))
                 }
             }
         }
     }
-}
-
-@OptIn(ExperimentalFoundationApi::class, ExperimentalLayoutApi::class)
-@Composable
-private fun CredentialCard(
-    item: JSONObject,
-    vault: VaultRepository,
-    t: (String, String) -> String,
-    open: () -> Unit,
-    edit: () -> Unit,
-    delete: () -> Unit,
-    selection: Boolean? = null,
-) {
-    val scope = rememberCoroutineScope()
-    var code by remember(item.optString("id")) { mutableStateOf("") }
-    var menu by remember { mutableStateOf(false) }
-    var copyMenu by remember { mutableStateOf(false) }
-    var remaining by remember { mutableIntStateOf(0) }
-    val extra = item.optJSONArray("accounts")?.objects().orEmpty()
-    val period = item.optInt("period", 30).coerceAtLeast(1)
-    val hasCode =
-        item.optString("secret").isNotBlank() &&
-            item.optString("type") in listOf("password", "totp")
-    LaunchedEffect(item.toString()) {
-        if (hasCode && !item.optBoolean("isDeleted"))
-            while (true) {
-                remaining = period - ((System.currentTimeMillis() / 1000) % period).toInt()
-                code =
-                    runCatching {
-                            vault
-                                .command(
-                                    "totp",
-                                    JSONObject()
-                                        .put("secret", item.optString("secret"))
-                                        .put("period", item.optInt("period", 30))
-                                        .put("time", System.currentTimeMillis() / 1000),
-                                )
-                                .optString("code")
-                        }
-                        .getOrDefault("")
-                delay(1000)
-            }
+    CollectionTools(page, ui, filtered, state, vault, t, manageCategories, operationScope, showToolbar = false)
+    if (toolsSheet) ModalBottomSheet(onDismissRequest = { toolsSheet = false }) {
+        Text(t("资料工具", "Collection tools"), Modifier.padding(horizontal = 20.dp), style = MaterialTheme.typography.titleLarge)
+        TextButton(onClick = { toolsSheet = false; sortSheet = true }) { Text(t("排序", "Sort")) }
+        CollectionTools(page, ui, filtered, state, vault, t, { toolsSheet = false; manageCategories() }, operationScope)
+        Spacer(Modifier.height(24.dp))
     }
-    Surface(
-        modifier =
-            Modifier.combinedClickable(
-                onClick = {
-                    if (selection != null) open()
-                    else if (item.optString("type") == "totp" && !item.optBoolean("isDeleted")) {
-                        if (code.isNotEmpty()) vault.copy(code)
-                    } else open()
-                },
-                onLongClick = {
-                    if (selection != null) open()
-                    else if (item.optString("type") == "totp" || !vault.canEdit(item)) menu = true
-                    else delete()
-                },
-            ),
-        shape = RoundedCornerShape(18.dp),
-        color = MaterialTheme.colorScheme.surface,
-        border =
-            BorderStroke(
-                if (item.optString("colorLabel").isBlank()) 1.dp else 2.dp,
-                legacyItemColor(item.optString("colorLabel"))
-                    ?: MaterialTheme.colorScheme.outlineVariant,
-            ),
-    ) {
-        Column(
-            Modifier.fillMaxWidth().padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                if (selection != null)
-                    Checkbox(
-                        checked = selection,
-                        enabled = vault.canEdit(item),
-                        onCheckedChange = { open() },
-                    )
-                Surface(
-                    shape = CircleShape,
-                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                ) {
-                    Box(Modifier.size(42.dp), contentAlignment = Alignment.Center) {
-                        Text(
-                            item.optString("title").take(1).uppercase(),
-                            style = MaterialTheme.typography.titleLarge,
-                        )
-                    }
-                }
-                Column(Modifier.weight(1f)) {
-                    Text(
-                        item.optString("title"),
-                        style = MaterialTheme.typography.titleMedium,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    Text(
-                        item
-                            .optString(
-                                if (item.optString("type") == "crypto") "address" else "username"
-                            )
-                            .ifEmpty { item.optString("url") },
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        style = MaterialTheme.typography.bodyMedium,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-                if (item.optBoolean("isPinned"))
-                    Icon(
-                        Icons.Outlined.PushPin,
-                        t("已置顶", "Pinned"),
-                        Modifier.size(16.dp),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-            }
-            if (code.isNotEmpty())
-                Row(
-                    Modifier.fillMaxWidth().clickable(enabled = selection == null) {
-                        vault.copy(code)
-                    },
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        code.chunked(3).joinToString(" "),
-                        Modifier.weight(1f),
-                        style = MaterialTheme.typography.headlineMedium,
-                        fontFamily = FontFamily.Monospace,
-                        color = MaterialTheme.colorScheme.primary,
-                    )
-                    Box(contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator(
-                            progress = { remaining.toFloat() / period },
-                            modifier = Modifier.size(36.dp),
-                            strokeWidth = 3.dp,
-                        )
-                        Text("$remaining", style = MaterialTheme.typography.labelSmall)
-                    }
-                }
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-                val badges = mutableListOf<String>()
-                if (extra.isNotEmpty())
-                    badges += t("账号 · ${extra.size + 1}", "Accounts · ${extra.size + 1}")
-                badges += entryTags(item)
-                if (item.optString("type") == "password") {
-                    if (
-                        item.optString("password").length < 12 ||
-                            extra.any { it.optString("password").length < 12 }
-                    )
-                        badges += t("弱密码", "Weak password")
-                    val own = listOf(item) + extra
-                    val all =
-                        vault.state.value.entries
-                            .filter {
-                                it.optString("type") == "password" && !it.optBoolean("isDeleted")
+    if (sortSheet) ModalBottomSheet(onDismissRequest = { sortSheet = false }) {
+        Text(t("排序", "Sort"), Modifier.padding(horizontal = 20.dp, vertical = 8.dp), style = MaterialTheme.typography.titleLarge)
+        listOf("updatedDesc" to t("最近修改", "Recently updated"), "updatedAsc" to t("最早修改", "Oldest updated"), "titleAsc" to t("标题升序", "Title A–Z"), "titleDesc" to t("标题降序", "Title Z–A")).forEach { (value, label) ->
+            ListItem(headlineContent = { Text(label) }, trailingContent = { if (sort == value) Icon(Icons.Outlined.Check, null, tint = MaterialTheme.colorScheme.primary) }, modifier = Modifier.clickable {
+                scope.launch { val sorts = JSONObject(state.settings.optJSONObject("collectionSort")?.toString() ?: "{}").put(page, value); if (vault.mutate("settings", JSONObject().put("settings", JSONObject().put("collectionSort", sorts)))) sortSheet = false }
+            })
+        }
+        if (notes) TextButton(onClick = { sortSheet = false; toolsSheet = true }, modifier = Modifier.padding(horizontal = 12.dp)) { Text(t("资料工具", "Collection tools")) }
+        Spacer(Modifier.height(20.dp))
+    }
+    if (categoriesSheet) ModalBottomSheet(sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), onDismissRequest = { if (!categoryBusy) categoriesSheet = false }) {
+        Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(t("笔记分类", "Note categories"), style = MaterialTheme.typography.titleLarge)
+            Text(t("删除分类只会清空归类，不会删除笔记。", "Removing a category keeps its notes."), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Surface(shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.surfaceContainerLow) {
+                Column {
+                    categories.forEachIndexed { index, name ->
+                        Row(Modifier.fillMaxWidth().heightIn(min = 62.dp).padding(start = 14.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Outlined.FolderOpen, null, Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
+                                Text(name, style = MaterialTheme.typography.bodyMedium)
+                                Text(t("${source.count { it.optString("category") == name }} 篇", "${source.count { it.optString("category") == name }} notes"), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
-                            .flatMap {
-                                listOf(it) + it.optJSONArray("accounts")?.objects().orEmpty()
-                            }
-                    if (
-                        own.any { account ->
-                            account.optString("password").isNotEmpty() &&
-                                all.count {
-                                    it.optString("password") == account.optString("password")
-                                } > 1
+                            IconButton(enabled = !categoryBusy, onClick = { categoryToRemove = name }) { Icon(Icons.Outlined.DeleteOutline, t("删除分类", "Remove category"), Modifier.size(18.dp)) }
                         }
-                    )
-                        badges += t("重复密码", "Reused password")
-                    val duration = item.optInt("passwordDuration")
-                    if (duration > 0)
-                        runCatching {
-                            val expires =
-                                Instant.parse(item.optString("passwordLastChanged"))
-                                    .plusSeconds(duration.toLong() * 86400)
-                                    .toEpochMilli()
-                            val days = (expires - System.currentTimeMillis()) / 86400000
-                            if (expires < System.currentTimeMillis()) badges += t("已过期", "Expired")
-                            else if (days <= 7)
-                                badges += t("${days} 天后到期", "Expires in ${days} days")
-                        }
-                }
-                badges.forEach { label ->
-                    Surface(
-                        shape = RoundedCornerShape(7.dp),
-                        color = MaterialTheme.colorScheme.surfaceContainerLow,
-                    ) {
-                        Text(
-                            label,
-                            Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                            style = MaterialTheme.typography.labelSmall,
-                        )
+                        if (index != categories.lastIndex) HorizontalDivider(Modifier.padding(start = 46.dp), thickness = .5.dp, color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = .45f))
                     }
                 }
             }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(
-                    enabled =
-                        selection == null && vault.canEdit(item) && !item.optBoolean("isDeleted"),
-                    onClick = {
-                        scope.launch {
-                            vault.save(
-                                JSONObject(item.toString())
-                                    .put("isFavorite", !item.optBoolean("isFavorite"))
-                            )
-                        }
-                    },
-                ) {
-                    Icon(
-                        if (item.optBoolean("isFavorite")) Icons.Outlined.Star
-                        else Icons.Outlined.StarOutline,
-                        t("收藏", "Favorite"),
-                        tint =
-                            if (item.optBoolean("isFavorite")) MaterialTheme.colorScheme.primary
-                            else MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                val copyValue =
-                    when (item.optString("type")) {
-                        "totp" -> code
-                        "crypto" -> item.optString("address")
-                        else -> item.optString("password")
-                    }
-                Box {
-                    IconButton(
-                        enabled =
-                            selection == null &&
-                                (copyValue.isNotEmpty() || extra.isNotEmpty()) &&
-                                !item.optBoolean("isDeleted"),
-                        onClick = {
-                            if (item.optString("type") == "password" && extra.isNotEmpty())
-                                copyMenu = true
-                            else vault.copy(copyValue)
-                        },
-                    ) {
-                        Icon(Icons.Outlined.ContentCopy, t("复制", "Copy"))
-                    }
-                    DropdownMenu(expanded = copyMenu, onDismissRequest = { copyMenu = false }) {
-                        (listOf(item) + extra).forEachIndexed { index, account ->
-                            DropdownMenuItem(
-                                text = {
-                                    Text(
-                                        (if (index == 0) t("默认账号", "Default account")
-                                        else
-                                            account.optString("label").ifEmpty {
-                                                t("账号 ${index + 1}", "Account ${index + 1}")
-                                            }) + " · " + account.optString("username")
-                                    )
-                                },
-                                onClick = {
-                                    vault.copy(account.optString("password"))
-                                    copyMenu = false
-                                },
-                            )
-                        }
-                    }
-                }
-                Box {
-                    IconButton(enabled = selection == null, onClick = { menu = true }) {
-                        Icon(Icons.Outlined.MoreHoriz, t("更多", "More"))
-                    }
-                    EntryMenu(menu, { menu = false }, item, vault, t, edit, delete)
-                }
-                Spacer(Modifier.weight(1f))
-                if (!vault.canEdit(item))
-                    Text(
-                        t("只读", "Read only"),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+            if (addingCategory) Row(verticalAlignment = Alignment.CenterVertically) {
+                OutlinedTextField(categoryName, { categoryName = it }, label = { Text(t("新分类", "New category")) }, singleLine = true, modifier = Modifier.weight(1f), enabled = !categoryBusy)
+                TextButton(enabled = !categoryBusy && categoryName.isNotBlank(), onClick = { scope.launch { categoryBusy = true; if (vault.mutate("category-add", JSONObject().put("name", categoryName.trim()))) { categoryName = ""; addingCategory = false }; categoryBusy = false } }) { Text(t("添加", "Add")) }
+            } else FilledTonalButton(onClick = { addingCategory = true }, modifier = Modifier.fillMaxWidth()) {
+                Icon(Icons.Outlined.Add, null, Modifier.size(18.dp))
+                Spacer(Modifier.width(6.dp))
+                Text(t("新建分类", "New category"))
             }
+            Spacer(Modifier.height(24.dp))
         }
     }
+    categoryToRemove?.let { name -> AlertDialog(onDismissRequest = { if (!categoryBusy) categoryToRemove = null }, title = { Text(t("删除分类“$name”？", "Remove “$name”?")) }, text = { Text(t("笔记会保留，只清空归类。", "Notes are kept; only their category is cleared.")) },
+        confirmButton = { TextButton(enabled = !categoryBusy, onClick = { scope.launch { categoryBusy = true; if (vault.mutate("category-remove", JSONObject().put("name", name).put("time", Instant.now().toString()))) { if (category == name) category = ""; categoryToRemove = null }; categoryBusy = false } }) { Text(t("删除分类", "Remove category")) } }, dismissButton = { TextButton(enabled = !categoryBusy, onClick = { categoryToRemove = null }) { Text(t("取消", "Cancel")) } }) }
 }
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun NoteCard(
-    item: JSONObject,
-    vault: VaultRepository,
-    t: (String, String) -> String,
-    open: () -> Unit,
-    edit: () -> Unit,
-    delete: () -> Unit,
-    selection: Boolean? = null,
+private fun CredentialCard(
+    item: JSONObject, vault: VaultRepository, t: (String, String) -> String,
+    open: () -> Unit, edit: () -> Unit, delete: () -> Unit, selection: Boolean? = null,
+    longSelect: () -> Unit = {}, finding: JSONObject? = null,
 ) {
+    val type = item.optString("type")
+    var code by remember(item.optString("id")) { mutableStateOf("") }
+    var remaining by remember { mutableIntStateOf(0) }
+    val period = item.optInt("period", 30).coerceAtLeast(1)
     var menu by remember { mutableStateOf(false) }
-    Box {
-        Surface(
-            shape = RoundedCornerShape(18.dp),
-            color = MaterialTheme.colorScheme.surface,
-            border =
-                if (selection == true) BorderStroke(2.dp, MaterialTheme.colorScheme.primary)
-                else null,
-            modifier =
-                Modifier.fillMaxWidth()
-                    .combinedClickable(
-                        onClick = open,
-                        onLongClick = { if (selection != null) open() else menu = true },
-                        onLongClickLabel = t("笔记操作", "Note actions"),
-                    ),
-        ) {
-            Column(
-                Modifier.padding(14.dp).heightIn(min = 128.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Row(verticalAlignment = Alignment.Top) {
-                    if (selection != null)
-                        Checkbox(
-                            checked = selection,
-                            onCheckedChange = { open() },
-                            enabled = vault.canEdit(item),
-                        )
-                    Text(
-                        item.optString("title").ifEmpty { t("未命名笔记", "Untitled note") },
-                        Modifier.weight(1f),
-                        style = MaterialTheme.typography.titleMedium,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    if (item.optBoolean("isPinned"))
-                        Icon(
-                            Icons.Outlined.PushPin,
-                            t("已置顶", "Pinned"),
-                            Modifier.size(16.dp),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    else if (item.optBoolean("isFavorite"))
-                        Icon(
-                            Icons.Outlined.Star,
-                            t("已收藏", "Favorite"),
-                            Modifier.size(16.dp),
-                            tint = Color(0xFFC48B0B),
-                        )
-                }
-                val preview =
-                    item
-                        .optString("note")
-                        .replace(Regex("(?m)^\\s{0,3}(#+\\s*|[-*+]\\s+)"), "")
-                        .replace("**", "")
-                        .trim()
-                if (preview.isNotEmpty())
-                    Text(
-                        preview,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 4,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        if (item.optString("category").isNotEmpty())
-                            Text(
-                                item.optString("category"),
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                        Text(
-                            noteDate(item),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                    IconButton(
-                        enabled = selection == null,
-                        onClick = { menu = true },
-                        modifier = Modifier.size(48.dp),
-                    ) {
-                        Icon(Icons.Outlined.MoreHoriz, t("更多", "More"), Modifier.size(20.dp))
-                    }
-                }
+    val hasCode = type == "totp" && item.optString("secret").isNotBlank() && !item.optBoolean("isDeleted")
+    LaunchedEffect(item.toString()) {
+        if (hasCode) while (true) {
+            remaining = period - (System.currentTimeMillis() / 1000 % period).toInt()
+            code = runCatching { vault.command("totp", JSONObject().put("secret", item.optString("secret")).put("period", period).put("time", System.currentTimeMillis() / 1000)).optString("code") }.getOrDefault("")
+            delay(1000)
+        }
+    }
+    val sub = when (type) {
+        "secureNote" -> item.optString("note").lineSequence().firstOrNull { it.isNotBlank() }.orEmpty()
+        "crypto" -> item.optString("address").let { if (it.length > 22) it.take(10) + "…" + it.takeLast(6) else it }
+        "creditCard" -> item.optJSONObject("card")?.let { card -> listOf(card.optString("bank").ifBlank { card.optString("brand") }, card.optString("number").takeLast(4).let { if (it.isNotBlank()) "•••• $it" else "" }).filter { it.isNotBlank() }.joinToString(" · ") }.orEmpty()
+        "identity" -> item.optJSONObject("identity")?.let { it.optString("name").ifBlank { it.optString("fullName") }.ifBlank { listOf(it.optString("lastName"), it.optString("firstName")).filter { part -> part.isNotBlank() }.joinToString(" ") } }.orEmpty()
+        "device" -> item.optJSONObject("device")?.let { listOf(it.optString("username"), it.optString("host")).filter { it.isNotBlank() }.joinToString("@") }.orEmpty()
+        else -> item.optString("username").ifBlank { item.optString("url") }
+    }
+    Row(Modifier.fillMaxWidth().combinedClickable(onClick = { if (hasCode && selection == null) { if (code.isNotBlank()) vault.copy(code) } else open() }, onLongClick = { if (item.optBoolean("isDeleted") || type == "secureNote") menu = true else longSelect() }).padding(start = 14.dp, end = 4.dp, top = 6.dp, bottom = 6.dp).heightIn(min = 50.dp),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        if (selection != null) {
+            Surface(shape = RoundedCornerShape(10.dp), color = if (selection) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.primaryContainer, modifier = Modifier.size(38.dp)) {
+                Box(contentAlignment = Alignment.Center) { if (selection) Icon(Icons.Outlined.Check, null, tint = MaterialTheme.colorScheme.onPrimary) }
+            }
+        } else if (hasCode) {
+            CircularProgressIndicator(progress = { remaining.toFloat() / period }, modifier = Modifier.size(30.dp), strokeWidth = 3.dp, trackColor = MaterialTheme.colorScheme.outlineVariant)
+        } else {
+            val icon = when (type) { "secureNote" -> Icons.Outlined.Description; "creditCard" -> Icons.Outlined.CreditCard; "identity" -> Icons.Outlined.Badge; "crypto" -> Icons.Outlined.CurrencyBitcoin; "device" -> Icons.Outlined.Dns; "totp" -> Icons.Outlined.Timer; else -> null }
+            val tint = if (icon != null) MaterialTheme.colorScheme.primaryContainer else accountTileColor(item.optString("title"))
+            Surface(shape = RoundedCornerShape(11.dp), color = tint, modifier = Modifier.size(38.dp)) {
+                Box(contentAlignment = Alignment.Center) { if (icon != null) Icon(icon, null, Modifier.size(22.dp), tint = MaterialTheme.colorScheme.primary) else Text(item.optString("title").take(1).uppercase(), color = Color.White, style = MaterialTheme.typography.titleMedium) }
             }
         }
-        EntryMenu(menu, { menu = false }, item, vault, t, edit, delete)
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                if (item.optBoolean("isPinned")) Icon(Icons.Outlined.PushPin, t("已置顶", "Pinned"), Modifier.size(12.dp))
+                Text(item.optString("title"), style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                if (item.optBoolean("isFavorite")) Text("★", color = Color(0xFFB86A12), style = MaterialTheme.typography.labelSmall)
+                if (finding != null) Surface(shape = RoundedCornerShape(6.dp), color = Color(0xFFB86A12).copy(alpha = .1f)) { Text(when { finding.optBoolean("weak") -> t("弱密码", "Weak"); finding.optBoolean("reused") -> t("重复", "Reused"); else -> t("过期", "Expired") }, Modifier.padding(horizontal = 4.dp, vertical = 1.dp), style = MaterialTheme.typography.labelSmall, color = Color(0xFFB86A12)) }
+            }
+            if (sub.isNotBlank()) Text(sub.replace(Regex("[\\r\\n]+"), " "), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (!vault.canEdit(item)) Text(t("只读", "Read only"), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        if (selection == null && !item.optBoolean("isDeleted")) {
+            if (hasCode) {
+                Text(code.chunked(3).joinToString(" "), color = MaterialTheme.colorScheme.primary, fontFamily = FontFamily.Monospace, fontSize = 18.sp)
+                IconButton(onClick = open) { Icon(Icons.Outlined.ChevronRight, t("详情", "Details"), Modifier.size(18.dp)) }
+            } else if (type == "password") IconButton(enabled = item.optString("password").isNotBlank(), onClick = { vault.copy(item.optString("password")) }) { Icon(Icons.Outlined.ContentCopy, t("复制密码", "Copy password"), Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant) }
+        }
     }
+    EntryMenu(menu, { menu = false }, item, vault, t, edit, delete)
 }
 
+private fun accountTileColor(title: String): Color = when (title.take(1).uppercase()) {
+    "G" -> Color(0xFF24292F); "A" -> Color(0xFF555A64); "F" -> Color(0xFF9360EE)
+    else -> Color(0xFF3265DB)
+}
+
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-internal fun EntryMenu(
-    expanded: Boolean,
-    dismiss: () -> Unit,
-    item: JSONObject,
-    vault: VaultRepository,
-    t: (String, String) -> String,
-    edit: () -> Unit,
-    delete: () -> Unit,
-) {
+private fun NoteCard(item: JSONObject, vault: VaultRepository, t: (String, String) -> String, open: () -> Unit, edit: () -> Unit, delete: () -> Unit, selection: Boolean? = null) {
+    var menu by remember { mutableStateOf(false) }
+    Surface(shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, if (selection == true) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant.copy(alpha = .45f)),
+        modifier = Modifier.fillMaxWidth().combinedClickable(onClick = open, onLongClick = { if (selection != null) open() else menu = true }, onLongClickLabel = t("笔记操作", "Note actions"))) {
+        Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                if (selection != null) Checkbox(selection, { open() }, enabled = vault.canEdit(item), modifier = Modifier.size(24.dp))
+                if (item.optBoolean("isPinned")) Icon(Icons.Outlined.PushPin, t("已置顶", "Pinned"), Modifier.size(14.dp))
+                Text(item.optString("title").ifEmpty { t("未命名笔记", "Untitled note") }, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            }
+            val preview = item.optString("note").replace(Regex("(?m)^\\s{0,3}(#+\\s*|[-*+]\\s+)"), "").replace("**", "").trim()
+            if (preview.isNotBlank()) Text(preview, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp, lineHeight = 19.sp, maxLines = 5, overflow = TextOverflow.Ellipsis)
+            Text(listOf(noteDate(item), item.optString("category"), if (item.optBoolean("isFavorite")) "★" else "").filter { it.isNotBlank() }.joinToString(" · "), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+    }
+    EntryMenu(menu, { menu = false }, item, vault, t, edit, delete)
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun EntryMenu(expanded: Boolean, dismiss: () -> Unit, item: JSONObject, vault: VaultRepository, t: (String, String) -> String, edit: () -> Unit, delete: () -> Unit) {
     val scope = rememberCoroutineScope()
     val editable = vault.canEdit(item)
-    DropdownMenu(expanded = expanded, onDismissRequest = dismiss) {
-        if (!item.optBoolean("isDeleted")) {
-            if (item.optString("type") == "totp")
-                DropdownMenuItem(
-                    text = { Text(t("导出 otpauth 链接", "Export otpauth link")) },
-                    onClick = {
-                        dismiss()
-                        vault.copy(totpSetupUri(item))
-                    },
-                )
-            DropdownMenuItem(
-                text = { Text(t("编辑", "Edit")) },
-                onClick = {
-                    dismiss()
-                    edit()
-                },
-                enabled = editable,
-            )
-            for ((field, label) in
-                listOf(
-                    "isPinned" to
-                        if (item.optBoolean("isPinned")) t("取消置顶", "Unpin") else t("置顶", "Pin"),
-                    "isFavorite" to
-                        if (item.optBoolean("isFavorite")) t("取消收藏", "Unfavorite")
-                        else t("收藏", "Favorite"),
-                )) {
-                DropdownMenuItem(
-                    text = { Text(label) },
-                    onClick = {
-                        dismiss()
-                        scope.launch {
-                            vault.save(
-                                JSONObject(item.toString()).put(field, !item.optBoolean(field))
-                            )
-                        }
-                    },
-                    enabled = editable,
-                )
+    var history by remember(item.optString("id")) { mutableStateOf(false) }
+    var share by remember(item.optString("id")) { mutableStateOf(false) }
+    var moving by remember(item.optString("id")) { mutableStateOf(false) }
+    val state by vault.state.collectAsState()
+    if (history) HistoryDialog(vault, item.optString("id"), t) { history = false }
+    if (share) ShareDialog(vault, item.optString("id"), t) { share = false }
+    if (expanded) ModalBottomSheet(onDismissRequest = dismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), containerColor = MaterialTheme.colorScheme.surface) {
+        Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
+            Text(item.optString("title"), Modifier.padding(horizontal = 20.dp, vertical = 8.dp), style = MaterialTheme.typography.titleLarge)
+            @Composable fun action(label: String, icon: androidx.compose.ui.graphics.vector.ImageVector, enabled: Boolean = true, danger: Boolean = false, click: () -> Unit) {
+                ListItem(headlineContent = { Text(label, color = if (danger) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface) }, leadingContent = { Icon(icon, null, tint = if (danger) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant) }, modifier = Modifier.clickable(enabled = enabled, onClick = click), colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface))
             }
-        } else
-            DropdownMenuItem(
-                text = { Text(t("恢复", "Restore")) },
-                onClick = {
-                    dismiss()
-                    scope.launch { vault.trash(item) }
-                },
-                enabled = editable,
-            )
-        HorizontalDivider()
-        DropdownMenuItem(
-            text = {
-                Text(
-                    if (item.optBoolean("isDeleted")) t("永久删除…", "Delete permanently…")
-                    else t("删除…", "Delete…"),
-                    color = MaterialTheme.colorScheme.error,
-                )
-            },
-            leadingIcon = { Icon(Icons.Outlined.DeleteOutline, null) },
-            onClick = {
-                dismiss()
-                delete()
-            },
-            enabled =
-                editable &&
-                    !(item.optBoolean("isDeleted") && item.optString("sharedVaultId").isNotEmpty()),
-        )
-        if (!editable)
-            DropdownMenuItem(
-                text = { Text(t("此共享资料为只读", "This shared entry is read only")) },
-                onClick = {},
-                enabled = false,
-            )
+            if (!item.optBoolean("isDeleted")) {
+                if (editable && item.optString("type") != "device") action(t("编辑", "Edit"), Icons.Outlined.Edit) { dismiss(); edit() }
+                listOf("isPinned" to (if (item.optBoolean("isPinned")) t("取消置顶", "Unpin") else t("置顶", "Pin")), "isFavorite" to (if (item.optBoolean("isFavorite")) t("取消收藏", "Unfavorite") else t("收藏", "Favorite"))).forEach { (field, label) ->
+                    action(label, if (field == "isPinned") Icons.Outlined.PushPin else Icons.Outlined.StarOutline, editable) { dismiss(); scope.launch { vault.save(JSONObject(item.toString()).put(field, !item.optBoolean(field))) } }
+                }
+                if (editable) action(t("移动到分类", "Move to category"), Icons.Outlined.FolderOpen) { dismiss(); moving = true }
+                action(t("版本历史", "Version history"), Icons.Outlined.History) { dismiss(); history = true }
+                action(t("临时分享", "Temporary share"), Icons.Outlined.Share) { dismiss(); share = true }
+                if (item.optString("type") == "totp") action(t("导出 otpauth 链接", "Export otpauth link"), Icons.Outlined.QrCode) { dismiss(); vault.copy(totpSetupUri(item)) }
+            } else action(t("恢复", "Restore"), Icons.Outlined.Restore, editable) { dismiss(); scope.launch { vault.trash(item) } }
+            HorizontalDivider(Modifier.padding(horizontal = 20.dp))
+            action(if (item.optBoolean("isDeleted")) t("永久删除…", "Delete permanently…") else t("移到回收站", "Move to Trash"), Icons.Outlined.DeleteOutline, editable && !(item.optBoolean("isDeleted") && item.optString("sharedVaultId").isNotEmpty()), true) { dismiss(); delete() }
+            if (!editable) Text(t("此共享资料为只读", "This shared entry is read only"), Modifier.padding(20.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Spacer(Modifier.height(20.dp))
+        }
+    }
+    if (moving) ModalBottomSheet(onDismissRequest = { moving = false }, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
+        Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
+            Text(t("移动到分类", "Move to category"), Modifier.padding(20.dp), style = MaterialTheme.typography.titleLarge)
+            val categories = (state.settings.optJSONArray("noteCategories")?.let { a -> (0 until a.length()).map { a.optString(it) } }.orEmpty() + state.entries.map { it.optString("category") }).filter { it.isNotBlank() }.distinct().sorted()
+            (listOf("") + categories).forEach { name -> ListItem(headlineContent = { Text(name.ifBlank { t("未分类", "Unfiled") }) }, modifier = Modifier.clickable { scope.launch { if (vault.canEdit(item) && vault.save(JSONObject(item.toString()).put("category", name))) moving = false } }) }
+            Spacer(Modifier.height(20.dp))
+        }
     }
 }

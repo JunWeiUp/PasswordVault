@@ -7,11 +7,13 @@ source tool/cargo_fork_env.sh
 bash tool/nsh_mac.sh package App.tsx --target macos
 channel="$(sed -n 's/^channel = "\(.*\)"/\1/p' apps/desktop/rust-toolchain.toml)"
 RUSTUP_TOOLCHAIN="$channel" "$CARGO" build --manifest-path apps/desktop/Cargo.toml --release --bin pv-browser-host --bin pv-mcp --locked
+RUSTUP_TOOLCHAIN="$channel" "$CARGO" build --manifest-path apps/desktop/Cargo.toml --release --no-default-features --features background-service --bin pv-background --locked
 app="$root/apps/desktop/.nsh/out/PasswordVault.app"
 bash tool/macos-nsh/icon.sh "$app"
 cp apps/desktop/target/release/pv-browser-host apps/desktop/target/release/pv-mcp "$app/Contents/MacOS/"
 cp apps/macos-legacy/Resources/BrowserIdentity.json "$app/Contents/Resources/"
 /usr/libexec/PlistBuddy -c 'Add :PVVaultDirectoryName string PasswordVaultNative' "$app/Contents/Info.plist"
+bash tool/macos-nsh/embed-service.sh "$app" apps/desktop/target/release/pv-background -
 for helper in pv-browser-host pv-mcp; do
   codesign --force --sign - "$app/Contents/MacOS/$helper"
 done

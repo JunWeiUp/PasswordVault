@@ -15,6 +15,48 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class PersonalRelayTest {
+    @Test fun pendingRecordsSurvivePausedAndUnavailableManualSync() = runBlocking {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val directory = File(context.cacheDir, "sync-progress-${UUID.randomUUID()}")
+        val vault = VaultRepository(context, directory)
+        suspend fun loaded() = withTimeout(15_000) { while (vault.relay.state.value.device.isEmpty() || vault.relay.state.value.busy) delay(25) }
+        try {
+            withTimeout(15_000) { while (!vault.state.value.ready) delay(25) }
+            vault.authenticate("fixture", true); loaded()
+            val config = JSONObject(vault.command("relay-credentials-read").getString("data"))
+            assertTrue(vault.save(VaultRepository.blank("secureNote").put("title", "Offline synthetic note")))
+            vault.command("relay-init", JSONObject().put("role", "mobile").put("device", config.getString("device")).put("hub", "fixture-hub").put("group", "fixture-group"))
+            vault.command("relay-trust", JSONObject().put("peer", "fixture-hub"))
+            val pending = vault.command("relay-status").getInt("pending")
+            // One note plus the category-set record; these are not two unsaved edits.
+            assertEquals(2, pending)
+            val peerKey = io.github.junweiup.commonrelay.Crypto("passwordvault", "fixture-group", "fixture-hub", "01".repeat(32), emptyMap()).publicKey()
+            config.put("group", "fixture-group").put("hub", "fixture-hub").put("paused", true)
+                .put("peers", JSONObject().put("fixture-hub", peerKey)).put("token", "")
+            vault.command("relay-credentials-write", JSONObject().put("data", config.toString()))
+            vault.relay.setUnlocked(false); vault.relay.setUnlocked(true); loaded()
+            vault.relay.syncNow()
+            assertEquals(RelaySyncPhase.PAUSED, vault.relay.state.value.sync.phase)
+            assertEquals(pending, vault.command("relay-status").getInt("pending"))
+            config.put("paused", false)
+            vault.command("relay-credentials-write", JSONObject().put("data", config.toString()))
+            vault.relay.setUnlocked(false); vault.relay.setUnlocked(true); loaded()
+            vault.relay.syncNow()
+            withTimeout(15_000) { while (vault.relay.state.value.sync.phase != RelaySyncPhase.BLOCKED) delay(25) }
+            assertEquals(pending, vault.command("relay-status").getInt("pending"))
+            // A closed loopback port exercises transport failure without any external service.
+            config.put("paused", false).put("token", "q".repeat(48)).put("endpoint", "wss://127.0.0.1:1/relay/v1/ws")
+            vault.command("relay-credentials-write", JSONObject().put("data", config.toString()))
+            vault.relay.setUnlocked(false); vault.relay.setUnlocked(true); loaded()
+            withTimeout(15_000) { while (vault.relay.state.value.sync.phase != RelaySyncPhase.FAILED) delay(25) }
+            assertNotNull(vault.relay.state.value.error)
+            assertNull(vault.relay.state.value.sync.lastSentAt)
+            assertEquals(pending, vault.command("relay-status").getInt("pending"))
+            vault.relay.setUnlocked(false)
+            assertFalse(vault.relay.state.value.sync.running)
+            assertNull(vault.relay.state.value.sync.lastSentAt)
+        } finally { vault.close(); directory.deleteRecursively() }
+    }
     @Test fun serverPasswordUpgradePersistsEncryptedWithoutReplacingIdentity() = runBlocking {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val directory = File(context.cacheDir, "relay-upgrade-fixture-${UUID.randomUUID()}")
@@ -36,11 +78,52 @@ class PersonalRelayTest {
             assertEquals(before.getString("device"), after.getString("device"))
             assertEquals(before.getString("secret"), after.getString("secret"))
             assertEquals(access, after.getString("password"))
-            assertTrue(File(directory, "relay-private/credentials.v1.enc").exists())
+            assertTrue("Encrypted relay credentials must persist inside the vault directory", File(directory, "vault/relay-private/credentials.v1.enc").exists())
             directory.walkTopDown().filter { it.isFile }.forEach { file ->
                 assertFalse("Server password must not appear in plaintext on disk", file.readBytes().toString(Charsets.ISO_8859_1).contains(access))
             }
         } finally { vault.close(); directory.deleteRecursively() }
+    }
+    @Test fun legacyPendingEditsMigrateToSymmetricSyncWithoutConfirmation() = runBlocking {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val directory = File(context.cacheDir, "mesh-fixture-${UUID.randomUUID()}")
+        val phone = VaultRepository(context, File(directory, "phone"))
+        val mac = VaultSession(File(directory, "mac").absolutePath)
+        fun macCall(value: JSONObject) = JSONObject(mac.command(value.toString()))
+        try {
+            withTimeout(20_000) { while (!phone.state.value.ready) delay(100) }
+            phone.authenticate("fixture", true)
+            withTimeout(20_000) { while (phone.relay.state.value.device.isEmpty()) delay(100) }
+            val peer = phone.relay.state.value.device
+            macCall(JSONObject().put("op", "create").put("password", "fixture"))
+            macCall(JSONObject().put("op", "relay-init").put("role", "hub").put("device", "mac").put("hub", "mac").put("group", "fixture"))
+            macCall(JSONObject().put("op", "relay-trust").put("peer", peer))
+            phone.command("relay-init", JSONObject().put("role", "mobile").put("device", peer).put("hub", "mac").put("group", "fixture"))
+            phone.command("relay-trust", JSONObject().put("peer", "mac"))
+            macCall(JSONObject().put("op", "save").put("item", JSONObject().put("id", "from-mac").put("type", "secureNote").put("title", "Mac note")))
+            // An unconfirmed legacy edit on the phone: exactly the "待提交" state users saw.
+            phone.command("save", JSONObject().put("item", JSONObject().put("id", "from-phone").put("type", "secureNote").put("title", "Phone offline note")))
+            assertTrue(phone.command("relay-status").getInt("pending") > 0)
+            macCall(JSONObject().put("op", "relay-mesh-init").put("group", "fixture").put("device", "mac"))
+            macCall(JSONObject().put("op", "relay-mesh-peers").put("peers", org.json.JSONArray().put(peer)))
+            assertEquals("mobile", phone.command("relay-mesh-init", JSONObject().put("group", "fixture").put("device", peer)).getString("migratedFrom"))
+            phone.command("relay-mesh-peers", JSONObject().put("peers", org.json.JSONArray().put("mac")))
+            repeat(3) {
+                macCall(JSONObject().put("op", "relay-mesh-export").put("peer", peer)).optJSONObject("packet")?.let {
+                    phone.command("relay-mesh-receive", JSONObject().put("peer", "mac").put("packet", it))
+                }
+                phone.command("relay-mesh-export", JSONObject().put("peer", "mac")).optJSONObject("packet")?.let {
+                    macCall(JSONObject().put("op", "relay-mesh-receive").put("peer", peer).put("packet", it))
+                }
+            }
+            fun ids(list: JSONObject) = (0 until list.getJSONArray("items").length()).map { list.getJSONArray("items").getJSONObject(it).getString("id") }.toSet()
+            assertTrue(ids(phone.command("list")).containsAll(setOf("from-mac", "from-phone")))
+            assertTrue(ids(macCall(JSONObject().put("op", "list"))).containsAll(setOf("from-mac", "from-phone")))
+            val status = phone.command("relay-status")
+            assertEquals("mesh", status.getString("mode"))
+            assertEquals(0, status.getInt("pending"))
+            assertTrue(File(directory, "phone/vault/before-mesh-sync/vault.sqlite").exists())
+        } finally { phone.close(); mac.close(); directory.deleteRecursively() }
     }
     @Test fun conflictReminderRestoresAndClearsAfterMacBatchResolution() = runBlocking {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
@@ -76,94 +159,6 @@ class PersonalRelayTest {
             assertEquals(0, phone.relay.state.value.conflicts)
             assertEquals(0, phone.relay.state.value.pending)
         } finally { phone.close(); mac.close(); directory.deleteRecursively() }
-    }
-    @Test fun deviceAccessGrantRejectsWrongAuthorityScopeAndReplay() = runBlocking {
-        val context = InstrumentationRegistry.getInstrumentation().targetContext
-        val directory = File(context.cacheDir, "access-fixture-${UUID.randomUUID()}")
-        val vault = VaultRepository(context, directory)
-        try {
-            withTimeout(20_000) { while (!vault.state.value.ready) delay(100) }
-            vault.authenticate("fixture", true)
-            withTimeout(20_000) { while (vault.relay.state.value.device.isEmpty()) delay(100) }
-            val c = JSONObject(vault.command("relay-credentials-read").getString("data"))
-            val key = io.github.junweiup.commonrelay.Crypto.hex(io.github.junweiup.commonrelay.Crypto.random(32))
-            c.put("group", "access-test").put("groups", JSONObject()
-                .put("trusted_peers", JSONObject().put("hub", key).put("ordinary", key))
-                .put("vault_authority", JSONObject().put("device", "hub").put("public_key", key)))
-            val field = PersonalRelay::class.java.getDeclaredField("epoch").apply { isAccessible = true }
-            val generation = field.getInt(vault.relay)
-            fun message(revision: Int, enabled: Boolean) = JSONObject().put("format", "passwordvault.access.v1")
-                .put("kind", "set").put("permission", "read-write").put("group", "access-test")
-                .put("to", c.getString("device")).put("revision", revision).put("enabled", enabled)
-            assertFalse(vault.relay.receiveAuthorization(c, message(1, true), "ordinary", generation))
-            assertFalse(vault.relay.receiveAuthorization(c, message(1, true).put("to", "other"), "hub", generation))
-            assertFalse(vault.relay.receiveAuthorization(c, message(1, true).put("group", "other"), "hub", generation))
-            assertFalse(vault.command("relay-status").optBoolean("enabled"))
-            assertTrue(vault.relay.receiveAuthorization(c, message(1, true), "hub", generation))
-            assertTrue(c.getJSONObject("peers").has("hub"))
-            assertTrue(vault.relay.receiveAuthorization(c, message(2, false), "hub", generation))
-            assertFalse(c.getJSONObject("peers").has("hub"))
-            assertFalse(vault.relay.receiveAuthorization(c, message(1, true), "hub", generation))
-            assertFalse(vault.relay.receiveAuthorization(c, message(2, true), "hub", generation))
-            val persisted = JSONObject(vault.command("relay-credentials-read").getString("data"))
-            assertEquals(2, persisted.getInt("access_revision")); assertFalse(persisted.getBoolean("access_enabled"))
-            assertTrue(vault.relay.receiveAuthorization(c, message(3, true), "hub", generation))
-            vault.relay.setUnlocked(false)
-            assertFalse(vault.relay.receiveAuthorization(c, message(4, true), "hub", generation))
-        } finally { vault.close(); directory.deleteRecursively() }
-    }
-    @Test fun macGrantAutomaticallyNegotiatesFormatSevenWithoutPhoneApproval() = runBlocking {
-        val context = InstrumentationRegistry.getInstrumentation().targetContext
-        val root = File(context.cacheDir, "unilateral-format7-${UUID.randomUUID()}")
-        val phone = VaultRepository(context, File(root, "phone"))
-        val mac = VaultSession(File(root, "mac").absolutePath)
-        fun macCall(op: String, args: JSONObject = JSONObject()) = JSONObject(mac.command(args.put("op", op).toString()))
-        try {
-            withTimeout(20_000) { while (!phone.state.value.ready) delay(100) }
-            phone.authenticate("fixture", true)
-            withTimeout(20_000) { while (phone.relay.state.value.device.isEmpty() || phone.relay.state.value.busy) delay(100) }
-            val c = JSONObject(phone.command("relay-credentials-read").getString("data"))
-            val peer = c.getString("device")
-            val phoneKey = phone.relay.state.value.publicKey
-            val secret = io.github.junweiup.commonrelay.Crypto.random(32)
-            val macKey = io.github.junweiup.commonrelay.Crypto("passwordvault", "fixture", "mac", io.github.junweiup.commonrelay.Crypto.hex(secret), mapOf(peer to phoneKey)).publicKey()
-            c.put("group", "fixture").put("groups", JSONObject().put("trusted_peers", JSONObject().put("mac", macKey))
-                .put("vault_authority", JSONObject().put("device", "mac").put("public_key", macKey)))
-            macCall("create", JSONObject().put("password", "fixture"))
-            macCall("devices-enable", JSONObject().put("currentPassword", "fixture").put("confirm", true))
-            val roster = JSONObject().put("trusted_peers", JSONObject().put(peer, phoneKey))
-            macCall("relay-credentials-write", JSONObject().put("data", JSONObject().put("group", "fixture").put("device", "mac")
-                .put("secret", java.util.Base64.getEncoder().encodeToString(secret)).put("groupState", java.util.Base64.getEncoder().encodeToString(roster.toString().toByteArray())).toString()))
-            macCall("relay-init", JSONObject().put("role", "hub").put("group", "fixture").put("device", "mac").put("hub", "mac"))
-            macCall("relay-trust", JSONObject().put("peer", peer))
-            macCall("save", JSONObject().put("item", JSONObject().put("id", "account-canary").put("type", "password").put("title", "Synthetic account").put("username", "fixture").put("password", "synthetic-only")))
-            val generation = PersonalRelay::class.java.getDeclaredField("epoch").apply { isAccessible = true }.getInt(phone.relay)
-            fun grant(revision: Int, enabled: Boolean) = JSONObject().put("format", "passwordvault.access.v1").put("kind", "set").put("permission", "read-write")
-                .put("group", "fixture").put("to", peer).put("revision", revision).put("enabled", enabled).put("capabilitiesFrom", "mac").put("capabilitiesVersion", 2)
-            assertFalse(phone.relay.receiveAuthorization(c, grant(1, true).put("group", "wrong"), "mac", generation))
-            assertTrue(phone.relay.receiveAuthorization(c, grant(1, true), "mac", generation))
-            assertFalse(c.getBoolean("paused"))
-            // A lost receipt is retried automatically, without another permission decision.
-            assertTrue(phone.relay.receiveAuthorization(c, grant(1, true), "mac", generation))
-            fun control(kind: String) = JSONObject().put("format", "passwordvault.capabilities.v1").put("kind", kind).put("group", "fixture").put("to", peer)
-            val challenge = macCall("relay-capabilities-challenge", JSONObject().put("peer", peer)).getString("challenge")
-            val proof = phone.relay.receiveCapabilities(c, control("challenge").put("challenge", challenge), "mac", generation)!!
-            macCall("relay-capabilities-accept", JSONObject().put("peer", peer).put("proof", proof.getJSONObject("proof")))
-            val snapshot = macCall("relay-export", JSONObject().put("peer", peer))
-            assertEquals(2, snapshot.getInt("version"))
-            // Data before the reverse proof is rejected, never acknowledged as applied.
-            try { phone.command("relay-receive", JSONObject().put("peer", "mac").put("packet", snapshot)); fail("Unverified sender capability accepted") }
-            catch (_: com.securepass.vault.core.VaultException.DevicesSyncBlocked) {}
-            val reverse = phone.command("relay-capabilities-challenge", JSONObject().put("peer", "mac")).getString("challenge")
-            val reverseProof = macCall("relay-capabilities-prove", JSONObject().put("peer", peer).put("challenge", reverse))
-            assertEquals("ready", phone.relay.receiveCapabilities(c, control("proof").put("proof", reverseProof.getJSONObject("proof")), "mac", generation)!!.getString("kind"))
-            phone.command("relay-receive", JSONObject().put("peer", "mac").put("packet", snapshot))
-            assertEquals(7, phone.command("devices-status").getInt("formatVersion"))
-            assertEquals("account-canary", phone.command("list").getJSONArray("items").getJSONObject(0).getString("id"))
-            assertTrue(phone.relay.receiveAuthorization(c, grant(2, false), "mac", generation))
-            assertFalse(c.getJSONObject("peers").has("mac"))
-            assertFalse(phone.relay.receiveAuthorization(c, grant(1, true), "mac", generation))
-        } finally { phone.close(); mac.close(); root.deleteRecursively() }
     }
     @Test fun productionWSSInterop() = runBlocking {
         val args=InstrumentationRegistry.getArguments()
@@ -214,17 +209,16 @@ class PersonalRelayTest {
             until { a.relay.state.value.groupInvite.isNotEmpty() && !a.relay.state.value.busy }
             b.relay.joinGroup(a.relay.state.value.groupInvite, "Fixture phone", "fixture-access-123")
             until { allOnline(a) && allOnline(b) }
-            assertFalse(a.relay.state.value.paired); assertFalse(b.relay.state.value.paired)
-            assertTrue(a.relay.state.value.paused); assertTrue(b.relay.state.value.paused)
-            assertFalse(a.command("relay-status").optBoolean("enabled")); assertFalse(b.command("relay-status").optBoolean("enabled"))
-            b.relay.pause(true)
-            until { allOnline(a) && allOnline(b) }
+            // Joining is the only step: both devices sync without any grant.
+            until { a.relay.state.value.mesh && b.relay.state.value.mesh }
+            assertTrue(a.relay.state.value.paired); assertTrue(b.relay.state.value.paired)
+            withTimeout(40_000) { while (a.command("relay-status").optString("mode") != "mesh" || b.command("relay-status").optString("mode") != "mesh") delay(100) }
             val phoneID = b.relay.state.value.device
             b.relay.setUnlocked(false)
             until { a.relay.state.value.members.any { it.id == phoneID && !it.online } }
             b.relay.setUnlocked(true)
             until { allOnline(a) && allOnline(b) }
-            assertFalse(b.command("relay-status").optBoolean("enabled"))
+            assertEquals("mesh", b.command("relay-status").optString("mode"))
         } finally {
             if (a.relay.state.value.managed) {
                 until { !a.relay.state.value.busy }

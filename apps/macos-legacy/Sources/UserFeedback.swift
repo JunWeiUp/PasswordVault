@@ -95,6 +95,10 @@ extension AppStore {
         return t(
           "资料库正在另一应用实例中打开。关闭该实例后重试。",
           "Another app instance is using this vault. Close it and retry.")
+      case .UpdateRequired, .DevicesUpgradeRequired, .DevicesSyncBlocked:
+        return t(
+          "此资料库需要更新到最新版客户端后才能继续。",
+          "This vault needs the latest client version to continue.")
       }
     }
     return t(

@@ -136,3 +136,9 @@ coverage/
 # Shared editor bundles and local service data
 /apps/shared/note-editor/dist/
 /data/
+
+/apps/desktop/node_modules/
+
+/apps/desktop/.nsh/
+
+/apps/desktop/target/

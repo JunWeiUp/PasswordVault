@@ -8,7 +8,6 @@ struct RelayGroupView: View {
   @State private var deviceName = ""
   @State private var input = ""
   @State private var grantManager = false
-  @State private var automaticJoin = true
   @State private var confirmation: String?
   @State private var target: VaultRelay.GroupMember?
   @State private var renamed = ""
@@ -19,7 +18,7 @@ struct RelayGroupView: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 12) {
       Label(t("设备组", "Device group"), systemImage: "network").font(.headline)
-      Text(t("设备组用于安全接入中继。加入后仍需 Mac 单独授权，才会同步密码库。", "Join securely first, then authorize vault synchronization separately on Mac."))
+      Text(t("同组设备自动双向同步密码库，扫码加入即可，无需授权。", "Devices in the group sync the vault both ways automatically. Scan to join; no authorization needed."))
         .font(.caption).foregroundStyle(.secondary)
       #if os(iOS)
       if relay.hasManagedGroup || relay.joiningGroup || relay.isLegacyGroup || relay.groupInvalid {
@@ -50,19 +49,6 @@ struct RelayGroupView: View {
                 .font(.caption).foregroundStyle(.secondary)
             }
             Spacer()
-            if relay.config.role == "hub" && relay.config.peerLibrary == nil && member.id != relay.config.device {
-              VStack(alignment: .trailing, spacing: 4) {
-                Toggle(t("查看并同步修改", "View and sync changes"), isOn: Binding(
-                  get: { relay.vaultAccessEnabled(member.id) },
-                  set: { value in Task { await relay.setVaultAccess(member.id, enabled: value) } }
-                )).toggleStyle(.switch).disabled(!relay.groupManager && !relay.vaultAccessEnabled(member.id))
-                  .accessibilityIdentifier("vault-access-" + member.id)
-                Text(relay.vaultAccessPending(member.id)
-                     ? t("等待设备解锁并确认", "Waiting for device to unlock and confirm")
-                     : (relay.vaultAccessEnabled(member.id) ? t("已授权", "Authorized") : t("未授权", "Not authorized")))
-                  .font(.caption).foregroundStyle(.secondary)
-              }
-            }
             if relay.groupManager || member.id == relay.config.device {
               Menu {
                 Button(t("改名", "Rename")) { target = member; renamed = member.name }
@@ -74,18 +60,12 @@ struct RelayGroupView: View {
           }
         }
         if relay.groupManager {
-          #if os(iOS)
-          Toggle(t("无需管理员审批", "No manager approval required"), isOn: $automaticJoin)
-            .disabled(!relay.groupInvite.isEmpty)
-          #else
-          Toggle(t("扫描后自动加入", "Join automatically after scanning"), isOn: $automaticJoin)
-            .disabled(!relay.groupInvite.isEmpty)
-          #endif
-          Button(t("添加设备", "Add device")) { Task { grantManager = false; await relay.inviteToGroup(automatic: automaticJoin) } }
+          // Personal groups always admit by scanning; peer libraries keep manual approval.
+          Button(t("添加设备", "Add device")) { Task { grantManager = false; await relay.inviteToGroup(automatic: relay.config.peerLibrary == nil) } }
         }
         if !relay.groupInvite.isEmpty {
           RelayQRCode(text: relay.groupInvite)
-          Text(relay.automaticGroupJoin ? t("扫描即可加入普通成员；密码库需另行授权。", "Scan to join as a member; vault access requires separate authorization.") : t("需核对配对码并手动批准。", "Compare codes and approve manually."))
+          Text(relay.automaticGroupJoin ? t("扫描即可加入并立即双向同步全部密码库内容，请只交给你自己的设备。", "Scan to join and sync the whole vault both ways immediately. Share only with your own devices.") : t("需核对配对码并手动批准。", "Compare codes and approve manually."))
           Text(t("邀请有效期 10 分钟，仅限一台设备。请通过可信渠道传递。", "Valid for 10 minutes, one device.")).font(.caption)
           DisclosureGroup(t("查看邀请内容（可复制）", "Invitation text")) {
             Text(relay.groupInvite).font(.caption2).textSelection(.enabled)
@@ -148,13 +128,9 @@ struct RelayGroupView: View {
     }
     .disabled(relay.groupBusy)
     .onAppear {
-      if !relay.groupInvite.isEmpty { automaticJoin = relay.automaticGroupJoin }
       if deviceName.isEmpty { deviceName = relay.config.role == "hub" ? t("我的 Mac", "My Mac") : t("我的手机", "My phone") }
       if name.isEmpty { name = t("我的设备", "My devices") }
       if !relay.config.endpoint.isEmpty { endpoint = relay.config.endpoint }
-    }
-    .onChange(of: relay.groupInvite) { value in
-      if !value.isEmpty { automaticJoin = relay.automaticGroupJoin }
     }
     .confirmationDialog(t("确认设备组操作", "Confirm group action"), isPresented: Binding(get: { confirmation != nil }, set: { if !$0 { confirmation = nil } }), titleVisibility: .visible) {
       Button(t("确认", "Confirm"), role: .destructive) {

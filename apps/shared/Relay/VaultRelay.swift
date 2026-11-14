@@ -8,12 +8,6 @@ import CommonRelay
 /// The unlocked vault core encrypts local credentials; Keychain is a read-only legacy migration source.
 @MainActor
 final class VaultRelay: ObservableObject {
-  struct VaultGrant: Codable {
-    var revision: Int
-    var enabled: Bool
-    var acknowledged = false
-    var key: String?
-  }
   struct Config: Codable {
     var endpoint = ""
     var role: String
@@ -26,9 +20,6 @@ final class VaultRelay: ObservableObject {
     var peers: [String: String] = [:]
     var paused = true
     var groupState: Data?
-    var vaultGrants: [String: VaultGrant]?
-    var accessRevision: Int?
-    var accessEnabled: Bool?
     var peerLibrary: String?
     var peerExpectedLibrary: String?
     var peerPendingLocalLibrary: String?
@@ -39,7 +30,6 @@ final class VaultRelay: ObservableObject {
   }
   @Published private(set) var credentialsReady = false
   @Published private(set) var credentialAccessBlocked = false
-  @Published private(set) var resolvingConflicts = false
   @Published var groupBusy = false
   @Published var groupFresh = false
   @Published var groupName = ""
@@ -59,7 +49,6 @@ final class VaultRelay: ObservableObject {
   @Published var peerLibraries: [JSONValue] = []
   @Published var activePeerLibrary = ""
   private var peerRosters: [String: [String: JSONValue]] = [:]
-  @Published var verificationCode = ""
   @Published var lastSuccess: Date?
   @Published var failure: String?
   private let allowLocalGroupTest: Bool
@@ -75,7 +64,6 @@ final class VaultRelay: ObservableObject {
   private var files: RelayFiles?
   private var active = false
   private var generation = UUID()
-  private var invitation: (nonce: String, expires: Date)?
   private var sent: [String: String] = [:]
   private var retryRequested = false
   private var transportFailure: String?
@@ -182,96 +170,8 @@ final class VaultRelay: ObservableObject {
                       trustedPeers: (hasManagedGroup ? (groupDictionary["trusted_peers"] as? [String: String] ?? [:]) : config.peers).mapValues { try Data(relayHex: $0) })
   }
   var publicKey: String { (try? identity().publicKey.relayHex) ?? "" }
-  func importCredential(_ text: String, endpoint: String) async {
-    await action {
-      guard config.groupState == nil else { throw RelayError.invalid("managed group") }
-      guard let url = URL(string: endpoint), url.scheme == "wss", url.host != nil,
-            url.path == "/relay/v1/ws", url.user == nil, url.password == nil, url.query == nil, url.fragment == nil,
-            let value = try JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any],
-            let own = value["identity"] as? [String: Any], own["app"] as? String == "passwordvault",
-            own["public_key"] as? String == publicKey, let group = own["group"] as? String,
-            let device = own["device"] as? String, let token = value["token"] as? String, !token.isEmpty
-      else { throw RelayError.invalid("credential identity / WSS endpoint") }
-      let current = try await call(["op": .string("relay-status")]).object
-      if current["enabled"]?.bool == true {
-        guard current["group"]?.string == group, current["device"]?.string == device else { throw RelayError.invalid("already bound") }
-      }
-      config.endpoint = endpoint; config.group = group; config.device = device; config.token = token
-      if config.role == "hub" { config.hub = device }
-      try await persist()
-      if config.role == "hub" { try await initialize() }
-      status = "凭据已导入 / Credential imported"
-      restart()
-    }
-  }
-  private func initialize() async throws {
-    if config.peerLibrary != nil { return }
-    let current = try await call(["op": .string("relay-status")]).object
-    if current["enabled"]?.bool == true {
-      guard current["group"]?.string == config.group, current["hub"]?.string == config.hub,
-            current["device"]?.string == config.device else { throw RelayError.invalid("vault binding") }
-      return
-    }
-    _ = try await call(["op": .string("relay-init"), "role": .string(config.role), "group": .string(config.group),
-                       "device": .string(config.device), "hub": .string(config.hub)])
-  }
   private func encode(_ value: [String: Any]) throws -> String {
     String(decoding: try JSONSerialization.data(withJSONObject: value, options: [.sortedKeys, .withoutEscapingSlashes]), as: UTF8.self)
-  }
-  func invite() async {
-    guard config.peerLibrary == nil else { return }
-    await action {
-      guard config.role == "hub", !config.token.isEmpty else { throw RelayError.invalid("import credentials first") }
-      try await initialize()
-      let nonce = UUID().uuidString.lowercased(), expires = Date().addingTimeInterval(300)
-      invitation = (nonce, expires)
-      pairingText = try encode(["version": 1, "group": config.group, "hub": config.device, "key": publicKey,
-                                "endpoint": config.endpoint, "nonce": nonce, "expires": Int(expires.timeIntervalSince1970)])
-    }
-  }
-  private func code(nonce: String, hubKey: String, mobileKey: String) -> String {
-    Data(SHA256.hash(data: Data((nonce + "\n" + hubKey + "\n" + mobileKey).utf8))).prefix(4).relayHex.uppercased()
-  }
-  func pair(_ text: String) async {
-    guard config.peerLibrary == nil else { return }
-    await action {
-      guard !config.token.isEmpty, let p = try JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any],
-            p["version"] as? Int == 1, p["group"] as? String == config.group,
-            let nonce = p["nonce"] as? String, let key = p["key"] as? String,
-            try Data(relayHex: key).count == 32 else { throw RelayError.invalid("pairing identity") }
-      let peer: String
-      if config.role == "mobile" {
-        guard let hub = p["hub"] as? String, p["endpoint"] as? String == config.endpoint,
-              let expiry = p["expires"] as? Int, Date().timeIntervalSince1970 < Double(expiry),
-              Double(expiry) <= Date().timeIntervalSince1970 + 310 else { throw RelayError.invalid("expired invitation") }
-        peer = hub; config.hub = hub
-        verificationCode = code(nonce: nonce, hubKey: key, mobileKey: publicKey)
-        pairingText = try encode(["version": 1, "group": config.group, "device": config.device, "key": publicKey, "nonce": nonce])
-      } else {
-        guard let challenge = invitation, challenge.nonce == nonce, challenge.expires > Date(),
-              let device = p["device"] as? String else { throw RelayError.invalid("expired or reused invitation") }
-        peer = device
-        verificationCode = code(nonce: nonce, hubKey: publicKey, mobileKey: key)
-        // UI previews the same code before explicit approval invokes this operation.
-        invitation = nil
-      }
-      if hasManagedGroup {
-        let g = try groups(); _ = try await g.refresh(); try await applyGroup(g)
-        guard (g.config["trusted_peers"] as? [String: String])?[peer] == key else { throw RelayError.invalid("peer is not a group member") }
-      }
-      if let pinned = config.peers[peer], pinned != key { throw RelayError.invalid("public key changed") }
-      try await initialize()
-      config.peers[peer] = key; try await persist()
-      _ = try await call(["op": .string("relay-trust"), "peer": .string(peer)])
-      config.paused = false; try await persist(); restart()
-      status = "已配对，等待同步 / Paired; awaiting sync"
-    }
-  }
-  func previewCode(_ text: String) -> String {
-    guard config.role == "hub", let invitation,
-          let p = try? JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any],
-          p["nonce"] as? String == invitation.nonce, let key = p["key"] as? String else { return "" }
-    return code(nonce: invitation.nonce, hubKey: publicKey, mobileKey: key)
   }
   func revoke(_ peer: String) async {
     if let library = config.peerLibrary {
@@ -280,36 +180,14 @@ final class VaultRelay: ObservableObject {
         try await updateSummary(); restart()
       }; return
     }
-    if hasManagedGroup && config.role == "hub" { await setVaultAccess(peer, enabled: false); return }
-    await action {
-      config.accessEnabled = false
-      _ = try await call(["op": .string("relay-revoke"), "peer": .string(peer)])
-      config.peers.removeValue(forKey: peer); try await persist(); restart(); try await updateSummary()
-    }
   }
-  func resolve(_ conflict: String, choice: String) async {
-    await action { _ = try await call(["op": .string("relay-resolve"), "conflict": .string(conflict), "choice": .string(choice)]); try await updateSummary(); await refresh(); sent.removeAll() }
-  }
-  func resolveConflicts(_ ids: [String], choice: String) async {
-    guard active, credentialsReady, config.role == "hub", !resolvingConflicts, !ids.isEmpty else { return }
-    resolvingConflicts = true; failure = nil
-    defer { resolvingConflicts = false }
-    do {
-      _ = try await call(["op": .string("relay-resolve-batch"), "conflicts": .array(ids.map(JSONValue.string)), "choice": .string(choice)])
-      try await updateSummary(); await refresh(); syncNow()
-    } catch {
-      try? await updateSummary()
-      failure = "批量处理未完成，请刷新后重试；同一条目存在多个手机版本时请逐条处理。 / Batch resolution failed. Refresh and retry; resolve differing versions from multiple phones individually."
-    }
-  }
-  func setPaused(_ paused: Bool) async { await action { config.paused = paused; try await persist(); restart() } }
   func setUnlocked(_ unlocked: Bool) {
     guard active != unlocked else { return }; active = unlocked
     credentialLoadGeneration = UUID(); credentialLoadTask?.cancel(); credentialLoadTask = nil
     if unlocked {
       credentialLoadTask = Task { [weak self] in await self?.loadCredentials(allowLegacyInteraction: false) }
     } else {
-      groupFresh = false; groupMembers = []; stop(); summary = [:]; pairingText = ""; verificationCode = ""; invitation = nil
+      groupFresh = false; groupMembers = []; stop(); summary = [:]; pairingText = ""
       credentialsReady = false; credentialAccessBlocked = false; groupBusy = false
       config = Config(role: config.role, secret: Data(repeating: 0, count: 32))
     }
@@ -457,7 +335,9 @@ final class VaultRelay: ObservableObject {
               guard let self, self.active, self.generation == epoch else { return }
               if event["type"] as? String == "message", let data = event["data"] as? Data,
                  let from = event["from"] as? String, let id = event["id"] as? String {
-                if try await self.receiveAuthorization(data, from: from, connection: connection) == false {
+                if let peers = self.meshPeers {
+                  if peers.contains(from) { try await self.receiveMesh(data, from: from, epoch: epoch) }
+                } else if self.config.peerLibrary != nil {
                   guard !self.config.paused, self.config.peers[from] != nil else { continue }
                   try await self.receive(data, from: from, epoch: epoch)
                 }
@@ -478,8 +358,38 @@ final class VaultRelay: ObservableObject {
             guard active, generation == epoch, !Task.isCancelled else { return }
             setGroupOnline(Set(devices.filter { $0.app == "passwordvault" && $0.group == config.group }.map(\.device)).union([config.device]))
           }
-          if config.peerLibrary == nil { try await sendAuthorizations(connection) }
-          if !config.paused && !config.peers.isEmpty {
+          if let peers = meshPeers {
+            _ = try await call(["op": .string("relay-mesh-init"), "group": .string(config.group), "device": .string(config.device)])
+            _ = try await call(["op": .string("relay-mesh-peers"), "peers": .array(peers.map { .string($0) })])
+            for peer in peers {
+              let result = try await call(["op": .string("relay-mesh-export"), "peer": .string(peer)]).object
+              guard let packet = result["packet"], packet.object["kind"]?.string == "mesh" else { continue }
+              let encoder = JSONEncoder(); encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
+              let data = try encoder.encode(packet)
+              let signature = Data(SHA256.hash(data: data)).relayHex + ":" + String(Int(Date().timeIntervalSince1970 / 3600))
+              guard sent[peer] != signature, generation == epoch, active else { continue }
+              if data.count <= 128 * 1024 {
+                let id = String(Data(SHA256.hash(data: Data((peer + signature).utf8))).relayHex.prefix(32))
+                _ = try await connection.message(to: peer, data: data, offline: true, id: id)
+              } else { try await sendFile(data, peer: peer, identity: identity, files: fileClient) }
+              sent[peer] = signature
+            }
+            for event in try await fileClient.inbox() {
+              guard let id = event["id"] as? String, let from = event["from"] as? String, peers.contains(from),
+                    let size = event["size"] as? NSNumber, size.int64Value <= 768 * 1024 * 1024 else { throw RelayError.invalid("file sender or size") }
+              let cipher = directory.appendingPathComponent(UUID().uuidString + ".download")
+              let inner = directory.appendingPathComponent(UUID().uuidString + ".sealed")
+              defer { try? FileManager.default.removeItem(at: cipher); try? FileManager.default.removeItem(at: inner) }
+              try await fileClient.download(id: id, ciphertext: cipher)
+              let metadata = try RelayFileCrypto.decrypt(identity: identity, from: from, descriptor: event.object, ciphertext: cipher, destination: inner)
+              guard let key = metadata["key"] as? String, metadata["format"] as? String == "passwordvault.sync.v1" else { throw RelayError.invalid("file format") }
+              let bytes = try AES.GCM.open(AES.GCM.SealedBox(combined: Data(contentsOf: inner)), using: SymmetricKey(data: Data(relayHex: key)))
+              try await receiveMesh(bytes, from: from, epoch: epoch)
+              try await fileClient.acknowledge(id: id)
+            }
+            lastSuccess = Date()
+          } else {
+          if config.peerLibrary != nil && !config.paused && !config.peers.isEmpty {
             try await updateSummary()
             for peer in config.peers.keys.sorted() {
               let libraries = config.peerLibrary == nil ? [""] : peerRosters.keys.filter { peerRosters[$0]?[peer] != nil }.sorted()
@@ -528,6 +438,7 @@ final class VaultRelay: ObservableObject {
               try await fileClient.acknowledge(id: id)
             }
           }
+          }
           try await Task.sleep(nanoseconds: 5_000_000_000)
         }
         if generation == epoch { setGroupOnline([]) }
@@ -544,6 +455,16 @@ final class VaultRelay: ObservableObject {
       if Task.isCancelled || generation != epoch { return }
       try? await Task.sleep(nanoseconds: backoff * 1_000_000_000); backoff = min(backoff * 2, 30)
     }
+  }
+  /// Applies a symmetric-sync packet. Older protocol packets are ignored until that device updates.
+  private func receiveMesh(_ data: Data, from: String, epoch: UUID) async throws {
+    guard active, generation == epoch else { throw RelayError.closed }
+    let packet = try JSONDecoder().decode(JSONValue.self, from: data)
+    guard packet.object["version"]?.number == 3, packet.object["kind"]?.string == "mesh" else { return }
+    let result = try await call(["op": .string("relay-mesh-receive"), "peer": .string(from), "packet": packet]).object
+    guard active, generation == epoch else { throw RelayError.closed }
+    lastSuccess = Date()
+    if result["changed"]?.bool == true { await refresh() }
   }
   private func receive(_ data: Data, from: String, epoch: UUID) async throws {
     guard active, generation == epoch, config.peers[from] != nil else { throw RelayError.closed }
@@ -588,6 +509,7 @@ final class VaultRelay: ObservableObject {
 // remains a separate, explicit confirmation between the Mac and a replica.
 extension VaultRelay {
   private var connectedStatus: String {
+    if meshPeers != nil { return "已连接 · 自动双向同步 / Connected · syncing both ways" }
     if config.peers.isEmpty { return "中继已连接，密码库尚未授权 / Relay connected; vault not authorized" }
     if config.paused { return "中继已连接，密码库同步已暂停 / Relay connected; vault sync paused" }
     return "已连接 / Connected"
@@ -602,6 +524,17 @@ extension VaultRelay {
     let online: Bool
   }
   var hasManagedGroup: Bool { groupDictionary["group_entry"] != nil }
+  /// Signed-roster members with pinned keys, excluding this device. Joining the group is
+  /// the only admission step for symmetric sync; nil outside a personal group.
+  var meshPeers: [String]? {
+    guard config.peerLibrary == nil, let entry = groupDictionary["group_entry"] as? [String: Any],
+          groupDictionary["access_invalid"] as? Bool != true,
+          let state = try? RelayGroups.unpack(entry), state["closed"] as? Bool != true,
+          let members = state["members"] as? [[String: Any]] else { return nil }
+    let trusted = groupDictionary["trusted_peers"] as? [String: String] ?? [:]
+    return members.compactMap { $0["device"] as? String }
+      .filter { $0 != config.device && !(trusted[$0] ?? "").isEmpty }.sorted()
+  }
   var isLegacyGroup: Bool { !config.token.isEmpty && config.groupState == nil }
   var joiningGroup: Bool { groupDictionary["pending_join"] != nil }
   var creatingGroup: Bool { groupDictionary["pending_create"] != nil }
@@ -647,12 +580,10 @@ extension VaultRelay {
       value = ["app": "passwordvault", "device": config.device, "secret_key": config.secret.relayHex]
     }
     if let password = config.serverPassword { value["password"] = password }
-    pinVaultAuthority(&value)
     return RelayGroups(config: value, allowLocalTest: allowLocalGroupTest)
   }
   private func saveGroup(_ groups: RelayGroups) async throws {
     guard active, credentialsReady else { throw CredentialError.unavailable }
-    pinVaultAuthority(&groups.config)
     config.endpoint = groups.config["url"] as? String ?? config.endpoint
     config.serverPassword = groups.config["password"] as? String ?? config.serverPassword
     config.groupState = try JSONSerialization.data(withJSONObject: groups.config, options: [.sortedKeys])
@@ -671,12 +602,9 @@ extension VaultRelay {
     config.token = groups.config["token"] as? String ?? ""
     if config.role == "hub" { config.hub = config.device }
     let trusted = groups.config["trusted_peers"] as? [String: String] ?? [:]
-    for (id, var grant) in config.vaultGrants ?? [:] where trusted[id] != grant.key {
-      grant.enabled = false; grant.acknowledged = true; config.vaultGrants?[id] = grant
-    }
     // Revoked or changed identities lose business authorization before reconnect.
     for (id, key) in config.peers where trusted[id] != key {
-      if config.peerLibrary == nil { _ = try await call(["op": .string("relay-revoke"), "peer": .string(id)]) }
+      // Symmetric sync reads the signed roster each cycle; only peer-library keys are pruned.
       config.peers.removeValue(forKey: id)
     }
     try await persist()
@@ -897,10 +825,9 @@ extension VaultRelay {
     }
     let old = config
     config.groupState = nil; config.group = ""; config.token = ""; config.hub = ""
-    config.vaultGrants = nil; config.accessRevision = nil; config.accessEnabled = nil
     config.peers = [:]; config.paused = true; config.device = UUID().uuidString.lowercased()
     do { try await persist() } catch { config = old; throw error }
-    groupMembers = []; groupFresh = false; groupName = ""; pairingText = ""; verificationCode = ""; invitation = nil
+    groupMembers = []; groupFresh = false; groupName = ""; pairingText = ""
     try await updateSummary(); status = "本机接入已清除，本地资料保留 / Local access cleared; vault retained"
   }
   private func refreshGroupForConnection(_ epoch: UUID) async throws {
@@ -917,128 +844,5 @@ extension VaultRelay {
 
       throw error
     }
-  }
-}
-
-// Encrypted control messages use verified group identities, while vault packets
-// remain gated by the separate explicit grant. No credentials or vault data are
-// carried in this handshake.
-extension VaultRelay {
-  private static let accessFormat = "passwordvault.access.v1"
-  private func pinVaultAuthority(_ value: inout [String: Any]) {
-    guard config.role == "mobile", value["vault_authority"] == nil,
-          let entry = value["group_entry"] as? [String: Any],
-          let state = try? RelayGroups.unpack(entry), let members = state["members"] as? [[String: Any]] else { return }
-    let managers = members.filter { $0["manager"] as? Bool == true }
-    // Migration pins the sole already-verified manager. Ambiguous groups retain
-    // explicit pairing; never select a new authority from an incoming message.
-    if managers.count == 1, managers[0]["device"] as? String != config.device {
-      value["vault_authority"] = managers[0]
-    }
-  }
-  func vaultAccessEnabled(_ peer: String) -> Bool {
-    config.vaultGrants?[peer]?.enabled ?? (config.peers[peer] != nil)
-  }
-  func vaultAccessPending(_ peer: String) -> Bool {
-    config.vaultGrants?[peer]?.acknowledged == false
-  }
-  func setVaultAccess(_ peer: String, enabled: Bool) async {
-    if config.peerLibrary != nil {
-      if !enabled { await revoke(peer) } else { failure = "请使用对等库身份回执授权 / Use the peer-library identity request to grant access" }; return
-    }
-    guard config.role == "hub", hasManagedGroup, peer != config.device else { return }
-    if !enabled {
-      guard !groupBusy else { return }
-      await action {
-        stop()
-        defer { restart() }
-        let previous = config
-        var grants = config.vaultGrants ?? [:]
-        grants[peer] = VaultGrant(revision: (grants[peer]?.revision ?? 0) + 1, enabled: false,
-                                  key: grants[peer]?.key ?? config.peers[peer] ?? (groupDictionary["trusted_peers"] as? [String: String])?[peer])
-        config.vaultGrants = grants; config.peers.removeValue(forKey: peer)
-        do { try await persist() } catch { config = previous; throw error }
-        if try await call(["op": .string("relay-status")]).object["enabled"]?.bool == true {
-          _ = try await call(["op": .string("relay-revoke"), "peer": .string(peer)])
-        }
-      }
-      return
-    }
-    guard groupManager else { return }
-    await groupAction { g in
-      _ = try await g.refresh(); try await applyGroup(g)
-      guard (g.config["trusted_peers"] as? [String: String])?[peer] != nil else { throw RelayError.invalid("member missing") }
-      try await initialize()
-      let old = config
-      var grants = config.vaultGrants ?? [:]
-      grants[peer] = VaultGrant(revision: (grants[peer]?.revision ?? 0) + 1, enabled: enabled, key: (g.config["trusted_peers"] as? [String: String])?[peer])
-      config.vaultGrants = grants
-      // Deny transport immediately, including while a revoke awaits delivery.
-      config.peers.removeValue(forKey: peer)
-      do { try await persist() } catch { config = old; throw error }
-      _ = try await call(["op": .string("relay-revoke"), "peer": .string(peer)])
-    }
-  }
-  private func accessMessage(_ peer: String, grant: VaultGrant, kind: String) throws -> Data {
-    Data(try encode(["format": Self.accessFormat, "kind": kind, "group": config.group,
-                     "to": peer, "revision": grant.revision, "enabled": grant.enabled,
-                     "permission": "read-write"]).utf8)
-  }
-  private func sendAuthorizations(_ connection: RelayClient) async throws {
-    guard config.role == "hub", groupManager else { return }
-    for (peer, grant) in config.vaultGrants ?? [:] where !grant.acknowledged {
-      guard groupMembers.contains(where: { $0.id == peer && $0.online }) else { continue }
-      guard grant.key == (groupDictionary["trusted_peers"] as? [String: String])?[peer] else { continue }
-      _ = try await connection.message(to: peer, data: accessMessage(peer, grant: grant, kind: "set"), offline: false)
-    }
-  }
-  // Internal for failure-path tests; callers pass only SDK-authenticated senders.
-  func receiveAuthorization(_ data: Data, from: String, connection: RelayClient) async throws -> Bool {
-    if config.peerLibrary != nil { return false }
-    guard let p = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-          p["format"] as? String == Self.accessFormat else { return false }
-    guard active, credentialsReady, hasManagedGroup, groupFresh, !groupInvalid,
-          p["group"] as? String == config.group, p["to"] as? String == config.device,
-          p["permission"] as? String == "read-write", let revision = p["revision"] as? Int, revision > 0,
-          let enabled = p["enabled"] as? Bool,
-          let key = (groupDictionary["trusted_peers"] as? [String: String])?[from] else { return true }
-    if config.role == "hub" {
-      guard p["kind"] as? String == "ack", var grant = config.vaultGrants?[from],
-            grant.revision == revision, grant.enabled == enabled, grant.key == key else { return true }
-      if grant.acknowledged { return true }
-      let previous = config
-      if enabled {
-        try await initialize()
-        _ = try await call(["op": .string("relay-trust"), "peer": .string(from)])
-        config.peers[from] = key; config.paused = false
-      }
-      grant.acknowledged = true; config.vaultGrants?[from] = grant
-      do { try await persist() } catch { if active { config = previous }; throw error }
-      sent.removeAll(); status = connectedStatus
-    } else {
-      guard p["kind"] as? String == "set",
-            let authority = groupDictionary["vault_authority"] as? [String: Any],
-            authority["device"] as? String == from, authority["public_key"] as? String == key,
-            config.hub.isEmpty || config.hub == from,
-            revision >= (config.accessRevision ?? 0) else { return true }
-      if revision == config.accessRevision {
-        guard enabled == config.accessEnabled else { return true }
-      } else {
-        let previous = config
-        config.hub = from; try await initialize()
-        if enabled {
-          _ = try await call(["op": .string("relay-trust"), "peer": .string(from)])
-          config.peers[from] = key; config.paused = false
-        } else {
-          config.peers.removeValue(forKey: from)
-          _ = try await call(["op": .string("relay-revoke"), "peer": .string(from)])
-        }
-        config.accessRevision = revision; config.accessEnabled = enabled
-        do { try await persist() } catch { if active { config = previous }; throw error }
-        status = connectedStatus
-      }
-      _ = try await connection.message(to: from, data: accessMessage(from, grant: VaultGrant(revision: revision, enabled: enabled), kind: "ack"), offline: false)
-    }
-    return true
   }
 }

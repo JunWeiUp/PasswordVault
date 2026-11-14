@@ -1,12 +1,14 @@
 //! Native Messaging v2 host. No root grant is ever written to browser stdout.
+#[path = "../../data_dir.rs"]
+mod data_dir;
 #[path = "../../browser/grants.rs"]
 mod grants;
 #[path = "../../browser/security.rs"]
 mod security;
+#[path = "../../service_ipc.rs"]
+mod service_ipc;
 #[path = "../../browser/wire.rs"]
 mod wire;
-#[path = "../../data_dir.rs"]
-mod data_dir;
 use base64::{Engine, engine::general_purpose::STANDARD};
 use serde_json::{Value, json};
 use std::{
@@ -56,8 +58,9 @@ fn run(contents: &Path, id: &str, directory: &Path, mut request: Value) -> Resul
             .encode(&*auth.as_ref().ok_or("sync-authorization")?.grant)
             .into();
     }
+    service_ipc::ensure(directory).map_err(|e| if e=="ServiceStopped" {"not-running".to_string()} else {e})?;
     let result = if let Ok(mut stream) = UnixStream::connect(directory.join("browser-nsh.sock")) {
-        let app = contents.join("MacOS/PasswordVault");
+        let app = service_ipc::helper()?;
         if !security::peer(stream.as_raw_fd(), &app) {
             return Err("invalid-peer".into());
         }
@@ -72,21 +75,6 @@ fn run(contents: &Path, id: &str, directory: &Path, mut request: Value) -> Resul
             &json!({"extensionOrigin":format!("chrome-extension://{id}/"),"request":request}),
         )?;
         wire::read(&mut stream, 1_000_000)?
-    } else if privileged {
-        let session = vault_core::VaultSession::new(directory.to_string_lossy().into())
-            .map_err(|_| "sync-busy")?;
-        request.as_object_mut().unwrap().remove("_backgroundGrant");
-        request["op"] = op.clone().into();
-        let auth = auth.as_ref().ok_or("sync-authorization")?;
-        let output = if op == "sync-save" {
-            session.background_save(auth.grant.to_vec(), request.to_string())
-        } else {
-            session.authorized_browser_command(auth.grant.to_vec(), request.to_string())
-        }
-        .map_err(|_| "sync-authorization")?;
-        json!({"ok":true,"data":serde_json::from_str::<Value>(&output).map_err(|_|"failed")?})
-    } else if op == "status" {
-        json!({"ok":true,"unlocked":false,"paired":false,"version":2})
     } else {
         return Err("not-running".into());
     };
@@ -107,7 +95,7 @@ pub(super) fn main() {
         let contents = wire::bundle()?;
         let id = wire::identity(&contents)?;
         if std::env::args().nth(1).as_deref() == Some("--desktop-unlock") {
-            if !security::parent(&contents.join("MacOS/PasswordVault")) {
+            if !security::parent(&service_ipc::helper()?) {
                 return Err("invalid-peer".into());
             }
             let request = wire::read(&mut std::io::stdin(), 4096)?;
@@ -121,7 +109,7 @@ pub(super) fn main() {
             let auth = grants::desktop(&directory, &id)?;
             let mut stream = UnixStream::connect(directory.join("browser-nsh.sock"))
                 .map_err(|_| "not-running")?;
-            if !security::peer(stream.as_raw_fd(), &contents.join("MacOS/PasswordVault")) {
+            if !security::peer(stream.as_raw_fd(), &service_ipc::helper()?) {
                 return Err("invalid-peer".into());
             }
             stream

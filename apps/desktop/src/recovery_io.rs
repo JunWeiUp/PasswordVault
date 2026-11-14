@@ -91,7 +91,7 @@ mod tests {
         use serde_json::json;
         let root = std::env::temp_dir().join(format!("pv-recovery-roundtrip-{}", std::process::id()));
         std::fs::create_dir(&root).unwrap();
-        let source = vault_core::VaultSession::new(root.join("source").to_string_lossy().into()).unwrap();
+        let source = crate::session::VaultSession::new(root.join("source").to_string_lossy().into()).unwrap();
         let command = |v: serde_json::Value| -> serde_json::Value {
             serde_json::from_str(&source.command(v.to_string()).unwrap()).unwrap()
         };
@@ -102,7 +102,7 @@ mod tests {
         let path = root.join("archive.pvbackup");
         write_archive(path.to_str().unwrap(), archive["content"].as_str().unwrap()).unwrap();
         let content = read_archive(path.to_str().unwrap()).unwrap();
-        let target = vault_core::VaultSession::new(root.join("target").to_string_lossy().into()).unwrap();
+        let target = crate::session::VaultSession::new(root.join("target").to_string_lossy().into()).unwrap();
         let request = |key: &str| json!({"op":"recovery-restore-backup","key":key,"content":content.as_str(),"newPassword":"synthetic-new"}).to_string();
         assert!(target.command(request("invalid-key")).is_err());
         target.command(request(&key)).unwrap();

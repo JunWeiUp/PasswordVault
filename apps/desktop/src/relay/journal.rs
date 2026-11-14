@@ -10,7 +10,7 @@ use std::{
     io::Write,
     path::{Path, PathBuf},
 };
-use vault_core::VaultSession;
+use crate::session::VaultSession;
 struct Journal {
     directory: PathBuf,
     key: secretbox::Key,

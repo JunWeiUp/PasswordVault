@@ -2,7 +2,7 @@
 
 SwiftUI, iOS 16+, iPhone and iPad. The app and Password AutoFill extension share an App Group; both use the Rust/SQLCipher vault. No Flutter runtime is linked. Debug uses an isolated preview bundle/group; Release retains the legacy `com.example.password` application identifier.
 
-The 2.2.1 public download includes a simulator application and source, not a signed iPhone IPA. See [native release installation](../../docs/NATIVE-RELEASE-NOTES.md) for free personal provisioning, TestFlight/Ad Hoc options and remaining capability gates.
+The 2.2.1 public download includes a simulator application and source, not a signed iPhone IPA. See [native release installation](../../docs/releases/NATIVE-RELEASE-NOTES.md) for free personal provisioning, TestFlight/Ad Hoc options and remaining capability gates.
 
 ```sh
 rustup target add aarch64-apple-ios aarch64-apple-ios-sim x86_64-apple-ios
@@ -18,7 +18,7 @@ The main app closes its database session on background lock so the credential-pr
 
 `PasswordVaultTests` covers encrypted lifecycle, unreadable/tampered drafts WebDAV parsing, request cancellation generations and real-interaction idle timing. `VaultFlowTests` covers create/edit/delete/restore/lock and background draft recovery. `AutofillSystemTest` is opt-in (`PV_SYSTEM_QA=1` in the test runner), changes only the simulator's provider setting, and requires the local login fixture to be opened in Safari beforehand. It checks cancellation followed by a new request and uses fictional credentials in the preview App Group. It must never run against a user's production vault.
 
-See [mobile acceptance](../../docs/MOBILE-IMPLEMENTATION.md) for what has actually been tested and remaining hardware/release gates.
+See [mobile acceptance](../../docs/platforms/MOBILE-IMPLEMENTATION.md) for what has actually been tested and remaining hardware/release gates.
 
 ## CI toolchain
 

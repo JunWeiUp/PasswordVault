@@ -9,6 +9,8 @@ use std::collections::{BTreeMap, BTreeSet};
 
 #[path = "relay_capabilities.rs"]
 mod capabilities;
+#[path = "relay_mesh.rs"]
+pub(super) mod mesh;
 
 // These operations implement their own authenticated personal-relay gate.
 pub(super) fn personal_operation(op: &str) -> bool {
@@ -23,7 +25,7 @@ pub(super) fn personal_operation(op: &str) -> bool {
             | "relay-capabilities-challenge"
             | "relay-capabilities-prove"
             | "relay-capabilities-accept"
-    )
+    ) || mesh::operation(op)
 }
 
 type Records = BTreeMap<String, Value>;
@@ -76,8 +78,8 @@ pub(super) fn enabled(conn: &Connection) -> Result<bool> {
 }
 // Archived sync state can reference attachments absent from the current document.
 pub(super) fn retains_attachments(conn: &Connection) -> Result<bool> {
-    Ok(enabled(conn)? || !peer::list(conn)?.is_empty() || storage(conn.query_row(
-        "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='personal_relay_archive'",
+    Ok(enabled(conn)? || mesh::enabled(conn)? || !peer::list(conn)?.is_empty() || storage(conn.query_row(
+        "SELECT count(*) FROM sqlite_master WHERE type='table' AND name IN ('personal_relay_archive','personal_mesh_archive')",
         [], |r| r.get::<_, i64>(0),
     ))? != 0)
 }
@@ -139,6 +141,9 @@ pub(super) fn capture(
     doc: &Document,
 ) -> Result<()> {
     peer::capture(conn, root, vault, doc)?;
+    if mesh::capture(conn, root, vault, doc)? {
+        return Ok(());
+    }
     if doc.settings["activePeerLibrary"]
         .as_str()
         .is_some_and(|s| !s.is_empty())
@@ -269,10 +274,23 @@ impl DiskVault {
         if op.starts_with("relay-peer-") {
             return peer::command(self, request);
         }
+        if mesh::operation(op) {
+            return self.mesh_command(request);
+        }
+        if op == "relay-status" {
+            if let Some(status) = self.mesh_status()? {
+                return Ok(status);
+            }
+        }
+        if op == "relay-detach" {
+            if let Some(result) = self.mesh_detach(request)? {
+                return Ok(result);
+            }
+        }
         if matches!(op, "relay-credentials-read" | "relay-credentials-write") {
             let directory = self.directory.join("relay-private");
             let path = directory.join("credentials.v1.enc");
-            let open = self.open()?; // The master-password-protected vault must be unlocked.
+            let open = self.connection_only()?; // Credentials need the key, not the document.
             let key = subkey(&open.root, b"local-relay-credentials-v1");
             let aad = open.header.vault_id.clone();
             for candidate in [&directory, &path] {

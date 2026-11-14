@@ -1,5 +1,5 @@
 // PasswordVault for Mac — Native Shell preview. The UI follows
-// docs/design/macos-app; vault-core runs in this app's Rust crate.
+// docs/design/macos-app; Mac vault commands run in the headless Rust owner.
 import { effect, keymap, mount, platform, signal, View } from "nsh";
 import { Menu, Window } from "nsh/desktop";
 import { Detail } from "./ui/Detail";
@@ -11,7 +11,7 @@ import { openSettings, SettingsHost } from "./ui/Settings";
 import { Sidebar } from "./ui/Sidebar";
 import { askTrash } from "./ui/sheets";
 import {
-  boot, call, createItem, dest, load, editing, go, items, lock, onLock, phase, releaseForHiddenWindow, query, selected, selection, settings, toastText, toggleFavorite,
+  boot, call, flush, toast, createItem, dest, load, editing, go, items, lock, onLock, phase, query, selected, selection, settings, toastText, toggleFavorite,
   type Dest,
 } from "./ui/store";
 import { c, TEXT_SCALES, textScale } from "./ui/theme";
@@ -22,6 +22,7 @@ import { isMac, onLockSignals } from "./ui/native";
 import { startShortcut } from "./ui/hotkey";
 import { quickAccessOpen } from "./ui/QuickAccess";
 import { connectBrowser } from "./ui/browser";
+import { pollEvery } from "./ui/polling";
 import { WindowCtl } from "passwordvault/native";
 import { AiApprovalHost } from "./ui/ai";
 
@@ -45,7 +46,7 @@ effect(() => {
         { role: "hideOthers" },
         { role: "showAll" },
         { type: "separator" },
-        { role: "quit" },
+        { label: "退出 PasswordVault", shortcut: "mod+q", onSelect: () => void quitApplication() },
       ],
     },
     {
@@ -103,6 +104,8 @@ keymap.bind("escape", () => sheetOpen() && closeSheet());
 // system-wide idle time come from Rust (ui/native.ts). One subscription for the
 // app's lifetime drains the native queue, also while locked, so stale signals
 // never lock a freshly unlocked vault.
+// The Mac service owns locking while its interface is absent.
+if (!isMac) {
 const SLEEP = 1, SESSION = 2, SCREEN = 4, SCREENSAVER = 8;
 let fallbackSince = performance.now();
 let unlockedSince = performance.now();
@@ -127,6 +130,11 @@ onLockSignals(({ events, idleSeconds }) => {
   const idle = Math.min(idleSeconds ?? (performance.now() - fallbackSince) / 1000, sinceUnlock);
   if (idle >= limit) void lock();
 });
+}
+async function quitApplication() {
+  if (!(await flush())) return;
+  try { await WindowCtl.quit(); } catch { toast("退出未完成，请重试。"); }
+}
 onLock(() => closeSheet());
 void Storage.getItem("textScale").then((v) => {
   const n = Number(v);
@@ -165,34 +173,38 @@ function Toast() {
 // pick that up so the interface follows the core.
 let browserStarted = false;
 
-// Closing the window keeps the app running (Dock reopens it) with its interface
-// unmounted and decrypted items dropped. Test hosts keep the default (see window_ctl.rs).
+// Save while the component tree is still mounted, then exit this UI process.
+// Dock reopening reconnects to the background owner.
 const windowShown = signal(true);
-let releasedForHidden = false;
+let closingWindow = false;
 {
   WindowCtl.install();
   setInterval(() => {
+    if (isMac && WindowCtl.quitRequested() && !closingWindow) { void quitApplication(); return; }
     const shown = WindowCtl.visible();
     if (shown === windowShown()) return;
-    windowShown.set(shown);
-    if (!shown) {
-      closeSheet();
-      if (unlocked()) {
-        releasedForHidden = true;
-        void releaseForHiddenWindow();
-      }
-    } else if (releasedForHidden) {
-      releasedForHidden = false;
-      void call<{ unlocked: boolean }>({ op: "status" }).then((s) => (s.unlocked ? load() : phase.set("locked")));
+    if (!shown && isMac && !closingWindow) {
+      closingWindow = true;
+      void (async () => {
+        if (!(await flush())) {
+          closingWindow = false;
+          WindowCtl.show();
+          toast("保存失败，窗口已保留，请重试。");
+          return;
+        }
+        WindowCtl.finishClose();
+      })().catch(() => { closingWindow = false; WindowCtl.show(); toast("关闭未完成，请重试。"); });
     }
   }, 500);
 }
-setInterval(() => {
-  if (phase() !== "locked") return;
-  void call<{ unlocked: boolean }>({ op: "status" }).then((s) => {
-    if (s.unlocked && phase() === "locked") void load();
-  }).catch(() => {});
-}, 1000);
+pollEvery(1000, async (isActive) => {
+  const requestedPhase = phase();
+  if (requestedPhase !== "locked" && requestedPhase !== "unlocked") return;
+  const status = await call<{ unlocked: boolean }>({ op: "status" });
+  if (!isActive() || phase() !== requestedPhase) return;
+  if (status.unlocked && requestedPhase === "locked") await load();
+  else if (!status.unlocked && requestedPhase === "unlocked") await lock();
+});
 
 function App() {
   void boot().then(() => {
