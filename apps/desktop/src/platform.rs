@@ -12,7 +12,7 @@ mod unsupported {
     use zeroize::Zeroizing;
     pub fn available() -> bool { false }
     pub fn enabled(_: &Path) -> Result<bool, String> { Ok(false) }
-    pub fn verify_enrollment(_: &vault_core::VaultSession, _: &Path, _: String) -> Result<Zeroizing<Vec<u8>>, String> { Err("Unsupported".into()) }
+    pub fn verify_enrollment(_: &crate::session::VaultSession, _: &Path, _: String) -> Result<Zeroizing<Vec<u8>>, String> { Err("Unsupported".into()) }
     pub fn enroll(_: &Path, _: &[u8]) -> Result<(), String> { Err("Unsupported".into()) }
     pub fn remove(_: &Path) -> Result<(), String> { Err("Unsupported".into()) }
     pub fn retrieve(_: &Path) -> Result<Zeroizing<Vec<u8>>, String> { Err("Unsupported".into()) }

@@ -4,12 +4,12 @@ use super::*;
 mod grants;
 struct Fixture {
     dir: PathBuf,
-    session: vault_core::VaultSession,
+    session: crate::session::VaultSession,
 }
 impl Fixture {
     fn new() -> Self {
         let dir = std::env::temp_dir().join(format!("pv-nsh-browser-{}", uuid::Uuid::new_v4()));
-        let session = vault_core::VaultSession::new(dir.to_string_lossy().into()).unwrap();
+        let session = crate::session::VaultSession::new(dir.to_string_lossy().into()).unwrap();
         command(
             &session,
             json!({"op":"create","password":"synthetic-browser-test"}),
@@ -218,9 +218,9 @@ fn approval_is_bound_to_its_request() {
         challenge: "current".into(),
         reply: tx,
     });
-    Browser::approve("expired".into(), true);
+    approve_native("expired".into(), true);
     assert!(rx.try_recv().is_err());
-    Browser::approve("current".into(), false);
+    approve_native("current".into(), false);
     assert_eq!(rx.recv().unwrap(), false);
     PENDING.lock().unwrap().take();
 }
@@ -235,7 +235,7 @@ fn startup_challenge_is_consumed_once_and_manual_lock_cancels_it() {
     assert_eq!(dispatch(&f.session,"test",request.clone()).unwrap()["ok"],true);
     command(&f.session,json!({"op":"lock"})).unwrap();
     assert_eq!(dispatch(&f.session,"test",request.clone()).unwrap_err(),"sync-authorization");
-    *STARTUP.lock().unwrap()=Some("one-use".into());Browser::cancel_startup();
+    *STARTUP.lock().unwrap()=Some("one-use".into());cancel_startup_native();
     assert_eq!(dispatch(&f.session,"test",request).unwrap_err(),"sync-authorization");
     assert_eq!(dispatch(&f.session,"test",message("status","")).unwrap()["unlocked"],false);
 }

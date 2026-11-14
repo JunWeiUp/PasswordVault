@@ -8,7 +8,7 @@ use super::{
 use base64::{Engine, engine::general_purpose::STANDARD};
 use serde_json::{Value, json};
 use std::sync::Mutex;
-use vault_core::VaultSession;
+use crate::session::VaultSession;
 pub static CONTROL: Mutex<()> = Mutex::new(());
 // Serialize remote group operations without holding the local commit lock over HTTP.
 static NETWORK: Mutex<()> = Mutex::new(());
@@ -39,67 +39,10 @@ pub fn group(c: &Value) -> Result<Value> {
         None => Ok(json!({})),
     }
 }
-// Desktop used to mark every new configuration as a hub, including ordinary
-// joiners. Repair only an uninitialized receiver with one verified authority.
-// Existing replication state, personal peer libraries and granted peers stay intact.
-fn repair_joiner_role(s: &VaultSession, c: &mut Value, g: &mut Value) -> Result<()> {
-    let empty_map = |v: &Value| v.is_null() || v.as_object().is_some_and(|m| m.is_empty());
-    if c["role"] != "hub" || !c["peerLibrary"].is_null()
-        || !empty_map(&c["peers"]) || !empty_map(&c["vaultGrants"])
-        || !g["vault_authority"].is_null() || !g["group_entry"].is_object()
-        || (!c["hub"].as_str().unwrap_or("").is_empty() && c["hub"] != c["device"])
-    { return Ok(()); }
-    let state = unpack(&g["group_entry"])?;
-    if state["closed"] == true || state["group"] != g["group"] { return Ok(()); }
-    let members = state["members"].as_array().ok_or("InvalidData")?;
-    if !members.iter().any(|m| m["device"] == c["device"] && m["manager"] == false) { return Ok(()); }
-    let managers: Vec<_> = members.iter().filter(|m| m["manager"] == true).collect();
-    if managers.len() != 1 { return Ok(()); }
-    let authority = managers[0];
-    let id = text(authority, "device")?;
-    let key = text(authority, "public_key")?;
-    if key.is_empty() || g["trusted_peers"][id] != key
-        || core(s, json!({"op":"relay-status"}))?["enabled"] == true
-    { return Ok(()); }
-    // "mobile" is the existing wire name for a receiver, not its operating system.
-    c["role"] = json!("mobile");
-    c["hub"] = authority["device"].clone();
-    g["vault_authority"] = authority.clone();
-    Ok(())
-}
 fn stash(s: &VaultSession, c: &mut Value, g: &Value) -> Result<()> {
-    let mut g = g.clone();
-    repair_joiner_role(s, c, &mut g)?;
-    if c["role"] == "mobile" && g["vault_authority"].is_null() && g["group_entry"].is_object() {
-        let state = unpack(&g["group_entry"])?;
-        let managers: Vec<_> = state["members"]
-            .as_array()
-            .ok_or("InvalidData")?
-            .iter()
-            .filter(|m| m["manager"] == true)
-            .collect();
-        if managers.len() == 1 && managers[0]["device"] != c["device"] {
-            g["vault_authority"] = managers[0].clone();
-        }
-    }
+    let g = g.clone();
     c["groupState"] = json!(STANDARD.encode(canonical(&g)));
     write(s, c)
-}
-/// Resolve this vault's known primary without guessing from OS or list order.
-pub(super) fn primary_device(c: &Value, g: &Value, state: &Value) -> Option<String> {
-    if !c["peerLibrary"].is_null() || state["closed"] == true { return None; }
-    let members = state["members"].as_array()?;
-    if members.iter().filter(|m| m["manager"] == true).count() != 1 { return None; }
-    if c["role"] == "hub" && c["hub"] == c["device"] {
-        return members.iter().find(|m| m["device"] == c["device"] && m["manager"] == true)
-            .and_then(|m| m["device"].as_str()).map(str::to_owned);
-    }
-    let authority = &g["vault_authority"];
-    let id = authority["device"].as_str()?;
-    let key = authority["public_key"].as_str()?;
-    if key.is_empty() || g["trusted_peers"][id] != key || c["hub"] != id { return None; }
-    members.iter().find(|m| m["device"] == id && m["public_key"] == key && m["manager"] == true)
-        .map(|_| id.to_owned())
 }
 pub fn display(c: &Value) -> Result<Value> {
     let g = group(c)?;
@@ -126,12 +69,9 @@ pub fn display(c: &Value) -> Result<Value> {
     } else {
         ""
     };
-    let primary = primary_device(c, &g, &state);
-    let primary_name = primary.as_deref().and_then(|id| state["members"].as_array()?.iter().find(|m| m["device"] == id)?.get("name")).cloned().unwrap_or(Value::Null);
-    let is_primary = primary.as_deref().is_some_and(|id| c["device"] == id);
     // No secret, token, pending signed grant or delegate key leaves Rust.
     Ok(
-        json!({"primaryDevice":primary,"primaryName":primary_name,"isPrimary":is_primary,"legacy":!c["token"].as_str().unwrap_or("").is_empty()&&g.as_object().is_some_and(|g|g.is_empty()),"device":c["device"],"role":c["role"],"peerLibrary":c["peerLibrary"],"paused":c["paused"],"state":state,"transport":"not-connected","joining":g["pending_join"].is_object(),"creating":g["pending_create"].is_object(),"code":code,"applicant":unpack(&g["join_request"]).ok().map(|r|r["member"]["name"].clone()),"invitationLink":link,"hasPassword":super::protocol::configured_password(&c).ok().flatten().is_some(),"invitationMode":inv["mode"],"invitationExpires":inv["expires"],"authorizedPeers":c["peers"].as_object().map(|p|p.keys().cloned().collect::<Vec<_>>()),"grants":c["vaultGrants"].as_object().map(|m|m.iter().map(|(k,v)|(k.clone(),json!({"enabled":v["enabled"],"acknowledged":v["acknowledged"]}))).collect::<serde_json::Map<_,_>>())}),
+        json!({"legacy":!c["token"].as_str().unwrap_or("").is_empty()&&g.as_object().is_some_and(|g|g.is_empty()),"device":c["device"],"role":c["role"],"peerLibrary":c["peerLibrary"],"paused":c["paused"],"state":state,"transport":"not-connected","joining":g["pending_join"].is_object(),"creating":g["pending_create"].is_object(),"code":code,"applicant":unpack(&g["join_request"]).ok().map(|r|r["member"]["name"].clone()),"invitationLink":link,"hasPassword":super::protocol::configured_password(&c).ok().flatten().is_some(),"invitationMode":inv["mode"],"invitationExpires":inv["expires"]}),
     )
 }
 pub fn execute(s: &VaultSession, request: Value, local: bool) -> Result<String> {
@@ -171,15 +111,6 @@ pub fn execute(s: &VaultSession, request: Value, local: bool) -> Result<String> 
             .map_err(|_| "InvalidData")?;
         g = json!({"app":"passwordvault","device":c["device"],"secret_key":hex(&secret)});
     }
-    if op == "approve-and-grant" {
-        super::admission::prepare(s, &mut c, &g, text(&request, "code")?)?;
-    }
-    if c["pendingAdmission"].is_object() && (op == "cancel-invitation"
-        || (op == "remove" && request["device"] == c["pendingAdmission"]["peer"])) {
-        c["pendingAdmission"]["cancelled"] = json!(true);
-        write(s, &c)?;
-    }
-    let admission = c["pendingAdmission"].clone();
     let expected_device = c["device"].clone();
     drop(guard);
     let mut save = |g: &Value| {
@@ -215,23 +146,6 @@ pub fn execute(s: &VaultSession, request: Value, local: bool) -> Result<String> 
         }
         "refresh" => {
             groups.refresh()?;
-            if admission.is_object() && admission["cancelled"] != true
-                && !super::admission::has_receipt(&groups.config, &admission)?
-                && groups.config["join_request"].is_object()
-                && digest(&payload(&groups.config["join_request"])?) == admission["requestHash"]
-            {
-                let code = groups.code()?;
-                groups.approve(&code, false)?;
-            }
-        }
-        "invite-personal" => {
-            groups.refresh()?;
-            let current = read(s)?;
-            let state = unpack(&groups.config["group_entry"])?;
-            if primary_device(&current, &groups.config, &state).as_deref() != current["device"].as_str() {
-                return Err("PrimaryRequired".into());
-            }
-            groups.invite("manual")?;
         }
         "invite" => {
             groups.invite(text(&request, "mode")?)?;
@@ -252,11 +166,6 @@ pub fn execute(s: &VaultSession, request: Value, local: bool) -> Result<String> 
         }
         "check-request" => {
             groups.pending()?;
-        }
-        "approve-and-grant" => {
-            if !super::admission::has_receipt(&groups.config, &admission)? {
-                groups.approve(text(&request, "code")?, false)?;
-            }
         }
         "approve" => {
             groups.approve(text(&request, "code")?, request["manager"] == true)?;
@@ -290,19 +199,10 @@ pub fn execute(s: &VaultSession, request: Value, local: bool) -> Result<String> 
             .filter(|(id, key)| !valid || g["trusted_peers"][*id] != **key)
             .map(|(id, _)| id.clone())
             .collect();
+        // Symmetric sync reads the signed roster each cycle; only peer-library
+        // transport keys are pruned here.
         for id in revoked {
-            if core(s, json!({"op":"relay-status"}))?["enabled"] == true {
-                core(s, json!({"op":"relay-revoke","peer":id}))?;
-            }
             c["peers"].as_object_mut().unwrap().remove(&id);
-        }
-        if let Some(grants) = c["vaultGrants"].as_object_mut() {
-            for (id, grant) in grants {
-                if !valid || g["trusted_peers"][id.as_str()] != grant["key"] {
-                    grant["enabled"] = json!(false);
-                    grant["acknowledged"] = json!(true);
-                }
-            }
         }
         c["endpoint"] = g["url"].clone();
         c["group"] = g["group"].clone();
@@ -318,10 +218,6 @@ pub fn execute(s: &VaultSession, request: Value, local: bool) -> Result<String> 
         if !valid {
             return Err("GroupAccessRevoked".into());
         }
-    }
-    if matches!(op, "approve-and-grant" | "refresh") {
-        super::admission::complete_locked(s)?;
-        c = read(s)?;
     }
     Ok(display(&c)?.to_string())
 }
@@ -368,32 +264,4 @@ fn clear_local(s: &VaultSession, c: &mut Value) -> Result<()> {
     c["paused"] = json!(true);
     c["device"] = json!(uuid::Uuid::new_v4().to_string());
     write(s, c)
-}
-
-#[cfg(test)]
-mod primary_tests {
-    use super::*;
-    #[test]
-    fn primary_identity_is_not_inferred_from_platform_or_membership_order() {
-        let state = json!({"members":[{"device":"windows","name":"Windows","public_key":"w","manager":false},{"device":"phone","name":"Phone","public_key":"p","manager":true}]});
-        let c = json!({"role":"hub","device":"phone","hub":"phone"});
-        assert_eq!(primary_device(&c, &json!({}), &state), Some("phone".into()));
-        let receiver = json!({"role":"mobile","device":"windows","hub":"phone"});
-        let group = json!({"vault_authority":{"device":"phone","public_key":"p"},"trusted_peers":{"phone":"p"}});
-        assert_eq!(primary_device(&receiver, &group, &state), Some("phone".into()));
-        assert_eq!(primary_device(&receiver, &json!({}), &state), None);
-        let mut changed_key = group.clone(); changed_key["trusted_peers"]["phone"] = json!("different");
-        assert_eq!(primary_device(&receiver, &changed_key, &state), None);
-        let mut independent = receiver.clone(); independent["peerLibrary"] = json!("other-library");
-        assert_eq!(primary_device(&independent, &group, &state), None);
-        let mut ambiguous = state.clone(); ambiguous["members"][0]["manager"] = json!(true);
-        assert_eq!(primary_device(&c, &group, &ambiguous), None);
-        assert_eq!(primary_device(&receiver, &group, &ambiguous), None);
-        let mut closed = state.clone(); closed["closed"] = json!(true);
-        assert_eq!(primary_device(&c, &group, &closed), None);
-        let mut wrong_hub = receiver.clone(); wrong_hub["hub"] = json!("other");
-        assert_eq!(primary_device(&wrong_hub, &group, &state), None);
-        let ordinary_hub = json!({"role":"hub","device":"windows","hub":"windows"});
-        assert_eq!(primary_device(&ordinary_hub, &group, &state), None);
-    }
 }

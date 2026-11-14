@@ -124,10 +124,15 @@ class BackgroundSessionTest {
             device.wakeUp()
             device.executeShellCommand("wm dismiss-keyguard")
             scenario = ActivityScenario.launch(intent)
-            assertTrue(device.wait(Until.hasObject(By.text("创建本机加密资料库")), 10_000))
+            assertTrue(device.wait(Until.hasObject(By.text("欢迎使用 PasswordVault")), 10_000))
+            device.findObject(By.text("新建密码库")).click()
+            assertTrue(device.wait(Until.hasObject(By.text("设置主密码")), 5_000))
             device.findObjects(By.clazz("android.widget.EditText"))[0].text = "1"
             device.findObjects(By.clazz("android.widget.EditText"))[1].text = "1"
-            device.wait(Until.findObject(By.text("创建资料库").enabled(true)), 5_000).click()
+            device.wait(Until.findObject(By.text("继续").enabled(true)), 5_000).click()
+            val biometricChoice = device.wait(Until.findObject(By.text("以后再说")), 10_000)
+            assertNotNull("Creation must reach the biometric choice", biometricChoice)
+            biometricChoice.click()
             assertTrue(device.wait(Until.hasObject(By.desc("笔记")), 10_000))
             device.pressHome()
             withTimeout(5_000) {
@@ -138,7 +143,7 @@ class BackgroundSessionTest {
                     .setFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
             )
             assertTrue(device.wait(Until.hasObject(By.desc("笔记")), 10_000))
-            assertFalse(device.hasObject(By.text("解锁资料库")))
+            assertFalse(device.hasObject(By.text("PasswordVault 已锁定")))
             scenario.recreate()
             assertTrue(device.wait(Until.hasObject(By.desc("笔记")), 10_000))
             device.pressHome()
@@ -153,7 +158,7 @@ class BackgroundSessionTest {
                 Intent(intent)
                     .setFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
             )
-            assertTrue(device.wait(Until.hasObject(By.text("解锁资料库")), 10_000))
+            assertTrue(device.wait(Until.hasObject(By.text("PasswordVault 已锁定")), 10_000))
         } catch (failure: Throwable) {
             device.dumpWindowHierarchy(
                 File(context.getExternalFilesDir(null), "qa-background-failure.xml")

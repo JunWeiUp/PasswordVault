@@ -32,11 +32,8 @@ internal fun RelaySettingsScreen(vault: VaultRepository, t: (String,String)->Str
     var confirmPersonalSync by remember { mutableStateOf(false) }
     var peerExpanded by remember { mutableStateOf(false) }
     var endpoint by remember(state.endpoint) { mutableStateOf(state.endpoint) }
-    var invitation by remember { mutableStateOf("") }
-    var scanning by remember { mutableStateOf(false) }
-    var pairingExpanded by remember { mutableStateOf(false) }
     var legacyExpanded by remember { mutableStateOf(false) }
-    var showReply by remember(state.reply) { mutableStateOf(false) }
+    var showPeerReply by remember(state.reply) { mutableStateOf(false) }
     fun localized(text: String): String { val parts = text.split(" / ", limit = 2); return if (parts.size == 2) t(parts[0], parts[1]) else text }
     var importError by remember { mutableStateOf(false) }
     val importer = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -54,8 +51,34 @@ internal fun RelaySettingsScreen(vault: VaultRepository, t: (String,String)->Str
             } catch (_: Exception) { importError = true }
         }
     }
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text(t("中继同步", "Relay sync"), style = MaterialTheme.typography.headlineSmall)
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        if (state.paired || state.managed) {
+            RelaySyncCard(state, t, relay::syncNow)
+            Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.primaryContainer) {
+                Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(t("已加入同步组", "In the sync group"), style = MaterialTheme.typography.titleSmall)
+                    Text(t("组内所有设备自动双向同步，资料在设备间加密传输，无需逐台授权。", "Every device in the group syncs both ways automatically with end-to-end encryption; no per-device authorization."), style = MaterialTheme.typography.bodyMedium)
+                }
+            }
+        }
+        if (!state.paired && !state.managed) state.error?.let { Text(localized(it), color = MaterialTheme.colorScheme.error) }
+        if (importError) Text(t("凭据文件无法读取或过大", "Credential file unreadable or too large"), color = MaterialTheme.colorScheme.error)
+        if (state.credentialsBlocked) {
+            Text(t("中继凭据由本机主密码保护。迁移失败不会清除原接入。", "Relay credentials are protected by the local master password. Failed migration preserves the original access."))
+            Button(onClick = relay::retryCredentials, enabled = !state.busy) { Text(t("重试读取凭据", "Retry credential access")) }
+        } else RelayGroupPanel(vault, state, t)
+        if (!state.credentialsBlocked && (state.legacy || (!state.managed && !state.joining && !state.creating))) {
+            TextButton(onClick = { legacyExpanded = !legacyExpanded }, enabled = !state.busy) { Text(t("兼容旧版手动接入", "Legacy manual access")) }
+            if (legacyExpanded) {
+        Text(t("登记设备", "Register device"), style = MaterialTheme.typography.titleMedium)
+        Text(t("管理员用此公钥登记设备，并使用与 Mac 相同的设备组。", "Register this public key in the Mac's device group."))
+        SelectionContainer { Text("Device: ${state.device}\nGroup: ${state.group}\nPublic key: ${state.publicKey}") }
+        OutlinedTextField(endpoint, { endpoint = it }, label = { Text("wss://host/relay/v1/ws") }, modifier = Modifier.fillMaxWidth())
+        OutlinedButton(onClick = { importer.launch(arrayOf("application/json", "text/plain")) }) { Text(t("导入设备凭据 JSON", "Import credential JSON")) }
+        HorizontalDivider()
+            }
+        }
+        HorizontalDivider()
         TextButton(onClick = { peerExpanded = !peerExpanded }) { Text(t("对等密码库（无需 Mac 在线）", "Peer library (Mac can be offline)")) }
         if (peerExpanded) {
             Text(t("显式升级会保留旧同步日志。请先升级所有参与设备，并独立核对邀请来源和身份回执。", "Enrollment preserves the legacy journal. Update every participating device and independently verify invitation sources and identities."))
@@ -101,71 +124,11 @@ internal fun RelaySettingsScreen(vault: VaultRepository, t: (String,String)->Str
                     }
                 }
             }
-            if (state.reply.isNotEmpty()) SelectionContainer { Text(state.reply) }
+            if (state.reply.isNotEmpty()) {
+                TextButton(onClick = { showPeerReply = !showPeerReply }) { Text(if (showPeerReply) t("隐藏身份回执", "Hide identity reply") else t("查看身份回执（可复制）", "Show identity reply")) }
+                if (showPeerReply) SelectionContainer { Text(state.reply, style = MaterialTheme.typography.bodySmall) }
+            }
         }
 
-        if (state.paired || state.managed) Text(localized(state.status))
-        if (!state.paired) Text(t("先创建或加入设备组，再授权密码库同步。资料在设备间加密传输。", "Create or join a device group, then authorize vault sync. Data travels encrypted between devices."))
-        state.error?.let { Text(localized(it), color = MaterialTheme.colorScheme.error) }
-        if (importError) Text(t("凭据文件无法读取或过大", "Credential file unreadable or too large"), color = MaterialTheme.colorScheme.error)
-        if (state.paired) {
-        if (state.peerLibrary.isEmpty()) Text(t("待提交：${state.pending}", "Pending: ${state.pending}"))
-        else Text(t("本地已保存；中继投递不代表所有设备已应用", "Saved locally; relay delivery does not mean every device has applied it"))
-        if (state.conflicts > 0) {
-            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text(t("有 ${state.conflicts} 项合并冲突，请到电脑端处理", "${state.conflicts} merge conflicts — resolve on your computer"), style = MaterialTheme.typography.titleSmall)
-                    Text(t("打开 Mac 设置 → 中继同步，逐条选择或统一采用手机端 / Mac 端。处理完成后会自动继续同步，无需反复点击“立即同步”。", "Open Mac Settings → Relay sync. Resolve individually or use the mobile/Mac version for all. Sync resumes automatically; repeatedly tapping Sync now will not resolve conflicts."))
-                }
-            }
-        }
-        state.lastReceived?.let { Text(t("最近接收：", "Last received: ") + java.util.Date(it).toString()) }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button(onClick = { relay.syncNow() }, enabled = state.paired && !state.invalid && !state.busy) { Text(t("立即同步", "Sync now")) }
-            OutlinedButton(onClick = { relay.pause(!state.paused) }, enabled = state.paired && !state.invalid && !state.busy) { Text(if (state.paused) t("恢复", "Resume") else t("暂停", "Pause")) }
-        }
-        }
-        HorizontalDivider()
-        if (state.credentialsBlocked) {
-            Text(t("中继凭据由本机主密码保护。迁移失败不会清除原接入。", "Relay credentials are protected by the local master password. Failed migration preserves the original access."))
-            Button(onClick = relay::retryCredentials, enabled = !state.busy) { Text(t("重试读取凭据", "Retry credential access")) }
-        } else RelayGroupPanel(vault, state, t)
-        if (!state.credentialsBlocked && (state.legacy || (!state.managed && !state.joining && !state.creating))) {
-            TextButton(onClick = { legacyExpanded = !legacyExpanded }, enabled = !state.busy) { Text(t("兼容旧版手动接入", "Legacy manual access")) }
-            if (legacyExpanded) {
-        Text(t("登记设备", "Register device"), style = MaterialTheme.typography.titleMedium)
-        Text(t("管理员用此公钥登记设备，并使用与 Mac 相同的设备组。", "Register this public key in the Mac's device group."))
-        SelectionContainer { Text("Device: ${state.device}\nGroup: ${state.group}\nPublic key: ${state.publicKey}") }
-        OutlinedTextField(endpoint, { endpoint = it }, label = { Text("wss://host/relay/v1/ws") }, modifier = Modifier.fillMaxWidth())
-        OutlinedButton(onClick = { importer.launch(arrayOf("application/json", "text/plain")) }) { Text(t("导入设备凭据 JSON", "Import credential JSON")) }
-        HorizontalDivider()
-            }
-        }
-        HorizontalDivider()
-        if (state.legacy || (state.managed && !state.invalid)) {
-        if (state.managed) Text(t("在 Mac 的“我的设备”中开启本机的“查看并同步修改”，保持两端解锁即可完成授权。", "Enable View and sync changes for this device in My devices on Mac. Keep both vaults unlocked to finish authorization."))
-        TextButton(onClick = { pairingExpanded = !pairingExpanded }) { Text(t("兼容旧版密码库配对", "Legacy vault pairing")) }
-        if (pairingExpanded) {
-        OutlinedButton(onClick = { scanning = true }) { Text(t("扫描 Mac 配对码", "Scan Mac invitation")) }
-        OutlinedTextField(invitation, { invitation = it }, label = { Text(t("或粘贴邀请内容", "Or paste invitation")) }, modifier = Modifier.fillMaxWidth(), maxLines = 5)
-        Button(onClick = { relay.pair(invitation); invitation = "" }, enabled = !state.busy && invitation.isNotEmpty()) { Text(t("读取邀请", "Read invitation")) }
-        if (state.reply.isNotEmpty()) {
-            Text(t("校验码：${state.code}", "Verification: ${state.code}"), style = MaterialTheme.typography.titleLarge)
-            Text(t("将以下回执交给 Mac，核对校验码并在 Mac 授权。", "Return this reply to Mac, compare codes and authorize on Mac."))
-            val image = remember(state.reply) {
-                val matrix = MultiFormatWriter().encode(state.reply, BarcodeFormat.QR_CODE, 400, 400)
-                Bitmap.createBitmap(400, 400, Bitmap.Config.ARGB_8888).apply {
-                    setPixels(IntArray(400*400) { if (matrix[it%400,it/400]) android.graphics.Color.BLACK else android.graphics.Color.WHITE },0,400,0,0,400,400)
-                }.asImageBitmap()
-            }
-            Image(image, contentDescription = t("配对回执", "Pairing reply"), modifier = Modifier.size(220.dp))
-            TextButton(onClick = { showReply = !showReply }) { Text(t("查看配对回执（可复制）", "Show pairing reply")) }
-            if (showReply) SelectionContainer { Text(state.reply, style = MaterialTheme.typography.bodySmall) }
-        }
-        }
-        if (state.paired) OutlinedButton(onClick = { relay.unpair() }) { Text(t("解除绑定", "Unpair")) }
-        }
-        Text(t("Mac 解锁后才会汇总同步。手机离线编辑保留到主库确认。", "Mac processes sync while unlocked. Offline edits remain until Mac confirms them."))
     }
-    if (scanning) LiveQrScanner(vault, t, { invitation = it; scanning = false }, { scanning = false }, rawPayload = true)
 }

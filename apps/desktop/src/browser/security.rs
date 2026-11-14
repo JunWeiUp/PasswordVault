@@ -51,6 +51,29 @@ pub fn code_hash(path: &Path) -> Option<Vec<u8>> {
         hash(code)
     }
 }
+/// Full static validation reads the whole executable. Every IPC connection checks
+/// its peer, so cache the expected file's validated identity until the file itself
+/// changes (device, inode, size or modification time). The connecting process is
+/// still validated dynamically on every connection.
+fn cached_code_hash(path: &Path) -> Option<Vec<u8>> {
+    use std::os::unix::fs::MetadataExt;
+    type Key = (u64, u64, u64, i64, i64);
+    static CACHE: std::sync::Mutex<Option<(std::path::PathBuf, Key, Vec<u8>)>> = std::sync::Mutex::new(None);
+    let meta = std::fs::metadata(path).ok()?;
+    let key: Key = (meta.dev(), meta.ino(), meta.size(), meta.mtime(), meta.mtime_nsec());
+    if let Ok(cache) = CACHE.lock() {
+        if let Some((cached, k, hash)) = cache.as_ref() {
+            if cached == path && *k == key {
+                return Some(hash.clone());
+            }
+        }
+    }
+    let hash = code_hash(path)?;
+    if let Ok(mut cache) = CACHE.lock() {
+        *cache = Some((path.to_path_buf(), key, hash.clone()));
+    }
+    Some(hash)
+}
 pub fn peer(fd: i32, expected: &Path) -> bool {
     unsafe {
         let mut audit = [0u8; 32];
@@ -81,7 +104,7 @@ pub fn peer(fd: i32, expected: &Path) -> bool {
             return false;
         }
         let _actual = CFType::wrap_under_create_rule(actual.cast());
-        matches!((hash(actual), code_hash(expected)), (Some(a),Some(b)) if a == b)
+        matches!((hash(actual), cached_code_hash(expected)), (Some(a),Some(b)) if a == b)
     }
 }
 fn query(service: &str, account: &str) -> Vec<(CFType, CFType)> {
@@ -196,6 +219,6 @@ pub fn parent(expected: &Path) -> bool {
             return false;
         }
         let _actual = CFType::wrap_under_create_rule(actual.cast());
-        matches!((hash(actual),code_hash(expected)),(Some(a),Some(b)) if a==b)
+        matches!((hash(actual),cached_code_hash(expected)),(Some(a),Some(b)) if a==b)
     }
 }

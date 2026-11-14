@@ -41,6 +41,8 @@ internal suspend fun applyCollectionBatch(
                         )
                     )
                 "color" -> vault.save(next.put("colorLabel", value))
+                "favorite" -> vault.save(next.put("isFavorite", true))
+                "category" -> vault.save(next.put("category", value))
                 else -> false
             }
         if (ok) succeeded += id
@@ -72,6 +74,7 @@ internal fun CollectionTools(
     backup: () -> Unit,
     scope: kotlinx.coroutines.CoroutineScope,
     compactActions: Boolean = false,
+    showToolbar: Boolean = true,
 ) {
     var selecting by ui.selecting
     var ids by ui.selectedIds
@@ -84,7 +87,7 @@ internal fun CollectionTools(
     var lines by ui.tools.lines
     var cachedInput by ui.tools.cachedInput
     var parsed by ui.tools.parsed
-    Column(
+    if (showToolbar) Column(
         Modifier.padding(horizontal = if (compactActions || page == "secureNote") 0.dp else 20.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
@@ -178,6 +181,17 @@ internal fun CollectionTools(
             title = { Text(t("对 ${ids.size} 项执行操作", "Update ${ids.size} selected items")) },
             text = {
                 when (operation) {
+                    "favorite" -> Text(t("将选中条目加入收藏。", "Add the selected items to Favorites."))
+                    "category" -> Column(Modifier.verticalScroll(rememberScrollState())) {
+                        Text(t("选择目标分类；只读条目不会被修改。", "Choose a category. Read-only items are kept unchanged."))
+                        val names = (state.entries.map { it.optString("category") } + state.settings.optJSONArray("noteCategories")?.let { a -> (0 until a.length()).map { a.optString(it) } }.orEmpty()).filter { it.isNotBlank() }.distinct().sorted()
+                        (listOf("") + names).forEach { name ->
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                RadioButton(selected = value == name, onClick = { value = name }, enabled = !busy)
+                                Text(name.ifBlank { t("未分类", "Unfiled") })
+                            }
+                        }
+                    }
                     "tag" ->
                         Column(
                             Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState())

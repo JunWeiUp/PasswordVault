@@ -39,6 +39,8 @@ class NotesScrollTest {
         val theme = InstrumentationRegistry.getArguments().getString("designTheme") ?: "light"
         val scale = context.resources.configuration.fontScale
         val id = UUID.randomUUID().toString()
+        val noteCount = 40
+        val allNotes = By.text("All $noteCount")
         val fixture = VaultRepository(context, File(context.cacheDir, "ui-test-$id"))
         var scenario: ActivityScenario<MainActivity>? = null
         fun fresh() {
@@ -82,8 +84,8 @@ class NotesScrollTest {
         }
         fun topTitleVisible(): Boolean {
             fresh()
-            // The selected tab exposes its text label instead of the icon description.
-            // Settings remains an unselected icon while reviewing Notes.
+            // Distinguish the scrolling Notes heading from the persistent bottom tab.
+            // Settings provides the top edge of the bottom navigation.
             val tabTop = device.findObject(By.desc("Settings"))?.visibleBounds?.top ?: return false
             return device.findObjects(By.text("Notes")).any {
                 it.visibleBounds.height() > 0 && it.visibleBounds.bottom < tabTop
@@ -93,7 +95,7 @@ class NotesScrollTest {
             topTitleVisible() &&
                 visible(By.desc("Lock")) &&
                 visible(By.text("Search notes")) &&
-                visible(By.text("All notes"))
+                visible(allNotes)
         fun backToTop() {
             repeat(30) {
                 if (headerVisible()) return
@@ -112,7 +114,7 @@ class NotesScrollTest {
             )
             assertFalse(
                 "Folder controls must scroll with the document collection",
-                visible(By.text("All notes")),
+                visible(allNotes),
             )
             assertFalse(
                 "The header lock action must scroll with its title",
@@ -191,7 +193,7 @@ class NotesScrollTest {
             for (category in listOf("Family", "Work", "Empty folder")) {
                 assertTrue(fixture.mutate("category-add", JSONObject().put("name", category)))
             }
-            repeat(40) { index ->
+            repeat(noteCount) { index ->
                 assertTrue(
                     fixture.save(
                         VaultRepository.blank("secureNote")
@@ -213,12 +215,12 @@ class NotesScrollTest {
                         .putExtra("uiTestVault", id)
                         .putExtra("qaScreenshots", true)
                 )
-            awaitVisible(By.text("Unlock your vault"))
-            device.findObjects(By.clazz("android.widget.EditText"))[0].text = "1"
-            device.findObject(By.text("Unlock")).click()
-            awaitVisible(By.desc("Notes"))
-            device.findObject(By.desc("Notes")).click()
+            awaitVisible(By.text("PasswordVault is locked"))
+            device.findObject(By.clazz("android.widget.EditText")).text = "1"
+            device.findObject(By.desc("Unlock")).click()
+            // Notes is the default root; verify the fixture rather than changing tabs.
             awaitVisible(By.text("Fixture note 01"))
+            awaitVisible(allNotes)
             for (mode in listOf("grid", "list")) {
                 backToTop()
                 if (mode == "list") {
@@ -229,7 +231,7 @@ class NotesScrollTest {
                 shot("$mode-before")
                 repeat(4) { swipe(true) }
                 headerHidden()
-                awaitVisible(By.desc("Add"))
+                awaitVisible(By.text("New"))
                 awaitVisible(By.desc("Accounts"))
                 assertTrue(
                     device.findObjects(By.text("Notes")).any {
@@ -240,12 +242,15 @@ class NotesScrollTest {
                 val saved = anchor()
                 shot("$mode-after")
                 device.findObject(By.text(saved.first)).click()
-                awaitVisible(By.desc("Edit"))
+                awaitVisible(By.text("Edit"))
                 device.findObject(By.desc("Back")).click()
                 samePosition(saved, "$mode detail return")
-                device.findObject(By.desc("Add")).click()
-                awaitVisible(By.text("Edit note"))
-                device.findObject(By.text("Cancel")).click()
+                device.findObject(By.text("New")).click()
+                awaitVisible(By.desc("Note information"))
+                awaitVisible(By.clazz("android.webkit.WebView"))
+                device.findObject(By.desc("Back")).click()
+                awaitVisible(By.text("Discard unsaved changes?"))
+                device.findObject(By.text("Discard changes")).click()
                 samePosition(saved, "$mode cancelled creation")
                 device.findObject(By.desc("Accounts")).click()
                 awaitVisible(By.text("Accounts"))
@@ -257,32 +262,37 @@ class NotesScrollTest {
                 samePosition(saved, "$mode tab return")
             }
             backToTop()
-            device.findObject(By.text("All notes")).click()
-            awaitVisible(By.text("Empty folder"))
-            device.findObject(By.text("Empty folder")).click()
-            awaitVisible(By.text("No matching entries"))
-            awaitVisible(By.text("Clear filters"))
-            device.findObject(By.text("Clear filters")).click()
+            awaitVisible(By.text("Empty folder 0"))
+            device.findObject(By.text("Empty folder 0")).click()
+            awaitVisible(By.text("No notes in this category"))
+            assertFalse("An empty category must hide the fixture notes", visible(By.text("Fixture note 01")))
+            awaitVisible(allNotes)
+            device.findObject(allNotes).click()
             awaitVisible(By.text("Fixture note 01"))
             backToTop()
             val search = device.findObject(By.clazz("android.widget.EditText"))
             search.click()
             search.text = "no-fixture-match"
             hideKeyboard()
-            awaitVisible(By.text("No matching entries"))
-            device.findObject(By.text("Clear filters")).click()
+            awaitVisible(By.text("No results for “no-fixture-match”"))
+            assertFalse("A nonmatching search must hide the fixture notes", visible(By.text("Fixture note 01")))
+            device.findObject(By.text("Clear search")).click()
             awaitVisible(By.text("Fixture note 01"))
             backToTop()
-            device.findObject(By.desc("Collection tools")).click()
+            device.findObject(By.desc("Sort")).click()
+            awaitVisible(By.text("Collection tools"))
+            device.findObject(By.text("Collection tools")).click()
             awaitVisible(By.text("Select"))
             device.findObject(By.text("Select")).click()
-            awaitVisible(By.text("Done selecting"))
-            assertFalse(visible(By.desc("Add")))
-            device.findObject(By.text("Done selecting")).click()
-            awaitVisible(By.desc("Add"))
+            // The tools sheet closes when selection starts; check the actual collection.
+            awaitVisible(By.desc("Cancel selection"))
+            awaitVisible(By.text("0 selected"))
+            assertFalse(visible(By.text("New")))
+            device.findObject(By.desc("Cancel selection")).click()
+            awaitVisible(By.text("New"))
             backToTop()
             device.findObject(By.desc("Lock")).click()
-            awaitVisible(By.text("Unlock your vault"))
+            awaitVisible(By.text("PasswordVault is locked"))
         } catch (error: Throwable) {
             device.dumpWindowHierarchy(
                 File(context.getExternalFilesDir(null), "notes-scroll-$theme-$scale-failure.xml")

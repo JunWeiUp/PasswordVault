@@ -5,22 +5,51 @@
 //! Disabled under tests (`PV_DISABLE_HOTKEY`) so test hosts never take the
 //! installed application's shortcut.
 
+#[cfg(feature = "ui")]
 use nsh_core::prelude::*;
 
 /// The global Quick Access shortcut.
+#[cfg(feature = "ui")]
 #[module]
 pub struct Hotkey;
 
+#[cfg(feature = "ui")]
 #[module]
 impl Hotkey {
     /// Registers `choice` ("command-shift-space", "command-option-p" or
     /// "disabled"); resolves false when another app already holds it.
     pub async fn configure(choice: String) -> bool {
+        #[cfg(all(target_os = "macos", not(test)))]
+        {
+            return crate::service_ipc::control_async(
+                crate::vault_directory(),
+                "hotkey-configure",
+                serde_json::json!({"choice":choice}),
+            )
+            .await
+            .ok()
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        }
+        #[cfg(any(not(target_os = "macos"), test))]
         imp::configure(choice).await
     }
 
     /// Whether the shortcut was pressed since the last call.
-    pub fn poll() -> bool {
+    pub async fn poll() -> bool {
+        #[cfg(all(target_os = "macos", not(test)))]
+        {
+            return crate::service_ipc::control_async(
+                crate::vault_directory(),
+                "hotkey-poll",
+                serde_json::json!({}),
+            )
+            .await
+            .ok()
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        }
+        #[cfg(any(not(target_os = "macos"), test))]
         imp::PRESSED.swap(false, std::sync::atomic::Ordering::SeqCst)
     }
 }
@@ -50,10 +79,32 @@ mod imp {
     #[link(name = "Carbon", kind = "framework")]
     unsafe extern "C" {
         fn GetApplicationEventTarget() -> *mut c_void;
-        fn InstallEventHandler(target: *mut c_void, handler: Handler, count: usize, list: *const EventTypeSpec, data: *mut c_void, out: *mut *mut c_void) -> i32;
-        fn RegisterEventHotKey(code: u32, modifiers: u32, id: EventHotKeyID, target: *mut c_void, options: u32, out: *mut *mut c_void) -> i32;
+        fn InstallEventHandler(
+            target: *mut c_void,
+            handler: Handler,
+            count: usize,
+            list: *const EventTypeSpec,
+            data: *mut c_void,
+            out: *mut *mut c_void,
+        ) -> i32;
+        fn RegisterEventHotKey(
+            code: u32,
+            modifiers: u32,
+            id: EventHotKeyID,
+            target: *mut c_void,
+            options: u32,
+            out: *mut *mut c_void,
+        ) -> i32;
         fn UnregisterEventHotKey(hotkey: *mut c_void) -> i32;
-        fn GetEventParameter(event: *mut c_void, name: u32, kind: u32, actual: *mut u32, size: usize, actual_size: *mut usize, data: *mut c_void) -> i32;
+        fn GetEventParameter(
+            event: *mut c_void,
+            name: u32,
+            kind: u32,
+            actual: *mut u32,
+            size: usize,
+            actual_size: *mut usize,
+            data: *mut c_void,
+        ) -> i32;
     }
 
     const SIGNATURE: u32 = u32::from_be_bytes(*b"PVQA"); // as in the SwiftUI app
@@ -68,15 +119,28 @@ mod imp {
     const OPTION: u32 = 1 << 11;
 
     extern "C" fn on_hotkey(_: *mut c_void, event: *mut c_void, _: *mut c_void) -> i32 {
-        let mut id = EventHotKeyID { signature: 0, id: 0 };
+        let mut id = EventHotKeyID {
+            signature: 0,
+            id: 0,
+        };
         // SAFETY: reads the hot key ID of a Carbon keyboard event into a local of its size.
         let status = unsafe {
-            GetEventParameter(event, DIRECT_OBJECT, HOTKEY_ID, std::ptr::null_mut(), std::mem::size_of::<EventHotKeyID>(), std::ptr::null_mut(), (&mut id as *mut EventHotKeyID).cast())
+            GetEventParameter(
+                event,
+                DIRECT_OBJECT,
+                HOTKEY_ID,
+                std::ptr::null_mut(),
+                std::mem::size_of::<EventHotKeyID>(),
+                std::ptr::null_mut(),
+                (&mut id as *mut EventHotKeyID).cast(),
+            )
         };
         if status != 0 || id.signature != SIGNATURE || id.id != 1 {
             return -9874; // eventNotHandledErr
         }
         PRESSED.store(true, Ordering::SeqCst);
+        #[cfg(not(feature = "ui"))]
+        crate::background::show_interface();
         if let Some(mtm) = objc2::MainThreadMarker::new() {
             #[allow(deprecated)]
             objc2_app_kit::NSApplication::sharedApplication(mtm).activateIgnoringOtherApps(true);
@@ -84,6 +148,7 @@ mod imp {
         0
     }
 
+    #[cfg(feature = "ui")]
     pub async fn configure(choice: String) -> bool {
         if std::env::var_os("PV_DISABLE_HOTKEY").is_some() {
             return true;
@@ -94,12 +159,15 @@ mod imp {
         });
         // SAFETY: Carbon registration runs on the main thread inside the block.
         unsafe { objc2_foundation::NSOperationQueue::mainQueue().addOperationWithBlock(&block) };
-        nsh_core::prelude::blocking(move || rx.recv_timeout(std::time::Duration::from_secs(5)).unwrap_or(false))
-            .await
-            .unwrap_or(false)
+        nsh_core::prelude::blocking(move || {
+            rx.recv_timeout(std::time::Duration::from_secs(5))
+                .unwrap_or(false)
+        })
+        .await
+        .unwrap_or(false)
     }
 
-    fn register(choice: &str) -> bool {
+    pub(super) fn register(choice: &str) -> bool {
         // SAFETY: Carbon calls on the main thread with valid pointers to locals/statics.
         unsafe {
             let old = HOTKEY.swap(std::ptr::null_mut(), Ordering::SeqCst);
@@ -110,16 +178,41 @@ mod imp {
                 return true;
             }
             if !HANDLER.load(Ordering::SeqCst) {
-                let spec = EventTypeSpec { event_class: KEYBOARD, event_kind: HOTKEY_PRESSED };
+                let spec = EventTypeSpec {
+                    event_class: KEYBOARD,
+                    event_kind: HOTKEY_PRESSED,
+                };
                 let mut handler = std::ptr::null_mut();
-                if InstallEventHandler(GetApplicationEventTarget(), on_hotkey, 1, &spec, std::ptr::null_mut(), &mut handler) != 0 {
+                if InstallEventHandler(
+                    GetApplicationEventTarget(),
+                    on_hotkey,
+                    1,
+                    &spec,
+                    std::ptr::null_mut(),
+                    &mut handler,
+                ) != 0
+                {
                     return false;
                 }
                 HANDLER.store(true, Ordering::SeqCst);
             }
-            let (code, modifiers) = if choice == "command-option-p" { (P, CMD | OPTION) } else { (SPACE, CMD | SHIFT) };
+            let (code, modifiers) = if choice == "command-option-p" {
+                (P, CMD | OPTION)
+            } else {
+                (SPACE, CMD | SHIFT)
+            };
             let mut hotkey = std::ptr::null_mut();
-            let ok = RegisterEventHotKey(code, modifiers, EventHotKeyID { signature: SIGNATURE, id: 1 }, GetApplicationEventTarget(), 0, &mut hotkey) == 0;
+            let ok = RegisterEventHotKey(
+                code,
+                modifiers,
+                EventHotKeyID {
+                    signature: SIGNATURE,
+                    id: 1,
+                },
+                GetApplicationEventTarget(),
+                0,
+                &mut hotkey,
+            ) == 0;
             if ok {
                 HOTKEY.store(hotkey, Ordering::SeqCst);
             }
@@ -133,5 +226,33 @@ mod imp {
     pub static PRESSED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
     pub async fn configure(_: String) -> bool {
         false
+    }
+}
+
+#[cfg(not(feature = "ui"))]
+pub(crate) fn configure_background(choice: String) -> bool {
+    if !["command-shift-space", "command-option-p", "disabled"].contains(&choice.as_str()) {
+        return false;
+    }
+    if std::env::var_os("PV_DISABLE_HOTKEY").is_some() {
+        return true;
+    }
+    let (tx, rx) = std::sync::mpsc::sync_channel(1);
+    let block = block2::RcBlock::new(move || {
+        let _ = tx.send(imp::register(&choice));
+    });
+    unsafe { objc2_foundation::NSOperationQueue::mainQueue().addOperationWithBlock(&block) };
+    rx.recv_timeout(std::time::Duration::from_secs(5))
+        .unwrap_or(false)
+}
+#[cfg(not(feature = "ui"))]
+pub(crate) fn poll_background() -> bool {
+    imp::PRESSED.swap(false, std::sync::atomic::Ordering::SeqCst)
+}
+
+#[cfg(not(feature = "ui"))]
+pub(crate) fn initialize_background(choice: &str) {
+    if std::env::var_os("PV_DISABLE_HOTKEY").is_none() {
+        imp::register(choice);
     }
 }

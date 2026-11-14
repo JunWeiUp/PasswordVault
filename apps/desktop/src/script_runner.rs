@@ -82,7 +82,7 @@ fn launch(id:&str,app:&Path,script:&Path)->Result<(),String>{
  let status=cmd.stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).status().map_err(|_|"无法打开终端")?;
  if status.success(){Ok(())}else{Err("无法打开首选终端，请重新选择".into())}
 }
-fn unlocked(session:&vault_core::VaultSession)->bool{session.command(r#"{"op":"status"}"#.into()).ok().and_then(|s|serde_json::from_str::<Value>(&s).ok()).is_some_and(|s|s["unlocked"]==true)}
+fn unlocked(session:&crate::session::VaultSession)->bool{session.command(r#"{"op":"status"}"#.into()).ok().and_then(|s|serde_json::from_str::<Value>(&s).ok()).is_some_and(|s|s["unlocked"]==true)}
 #[module]
 impl Scripts{
  /// Returns installed terminal choices and the persistent preference.

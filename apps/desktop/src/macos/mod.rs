@@ -4,7 +4,7 @@ mod services;
 #[cfg(target_os = "macos")]
 pub use services::*;
 
-pub fn verify_enrollment(session: &vault_core::VaultSession, directory: &std::path::Path, password: String) -> Result<zeroize::Zeroizing<Vec<u8>>, String> {
+pub fn verify_enrollment(session: &crate::session::VaultSession, directory: &std::path::Path, password: String) -> Result<zeroize::Zeroizing<Vec<u8>>, String> {
     // Refuse enrollment while locked, even if the supplied password is correct.
     let previous = zeroize::Zeroizing::new(session.biometric_key().map_err(crate::error_code)?);
     let password = zeroize::Zeroizing::new(password);
@@ -24,7 +24,7 @@ mod tests {
     #[test]
     fn enrollment_requires_unlocked_session_and_correct_password() {
         let path = std::env::temp_dir().join(format!("pv-nsh-biometric-{}-{}", std::process::id(), std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
-        let session = vault_core::VaultSession::new(path.to_string_lossy().into_owned()).unwrap();
+        let session = crate::session::VaultSession::new(path.to_string_lossy().into_owned()).unwrap();
         session.command(r#"{"op":"create","password":"synthetic-test-password"}"#.into()).unwrap();
         let root = zeroize::Zeroizing::new(session.biometric_key().unwrap());
         assert_eq!(verify_enrollment(&session, &path, "wrong-password".into()).unwrap_err(), "Authentication");

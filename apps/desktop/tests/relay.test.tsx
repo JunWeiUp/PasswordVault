@@ -12,28 +12,12 @@ test("relay local status never claims connection and clears on lock", async () =
   await app.waitFor("text:已锁定 · 同步已断开");
   expect(app.texts()).not.toContain("同步与设备");
 });
-test("primary invitation requires manual code and combines membership with access", async () => {
+test("peer libraries keep manual code approval for group membership", async () => {
   const app = await open("../ui/relay/GroupHarness.tsx", { width: 1000, height: 1200, platform: "macos" });
-  expect(app.texts()).toContain("Mac · 主库 · 本机");
-  expect(app.texts()).not.toContain("自动加入普通成员");
-  await app.press("text:邀请设备");
-  await app.waitFor("text:ACTION:invite-personal:manual");
-  await app.press("text:显示手动申请");
+  await app.press("text:显示对等库申请");
   await app.type("label:输入对方显示的配对码", "ABCD-1234-EF56");
-  await app.press("text:允许加入并同步");
-  await app.waitFor("text:ACTION:approve-and-grant:ABCD-1234-EF56");
-  await app.press("text:退出设备组");
-  await app.waitFor("text:同步日志将加密归档，本地资料保留，本机设备标识会更新。服务器退出结果会另行显示。");
-  await app.press("text:取消");
-  expect(app.texts()).not.toContain("ACTION:leave:");
-});
-test("receiver identifies primary and cannot invite through the personal UI", async () => {
-  const app = await open("../ui/relay/GroupHarness.tsx", { width: 1000, height: 1200, platform: "macos" });
-  await app.press("text:显示同步设备");
-  expect(app.texts()).toContain("Mac · 主库");
-  expect(app.texts()).toContain("Phone · 本机");
-  expect(app.texts()).not.toContain("邀请设备");
-  expect(app.texts()).not.toContain("允许加入并同步");
+  await app.press("text:批准加入设备组");
+  await app.waitFor("text:ACTION:approve:ABCD-1234-EF56");
 });
 test("group exit confirms without a master password and local write failures remain visible", async () => {
   const app = await open("../ui/relay/GroupHarness.tsx", { width: 1000, height: 1600, platform: "macos" });
@@ -87,4 +71,34 @@ test("relay QR picker handles cancellation, bad images, and a validated invitati
   expect(app.value("label:粘贴 common-relay:// 邀请链接")).toContain("common-relay://");
   await app.press("text:加入设备组");
   await app.waitFor("text:ACTION:join:");
+});
+test("relay background refresh keeps an unchanged open note and unsaved edits", async () => {
+  const app = await open("../ui/relay/RefreshHarness.tsx", { width: 800, height: 600, platform: "macos" });
+  await app.press("text:准备");
+  await app.waitFor("text:ready full:original");
+  // Periodic relay updates must not swap the open note back to a summary.
+  await app.press("text:同步刷新");
+  await app.waitFor("text:refreshed full:original");
+  // A local edit not yet saved stays on screen across a refresh.
+  await app.press("text:本机编辑");
+  await app.press("text:同步刷新");
+  await app.waitFor("text:refreshed full:local draft");
+  await app.wait(700);
+  // A record changed elsewhere is replaced, so the newer content loads.
+  await app.press("text:远端修改");
+  await app.waitFor("text:remote saved");
+  await app.press("text:同步刷新");
+  await app.waitFor("text:refreshed summary:remote change");
+});
+
+test("symmetric sync invites by scan alone, without primary, grants or code checks", async () => {
+  const app = await open("../ui/relay/GroupHarness.tsx", { width: 1000, height: 1200, platform: "macos" });
+  await app.waitFor("text:Mac · 本机 · 管理");
+  expect(app.texts().join("\n")).not.toContain("主库");
+  expect(app.texts()).not.toContain("查看并同步修改");
+  await app.press("text:邀请设备");
+  await app.waitFor("text:ACTION:invite:auto");
+  await app.press("text:显示同步设备");
+  expect(app.texts()).not.toContain("邀请设备");
+  expect(app.texts()).toContain("请在管理设备“Mac”上邀请新设备。");
 });

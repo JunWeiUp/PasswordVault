@@ -37,6 +37,9 @@ if [[ "${1:-}" == "test" ]]; then
     *) printf 'Tests require PASSWORDVAULT_VAULT_DIRECTORY pointing to a fresh synthetic vault in a temporary directory.\n' >&2; exit 2 ;;
   esac
   export PV_DISABLE_HOTKEY=1
+  # Component tests use an explicit temporary fixture; signed process/IPC checks
+  # run separately via tool/test_background_service.py.
+  export PV_ALLOW_LOCAL_SESSION=1
   # Never collide with an installed preview's fixed AI socket.
   mkdir -p "/tmp/pv-ai-test-$$" && chmod 700 "/tmp/pv-ai-test-$$"
   export PASSWORDVAULT_AI_SOCKET="/tmp/pv-ai-test-$$/mcp.sock"

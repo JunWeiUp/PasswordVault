@@ -1,3 +1,4 @@
+import { pollEvery } from "../polling";
 import { desktopCapabilities } from "../native";
 import { cleanup, effect, signal, View } from "nsh";
 import { Dialog } from "nsh/base";
@@ -13,8 +14,8 @@ async function preview(clientId: string, id: string, op: string) {
   try { const out = await Ai.preview(vaultInstance, clientId, JSON.stringify({ op, id, field: "password" })); trial.set(op === "get_secret" ? "本次敏感字段读取已获单次授权。" : out); } catch (e) { trial.set(String(e)); }
 }
 async function control(r: any) { return JSON.parse(await Ai.control(vaultInstance, JSON.stringify(r))); }
-async function refresh() {
-  try { const next = await control({ op: "status" }); status.set(phase() === "unlocked" ? next : { settings: {}, pending: [] }); } catch { status.set({ settings: {}, pending: [] }); }
+async function refresh(isActive: () => boolean = () => true) {
+  try { const next = await control({ op: "status" }); if (!isActive()) return; status.set(phase() === "unlocked" ? next : { settings: {}, pending: [] }); } catch { if (isActive()) status.set({ settings: {}, pending: [] }); }
 }
 async function change(r: any) { try { await control(r); await refresh(); } catch (e) { toast(String(e)); } }
 const cfg = () => status().settings;
@@ -23,13 +24,12 @@ export function AiApprovalHost() {
   if (!desktopCapabilities.ai) return null;
   effect(() => {
     if (phase() !== "unlocked") { Ai.cancelPending(); trial.set(""); status.set({ settings: {}, pending: [] }); code.set(""); return; }
-    void Ai.start(vaultInstance).then(refresh, (e) => {
+    void Ai.start(vaultInstance).then(() => refresh(), (e) => {
       // Another preview instance already serves the fixed AI socket: stay quiet here;
       // the AI settings page reports the service as not running.
       if (!String(e).includes("SocketInUse")) toast("AI 访问服务未能启动，可在设置 → AI 访问中重试。");
     });
-    const timer = setInterval(() => void refresh(), 500);
-    cleanup(() => clearInterval(timer));
+    cleanup(pollEvery(500, refresh));
   });
   const p = () => phase() === "unlocked" ? status().pending[0] : undefined;
   return <If when={p()}><Dialog open onOpenChange={({ open: visible }) => { if (!visible && p()) void change({ op: "approve", requestId: p().requestId, allow: false }); }} backdropStyle={{ backgroundColor: c().backdrop }} style={{ alignSelf: "center", marginTop: 130, width: 470, padding: 24, gap: 14, backgroundColor: c().surface, borderRadius: 14 }}>

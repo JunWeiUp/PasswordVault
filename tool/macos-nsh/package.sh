@@ -70,6 +70,10 @@ codesign --force --options runtime --timestamp=none --sign "$identity_name" "$ap
 codesign --verify --strict "$app/Contents/MacOS/pv-browser-host"
 # --- End browser helper; outer app signing follows -------------------------
 
+# Headless vault owner: compile without NSH or JavaScript dependencies.
+(cd "$copy/apps/desktop" && cargo +"$helper_channel" build --release --no-default-features --features background-service --bin pv-background)
+bash "$root/tool/macos-nsh/embed-service.sh" "$app" "$copy/apps/desktop/target/release/pv-background" "$identity_name"
+
 # --- AI MCP stdio / script helper (preview bundle only) ---------------------
 # Build separately from the app runtime, then sign before the enclosing bundle.
 ai_helper_channel="$(sed -n 's/^channel = "\(.*\)"/\1/p' "$root/apps/desktop/rust-toolchain.toml")"

@@ -1,26 +1,28 @@
+import { pollEvery } from "../polling";
 import { desktopCapabilities } from "../native";
 // Browser controls reuse the settings kit; capabilities remain native-only.
 import { signal, View } from "nsh";
 import { Browser } from "passwordvault/native";
 import { Banner, Btn, Group, OptionRow, T, Toggle, confirm } from "../kit";
-import { call, errorText, load, settings, toast, vaultInstance } from "../store";
+import { call, errorText, load, settings, phase, toast, vaultInstance } from "../store";
 import { c } from "../theme";
 
 let pendingId = "";
 /** Install once at app startup after the Vault session exists; return cleanup. */
 export function connectBrowser(): () => void {
   if (!desktopCapabilities.browser) return () => {};
-  try { Browser.start(vaultInstance); } catch { /* Unsigned development is intentionally unavailable. */ }
-  const timer = setInterval(() => {
-    const pending = Browser.pending();
+  void Browser.start(vaultInstance).catch(() => {});
+  const stop = pollEvery(500, async (isActive) => {
+    const pending = await Browser.pending();
+    if (!isActive() || phase() !== "unlocked") return;
     const request = pending ? JSON.parse(pending) as { extensionId: string; challenge: string } : null;
     const id = request?.challenge ?? "";
     if (!id) { pendingId = ""; return; }
     if (id === pendingId) return;
     pendingId = id;
-    confirm({ title: "连接浏览器扩展？", text: `${request?.extensionId}\n允许此扩展在资料库解锁时读取当前网站账号、填充与保存。请求将在 35 秒后失效。`, ok: "允许连接", onConfirm: () => { Browser.approve(id, true); void load(); } });
-  }, 500);
-  return () => { clearInterval(timer); Browser.cancelStartup(); };
+    confirm({ title: "连接浏览器扩展？", text: `${request?.extensionId}\n允许此扩展在资料库解锁时读取当前网站账号、填充与保存。请求将在 35 秒后失效。`, ok: "允许连接", onConfirm: async () => { await Browser.approve(id, true); await load(); } });
+  });
+  return () => { stop(); void Browser.cancelStartup().catch(() => {}); };
 }
 export function BrowserPage() {
   if (!desktopCapabilities.browser) return <Banner tone="info" title="Windows 浏览器连接尚未开放">你可以在应用中查看、复制和管理账号。</Banner>;
@@ -52,7 +54,7 @@ export function BrowserPage() {
     </Group>
     <Group>
       <OptionRow title="后台保存与读取" note="在插件中输入主密码授权；旧授权仍然仅允许追加保存。撤销会使所有后台范围失效。"><Btn label="撤销全部后台授权" disabled={busy()} onPress={() => confirm({ title: "撤销后台授权？", text: "后台保存、读取与启动自动解锁将全部停用。", ok: "撤销", danger: true, onConfirm: () => void act(() => call({ op: "revoke-background" })) })} /></OptionRow>
-      <Toggle title="允许已授权插件在 Mac 冷启动时解锁" note="还需在插件中开启启动解锁。手动锁定后，轮询不会重新解锁。" checked={startup()} onChange={(v) => void act(() => { Browser.setStartupEnabled(vaultInstance, v); startup.set(v); })} />
+      <Toggle title="允许已授权插件在 Mac 冷启动时解锁" note="还需在插件中开启启动解锁。手动锁定后，轮询不会重新解锁。" checked={startup()} onChange={(v) => void act(async () => { await Browser.setStartupEnabled(vaultInstance, v); startup.set(v); })} />
     </Group>
     <Banner tone="info" title="待同步的离线保存">待同步记录加密保存在浏览器扩展内。打开插件会重试合并；成功后记录才从队列移除。Mac 无法直接读取队列数量。</Banner>
     <Btn label="刷新已合并的账号" onPress={() => void act(load)} disabled={busy()} />

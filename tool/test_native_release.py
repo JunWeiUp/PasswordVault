@@ -166,7 +166,7 @@ class NativeReleaseTests(unittest.TestCase):
                     exe.external_attr = 0o100755 << 16
                     bundle.writestr(exe, b'fixture')
                     if helpers:
-                        for name in ['Contents/MacOS/pv-browser-host', 'Contents/MacOS/pv-mcp', 'Contents/Resources/BrowserIdentity.json']:
+                        for name in ['Contents/MacOS/pv-browser-host', 'Contents/MacOS/pv-mcp', 'Contents/Library/PasswordVault Background.app/Contents/MacOS/pv-background', 'Contents/Resources/BrowserIdentity.json']:
                             bundle.writestr('PasswordVault.app/' + name, b'fixture')
             make()
             verify_app_archive(path, '2.4.0', nsh=True)
@@ -210,7 +210,7 @@ class NativeReleaseTests(unittest.TestCase):
                     executable.external_attr = 0o100755 << 16
                     bundle.writestr(executable, b'synthetic executable')
                     if not simulator:
-                        for path in ['Contents/MacOS/pv-browser-host', 'Contents/MacOS/pv-mcp', 'Contents/Resources/BrowserIdentity.json']:
+                        for path in ['Contents/MacOS/pv-browser-host', 'Contents/MacOS/pv-mcp', 'Contents/Library/PasswordVault Background.app/Contents/MacOS/pv-background', 'Contents/Resources/BrowserIdentity.json']:
                             bundle.writestr('PasswordVault.app/' + path, b'fixture')
             windows_fixture(inputs / 'PasswordVault-windows-x64.zip', data['version'])
             browser = inputs / 'browser'

@@ -16,7 +16,7 @@ use std::{
     },
     time::{Duration, Instant},
 };
-use vault_core::VaultSession;
+use crate::session::VaultSession;
 pub struct Run {
     directory: std::path::PathBuf,
     stop: AtomicBool,
@@ -93,6 +93,13 @@ pub fn exit_local(s: &Arc<VaultSession>, directory: std::path::PathBuf, disband:
     Ok(display)
 }
 
+/// Common Relay v1 answers durable (offline) messages with "stored" and live
+/// ones with "forwarded". Only the peer's own receipt completes the journal.
+fn relay_accepted(event: &Value, pending: &str) -> bool {
+    event["id"] == pending
+        && matches!(event["type"].as_str(), Some("stored" | "forwarded" | "queued" | "sent"))
+}
+const STABLE_CONNECTION: Duration = Duration::from_secs(120);
 pub fn authentication_failure(error: &str) -> bool {
     matches!(error, "RelayHttp401" | "RelayHttp403")
 }
@@ -128,6 +135,7 @@ pub fn start(s: Arc<VaultSession>, directory: std::path::PathBuf, local: bool) -
     std::thread::spawn(move || {
         let mut backoff = 1;
         while !run.stopped() {
+            let attempt = Instant::now();
             let result = connected(&s, &run, local);
             if run.stopped() {
                 break;
@@ -141,7 +149,14 @@ pub fn start(s: Arc<VaultSession>, directory: std::path::PathBuf, local: bool) -
                     );
                     break;
                 }
-                Err(e) => run.set("reconnecting", json!([]), &e),
+                Err(e) => {
+                    run.set("reconnecting", json!([]), &e);
+                    // A connection that stayed up for a while is a fresh failure,
+                    // not part of a tight retry storm.
+                    if attempt.elapsed() >= STABLE_CONNECTION {
+                        backoff = 1;
+                    }
+                }
                 Ok(()) => {
                     backoff = 1;
                 }
@@ -187,13 +202,6 @@ pub fn identity(c: &Value) -> Result<Identity> {
         trusted,
     })
 }
-fn delivery_signature(c: &Value, peer: &str, hash: &str, hour: u64) -> String {
-    let grant = &c["vaultGrants"][peer];
-    // A packet may arrive before the control grant and be discarded without an
-    // application receipt. Re-issue it once the grant is applied, with a new ID.
-    // Revision also prevents a revoke/regrant from reusing an old completed ID.
-    format!("{hash}:{hour}:{}:{}:{}", grant["revision"], grant["acknowledged"], c["capabilityReady"][peer])
-}
 fn connected(s: &Arc<VaultSession>, run: &Run, local: bool) -> Result<()> {
     let c = service::read(s)?;
     if service::group(&c)?["group_entry"].is_null() {
@@ -226,6 +234,8 @@ fn connected(s: &Arc<VaultSession>, run: &Run, local: bool) -> Result<()> {
     let mut queue =
         std::collections::VecDeque::<(String, String, zeroize::Zeroizing<Vec<u8>>)>::new();
     let mut pending: Option<(String, Instant)> = None;
+    // Personal groups use symmetric sync; only peer libraries keep the old path.
+    let mut mesh_peers: Option<Vec<String>> = None;
     while !run.stopped() {
         if Instant::now() >= next {
             if service::core(s, json!({"op":"status"}))?["unlocked"] != true {
@@ -242,30 +252,42 @@ fn connected(s: &Arc<VaultSession>, run: &Run, local: bool) -> Result<()> {
                 connection.send(json!({"type":"peers","id":peers_request}))?;
                 peers_deadline = Instant::now() + Duration::from_secs(15);
             }
-            for (peer, control) in super::access::pending(&c)? {
-                connection.send_online(&peer, &canonical(&control))?;
-            }
-            for (peer, control) in super::access::capability_challenges(s, &c)? {
-                connection.send_online(&peer, &canonical(&control))?;
-            }
-            if queue.is_empty()
-                && pending.is_none()
-                && c["paused"] != true
-                && c["peers"].as_object().is_some_and(|p| !p.is_empty())
-            {
-                match super::sync::outgoing(s) {
-                    Err(e) if e == "DevicesSyncBlocked" => {
-                        if let Ok(mut view) = run.view.lock() {
-                            view["error"] = json!(e);
+            mesh_peers = super::mesh::ensure(s, &c)?;
+            let batch = if let Some(peers) = &mesh_peers {
+                if queue.is_empty() && pending.is_none() {
+                    Some(super::mesh::outgoing(s, peers)?)
+                } else {
+                    None
+                }
+            } else {
+                if queue.is_empty()
+                    && pending.is_none()
+                    && c["paused"] != true
+                    && c["peers"].as_object().is_some_and(|p| !p.is_empty())
+                {
+                    match super::sync::outgoing(s) {
+                        Err(e) if e == "DevicesSyncBlocked" => {
+                            if let Ok(mut view) = run.view.lock() {
+                                view["error"] = json!(e);
+                            }
+                            None
                         }
+                        Err(e) => return Err(e),
+                        Ok(packets) => Some(packets),
                     }
-                    Err(e) => return Err(e),
-                    Ok(packets) => {
+                } else {
+                    None
+                }
+            };
+            {
+                match batch {
+                    None => {}
+                    Some(packets) => {
                         for (peer, library, data) in packets {
                             let data = zeroize::Zeroizing::new(data);
                             let route = format!("{peer}:{library}");
                             let hash = digest(&data);
-                            let signature = delivery_signature(&c, &peer, &hash, super::groups::now() / 3600);
+                            let signature = format!("{hash}:{}", super::groups::now() / 3600);
                             if sent.get(&route) == Some(&signature) {
                                 continue;
                             }
@@ -322,7 +344,6 @@ fn connected(s: &Arc<VaultSession>, run: &Run, local: bool) -> Result<()> {
                         )?;
                         for descriptor in files.inbox()? {
                             let from = text(&descriptor, "from")?;
-                            let key = c["peers"][from].as_str().ok_or("VaultAccessDenied")?;
                             let cipher = files.download(&descriptor)?;
                             let plain = super::files::decrypt(
                                 &connection.identity,
@@ -330,6 +351,17 @@ fn connected(s: &Arc<VaultSession>, run: &Run, local: bool) -> Result<()> {
                                 &descriptor,
                                 &cipher,
                             )?;
+                            if let Some(peers) = &mesh_peers {
+                                if !peers.iter().any(|p| p == from) {
+                                    return Err("VaultAccessDenied".into());
+                                }
+                                if super::mesh::receive(s, from, &plain)? {
+                                    run.changed();
+                                }
+                                files.acknowledge(text(&descriptor, "id")?)?;
+                                continue;
+                            }
+                            let key = c["peers"][from].as_str().ok_or("VaultAccessDenied")?;
                             match super::sync::receive(s, from, key, &plain) {
                                 Ok(()) => {},
                                 // Keep the file pending and the control channel alive so
@@ -364,7 +396,11 @@ fn connected(s: &Arc<VaultSession>, run: &Run, local: bool) -> Result<()> {
                     .get(&peer)
                     .map(|k| hex(&k.0))
                     .ok_or("VaultAccessDenied")?;
-                if c["paused"] == true || c["peers"][&peer] != key {
+                let allowed = match &mesh_peers {
+                    Some(peers) => peers.contains(&peer),
+                    None => c["paused"] != true && c["peers"][&peer] == key,
+                };
+                if !allowed {
                     return Err("VaultAccessDenied".into());
                 }
                 if let Some(event) = super::journal::prepare(
@@ -411,10 +447,8 @@ fn connected(s: &Arc<VaultSession>, run: &Run, local: bool) -> Result<()> {
                     && pending.as_ref().is_some_and(|(p, _)| event["id"] == *p)
                 {
                     return Err("RelayDeliveryRejected".into());
-                } else if event["type"] == "queued" || event["type"] == "sent" {
-                    if pending.as_ref().is_some_and(|(id, _)| event["id"] == *id) {
-                        pending = None;
-                    }
+                } else if pending.as_ref().is_some_and(|(id, _)| relay_accepted(&event, id)) {
+                    pending = None;
                 } else if event["type"] == "message" {
                     let from = text(&event, "from")?;
                     let id = text(&event, "id")?;
@@ -442,18 +476,14 @@ fn connected(s: &Arc<VaultSession>, run: &Run, local: bool) -> Result<()> {
                         );
                         let value: Value =
                             serde_json::from_slice(&data).map_err(|_| "InvalidData")?;
-                        if value["format"] == super::access::FORMAT {
-                            if let Some(reply) = super::access::receive(s, from, &key, &value)? {
-                                connection.send_online(from, &canonical(&reply))?;
+                        // Obsolete access/capability controls from old clients are ignored.
+                        let control = value["format"] == "passwordvault.access.v1"
+                            || value["format"] == "passwordvault.capabilities.v1";
+                        if control {
+                        } else if mesh_peers.is_some() {
+                            if super::mesh::receive(s, from, &data)? {
+                                run.changed();
                             }
-                            run.changed();
-                        } else if value["format"] == super::access::CAPABILITIES_FORMAT {
-                            if let Some(reply) = super::access::receive_capabilities(s, from, &key, &value)? {
-                                connection.send_online(from, &canonical(&reply))?;
-                            }
-                            // A proof can release previously gated data without user action.
-                            sent.clear();
-                            run.changed();
                         } else {
                             match super::sync::receive(s, from, &key, &data) {
                                 Ok(()) => {
@@ -483,15 +513,14 @@ fn connected(s: &Arc<VaultSession>, run: &Run, local: bool) -> Result<()> {
 mod tests {
     use super::*;
     #[test]
-    fn data_delivery_retries_after_authorization_and_regrant() {
-        let mut c = json!({"vaultGrants":{"phone":{"revision":1,"acknowledged":false}}});
-        let before = delivery_signature(&c, "phone", "snapshot", 1);
-        assert_eq!(before, delivery_signature(&c, "phone", "snapshot", 1));
-        c["vaultGrants"]["phone"]["acknowledged"] = json!(true);
-        let delivered = delivery_signature(&c, "phone", "snapshot", 1);
-        assert_ne!(before, delivered, "data discarded before control needs a fresh delivery ID");
-        c["vaultGrants"]["phone"]["revision"] = json!(3);
-        assert_ne!(delivered, delivery_signature(&c, "phone", "snapshot", 1));
+    fn relay_storage_receipt_releases_pending_delivery() {
+        // Regression: the real relay replies "stored"; ignoring it timed out every
+        // connection after 45 seconds and reconnected in a loop.
+        assert!(relay_accepted(&json!({"type":"stored","id":"a"}), "a"));
+        assert!(relay_accepted(&json!({"type":"forwarded","id":"a"}), "a"));
+        assert!(!relay_accepted(&json!({"type":"stored","id":"b"}), "a"));
+        assert!(!relay_accepted(&json!({"type":"error","id":"a"}), "a"));
+        assert!(!relay_accepted(&json!({"type":"peers","id":"a"}), "a"));
     }
     #[test]
     fn relay_stop_interrupts_socket_without_control_lock() {

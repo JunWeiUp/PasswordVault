@@ -1,6 +1,6 @@
 import { View, signal, Picker, cleanup } from "nsh";
 import { Relay } from "passwordvault/native";
-import { Banner, Btn, Group, Row, T, TextBox, Toggle, confirm, copySecret, openSheet, SheetTitle, SheetFooter } from "../kit";
+import { Banner, Btn, Group, Row, T, TextBox, confirm, copySecret, openSheet, SheetTitle, SheetFooter } from "../kit";
 import { onLock } from "../store";
 import { c } from "../theme";
 import { InvitationQR, relayErrorText } from "./index";
@@ -23,7 +23,7 @@ function ExitConfirmation(props: { op: "leave" | "disband"; close: () => void; a
     <SheetFooter><Btn label="取消" disabled={busy()} onPress={props.close} /><Btn label={busy() ? "正在处理…" : props.op === "leave" ? "退出" : "解散"} kind="dangerSolid" disabled={busy()} onPress={() => void submit()} /></SheetFooter>
   </View>;
 }
-export function GroupPanel(props: { group: any; busy: boolean; online?: string[]; authorize?: (peer: string, enabled: boolean) => void; act: (v: Record<string, unknown>) => Promise<void> }) {
+export function GroupPanel(props: { group: any; busy: boolean; online?: string[]; act: (v: Record<string, unknown>) => Promise<void> }) {
   const endpoint = signal(""), relayPassword = signal(""), joinPassword = signal(""), groupName = signal("我的设备"), deviceName = signal("这台电脑"), link = signal("");
   const scanning = signal(false), scanError = signal(""), scanned = signal(false);
   const scanImage = async () => {
@@ -39,6 +39,8 @@ export function GroupPanel(props: { group: any; busy: boolean; online?: string[]
     finally { scanning.set(false); }
   };
   const code = signal(""), renamed = signal(""), connectionSettings = signal(false);
+  // Personal groups always use symmetric sync; only peer libraries keep manual approval.
+  const personal = () => !props.group.peerLibrary;
   const manager = () => (props.group.state?.members ?? []).some((m: any) => m.device === props.group.device && m.manager);
   const act = (v: Record<string, unknown>) => void props.act(v).catch(() => {});
   const exit = (op: "leave" | "disband") => openSheet({ render: close => <ExitConfirmation op={op} close={close} act={props.act} /> });
@@ -51,7 +53,7 @@ export function GroupPanel(props: { group: any; busy: boolean; online?: string[]
     <If when={!props.group.legacy && !props.group.state && !props.group.joining}>
       <Group style={{ gap: 8, paddingVertical: 12 }}>
         <T weight="600">创建自己的设备组</T>
-        <T size={12} color={c().muted}>创建后，本机成为主库设备，负责核对新设备、授予同步权限和协调资料同步。</T>
+        <T size={12} color={c().muted}>创建后，用其他设备扫描邀请二维码即可加入，组内所有设备自动双向同步。</T>
         <TextBox value={endpoint()} onChange={(v) => endpoint.set(v)} label="中继地址" placeholder="wss://…/relay/v1/ws" testID="relay-endpoint" />
         <TextBox value={relayPassword()} onChange={(v) => relayPassword.set(v)} label="中继密码" placeholder="输入中继密码" masked testID="relay-password" />
         <T size={11} color={c().muted}>请输入中继服务的访问密码。</T>
@@ -86,9 +88,22 @@ export function GroupPanel(props: { group: any; busy: boolean; online?: string[]
     </If>
     <If when={props.group.state}>
       <Row><T weight="600" style={{ flex: 1 }}>{props.group.state?.name || "设备组"}</T><Btn label="刷新设备组" disabled={props.busy} onPress={() => act({ op: "refresh" })} /></Row>
-      <If when={props.group.isPrimary || (!!props.group.peerLibrary && manager())}>
-        <T size={12} color={c().muted}>{props.group.peerLibrary ? "核对配对码后加入设备组；对等密码库的访问仍由各库独立授权。" : "请在新设备上打开邀请，再核对两端配对码。确认后会同时允许加入和查看、同步修改资料。"}</T>
-        <Btn label="邀请设备" disabled={props.busy || !!props.group.invitationLink} onPress={() => act({ op: props.group.peerLibrary ? "invite" : "invite-personal", mode: "manual" })} />
+      <If when={personal() && manager()}>
+        <T size={12} color={c().muted}>在新设备上扫描二维码即可加入并开始双向同步，无需再确认。邀请 10 分钟内有效，只能使用一次。</T>
+        <Btn label="邀请设备" disabled={props.busy || !!props.group.invitationLink} onPress={() => act({ op: "invite", mode: "auto" })} />
+        <If when={props.group.invitationLink}>
+          <InvitationQR link={props.group.invitationLink} />
+          <T size={11} color={c().muted}>持有此邀请的设备可以获得完整密码库，请只交给你自己的设备。</T>
+          <TextBox value={props.group.invitationLink || ""} onChange={() => {}} masked label="邀请链接" />
+          <Row><Btn label="复制邀请链接" onPress={() => void copySecret(props.group.invitationLink, "邀请链接")} /><Btn label="取消邀请" disabled={props.busy} onPress={() => act({ op: "cancel-invitation" })} /></Row>
+        </If>
+      </If>
+      <If when={personal() && !manager()}>
+        <T size={12} color={c().muted}>{`请在管理设备“${(props.group.state?.members ?? []).find((m: any) => m.manager)?.name ?? "创建者"}”上邀请新设备。`}</T>
+      </If>
+      <If when={!personal() && manager()}>
+        <T size={12} color={c().muted}>核对配对码后加入设备组；对等密码库的访问仍由各库独立授权。</T>
+        <Btn label="邀请设备" disabled={props.busy || !!props.group.invitationLink} onPress={() => act({ op: "invite", mode: "manual" })} />
         <If when={props.group.invitationLink}>
           <InvitationQR link={props.group.invitationLink} />
           <T size={11} color={c().muted}>邀请链接含入组密钥和中继访问密码，请只交给你信任的设备。</T>
@@ -98,27 +113,18 @@ export function GroupPanel(props: { group: any; busy: boolean; online?: string[]
         <If when={props.group.applicant}>
           <Banner tone="info" title={`${props.group.applicant} 申请加入`}>双方配对码应一致：{props.group.code}</Banner>
           <TextBox value={code()} onChange={(v) => code.set(v.toUpperCase())} placeholder="输入对方显示的配对码" />
-          <T size={12}>{props.group.peerLibrary ? "此步骤只确认设备组成员身份，不更改对等密码库权限。" : "此设备将能够查看密码库，并同步新增、修改和删除。请确认这是你自己的设备。"}</T>
-          <Btn label={props.group.peerLibrary ? "批准加入设备组" : "允许加入并同步"} disabled={props.busy || code() !== props.group.code} onPress={() => act({ op: props.group.peerLibrary ? "approve" : "approve-and-grant", code: code(), manager: false })} />
+          <T size={12}>此步骤只确认设备组成员身份，不更改对等密码库权限。</T>
+          <Btn label="批准加入设备组" disabled={props.busy || code() !== props.group.code} onPress={() => act({ op: "approve", code: code(), manager: false })} />
         </If>
-      </If>
-      <If when={!props.group.isPrimary && !props.group.peerLibrary}>
-        <T size={12} color={c().muted}>{props.group.primaryName ? `请在主库设备“${props.group.primaryName}”上邀请新设备。主库统一核对身份并授予密码库访问权限，避免其他设备未经核对获得资料。` : "主库身份尚未确认，请刷新设备组。旧组存在多个管理员时，需要先明确主库，不能按设备类型自动选择。"}</T>
       </If>
       <Group style={{ gap: 8, paddingVertical: 12 }}>
         <TextBox value={renamed()} onChange={(v) => renamed.set(v)} placeholder="新的设备名称" />
-        {(props.group.state?.members ?? []).map((m: any) => <View style={{ gap: 6 }}><Row><T style={{ flex: 1 }}>{m.name}{m.device === props.group.primaryDevice ? " · 主库" : ""}{m.device === props.group.device ? " · 本机" : ""}{m.manager && m.device !== props.group.primaryDevice ? " · 旧组管理员" : ""}</T>
+        {(props.group.state?.members ?? []).map((m: any) => <View style={{ gap: 6 }}><Row><T style={{ flex: 1 }}>{m.name}{m.device === props.group.device ? " · 本机" : ""}{m.manager ? " · 管理" : ""}</T>
           <If when={manager() || m.device === props.group.device}><Btn label="重命名" disabled={props.busy || !renamed().trim()} onPress={() => act({ op: "rename", device: m.device, name: renamed() })} /></If>
           <If when={manager() && m.device !== props.group.device}><Btn label="移除" kind="danger" disabled={props.busy} onPress={() => confirm({ title: `移除 ${m.name}`, text: "将撤销其设备组成员资格。本机密码库资料会保留。", ok: "移除设备", danger: true, onConfirm: () => act({ op: "remove", device: m.device }) })} /></If>
         </Row>
           <If when={m.device !== props.group.device}>
-            <T size={11} color={c().muted}>{props.online?.includes(m.device) ? "在线" : "离线"}{props.group.grants?.[m.device]?.acknowledged === false ? " · 授权状态待送达（自动重试）" : ""}</T>
-            <If when={props.group.isPrimary || props.group.grants?.[m.device]?.enabled}>
-              <Toggle title="查看并同步修改" note="关闭后停止同步；对方已经下载的资料仍会保留。"
-                checked={props.group.grants?.[m.device]?.enabled ?? (props.group.authorizedPeers ?? []).includes(m.device)}
-                disabled={props.busy || !props.authorize || props.group.role !== "hub"}
-                onChange={enabled => enabled ? confirm({ title: `授权 ${m.name}`, text: "允许此设备查看密码库，并将修改同步回来。关闭授权不会删除其已下载的资料。", ok: "授权", onConfirm: () => props.authorize?.(m.device, true) }) : props.authorize?.(m.device, false)} />
-            </If>
+            <T size={11} color={c().muted}>{props.online?.includes(m.device) ? "在线" : "离线"}</T>
           </If>
         </View>)}
       </Group>

@@ -83,9 +83,14 @@ impl DiskVault {
                 let root = self
                     .recovery_envelope()?
                     .unlock(string("key")?, &header.vault_id)?;
-                let connection = open_database(&self.directory.join("vault.sqlite"), &root, false)?;
+                let mut connection =
+                    open_database(&self.directory.join("vault.sqlite"), &root, false)?;
                 let document = load_document(&connection, &root, &header.vault_id)?;
                 let next = Header::create(string("newPassword")?, &root, header.vault_id)?;
+                // Projection failure must leave the current password envelope intact.
+                let tx = storage(connection.transaction())?;
+                queries::rebuild(&tx, &root, &next.vault_id, &document)?;
+                storage(tx.commit())?;
                 atomic_write(
                     &self.directory.join("header.json"),
                     &serde_json::to_vec(&next).map_err(|_| VaultError::InvalidData)?,
@@ -95,6 +100,7 @@ impl DiskVault {
                     root,
                     header: next,
                     document,
+                    document_loaded: true,
                 });
                 Ok(json!({"ok":true}))
             }

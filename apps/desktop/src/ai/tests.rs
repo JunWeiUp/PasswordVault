@@ -272,3 +272,19 @@ fn account_website_strips_embedded_credentials() {
         .is_none()
     );
 }
+
+#[test]
+fn status_returns_only_policy_metadata_and_redacts_tokens() {
+    let directory=std::path::PathBuf::from("/tmp").join(format!("pv-status-metadata-{}",id()));
+    std::fs::create_dir_all(&directory).unwrap();
+    let session=VaultSession::new(directory.to_string_lossy().into()).unwrap();
+    core(&session,json!({"op":"create","password":"fixture"})).unwrap();
+    core(&session,json!({"op":"save","item":{"id":"note","type":"secureNote","title":"unrelated-canary","note":"private-note-body".repeat(10000)}})).unwrap();
+    save(&session,json!({"aiAccessEnabled":false,"aiAccessClients":[{"id":"fixture","tokenHash":"token-canary"}],"noteCategories":["category-canary"]})).unwrap();
+    session.release_idle_document().unwrap();
+    let value=control(&session,json!({"op":"status"})).unwrap();
+    assert_eq!(value["settings"]["aiAccessEnabled"],false);
+    let serialized=value.to_string();
+    for canary in ["unrelated-canary","private-note-body","token-canary","category-canary"] {assert!(!serialized.contains(canary));}
+    drop(session);std::fs::remove_dir_all(directory).unwrap();
+}

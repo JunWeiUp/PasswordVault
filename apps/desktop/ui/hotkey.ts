@@ -2,6 +2,7 @@ import { desktopCapabilities } from "./native";
 // Global Quick Access shortcut: choice kept in app storage (not the vault),
 // registered natively; a press opens Quick Access while the vault is unlocked.
 import { signal, Storage } from "nsh";
+import { pollEvery } from "./polling";
 import { Hotkey } from "passwordvault/native";
 
 export type ShortcutChoice = "command-shift-space" | "command-option-p" | "disabled";
@@ -25,7 +26,8 @@ export async function startShortcut(onPress: () => void) {
   if (!desktopCapabilities.globalHotkeys) return;
   const saved = (await Storage.getItem("quickAccessShortcut")) as ShortcutChoice | null;
   await setShortcut(saved && saved in SHORTCUT_LABEL ? saved : "command-shift-space");
-  setInterval(() => {
-    if (Hotkey.poll()) onPress();
-  }, 200);
+  return pollEvery(200, async (isActive) => {
+    const pressed = await Hotkey.poll();
+    if (isActive() && pressed) onPress();
+  });
 }

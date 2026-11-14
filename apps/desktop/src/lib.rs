@@ -1,3 +1,4 @@
+#![cfg(feature = "ui")]
 //! PasswordVault Desktop (Native Shell): the native layer that the TSX
 //! interface imports from `passwordvault/native`.
 //!
@@ -6,36 +7,37 @@
 //! in Rust.
 
 mod ai;
-mod relay;
-mod platform;
 #[cfg(target_os = "macos")]
 mod browser;
 #[cfg(not(target_os = "macos"))]
 #[path = "windows/browser.rs"]
 mod browser;
-mod qa_window;
 mod data_dir;
+mod platform;
+mod qa_window;
+mod relay;
+mod session;
 pub use data_dir::data_directory_name;
 mod hotkey;
 mod window_ctl;
 
 mod attachments;
-mod markdown;
-mod rich_notes;
-mod recovery_io;
+mod backup;
 mod files;
+mod markdown;
+mod qr_import;
+mod recovery_io;
+mod rich_notes;
 #[cfg(target_os = "macos")]
 mod script_runner;
 #[cfg(not(target_os = "macos"))]
 #[path = "windows/scripts.rs"]
 mod script_runner;
-mod qr_import;
-mod backup;
 
+use crate::session::VaultSession;
 use nsh_core::prelude::*;
 use std::path::PathBuf;
 use std::sync::Arc;
-use vault_core::VaultSession;
 use zeroize::Zeroizing;
 
 #[native_module("passwordvault/native")]
@@ -50,7 +52,12 @@ fn native(registry: &mut Registry) {
     registry.module::<recovery_io::RecoveryIO>();
     registry.module::<hotkey::Hotkey>();
     registry.module::<window_ctl::WindowCtl>();
-    registry.module::<backup::Backup>().module::<files::Files>().module::<attachments::Attachments>().class::<Vault>().module::<Platform>();
+    registry
+        .module::<backup::Backup>()
+        .module::<files::Files>()
+        .module::<attachments::Attachments>()
+        .class::<Vault>()
+        .module::<Platform>();
 }
 
 /// Data directory used when no explicit directory is given. It is separate from
@@ -90,7 +97,10 @@ impl Vault {
     /// Opens the vault directory (it is created on first use).
     pub fn new() -> Self {
         qa_window::place_for_qa();
-        Vault { directory: vault_directory(), session: None }
+        Vault {
+            directory: vault_directory(),
+            session: None,
+        }
     }
 
     /// The vault directory on disk.
@@ -100,10 +110,14 @@ impl Vault {
     }
 
     /// Checks hardware/enrollment without prompting.
-    pub fn biometric_available() -> bool { platform::available() }
+    pub fn biometric_available() -> bool {
+        platform::available()
+    }
 
     /// Reports whether this preview vault has an enrolled Keychain credential.
-    pub fn biometric_enabled(&self) -> Result<bool, String> { platform::enabled(&self.directory) }
+    pub fn biometric_enabled(&self) -> Result<bool, String> {
+        platform::enabled(&self.directory)
+    }
 
     /// Reauthenticates with the master password before storing a native-only key.
     pub async fn biometric_enable(this: Instance<Vault>, password: String) -> Result<(), String> {
@@ -112,13 +126,17 @@ impl Vault {
         blocking(move || {
             let key = platform::verify_enrollment(&session, &directory, password)?;
             platform::enroll(&directory, &key)
-        }).await.map_err(|_| "Storage".to_string())?
+        })
+        .await
+        .map_err(|_| "Storage".to_string())?
     }
 
     /// Removes only this preview vault's credential.
     pub async fn biometric_disable(this: Instance<Vault>) -> Result<(), String> {
         let directory = this.with(|v| v.directory.clone());
-        blocking(move || platform::remove(&directory)).await.map_err(|_| "Storage".to_string())?
+        blocking(move || platform::remove(&directory))
+            .await
+            .map_err(|_| "Storage".to_string())?
     }
 
     /// Authenticates through Keychain and unlocks without exposing the key to JS.
@@ -128,7 +146,9 @@ impl Vault {
         blocking(move || {
             let key = platform::retrieve(&directory)?;
             session.unlock_biometric(key.to_vec()).map_err(error_code)
-        }).await.map_err(|_| "Storage".to_string())?
+        })
+        .await
+        .map_err(|_| "Storage".to_string())?
     }
 
     /// Runs one JSON command (`{"op":"list"}`) on a background thread; resolves with
@@ -157,21 +177,29 @@ impl Vault {
 /// One session per vault directory and process: the session holds the vault's
 /// process lock, and an interface reloaded in the same process (development
 /// reloads, test engines) must not see its own earlier instance as "in use".
-/// An instance that adopts a live session locks it first, so every interface
-/// starts at the lock screen.
+/// Packaged Mac interfaces preserve the service lock state when reconnecting;
+/// component fixtures explicitly adopt a locked local session.
 fn shared_session(directory: &std::path::Path) -> Result<Arc<VaultSession>, String> {
     use std::collections::HashMap;
     use std::sync::{Mutex, OnceLock, Weak};
     static SESSIONS: OnceLock<Mutex<HashMap<PathBuf, Weak<VaultSession>>>> = OnceLock::new();
-    let mut sessions = SESSIONS.get_or_init(Default::default).lock().map_err(|_| "Storage".to_string())?;
+    let mut sessions = SESSIONS
+        .get_or_init(Default::default)
+        .lock()
+        .map_err(|_| "Storage".to_string())?;
     if let Some(session) = sessions.get(directory).and_then(Weak::upgrade) {
-        session.command(r#"{"op":"lock"}"#.into()).map_err(error_code)?;
+        // Component fixtures start locked; a packaged UI reconnect preserves state.
+        #[cfg(target_os="macos")]
+        if std::env::var_os("PV_ALLOW_LOCAL_SESSION").is_some() {
+            session.command(r#"{"op":"lock"}"#.into()).map_err(error_code)?;
+        }
         return Ok(session);
     }
     if let Some(parent) = directory.parent() {
         let _ = std::fs::create_dir_all(parent);
     }
-    let session = Arc::new(VaultSession::new(directory.to_string_lossy().into_owned()).map_err(error_code)?);
+    let session =
+        Arc::new(VaultSession::new(directory.to_string_lossy().into_owned()).map_err(error_code)?);
     sessions.insert(directory.to_path_buf(), Arc::downgrade(&session));
     Ok(session)
 }
@@ -199,14 +227,18 @@ pub struct Platform;
 #[module]
 impl Platform {
     /// Platform capability gating; unavailable integrations never report success.
-    pub fn is_macos() -> bool { cfg!(target_os = "macos") }
+    pub fn is_macos() -> bool {
+        cfg!(target_os = "macos")
+    }
     /// Integrations enabled in this build; unsupported transports remain closed.
     pub fn capabilities() -> String {
         let mac = cfg!(target_os = "macos");
         serde_json::json!({"browser":mac,"ai":mac,"terminal":mac,"globalHotkeys":mac,"recoveryPrinting":mac}).to_string()
     }
     /// Drains system lock notifications and returns system idle seconds.
-    pub fn poll_lock_signals() -> String { platform::poll() }
+    pub fn poll_lock_signals() -> String {
+        platform::poll()
+    }
 
     /// The app's version as shown next to its name.
     pub fn version() -> String {
@@ -224,3 +256,8 @@ impl Platform {
         platform::open_folder(dir.parent().unwrap_or(&dir))
     }
 }
+
+#[cfg(target_os = "macos")]
+mod background;
+#[cfg(target_os = "macos")]
+mod service_ipc;

@@ -1,7 +1,9 @@
 //! Signed-helper socket and explicit preview registration. No auto-registration.
 mod security;
 mod wire;
+#[cfg(feature = "ui")]
 use crate::Vault;
+#[cfg(feature = "ui")]
 use nsh_core::prelude::*;
 use serde_json::{Value, json};
 use std::{
@@ -18,7 +20,7 @@ struct Pending {
 static STARTUP: Mutex<Option<String>> = Mutex::new(None);
 static PENDING: Mutex<Option<Pending>> = Mutex::new(None);
 static STARTED: OnceLock<Mutex<Vec<PathBuf>>> = OnceLock::new();
-fn command(session: &vault_core::VaultSession, request: Value) -> Result<Value, String> {
+fn command(session: &crate::session::VaultSession, request: Value) -> Result<Value, String> {
     serde_json::from_str(
         &session
             .command(request.to_string())
@@ -26,10 +28,14 @@ fn command(session: &vault_core::VaultSession, request: Value) -> Result<Value, 
     )
     .map_err(|_| "failed".into())
 }
-fn settings(session: &vault_core::VaultSession) -> Result<Value, String> {
-    Ok(command(session, json!({"op":"list","richNotes":true}))?["settings"].clone())
+fn settings(session: &crate::session::VaultSession) -> Result<Value, String> {
+    command(session, json!({"op":"read-settings"}))
 }
-fn dispatch(session: &vault_core::VaultSession, id: &str, wrapper: Value) -> Result<Value, String> {
+fn dispatch(
+    session: &crate::session::VaultSession,
+    id: &str,
+    wrapper: Value,
+) -> Result<Value, String> {
     if wrapper["extensionOrigin"] != format!("chrome-extension://{id}/") {
         return Err("invalid-origin".into());
     }
@@ -103,6 +109,7 @@ fn dispatch(session: &vault_core::VaultSession, id: &str, wrapper: Value) -> Res
                 reply: tx,
             });
         }
+        crate::background::show_interface();
         let allowed = rx.recv_timeout(Duration::from_secs(35)).unwrap_or(false);
         PENDING.lock().map_err(|_| "unavailable")?.take();
         if !allowed {
@@ -139,7 +146,7 @@ fn dispatch(session: &vault_core::VaultSession, id: &str, wrapper: Value) -> Res
             json!({"op":op,"origin":request["origin"],"id":request["id"],"accountId":request["accountId"]})
         }
         "lock" => {
-            Browser::cancel_startup();
+            cancel_startup_native();
             json!({"op":"lock"})
         }
         // Preserve existing entries; an identical retry is acknowledged without another write.
@@ -185,7 +192,10 @@ fn dispatch(session: &vault_core::VaultSession, id: &str, wrapper: Value) -> Res
     };
     Ok(json!({"ok":true,"data":command(session,query)?}))
 }
-fn start(session: Arc<vault_core::VaultSession>, directory: &Path) -> Result<(), String> {
+pub(crate) fn start(
+    session: Arc<crate::session::VaultSession>,
+    directory: &Path,
+) -> Result<(), String> {
     let contents = wire::bundle()?;
     let id = wire::identity(&contents)?;
     let helper = contents.join("MacOS/pv-browser-host");
@@ -209,6 +219,28 @@ fn start(session: Arc<vault_core::VaultSession>, directory: &Path) -> Result<(),
     std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))
         .map_err(|_| "unavailable")?;
     started.push(directory.into());
+    std::thread::spawn(move || {
+        for stream in listener.incoming() {
+            let Ok(mut stream) = stream else { break };
+            let _ = stream.set_read_timeout(Some(Duration::from_secs(15)));
+            let _ = stream.set_write_timeout(Some(Duration::from_secs(15)));
+            if !security::peer(stream.as_raw_fd(), &helper) {
+                continue;
+            }
+            if let Ok(request) = wire::read(&mut stream, 65536) {
+                let result = dispatch(&session, &id, request).unwrap_or_else(|e| wire::failure(&e));
+                let _ = wire::write(&mut stream, &result);
+            }
+        }
+    });
+    Ok(())
+}
+pub(crate) fn request_startup(directory: &Path) -> Result<(), String> {
+    static ISSUED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+    if ISSUED.swap(true, std::sync::atomic::Ordering::SeqCst) {
+        return Ok(());
+    }
+    let helper = wire::bundle()?.join("MacOS/pv-browser-host");
     let startup_directory = directory.to_path_buf();
     let startup_helper = helper.clone();
     let nonce = uuid::Uuid::new_v4().to_string();
@@ -243,62 +275,75 @@ fn start(session: Arc<vault_core::VaultSession>, directory: &Path) -> Result<(),
             }
         }
     });
-    std::thread::spawn(move || {
-        for stream in listener.incoming() {
-            let Ok(mut stream) = stream else { break };
-            let _ = stream.set_read_timeout(Some(Duration::from_secs(15)));
-            let _ = stream.set_write_timeout(Some(Duration::from_secs(15)));
-            if !security::peer(stream.as_raw_fd(), &helper) {
-                continue;
-            }
-            if let Ok(request) = wire::read(&mut stream, 65536) {
-                let result = dispatch(&session, &id, request).unwrap_or_else(|e| wire::failure(&e));
-                let _ = wire::write(&mut stream, &result);
-            }
-        }
-    });
     Ok(())
 }
 /// Browser registration, pairing confirmation and background-grant revocation.
-#[module]
+#[cfg_attr(feature = "ui", module)]
 pub struct Browser;
-#[module]
+#[cfg_attr(feature = "ui", module)]
 impl Browser {
     /// Attach once after Vault has opened its session. No registrations are changed.
-    pub fn start(vault: Instance<Vault>) -> Result<(), String> {
+    #[cfg(feature = "ui")]
+    pub async fn start(vault: Instance<Vault>) -> Result<(), String> {
+        #[cfg(not(test))]
+        {
+            let directory = vault.with(|v| v.directory.clone());
+            return crate::service_ipc::control_async(directory, "browser-start", json!({}))
+                .await
+                .map(|_| ());
+        }
+        #[cfg(test)]
         vault.with(|v| start(v.session.clone().ok_or("Locked")?, &v.directory))
     }
     /// Must run before every explicit or system lock to invalidate startup replies.
-    pub fn cancel_startup() {
-        if let Ok(mut value) = STARTUP.lock() {
-            value.take();
+    pub async fn cancel_startup() {
+        #[cfg(all(feature = "ui", not(test)))]
+        {
+            let result = crate::service_ipc::control_async(
+                crate::vault_directory(),
+                "browser-cancel",
+                json!({}),
+            )
+            .await;
+            let _ = result;
+            return;
         }
-        if let Ok(p) = PENDING.lock() {
-            if let Some(p) = p.as_ref() {
-                let _ = p.reply.try_send(false);
-            }
-        }
+        #[allow(unreachable_code)]
+        cancel_startup_native()
     }
     /// Returns public extension identity and a per-request approval challenge, never vault material.
-    pub fn pending() -> String {
-        PENDING
-            .lock()
-            .ok()
-            .and_then(|p| {
-                p.as_ref()
-                    .map(|p| json!({"extensionId":p.id,"challenge":p.challenge}).to_string())
-            })
-            .unwrap_or_default()
+    pub async fn pending() -> String {
+        #[cfg(all(feature = "ui", not(test)))]
+        {
+            let result = crate::service_ipc::control_async(
+                crate::vault_directory(),
+                "browser-pending",
+                json!({}),
+            )
+            .await;
+            return result
+                .ok()
+                .and_then(|v| v.as_str().map(str::to_owned))
+                .unwrap_or_default();
+        }
+        #[allow(unreachable_code)]
+        pending_native()
     }
     /// Native settings approval; times out without user consent.
-    pub fn approve(challenge: String, allow: bool) {
-        if let Ok(p) = PENDING.lock() {
-            if let Some(p) = p.as_ref() {
-                if p.challenge == challenge {
-                    let _ = p.reply.try_send(allow);
-                }
-            }
+    pub async fn approve(challenge: String, allow: bool) {
+        #[cfg(all(feature = "ui", not(test)))]
+        {
+            let result = crate::service_ipc::control_async(
+                crate::vault_directory(),
+                "browser-approve",
+                json!({"challenge":challenge,"allow":allow}),
+            )
+            .await;
+            let _ = result;
+            return;
         }
+        #[allow(unreachable_code)]
+        approve_native(challenge, allow)
     }
     /// Registration statuses for the four supported browser families.
     pub fn registrations() -> Result<String, String> {
@@ -321,14 +366,17 @@ impl Browser {
         )
     }
     /// Startup policy is a non-secret marker; enabling does not create a grant.
+    #[cfg(feature = "ui")]
     pub fn startup_enabled(vault: Instance<Vault>) -> bool {
         vault.with(|v| !v.directory.join("browser-startup-disabled").exists())
     }
     /// Explicit desktop preference; disabling cancels any in-flight startup unlock.
-    pub fn set_startup_enabled(vault: Instance<Vault>, enabled: bool) -> Result<(), String> {
-        Self::cancel_startup();
-        vault.with(|v| {
-            let path = v.directory.join("browser-startup-disabled");
+    #[cfg(feature = "ui")]
+    pub async fn set_startup_enabled(vault: Instance<Vault>, enabled: bool) -> Result<(), String> {
+        let directory = vault.with(|v| v.directory.clone());
+        Self::cancel_startup().await;
+        (|| {
+            let path = directory.join("browser-startup-disabled");
             if enabled {
                 if path.exists() {
                     std::fs::remove_file(path).map_err(|_| "Storage")?;
@@ -337,9 +385,10 @@ impl Browser {
                 std::fs::write(path, b"disabled").map_err(|_| "Storage")?;
             }
             Ok(())
-        })
+        })()
     }
     /// Revoke one extension or all pairings and invalidate every background scope.
+    #[cfg(feature = "ui")]
     pub async fn revoke(vault: Instance<Vault>, extension_id: String) -> Result<(), String> {
         let (session, directory) = vault.with(|v| (v.session.clone(), v.directory.clone()));
         let session = session.ok_or("Locked")?;
@@ -365,3 +414,33 @@ impl Browser {
 
 #[cfg(test)]
 mod tests;
+
+pub(crate) fn cancel_startup_native() {
+    if let Ok(mut value) = STARTUP.lock() {
+        value.take();
+    }
+    if let Ok(p) = PENDING.lock() {
+        if let Some(p) = p.as_ref() {
+            let _ = p.reply.try_send(false);
+        }
+    }
+}
+pub(crate) fn pending_native() -> String {
+    PENDING
+        .lock()
+        .ok()
+        .and_then(|p| {
+            p.as_ref()
+                .map(|p| json!({"extensionId":p.id,"challenge":p.challenge}).to_string())
+        })
+        .unwrap_or_default()
+}
+pub(crate) fn approve_native(challenge: String, allow: bool) {
+    if let Ok(p) = PENDING.lock() {
+        if let Some(p) = p.as_ref() {
+            if p.challenge == challenge {
+                let _ = p.reply.try_send(allow);
+            }
+        }
+    }
+}
