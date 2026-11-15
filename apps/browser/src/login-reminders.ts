@@ -8,6 +8,9 @@ type PendingLogin = {
   username: string;
   password: string;
   expires: number;
+  /** Existing record to update instead of creating a duplicate. */
+  updateId?: string;
+  updateAccountId?: string;
 };
 const TTL = 120_000;
 const pending = new Map<number, PendingLogin>();
@@ -34,7 +37,14 @@ export function loginCaptureEpoch(sender: chrome.runtime.MessageSender) {
 const passwordFrames = new Map<number, Map<number, boolean>>();
 const timers = new Map<number, ReturnType<typeof setTimeout>>();
 function notice(value: PendingLogin) {
-  return { id: value.id, origin: value.origin, expires: value.expires };
+  // Metadata only: whether Save updates a record, or needs the popup to pick one.
+  return {
+    id: value.id,
+    origin: value.origin,
+    expires: value.expires,
+    update: !!value.updateId,
+    choose: !value.username.trim(),
+  };
 }
 function announcePending(tabId: number, value: PendingLogin) {
   void chrome.tabs
@@ -194,7 +204,7 @@ export async function handleLoginPage(
   sender: chrome.runtime.MessageSender,
   core: (request: Request) => Promise<any>,
   capturedEpoch = loginCaptureEpoch(sender),
-  save?: (value: PendingLogin, validate: () => Promise<void>) => Promise<{ queued: boolean }>,
+  save?: (value: PendingLogin, validate: () => Promise<void>) => Promise<{ queued: boolean; updated?: boolean }>,
 ) {
   if (
     sender.id !== chrome.runtime.id ||
@@ -301,9 +311,16 @@ export async function handleLoginPage(
     const accounts = await core({ op: "matches", origin });
     ensureCurrent();
     setAccountBadge(tabId, origin, accounts.length, true);
-    for (const account of accounts.filter(
-      (a: any) => a.username === request.username,
-    )) {
+    let username: string = request.username;
+    let update: { id: string; accountId?: string } | undefined;
+    // Change-password forms carry no username: with exactly one account for
+    // this site, that is the account being changed. Otherwise the popup asks.
+    if (request.changePassword === true && !username.trim() && accounts.length === 1)
+      username = accounts[0].username ?? "";
+    const sameUser = accounts.filter((a: any) => a.username === username);
+    if (username.trim() && sameUser.length === 1)
+      update = { id: sameUser[0].id, accountId: sameUser[0].accountId };
+    for (const account of sameUser) {
       const existing = await core({
         op: "fill",
         origin,
@@ -311,7 +328,7 @@ export async function handleLoginPage(
         accountId: account.accountId,
       });
       const same =
-        existing.username === request.username &&
+        existing.username === username &&
         existing.password === request.password;
       existing.password = "";
       ensureCurrent();
@@ -330,7 +347,7 @@ export async function handleLoginPage(
     ensureCurrent();
     const previous = pendingLogin(tabId, origin);
     if (
-      previous?.username === request.username &&
+      previous?.username === username &&
       previous.password === request.password
     )
       return { pending: true, notice: notice(previous) };
@@ -339,9 +356,10 @@ export async function handleLoginPage(
       id: crypto.randomUUID(),
       tabId,
       origin,
-      username: request.username,
+      username,
       password: request.password,
       expires: Date.now() + TTL,
+      ...(update ? { updateId: update.id, updateAccountId: update.accountId } : {}),
     };
     pending.set(tabId, value);
     timers.set(

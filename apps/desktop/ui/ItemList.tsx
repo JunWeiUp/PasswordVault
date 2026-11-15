@@ -11,10 +11,11 @@ import {
 import { askDeleteForever, askEmptyTrash, askTrash } from "./sheets";
 import { c, layout, MONO, fs } from "./theme";
 import { secondsLeft, TotpText } from "./totp";
-import { deviceSubtitle, importDeviceDocuments, newDevice } from "./devices";
+import { deviceSubtitle, deviceTitle, importDeviceDocuments, newDevice } from "./devices";
 import { askAddCode } from "./entries/CodeDetail";
 
 export const searchFocus = signal(0);
+const itemTitle = (item: Item) => (item.type === "device" ? deviceTitle(item) : item.title || "未命名");
 
 const COLORS = ["#24292f", "#3265db", "#a259ff", "#c8102e", "#2f8f63", "#f38020", "#555b66", "#0f7b8a"];
 export function Tile(props: { item: Item; size?: number }) {
@@ -71,7 +72,7 @@ export function moveToCategoryMenu(item: Item): MenuItem[] {
 export function rowMenu(item: Item): MenuItem[] {
   if (item.isDeleted) {
     return [
-      { label: `恢复「${item.title || "未命名"}」`, onSelect: () => void restore(item) },
+      { label: `恢复「${itemTitle(item)}」`, onSelect: () => void restore(item) },
       { type: "separator" },
       { label: "永久删除…", onSelect: () => askDeleteForever(item) },
     ];
@@ -101,7 +102,7 @@ function ItemRow(props: { item: Item }) {
     <View
       role="button"
       testID={`row-${item().id}`}
-      accessibilityLabel={item().title}
+      accessibilityLabel={itemTitle(item())}
       accessibilityState={{ selected: on() }}
       onPress={() => select(item().id)}
       onContextMenu={(e) => void Menu.popup(rowMenu(item()), e.pagePosition)}
@@ -115,7 +116,7 @@ function ItemRow(props: { item: Item }) {
       <If when={item().type !== "secureNote"}><Tile item={item()} /></If>
       <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
-          <T size={13} weight="600" lines={item().type === "device" ? undefined : 1} style={{ flexShrink: 1 }}>{item().title || "未命名"}</T>
+          <T size={13} weight="600" lines={item().type === "device" ? undefined : 1} style={{ flexShrink: 1 }}>{itemTitle(item())}</T>
           <If when={item().isFavorite}><Icon name="star" size={11} tint="#e3a008" fill /></If>
           <If when={item().isPinned}><Icon name="pin" size={11} tint={c().faint} /></If>
         </View>

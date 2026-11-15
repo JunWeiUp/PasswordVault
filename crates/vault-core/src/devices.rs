@@ -76,7 +76,11 @@ pub fn validate_device(item: &Value) -> Result<()> {
             {
                 return Err(VaultError::InvalidData);
             }
-            if key == "commands" && !row["secret"].is_boolean() {
+            if key == "commands"
+                && (!row["secret"].is_boolean()
+                    || (!row["label"].is_null()
+                        && row["label"].as_str().is_none_or(|s| s.len() > 1024)))
+            {
                 return Err(VaultError::InvalidData);
             }
             if key == "files" && row["size"].as_u64().is_none_or(|n| n > 25 * 1024 * 1024) {
@@ -182,5 +186,44 @@ mod device_sync_gate_tests {
             );
         }
         assert!(guard_device_sync(DEVICES_FORMAT - 1, "relay-export").is_ok());
+    }
+
+    #[test]
+    fn validate_device_accepts_optional_command_label_and_rejects_invalid_labels() {
+        let mut item = serde_json::json!({
+            "id": "dev-label",
+            "type": "device",
+            "title": "主力开发机",
+            "device": {
+                "version": 1,
+                "host": "dev.example.com",
+                "port": 22,
+                "username": "ops",
+                "authMethod": "key",
+                "password": "",
+                "privateKey": "",
+                "aliases": [],
+                "notes": "",
+                "services": [],
+                "commands": [
+                    {"id": "c1", "title": "deploy.py", "text": "print(1)", "secret": true},
+                    {"id": "c2", "title": "check.sh", "label": "健康检查脚本", "text": "echo ok", "secret": false}
+                ],
+                "files": []
+            }
+        });
+        assert!(validate_device(&item).is_ok());
+
+        item["device"]["commands"][1]["label"] = serde_json::json!(123);
+        assert!(matches!(
+            validate_device(&item),
+            Err(VaultError::InvalidData)
+        ));
+
+        item["device"]["commands"][1]["label"] = serde_json::json!("x".repeat(1025));
+        assert!(matches!(
+            validate_device(&item),
+            Err(VaultError::InvalidData)
+        ));
     }
 }

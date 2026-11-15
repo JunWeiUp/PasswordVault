@@ -41,9 +41,14 @@ core epoch is vault-wide. Helper offline saves use the core append/receipt API.
 
 Implemented: status, pair, matches, fill, save, lock, open, configure-sync,
 disable-sync, disable-auto-unlock, sync-save, authorized matches/fill and desktop
-startup unlock. Additional extension operations (`open-entry`, `update-login`, OTP,
-structured details and passkeys) fail closed as unsupported in this preview; they
-still need their native consent/navigation flows. This is not full SwiftUI parity.
+startup unlock. With a paired extension and an unlocked vault, the socket also
+accepts `update-login`, `otp-fill`, `structured-list` and `structured-fill` after a
+per-request confirmation in the window (same pending channel and 35-second expiry as
+pairing; prompts show origin/username only, never secrets), `otp-matches` (labels
+only) and `open-entry`, which reveals an owned record in the window. Update and open
+verify that the record belongs to the requesting website before prompting.
+Passkeys still fail closed as unsupported. Read-only grants (Mac locked) remain
+limited to matches/fill.
 
 Browser mode targets the isolated default `PasswordVaultNSHPreview/vault` directory.
 Custom `--vault-directory` apps do not redirect browser-mode helpers: use synthetic

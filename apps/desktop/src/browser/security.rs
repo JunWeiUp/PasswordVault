@@ -18,8 +18,19 @@ unsafe extern "C" {
         flags: u32,
         out: *mut core_foundation::dictionary::CFDictionaryRef,
     ) -> i32;
+    fn SecCodeCopyDesignatedRequirement(
+        code: SecStaticCodeRef,
+        flags: u32,
+        out: *mut SecRequirementRef,
+    ) -> i32;
+    fn SecRequirementCopyData(
+        requirement: SecRequirementRef,
+        flags: u32,
+        out: *mut core_foundation::data::CFDataRef,
+    ) -> i32;
     static kSecUseAuthenticationUIFail: core_foundation::string::CFStringRef;
     static kSecCodeInfoUnique: core_foundation::string::CFStringRef;
+    static kSecCodeInfoCertificates: core_foundation::string::CFStringRef;
     fn SecKeychainSetUserInteractionAllowed(allowed: u8) -> i32;
 }
 unsafe fn cf(raw: *const c_void) -> CFType {
@@ -49,6 +60,49 @@ pub fn code_hash(path: &Path) -> Option<Vec<u8>> {
             return None;
         }
         hash(code)
+    }
+}
+/// Validated signing identity matching the login-Keychain default ACL:
+/// certificate-signed helpers use their designated requirement (stable across
+/// rebuilds with the same certificate), while ad-hoc helpers always use their
+/// per-binary CDHash and ignore unauthenticated custom requirements.
+#[allow(dead_code)]
+pub fn signing_identity(path: &Path) -> Option<Vec<u8>> {
+    unsafe {
+        let url = CFURL::from_path(path, false)?;
+        let mut code = ptr::null_mut();
+        if SecStaticCodeCreateWithPath(url.as_concrete_TypeRef(), 0, &mut code) != 0 {
+            return None;
+        }
+        let _owner = CFType::wrap_under_create_rule(code.cast());
+        if SecStaticCodeCheckValidity(code, kSecCSStrictValidate, ptr::null_mut()) != 0 {
+            return None;
+        }
+        let mut info = ptr::null();
+        if SecCodeCopySigningInformation(code, 2, &mut info) != 0 || info.is_null() {
+            return None;
+        }
+        let info: CFDictionary<CFType, CFType> = CFDictionary::wrap_under_create_rule(info);
+        let has_cert = info
+            .find(&cf(kSecCodeInfoCertificates.cast()))
+            .and_then(|v| v.downcast::<core_foundation::array::CFArray>())
+            .is_some_and(|certs| !certs.is_empty());
+        if !has_cert {
+            return info
+                .find(&cf(kSecCodeInfoUnique.cast()))?
+                .downcast::<CFData>()
+                .map(|d| d.bytes().to_vec());
+        }
+        let mut req = ptr::null_mut();
+        if SecCodeCopyDesignatedRequirement(code, 0, &mut req) != 0 || req.is_null() {
+            return None;
+        }
+        let _req = CFType::wrap_under_create_rule(req.cast());
+        let mut data = ptr::null();
+        if SecRequirementCopyData(req, 0, &mut data) != 0 || data.is_null() {
+            return None;
+        }
+        Some(CFData::wrap_under_create_rule(data).bytes().to_vec())
     }
 }
 /// Full static validation reads the whole executable. Every IPC connection checks

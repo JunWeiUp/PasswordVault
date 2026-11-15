@@ -1,4 +1,5 @@
 //! Wire-compatible helper-owned Keychain records. Old raw grants stay save-only.
+#![cfg_attr(test, allow(dead_code))]
 use super::security;
 use base64::{Engine, engine::general_purpose::STANDARD};
 use serde_json::{Value, json};
@@ -20,17 +21,41 @@ fn account(directory: &Path, id: &str, token: &str) -> Result<String, String> {
         Sha256::digest(format!("{}\n{id}\n{token}", directory.display()))
     ))
 }
-fn desktop_account(directory: &Path) -> Result<String, String> {
-    let hash = security::code_hash(&std::env::current_exe().map_err(|_| "unavailable")?)
-        .ok_or("unavailable")?;
-    Ok(format!(
+pub fn desktop_key(directory: &Path, identity: &[u8]) -> String {
+    format!(
         "{:x}",
         Sha256::digest(format!(
             "{}\n{}",
             directory.display(),
-            STANDARD.encode(hash)
+            STANDARD.encode(identity)
         ))
-    ))
+    )
+}
+fn desktop_account(directory: &Path) -> Result<String, String> {
+    let exe = std::env::current_exe().map_err(|_| "unavailable")?;
+    let req = security::signing_identity(&exe).ok_or("unavailable")?;
+    Ok(desktop_key(directory, &req))
+}
+fn legacy_desktop_account(directory: &Path) -> Option<String> {
+    let exe = std::env::current_exe().ok()?;
+    let hash = security::code_hash(&exe)?;
+    Some(desktop_key(directory, &hash))
+}
+fn desktop_record(directory: &Path) -> Result<Zeroizing<Vec<u8>>, String> {
+    let primary = desktop_account(directory)?;
+    match security::keychain(DESKTOP, &primary, None) {
+        Ok(bytes) => Ok(bytes),
+        Err(e) => match legacy_desktop_account(directory) {
+            Some(legacy) if legacy != primary => security::keychain(DESKTOP, &legacy, None),
+            _ => Err(e),
+        },
+    }
+}
+fn key_owner(key: &str, id: &str, token: &str) -> bool {
+    security::keychain(DESKTOP, key, None)
+        .ok()
+        .and_then(|b| serde_json::from_slice::<Value>(&b).ok())
+        .is_some_and(|v| v["extensionID"] == id && v["token"] == token)
 }
 pub struct Authorization {
     pub grant: Zeroizing<Vec<u8>>,
@@ -87,10 +112,11 @@ pub fn configure(directory: &Path, id: &str, request: &Value) -> Result<(), Stri
     );
     security::keychain(SERVICE, &key, Some(Some(bytes.as_bytes())))?;
     if startup {
-        let result = desktop_account(directory).and_then(|key| {
+        let primary = desktop_account(directory);
+        let result = primary.as_ref().map_err(Clone::clone).and_then(|key| {
             security::keychain(
                 DESKTOP,
-                &key,
+                key,
                 Some(Some(
                     json!({"extensionID":id,"token":token})
                         .to_string()
@@ -102,21 +128,31 @@ pub fn configure(directory: &Path, id: &str, request: &Value) -> Result<(), Stri
             let _ = security::keychain(SERVICE, &key, Some(None));
             return Err(e);
         }
+        if let (Ok(primary), Some(legacy)) = (&primary, legacy_desktop_account(directory)) {
+            if &legacy != primary {
+                let _ = security::keychain(DESKTOP, &legacy, Some(None));
+            }
+        }
     } else {
         disable_desktop(directory, id, token)?
     }
     Ok(())
 }
 pub fn owner(directory: &Path, id: &str, token: &str) -> bool {
-    desktop_account(directory)
-        .and_then(|key| security::keychain(DESKTOP, &key, None))
+    desktop_record(directory)
         .ok()
         .and_then(|b| serde_json::from_slice::<Value>(&b).ok())
         .is_some_and(|v| v["extensionID"] == id && v["token"] == token)
 }
 pub fn disable_desktop(directory: &Path, id: &str, token: &str) -> Result<(), String> {
-    if owner(directory, id, token) {
-        security::keychain(DESKTOP, &desktop_account(directory)?, Some(None))?;
+    let primary = desktop_account(directory)?;
+    if key_owner(&primary, id, token) {
+        security::keychain(DESKTOP, &primary, Some(None))?;
+    }
+    if let Some(legacy) = legacy_desktop_account(directory).filter(|k| k != &primary) {
+        if key_owner(&legacy, id, token) {
+            security::keychain(DESKTOP, &legacy, Some(None))?;
+        }
     }
     Ok(())
 }
@@ -125,7 +161,7 @@ pub fn revoke(directory: &Path, id: &str, token: &str) -> Result<(), String> {
     disable_desktop(directory, id, token)
 }
 pub fn desktop(directory: &Path, id: &str) -> Result<Authorization, String> {
-    let bytes = security::keychain(DESKTOP, &desktop_account(directory)?, None)?;
+    let bytes = desktop_record(directory)?;
     let owner: Value = serde_json::from_slice(&bytes).map_err(|_| "sync-authorization")?;
     if owner["extensionID"] != id {
         return Err("sync-authorization".into());

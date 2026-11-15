@@ -294,13 +294,13 @@ export function SheetFooter(props: { children: any; left?: JSX.Element }) {
 }
 
 /** A confirmation sheet; resolves once with `onConfirm` when confirmed. */
-export function confirm(o: { title: string; text: string; ok: string; danger?: boolean; onConfirm: () => void }) {
+export function confirm(o: { title: string; text: string; ok: string; danger?: boolean; onConfirm: () => void; onCancel?: () => void }) {
   openSheet({
     render: (close) => (
       <View style={{ gap: 6 }}>
         <SheetTitle title={o.title} text={o.text} />
         <SheetFooter>
-          <Btn label="取消" onPress={close} />
+          <Btn label="取消" onPress={() => { close(); o.onCancel?.(); }} />
           <Btn label={o.ok} kind={o.danger ? "dangerSolid" : "primary"} onPress={() => { close(); o.onConfirm(); }} />
         </SheetFooter>
       </View>

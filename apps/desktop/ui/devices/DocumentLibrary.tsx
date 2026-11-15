@@ -3,18 +3,22 @@ import { signal, Scroll, View } from "nsh";
 import { Input } from "nsh/base";
 import { Btn, Row, T, TextBox, Toggle, copySecret, confirm } from "../kit";
 import { c, MONO } from "../theme";
-import { documentKind, type DeviceCommand } from "./model";
+import { commandTitle, documentKind, type DeviceCommand } from "./model";
 
 export function DocumentLibrary(props: { commands: DeviceCommand[]; editable: boolean; canManage?: boolean; busy: boolean; onEdit?: () => void; onRun?: (row: DeviceCommand) => void; onImport: () => void; onChange: (rows: DeviceCommand[]) => void }) {
   const selected = signal(""), revealed = signal(true), query = signal(""), width = signal(800);
   const current = () => props.commands.find(row => row.id === selected()) ?? props.commands[0];
   const manageable = () => props.canManage ?? props.editable;
+  const matches = (row: DeviceCommand) => {
+    const q = query().trim().toLowerCase();
+    return !q || commandTitle(row).toLowerCase().includes(q) || row.title.toLowerCase().includes(q);
+  };
   const update = (patch: Partial<DeviceCommand>) => {
     if (props.editable && current()) props.onChange(props.commands.map(row => row.id === current()?.id ? { ...row, ...patch } : row));
   };
   const add = () => {
     if (!manageable()) return;
-    const row = { id: crypto.randomUUID(), title: "未命名.txt", text: "", secret: true };
+    const row: DeviceCommand = { id: crypto.randomUUID(), title: "未命名.txt", label: "", text: "", secret: true };
     props.onChange([...props.commands, row]); selected.set(row.id); revealed.set(true); if (!props.editable) props.onEdit?.();
   };
   return <View onLayout={e => width.set(e.bounds.size.width)} style={{ gap: 18 }}>
@@ -25,21 +29,30 @@ export function DocumentLibrary(props: { commands: DeviceCommand[]; editable: bo
     <View style={{ flexDirection: width() < 600 ? "column" : "row", gap: 22, alignItems: "stretch" }}>
       <View style={{ width: width() < 600 ? undefined : 190, gap: 14, flexShrink: 0 }}>
         <T weight="600">资料目录</T>
-        <TextBox label="搜索资料" placeholder="搜索文件名…" value={query()} onChange={v => query.set(v)} />
+        <TextBox label="搜索资料" placeholder="搜索标题或文件名…" value={query()} onChange={v => query.set(v)} />
         <Scroll style={{ maxHeight: width() < 600 ? 180 : 460 }}><View style={{ gap: 4 }}>
-          {props.commands.filter(row => row.title.toLowerCase().includes(query().toLowerCase())).map(row => <View role="button" accessibilityLabel={`打开 ${row.title || "资料"}`} onPress={() => { selected.set(row.id); revealed.set(true); }} style={{ padding: 12, gap: 8, borderRadius: 6, backgroundColor: current()?.id === row.id ? c().blueSoft : "transparent" }}>
-            <T weight="600" size={12}>{row.title || "未命名资料"}</T>
-            <T size={11} color={c().muted}>{documentKind(row.title)} · {row.text.split("\n").length} 行</T>
+          {props.commands.filter(matches).map(row => <View role="button" accessibilityLabel={`打开 ${commandTitle(row)}`} onPress={() => { selected.set(row.id); revealed.set(true); }} style={{ padding: 12, gap: 8, borderRadius: 6, backgroundColor: current()?.id === row.id ? c().blueSoft : "transparent" }}>
+            <T weight="600" size={12}>{commandTitle(row)}</T>
+            <T size={11} color={c().muted}>{row.label?.trim() && row.title ? `${row.title} · ` : ""}{documentKind(row.title)} · {row.text.split("\n").length} 行</T>
           </View>)}
-          <If when={query() && !props.commands.some(row => row.title.toLowerCase().includes(query().toLowerCase()))}><T color={c().muted}>没有匹配的文件</T></If>
+          <If when={query().trim() && !props.commands.some(matches)}><T color={c().muted}>没有匹配的文件</T></If>
         </View></Scroll>
         <T size={11} color={c().muted}>脚本、命令、配置与文本。保留原文，点击运行将在首选终端执行。</T>
       </View>
       <View style={{ flex: 1, minWidth: 0, gap: 12 }}>
         <If when={current()} else={<View style={{ paddingVertical: 40, gap: 12 }}><T size={18} weight="600">还没有资料</T><T color={c().muted}>导入 Python、Shell 或配置文件，也可以新建文本。</T></View>}>
-          <T size={19} weight="600" selectable>{current()?.title || "未命名资料"}</T>
-          <T size={11} color={c().muted}>{documentKind(current()?.title ?? "")} · {current()?.secret ? "敏感资料" : "文本资料"}</T>
-          <If when={props.editable}><TextBox label="完整文件名（含扩展名）" value={current()?.title ?? ""} onChange={title => update({ title })} /></If>
+          <T size={19} weight="600" selectable>{commandTitle(current())}</T>
+          <T size={11} color={c().muted}>{current()?.label?.trim() && current()?.title ? `${current()?.title} · ` : ""}{documentKind(current()?.title ?? "")} · {current()?.secret ? "敏感资料" : "文本资料"}</T>
+          <If when={props.editable}>
+            <View style={{ gap: 6 }}>
+              <T size={11.5} color={c().muted}>标题</T>
+              <TextBox label="资料标题" placeholder="可选，设置后默认显示为标题内容" value={current()?.label ?? ""} onChange={label => update({ label })} />
+            </View>
+            <View style={{ gap: 6 }}>
+              <T size={11.5} color={c().muted}>完整文件名（含扩展名）</T>
+              <TextBox label="完整文件名（含扩展名）" placeholder="例如 deploy.sh 或 config.json" value={current()?.title ?? ""} onChange={title => update({ title })} />
+            </View>
+          </If>
           <Row wrap style={{ backgroundColor: c().soft, padding: 10, gap: 6 }}>
             <T size={11} color={c().muted} style={{ flex: 1 }}>{props.editable ? "编辑中 · 自动保存" : "只读预览"}</T>
             <Btn label={revealed() ? "收起内容" : "显示内容"} onPress={() => revealed.set(!revealed())} />

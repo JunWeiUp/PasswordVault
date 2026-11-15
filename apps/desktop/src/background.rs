@@ -139,6 +139,7 @@ mod server {
                 Ok(Value::Null)
             }
             "browser-pending" => Ok(json!(browser::pending_native())),
+            "browser-poll" => Ok(json!(browser::poll_native())),
             "browser-approve" => {
                 browser::approve_native(string(args, "challenge")?, args["allow"] == true);
                 Ok(Value::Null)

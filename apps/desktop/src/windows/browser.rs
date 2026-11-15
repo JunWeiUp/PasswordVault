@@ -17,6 +17,10 @@ impl Browser {
         String::new()
     }
     /// Windows transport is not enabled in this preview.
+    pub async fn poll() -> String {
+        String::new()
+    }
+    /// Windows transport is not enabled in this preview.
     pub async fn approve(_challenge: String, _allow: bool) {}
     /// Windows transport is not enabled in this preview.
     pub fn registrations() -> Result<String, String> {

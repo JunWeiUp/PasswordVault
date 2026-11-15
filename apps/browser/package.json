@@ -1,6 +1,6 @@
 {
   "name": "passwordvault-browser",
-  "version": "2.5.0",
+  "version": "2.5.4",
   "private": true,
   "type": "module",
   "scripts": {

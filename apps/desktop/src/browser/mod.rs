@@ -15,11 +15,90 @@ use std::{
 struct Pending {
     id: String,
     challenge: String,
+    /// "pair", "update-login", "otp-fill", "structured-list" or "structured-fill".
+    kind: &'static str,
+    /// Website origin and, for updates, the username. Never a secret.
+    detail: String,
     reply: std::sync::mpsc::SyncSender<bool>,
+}
+/// One-shot request to reveal a record in the window; expires if no window shows it.
+struct Navigation {
+    nonce: String,
+    id: String,
+    account_id: Option<String>,
+    expires: std::time::Instant,
+}
+static NAVIGATE: Mutex<Option<Navigation>> = Mutex::new(None);
+const CONSENT_TIMEOUT: Duration = Duration::from_secs(35);
+/// Ask the unlocked window to confirm one extension request (same channel as pairing).
+fn consent(id: &str, kind: &'static str, detail: String) -> Result<(), String> {
+    let (tx, rx) = std::sync::mpsc::sync_channel(1);
+    {
+        let mut pending = PENDING.lock().map_err(|_| "unavailable")?;
+        if pending.is_some() {
+            return Err(if kind == "pair" { "pairing-busy" } else { "request-busy" }.into());
+        }
+        *pending = Some(Pending {
+            id: id.into(),
+            challenge: uuid::Uuid::new_v4().to_string(),
+            kind,
+            detail,
+            reply: tx,
+        });
+    }
+    crate::background::show_interface();
+    let allowed = rx.recv_timeout(CONSENT_TIMEOUT).unwrap_or(false);
+    PENDING.lock().map_err(|_| "unavailable")?.take();
+    if allowed { Ok(()) } else { Err("cancelled".into()) }
+}
+/// Plain http(s) origin without credentials, path, query or fragment.
+fn web_origin(value: &Value) -> Result<reqwest::Url, String> {
+    let origin = value.as_str().ok_or("invalid-request")?;
+    let url = reqwest::Url::parse(origin).map_err(|_| "invalid-request")?;
+    if !matches!(url.scheme(), "https" | "http")
+        || url.host_str().is_none()
+        || !url.username().is_empty()
+        || url.password().is_some()
+        || !matches!(url.path(), "" | "/")
+        || url.query().is_some()
+        || url.fragment().is_some()
+    {
+        return Err("invalid-request".into());
+    }
+    Ok(url)
+}
+fn bounded<'a>(value: &'a Value, allow_empty: bool) -> Result<&'a str, String> {
+    value
+        .as_str()
+        .filter(|s| (allow_empty || !s.is_empty()) && s.len() <= 4096)
+        .ok_or_else(|| "invalid-request".into())
+}
+/// The record (and optional additional account) must be one of this website's matches.
+fn owned_by(
+    session: &crate::session::VaultSession,
+    origin: &str,
+    id: &Value,
+    account_id: &Value,
+) -> Result<(), String> {
+    let id = bounded(id, false)?;
+    let account = if account_id.is_null() { "" } else { bounded(account_id, true)? };
+    let matches = command(session, json!({"op":"matches","origin":origin}))?;
+    let found = matches.as_array().is_some_and(|accounts| {
+        accounts.iter().any(|a| {
+            a["id"] == id && a["accountId"].as_str().unwrap_or("") == account
+        })
+    });
+    if found { Ok(()) } else { Err("invalid-entry".into()) }
 }
 static STARTUP: Mutex<Option<String>> = Mutex::new(None);
 static PENDING: Mutex<Option<Pending>> = Mutex::new(None);
 static STARTED: OnceLock<Mutex<Vec<PathBuf>>> = OnceLock::new();
+/// Bumped after each successful extension save so the open Mac window can merge
+/// the new account without a full reload. Carries no vault material.
+static REVISION: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+fn saved() {
+    REVISION.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+}
 fn command(session: &crate::session::VaultSession, request: Value) -> Result<Value, String> {
     serde_json::from_str(
         &session
@@ -91,30 +170,15 @@ fn dispatch(
             session.authorized_browser_command(grant.to_vec(), query.to_string())
         }
         .map_err(|_| "sync-authorization")?;
-        return Ok(
-            json!({"ok":true,"data":serde_json::from_str::<Value>(&output).map_err(|_|"failed")?}),
-        );
+        let data = serde_json::from_str::<Value>(&output).map_err(|_| "failed")?;
+        if op == "sync-save" && data["saved"] == true {
+            saved();
+        }
+        return Ok(json!({"ok":true,"data":data}));
     }
     let mut current = current.map_err(|_| "locked")?;
     if op == "pair" {
-        let (tx, rx) = std::sync::mpsc::sync_channel(1);
-        {
-            let mut pending = PENDING.lock().map_err(|_| "unavailable")?;
-            if pending.is_some() {
-                return Err("pairing-busy".into());
-            }
-            *pending = Some(Pending {
-                id: id.into(),
-                challenge: uuid::Uuid::new_v4().to_string(),
-                reply: tx,
-            });
-        }
-        crate::background::show_interface();
-        let allowed = rx.recv_timeout(Duration::from_secs(35)).unwrap_or(false);
-        PENDING.lock().map_err(|_| "unavailable")?.take();
-        if !allowed {
-            return Err("cancelled".into());
-        }
+        consent(id, "pair", String::new())?;
         current = settings(session).map_err(|_| "locked")?;
         let previous = request["token"].as_str().unwrap_or("");
         let mut tokens = wire::tokens(&current["browserPairings"][id]);
@@ -151,18 +215,8 @@ fn dispatch(
         }
         // Preserve existing entries; an identical retry is acknowledged without another write.
         "save" => {
+            let url = web_origin(&request["origin"])?;
             let origin = request["origin"].as_str().ok_or("invalid-request")?;
-            let url = reqwest::Url::parse(origin).map_err(|_| "invalid-request")?;
-            if !matches!(url.scheme(), "https" | "http")
-                || url.host_str().is_none()
-                || !url.username().is_empty()
-                || url.password().is_some()
-                || !matches!(url.path(), "" | "/")
-                || url.query().is_some()
-                || url.fragment().is_some()
-            {
-                return Err("invalid-request".into());
-            }
             let user = request["username"]
                 .as_str()
                 .filter(|s| !s.is_empty() && s.len() <= 4096)
@@ -188,9 +242,73 @@ fn dispatch(
             }
             json!({"op":"save","item":{"id":uuid::Uuid::new_v4().to_string(),"type":"password","title":url.host_str().unwrap(),"username":user,"password":password,"url":origin,"tags":[],"note":"","isDeleted":false,"isFavorite":false,"createdAt":chrono::Utc::now().to_rfc3339(),"updatedAt":chrono::Utc::now().to_rfc3339()}})
         }
+        // Same explicit confirmations as the legacy Mac bridge.
+        "update-login" => {
+            web_origin(&request["origin"])?;
+            let origin = request["origin"].as_str().unwrap_or("");
+            let user = bounded(&request["username"], false)?;
+            bounded(&request[concat!("pass", "word")], false)?;
+            owned_by(session, origin, &request["id"], &request["accountId"])?;
+            consent(id, "update-login", format!("{origin}\n{user}"))?;
+            let mut query = json!({"op":"update-login","origin":origin,"id":request["id"],"username":user,"time":chrono::Utc::now().to_rfc3339()});
+            if request["accountId"].is_string() {
+                query["accountId"] = request["accountId"].clone();
+            }
+            query[concat!("pass", "word")] = request[concat!("pass", "word")].clone();
+            let data = command(session, query)?;
+            saved();
+            return Ok(json!({"ok":true,"data":data}));
+        }
+        "open-entry" => {
+            web_origin(&request["origin"])?;
+            let origin = request["origin"].as_str().unwrap_or("");
+            owned_by(session, origin, &request["id"], &request["accountId"])?;
+            *NAVIGATE.lock().map_err(|_| "unavailable")? = Some(Navigation {
+                nonce: uuid::Uuid::new_v4().to_string(),
+                id: bounded(&request["id"], false)?.into(),
+                account_id: request["accountId"].as_str().map(str::to_owned),
+                expires: std::time::Instant::now() + Duration::from_secs(30),
+            });
+            crate::background::show_interface();
+            return Ok(json!({"ok":true,"data":{"opened":true}}));
+        }
+        // Labels only; the code itself needs a confirmation.
+        "otp-matches" => {
+            web_origin(&request["origin"])?;
+            json!({"op":"otp-matches","origin":request["origin"]})
+        }
+        "otp-fill" => {
+            web_origin(&request["origin"])?;
+            let origin = request["origin"].as_str().unwrap_or("");
+            bounded(&request["id"], false)?;
+            consent(id, "otp-fill", origin.into())?;
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_err(|_| "failed")?
+                .as_secs();
+            json!({"op":"otp-fill","origin":origin,"id":request["id"],"time":now})
+        }
+        "structured-list" => {
+            consent(id, "structured-list", String::new())?;
+            json!({"op":"structured-list"})
+        }
+        "structured-fill" => {
+            let url = web_origin(&request["origin"])?;
+            if url.scheme() != "https" {
+                return Err("invalid-request".into());
+            }
+            let origin = request["origin"].as_str().unwrap_or("");
+            bounded(&request["id"], false)?;
+            consent(id, "structured-fill", origin.into())?;
+            json!({"op":"structured-fill","origin":origin,"id":request["id"],"includeSecurityCode":request["includeSecurityCode"] == true})
+        }
         _ => return Err("unsupported".into()),
     };
-    Ok(json!({"ok":true,"data":command(session,query)?}))
+    let data = command(session, query)?;
+    if op == "save" {
+        saved();
+    }
+    Ok(json!({"ok":true,"data":data}))
 }
 pub(crate) fn start(
     session: Arc<crate::session::VaultSession>,
@@ -310,6 +428,25 @@ impl Browser {
         }
         #[allow(unreachable_code)]
         cancel_startup_native()
+    }
+    /// `{"pending": <pending() text>, "revision": n}`; the revision changes after
+    /// each extension save so the UI can merge new accounts. Never vault material.
+    pub async fn poll() -> String {
+        #[cfg(all(feature = "ui", not(test)))]
+        {
+            let result = crate::service_ipc::control_async(
+                crate::vault_directory(),
+                "browser-poll",
+                json!({}),
+            )
+            .await;
+            return result
+                .ok()
+                .and_then(|v| v.as_str().map(str::to_owned))
+                .unwrap_or_default();
+        }
+        #[allow(unreachable_code)]
+        poll_native()
     }
     /// Returns public extension identity and a per-request approval challenge, never vault material.
     pub async fn pending() -> String {
@@ -431,9 +568,25 @@ pub(crate) fn pending_native() -> String {
         .ok()
         .and_then(|p| {
             p.as_ref()
-                .map(|p| json!({"extensionId":p.id,"challenge":p.challenge}).to_string())
+                .map(|p| json!({"extensionId":p.id,"challenge":p.challenge,"kind":p.kind,"detail":p.detail}).to_string())
         })
         .unwrap_or_default()
+}
+/// Pending pairing challenge plus the extension-save revision, in one IPC round trip.
+pub(crate) fn poll_native() -> String {
+    let open = NAVIGATE.lock().ok().and_then(|mut slot| {
+        if slot.as_ref().is_some_and(|n| n.expires <= std::time::Instant::now()) {
+            slot.take();
+        }
+        slot.as_ref()
+            .map(|n| json!({"nonce":n.nonce,"id":n.id,"accountId":n.account_id}))
+    });
+    json!({
+        "pending": pending_native(),
+        "revision": REVISION.load(std::sync::atomic::Ordering::SeqCst),
+        "open": open,
+    })
+    .to_string()
 }
 pub(crate) fn approve_native(challenge: String, allow: bool) {
     if let Ok(p) = PENDING.lock() {

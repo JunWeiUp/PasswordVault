@@ -100,7 +100,8 @@ export function errorText(error: unknown) {
         "changed-mode": "资料库模式已切换，请重新添加账号。",
         "invalid-credential": "请填写账号和密码，每项不能超过 4096 字节。",
         "invalid-entry": "该账号已变更或不属于当前网站，请刷新后重试。",
-        unsupported: "请更新 Mac 应用后重试。",
+        unsupported: "当前 Mac 版本暂不支持此操作，可在 Mac 应用中完成。",
+        "request-busy": "Mac 上有另一个待确认的请求，请先处理后重试。",
         "offline-full": "离线暂存已满，请连接并解锁 Mac 完成同步后重试。",
         locked: "资料库已锁定，请重新解锁。",
         "site-permission": "未获得此网站的访问权限，仍可手动读取并保存账号。",
@@ -115,7 +116,7 @@ export function errorText(error: unknown) {
           "当前插件未获连接权限，请使用配套插件并在 Mac 上重新登记。",
         "native-unavailable":
           "Mac 连接未完成，请检查应用是否打开，并重新检测连接。",
-        cancelled: "已取消连接，可以重新发起。",
+        cancelled: "已在 Mac 上取消或超时未确认，可以重新发起。",
         "invalid-origin": "此页面不支持填充，请切换到普通网站的登录页面。",
         "changed-origin": "网页已跳转，请重新打开插件再操作。",
         fill: "没有找到可填写的密码框，请打开网站的登录表单。",

@@ -137,10 +137,13 @@ fn revoked_background_grant_cannot_save_or_read() {
     request["request"]["_backgroundGrant"] = base64::engine::general_purpose::STANDARD
         .encode(&grant)
         .into();
+    let revision = || serde_json::from_str::<Value>(&poll_native()).unwrap()["revision"].as_u64().unwrap();
+    let start = revision();
     assert_eq!(
         dispatch(&f.session, "test", request.clone()).unwrap()["ok"],
         true
     );
+    assert_eq!(revision(), start + 1);
     assert_eq!(
         dispatch(&f.session, "test", request.clone()).unwrap()["ok"],
         true
@@ -149,11 +152,15 @@ fn revoked_background_grant_cannot_save_or_read() {
         dispatch(&f.session, "test", message("status", "")).unwrap()["unlocked"],
         false
     );
+    // An idempotent replay also reports saved; at most one extra merge refresh.
+    let after = revision();
+    assert!(after >= start + 1);
     vault_core::revoke_background_grants(f.dir.to_string_lossy().into()).unwrap();
     assert_eq!(
         dispatch(&f.session, "test", request.clone()).unwrap_err(),
         "sync-authorization"
     );
+    assert_eq!(revision(), after);
     request["request"]["op"] = "authorized-matches".into();
     assert_eq!(
         dispatch(&f.session, "test", request).unwrap_err(),
@@ -194,6 +201,33 @@ fn replay_save_fill_deduplicates_without_overwriting() {
     assert!(dispatch(&f.session, "test", fill).is_err());
 }
 #[test]
+fn extension_save_advances_poll_revision_only_on_write() {
+    let _serial = TEST_SERIAL.lock().unwrap();
+    let f = Fixture::new();
+    command(
+        &f.session,
+        json!({"op":"settings","settings":{"browserPairings":{"test":"paired"}}}),
+    )
+    .unwrap();
+    let revision = || serde_json::from_str::<Value>(&poll_native()).unwrap()["revision"].as_u64().unwrap();
+    let start = revision();
+    assert_eq!(serde_json::from_str::<Value>(&poll_native()).unwrap()["pending"], "");
+    dispatch(&f.session, "test", message("matches", "paired")).unwrap();
+    assert_eq!(revision(), start);
+    let mut request = message("save", "paired");
+    request["request"]["username"] = "example-user".into();
+    request["request"]["password"] = "example-password".into();
+    dispatch(&f.session, "test", request.clone()).unwrap();
+    assert_eq!(revision(), start + 1);
+    // Identical retry is acknowledged without a write, so no UI refresh.
+    dispatch(&f.session, "test", request.clone()).unwrap();
+    assert_eq!(revision(), start + 1);
+    request["request"]["token"] = "unpaired".into();
+    request["request"]["password"] = "other-password".into();
+    assert!(dispatch(&f.session, "test", request).is_err());
+    assert_eq!(revision(), start + 1);
+}
+#[test]
 fn startup_without_nonce_and_wrong_peer_fail_closed() {
     let _serial = TEST_SERIAL.lock().unwrap();
     let f = Fixture::new();
@@ -216,6 +250,8 @@ fn approval_is_bound_to_its_request() {
     *PENDING.lock().unwrap() = Some(Pending {
         id: "test".into(),
         challenge: "current".into(),
+        kind: "pair",
+        detail: String::new(),
         reply: tx,
     });
     approve_native("expired".into(), true);
@@ -260,4 +296,198 @@ fn ego_registration_uses_the_actual_profile_not_a_stale_manifest_directory() {
         .starts_with(&legacy));
     std::fs::create_dir_all(canonical.join("Default")).unwrap();
     assert_eq!(wire::manifest_path(home, "ego lite").unwrap(), expected);
+}
+
+/// Answer the next consent prompt from a separate thread, as the window would.
+fn answer(allow: bool) -> std::thread::JoinHandle<Value> {
+    std::thread::spawn(move || {
+        for _ in 0..500 {
+            let shown = pending_native();
+            if !shown.is_empty() {
+                let prompt: Value = serde_json::from_str(&shown).unwrap();
+                approve_native(prompt["challenge"].as_str().unwrap().into(), allow);
+                return prompt;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        panic!("no consent prompt");
+    })
+}
+fn paired_with_account(f: &Fixture) -> Value {
+    command(
+        &f.session,
+        json!({"op":"settings","settings":{"browserPairings":{"test":"paired"}}}),
+    )
+    .unwrap();
+    let mut save = message("save", "paired");
+    save["request"]["username"] = "example-user".into();
+    save["request"]["password"] = "old-example-password".into();
+    dispatch(&f.session, "test", save).unwrap();
+    dispatch(&f.session, "test", message("matches", "paired")).unwrap()["data"][0].clone()
+}
+fn stored_password(f: &Fixture, account: &Value) -> Value {
+    let mut fill = message("fill", "paired");
+    fill["request"]["id"] = account["id"].clone();
+    fill["request"]["accountId"] = account["accountId"].clone();
+    dispatch(&f.session, "test", fill).unwrap()["data"]["password"].clone()
+}
+#[test]
+fn update_login_requires_window_consent_and_ownership() {
+    let _serial = TEST_SERIAL.lock().unwrap();
+    let f = Fixture::new();
+    let account = paired_with_account(&f);
+    let mut update = message("update-login", "paired");
+    update["request"]["id"] = account["id"].clone();
+    update["request"]["username"] = "example-user".into();
+    update["request"]["password"] = "new-example-password".into();
+    let prompt = answer(false);
+    assert_eq!(dispatch(&f.session, "test", update.clone()).unwrap_err(), "cancelled");
+    let prompt = prompt.join().unwrap();
+    assert_eq!(prompt["kind"], "update-login");
+    assert_eq!(prompt["detail"], "https://example.com\nexample-user");
+    assert!(!prompt.to_string().contains("new-example-password"));
+    assert_eq!(stored_password(&f, &account), "old-example-password");
+    let start = serde_json::from_str::<Value>(&poll_native()).unwrap()["revision"].as_u64().unwrap();
+    let prompt = answer(true);
+    assert_eq!(dispatch(&f.session, "test", update.clone()).unwrap()["ok"], true);
+    prompt.join().unwrap();
+    assert_eq!(stored_password(&f, &account), "new-example-password");
+    assert_eq!(
+        serde_json::from_str::<Value>(&poll_native()).unwrap()["revision"].as_u64().unwrap(),
+        start + 1
+    );
+    // Another website's record is rejected before any prompt is shown.
+    update["request"]["origin"] = "https://unrelated.example.org".into();
+    assert_eq!(dispatch(&f.session, "test", update.clone()).unwrap_err(), "invalid-entry");
+    assert_eq!(pending_native(), "");
+    update["request"]["origin"] = "https://example.com".into();
+    update["request"]["token"] = "unpaired".into();
+    assert_eq!(dispatch(&f.session, "test", update).unwrap_err(), "unpaired");
+}
+#[test]
+fn open_entry_queues_one_navigation_for_owned_records_only() {
+    let _serial = TEST_SERIAL.lock().unwrap();
+    let f = Fixture::new();
+    let account = paired_with_account(&f);
+    let mut open = message("open-entry", "paired");
+    open["request"]["id"] = "missing-record".into();
+    assert_eq!(dispatch(&f.session, "test", open.clone()).unwrap_err(), "invalid-entry");
+    open["request"]["id"] = account["id"].clone();
+    assert_eq!(dispatch(&f.session, "test", open).unwrap()["data"]["opened"], true);
+    let state: Value = serde_json::from_str(&poll_native()).unwrap();
+    assert_eq!(state["open"]["id"], account["id"]);
+    assert!(state["open"]["nonce"].is_string());
+    NAVIGATE.lock().unwrap().take();
+}
+#[test]
+fn otp_and_structured_secrets_need_consent() {
+    let _serial = TEST_SERIAL.lock().unwrap();
+    let f = Fixture::new();
+    paired_with_account(&f);
+    assert!(dispatch(&f.session, "test", message("otp-matches", "paired")).unwrap()["data"].is_array());
+    assert_eq!(pending_native(), "");
+    let mut otp = message("otp-fill", "paired");
+    otp["request"]["id"] = "any".into();
+    let prompt = answer(false);
+    assert_eq!(dispatch(&f.session, "test", otp).unwrap_err(), "cancelled");
+    assert_eq!(prompt.join().unwrap()["kind"], "otp-fill");
+    let prompt = answer(true);
+    assert!(dispatch(&f.session, "test", message("structured-list", "paired")).unwrap()["data"].is_array());
+    assert_eq!(prompt.join().unwrap()["kind"], "structured-list");
+    let mut fill = message("structured-fill", "paired");
+    fill["request"]["id"] = "any".into();
+    fill["request"]["origin"] = "http://example.com".into();
+    assert_eq!(dispatch(&f.session, "test", fill).unwrap_err(), "invalid-request");
+    assert_eq!(pending_native(), "");
+}
+#[test]
+fn startup_owner_key_isolates_adhoc_spoofing_and_tampered_binaries_while_preserving_signed_identity() {
+    let _serial = TEST_SERIAL.lock().unwrap();
+    let f = Fixture::new();
+    let compile = |name: &str, marker: &str| {
+        let src = f.dir.join(format!("{name}.c"));
+        let bin = f.dir.join(name);
+        std::fs::write(
+            &src,
+            format!("const char marker[64] = \"{marker}\";\nint main(void){{return marker[0];}}\n"),
+        )
+        .unwrap();
+        assert!(
+            std::process::Command::new("/usr/bin/clang")
+                .args([src.to_str().unwrap(), "-o", bin.to_str().unwrap()])
+                .status()
+                .unwrap()
+                .success()
+        );
+        bin
+    };
+    let sign = |bin: &Path, identity: &str, extra: &[&str]| {
+        let mut cmd = std::process::Command::new("/usr/bin/codesign");
+        cmd.args(["-f", "--identifier", "pv-browser-host-test", "-s", identity]);
+        cmd.args(extra);
+        cmd.arg(bin);
+        cmd.output().unwrap().status.success()
+    };
+    let b1 = compile("helper-v1", "MARKER_BUILD_ONE");
+    let b2 = compile("helper-v2", "MARKER_BUILD_TWO");
+    // Ad-hoc builds isolate per binary CDHash even if given an identical custom requirement.
+    let custom = ["-r=designated => identifier \"pv-browser-host-test\""];
+    assert!(sign(&b1, "-", &custom));
+    assert!(sign(&b2, "-", &custom));
+    let adhoc1 = security::signing_identity(&b1).unwrap();
+    let adhoc2 = security::signing_identity(&b2).unwrap();
+    assert_eq!(Some(adhoc1.clone()), security::code_hash(&b1));
+    assert_ne!(adhoc1, adhoc2);
+    assert_ne!(
+        grants::desktop_key(&f.dir, &adhoc1),
+        grants::desktop_key(&f.dir, &adhoc2)
+    );
+    // Certificate-signed macOS system binaries carry a certificate chain, so their
+    // signing_identity uses the designated requirement rather than raw CDHash.
+    let sys_req = security::signing_identity(Path::new("/bin/ls")).unwrap();
+    assert_ne!(Some(sys_req.clone()), security::code_hash(Path::new("/bin/ls")));
+    assert_eq!(
+        grants::desktop_key(&f.dir, &sys_req),
+        grants::desktop_key(&f.dir, &sys_req)
+    );
+    assert_ne!(
+        grants::desktop_key(&f.dir, &sys_req),
+        grants::desktop_key(&f.dir.join("other-vault"), &sys_req)
+    );
+    // If a local Apple Development certificate is available, verify two distinct
+    // compiled binaries produce different CDHashes yet identical signing_identity.
+    let found = std::process::Command::new("/usr/bin/security")
+        .args(["find-identity", "-v", "-p", "codesigning"])
+        .output()
+        .ok()
+        .and_then(|o| String::from_utf8(o.stdout).ok())
+        .and_then(|s| {
+            s.lines().find_map(|line| {
+                let start = line.find("\"Apple Development:")? + 1;
+                let end = start + line[start..].find('"')?;
+                Some(line[start..end].to_string())
+            })
+        });
+    if let Some(cert) = found {
+        assert!(sign(&b1, &cert, &["--options", "runtime", "--timestamp=none"]));
+        assert!(sign(&b2, &cert, &["--options", "runtime", "--timestamp=none"]));
+        assert_ne!(security::code_hash(&b1), security::code_hash(&b2));
+        let cert1 = security::signing_identity(&b1).unwrap();
+        let cert2 = security::signing_identity(&b2).unwrap();
+        assert_eq!(cert1, cert2);
+        assert_eq!(
+            grants::desktop_key(&f.dir, &cert1),
+            grants::desktop_key(&f.dir, &cert2)
+        );
+    }
+    // Post-signing code tampering must fail closed.
+    assert!(sign(&b1, "-", &[]));
+    let mut bytes = std::fs::read(&b1).unwrap();
+    let pos = bytes
+        .windows(b"MARKER_BUILD_ONE".len())
+        .position(|w| w == b"MARKER_BUILD_ONE")
+        .unwrap();
+    bytes[pos] ^= 0xff;
+    std::fs::write(&b1, bytes).unwrap();
+    assert!(security::signing_identity(&b1).is_none());
 }

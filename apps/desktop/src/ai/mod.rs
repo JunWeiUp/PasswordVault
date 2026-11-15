@@ -161,7 +161,19 @@ fn projection(i: &Value, details: bool) -> Value {
                 })
                 .collect::<Vec<_>>()
         );
-        safe["commands"]=json!(device["commands"].as_array().into_iter().flatten().filter(|cmd|cmd["secret"]==false).map(|cmd|json!({"id":cmd["id"],"title":cmd["title"],"text":cmd["text"],"dataOnly":true})).collect::<Vec<_>>());
+        safe["commands"] = json!(device["commands"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter(|cmd| cmd["secret"] == false)
+            .map(|cmd| {
+                let mut row = json!({"id":cmd["id"],"title":cmd["title"],"text":cmd["text"],"dataOnly":true});
+                if let Some(label) = cmd["label"].as_str().filter(|s| !s.trim().is_empty()) {
+                    row["label"] = json!(label);
+                }
+                row
+            })
+            .collect::<Vec<_>>());
         out["device"] = safe;
     }
     out

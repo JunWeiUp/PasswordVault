@@ -1064,3 +1064,26 @@ summary {
 :root[data-theme="dark"] .detail,
 :root[data-theme="dark"] .editor,
 :root[data-theme="dark"] .record-detail { color: var(--foreground); }
+
+.sync-count {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 8px 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  font-size: 13px;
+}
+.sync-count.done {
+  background: #eef7f0;
+  color: #1f6b35;
+}
+.sync-count.pending {
+  background: #fff4e0;
+  color: #8a5300;
+  font-weight: 600;
+}
+.sync-count .text-button { white-space: nowrap; }
+:root[data-theme="dark"] .sync-count.done { background: #173322; color: #9fe0b2; }
+:root[data-theme="dark"] .sync-count.pending { background: #3a2a10; color: #ffd28a; }

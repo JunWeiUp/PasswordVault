@@ -5,6 +5,7 @@ import { Icon } from "./icons";
 import { copySecret, T } from "./kit";
 import { items, onLock, reveal, totpCode, TYPE_NAME, type Item } from "./store";
 import { Tile } from "./ItemList";
+import { deviceSubtitle, deviceTitle } from "./devices";
 import { searchItems } from "./search";
 import { c, MONO, radius, fs } from "./theme";
 
@@ -66,8 +67,8 @@ export function QuickAccessHost() {
                     style={{ flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 8, backgroundColor: on() ? c().blue : "transparent", cursor: "pointer" }}>
                     <Tile item={item()} size={30} />
                     <View style={{ flex: 1 }}>
-                      <T weight="600" color={on() ? "#ffffff" : c().ink}>{item().title}</T>
-                      <T size={11.5} color={on() ? "#dbe5ff" : c().muted}>{TYPE_NAME[item().type]} · {item().username || item().issuer || item().network || ""}</T>
+                      <T weight="600" color={on() ? "#ffffff" : c().ink}>{item().type === "device" ? deviceTitle(item()) : item().title || "未命名"}</T>
+                      <T size={11.5} color={on() ? "#dbe5ff" : c().muted}>{TYPE_NAME[item().type]} · {item().type === "device" ? deviceSubtitle(item()) : item().username || item().issuer || item().network || ""}</T>
                     </View>
                     <T size={11} color={on() ? "#dbe5ff" : c().faint} style={{ fontFamily: MONO }}>↩</T>
                   </View>

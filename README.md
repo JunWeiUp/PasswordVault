@@ -14,7 +14,7 @@
 
 Native clients are in **developer preview**. [Platform availability](#choose-your-workspace) and the [security model](docs/security/SECURITY_MODEL.md) describe current limits; an independent security review is still pending.
 
-**Release 2.4.2:** [GitHub Release](https://github.com/JunWeiUp/PasswordVault/releases/tag/v2.4.2) · [Installation and limits](config/release/INSTALL.md). Includes current NSH Mac, Windows x64, Android, extension, Web and iOS Simulator packages.
+**Release 2.5.4:** [GitHub Release](https://github.com/JunWeiUp/PasswordVault/releases/tag/v2.5.4) · [Installation and limits](config/release/INSTALL.md). Includes current NSH Mac, Windows x64, Android, extension, Web and iOS Simulator packages.
 
 **Mac client status:** [`apps/desktop`](apps/desktop/README.md) is the current development and local daily client (NSH 0.4.0, macOS 14+ / Apple Silicon). [`apps/macos-legacy`](apps/macos-legacy/README.md) is the retained legacy SwiftUI Mac client. References below to macOS 13+/Intel and older coordinated releases apply to that legacy client.
 
@@ -93,7 +93,7 @@ Standalone Web is also available with a smaller feature set. Windows has a nativ
 | **Windows desktop** | NSH x64 portable package; shared vault, notes and platform adapters | Windows 11 ARM VM: native-window account and rich-editor flows pass. Browser/AI IPC, terminal handoff and broader hardware acceptance remain open |
 | **Linux desktop** | No native desktop client | Not implemented |
 
-The coordinated release is **2.5.0**: NSH Mac build **35**, browser **2.5.0**, Android build **25000**, and iOS build **19**. This update replaces primary-device sync with symmetric bidirectional sync: devices that join a group by scanning an invitation sync both ways automatically, and the newer edit wins with older versions kept in entry history. Android requires 8.0+. Passing checks does not imply app-store availability or production security acceptance. See [installation](docs/releases/NATIVE-RELEASE-NOTES.md) and [relay setup](docs/architecture/PERSONAL-RELAY.md).
+The coordinated release is **2.5.4**: NSH Mac build **39**, browser **2.5.4**, Android build **25004**, and iOS build **20**. This update expands NSH Mac browser extension parity (update-password, open-in-Mac, OTP and card/identity confirmation, instant window refresh, plaintext password field detection and offline pending-sync count), preserves startup auto-unlock across certificate-signed Mac updates, and adds optional device and document titles. Android requires 8.0+. Passing checks does not imply app-store availability or production security acceptance. See [installation](docs/releases/NATIVE-RELEASE-NOTES.md) and [relay setup](docs/architecture/PERSONAL-RELAY.md).
 
 </details>
 
@@ -186,6 +186,6 @@ Device documents on the Native Shell Mac client support importing UTF-8 scripts 
 
 [Application directory](apps/README.md) · [NSH Mac tools](tool/macos-nsh/README.md)
 
-[2.4.2 installation](config/release/INSTALL.md) · [Release notes](config/release/NOTES.md)
+[2.5.4 installation](config/release/INSTALL.md) · [Release notes](config/release/NOTES.md)
 
 The legacy SwiftUI Mac is source-only with manual build tooling; its standalone CI is disabled and current releases do not include a legacy Mac package.

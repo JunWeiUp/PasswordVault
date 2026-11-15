@@ -4,23 +4,50 @@ import { desktopCapabilities } from "../native";
 import { signal, View } from "nsh";
 import { Browser } from "passwordvault/native";
 import { Banner, Btn, Group, OptionRow, T, Toggle, confirm } from "../kit";
-import { call, errorText, load, settings, phase, toast, vaultInstance } from "../store";
+import { call, errorText, items, load, refreshItems, reveal, settings, phase, toast, vaultInstance } from "../store";
 import { c } from "../theme";
 
 let pendingId = "";
+let openedNonce = "";
+/** Same per-request confirmations as the legacy Mac bridge; never shows secrets. */
+function consentText(request: { extensionId: string; kind?: string; detail?: string }): { title: string; text: string; ok: string } {
+  const expiry = "请求将在 35 秒后失效。";
+  switch (request.kind) {
+    case "update-login": return { title: "更新已保存的账号？", text: `${request.detail ?? ""}\n浏览器扩展请求用新密码更新此账号，旧密码保留在版本历史中。${expiry}`, ok: "更新并保留旧密码" };
+    case "otp-fill": return { title: "填入一次性验证码？", text: `${request.detail ?? ""}\n${expiry}`, ok: "允许本次填入" };
+    case "structured-list": return { title: "向浏览器显示银行卡和身份资料列表？", text: `浏览器扩展将看到资料名称，不含卡号与安全码。${expiry}`, ok: "允许本次请求" };
+    case "structured-fill": return { title: "向当前网页填入所选资料？", text: `${request.detail ?? ""}\n网页可以读取已填入的内容。${expiry}`, ok: "允许本次请求" };
+    default: return { title: "连接浏览器扩展？", text: `${request.extensionId}\n允许此扩展在资料库解锁时读取当前网站账号、填充与保存。${expiry}`, ok: "允许连接" };
+  }
+}
 /** Install once at app startup after the Vault session exists; return cleanup. */
 export function connectBrowser(): () => void {
   if (!desktopCapabilities.browser) return () => {};
   void Browser.start(vaultInstance).catch(() => {});
+  let revision: number | undefined;
   const stop = pollEvery(500, async (isActive) => {
-    const pending = await Browser.pending();
-    if (!isActive() || phase() !== "unlocked") return;
-    const request = pending ? JSON.parse(pending) as { extensionId: string; challenge: string } : null;
+    let state: { pending?: string; revision?: number; open?: { nonce: string; id: string } | null } = {};
+    try { state = JSON.parse((await Browser.poll()) || "{}"); } catch { state = {}; }
+    const pending = state.pending ?? "";
+    if (!isActive() || phase() !== "unlocked") { revision = undefined; return; }
+    // Accounts saved from the extension: merge them into the open window.
+    if (typeof state.revision === "number") {
+      if (revision !== undefined && state.revision !== revision) void refreshItems().catch(() => {});
+      revision = state.revision;
+    }
+    // "在 Mac 中编辑" from the extension: show that record once.
+    if (state.open && state.open.nonce !== openedNonce) {
+      openedNonce = state.open.nonce;
+      const item = items().find((i) => i.id === state.open!.id);
+      if (item) reveal(item); else toast("未找到该账号，请刷新后重试");
+    }
+    const request = pending ? JSON.parse(pending) as { extensionId: string; challenge: string; kind?: string; detail?: string } : null;
     const id = request?.challenge ?? "";
     if (!id) { pendingId = ""; return; }
     if (id === pendingId) return;
     pendingId = id;
-    confirm({ title: "连接浏览器扩展？", text: `${request?.extensionId}\n允许此扩展在资料库解锁时读取当前网站账号、填充与保存。请求将在 35 秒后失效。`, ok: "允许连接", onConfirm: async () => { await Browser.approve(id, true); await load(); } });
+    const prompt = consentText(request!);
+    confirm({ ...prompt, onCancel: () => void Browser.approve(id, false), onConfirm: async () => { await Browser.approve(id, true); if (request!.kind === "pair" || !request!.kind) await load(); } });
   });
   return () => { stop(); void Browser.cancelStartup().catch(() => {}); };
 }
