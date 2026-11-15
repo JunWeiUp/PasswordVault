@@ -19,7 +19,7 @@
   let banner: HTMLElement | undefined;
   let enabled = false;
   let busy = false;
-  type Notice = { id: string; origin: string; expires: number };
+  type Notice = { id: string; origin: string; expires: number; update?: boolean; choose?: boolean };
   let activeNotice: Notice | undefined;
   let savingNotice: string | undefined;
   let repairTimer: ReturnType<typeof setTimeout> | undefined;
@@ -98,33 +98,49 @@
     card.append(title, description);
     if (dismiss || saved) {
       const review = document.createElement("button");
-      review.textContent = saved ? "修改账号密码" : "保存";
+      const choose = !saved && notice?.choose === true;
+      const update = !saved && notice?.update === true;
+      const label = saved ? "修改账号密码" : choose ? "选择账号" : update ? "更新账号" : "保存";
+      review.textContent = label;
       review.style.marginRight = "8px";
       const currentBanner = banner;
       review.onclick = async (event) => {
         if (!event.isTrusted || review.disabled || !notice) return;
         review.disabled = true;
         close.disabled = true;
-        if (!saved) {
+        if (!saved && !choose) {
           savingNotice = notice.id;
-          review.textContent = "保存中…";
+          review.textContent = update ? "请在 Mac 上确认…" : "保存中…";
         }
-        const result = await send({ action: saved ? "login-open" : "login-save", id: notice.id, saved });
+        // Without a known username the popup lets the user pick the account.
+        const result = await send({ action: saved || choose ? "login-open" : "login-save", id: notice.id, saved });
+        if (choose) {
+          review.disabled = false;
+          close.disabled = false;
+          if (!result?.ok) description.textContent = "请点击浏览器工具栏的 PasswordVault 图标选择要更新的账号。";
+          return;
+        }
         if (savingNotice === notice.id) savingNotice = undefined;
         if (banner !== currentBanner) return;
         if (result?.ok && !saved) {
-          showBanner(result.data?.queued ? "已加密保存在此浏览器，稍后自动同步到 Mac。" : "账号密码已保存。", false,
+          showBanner(result.data?.updated ? "账号密码已更新，旧密码保留在版本历史中。" : result.data?.queued ? "已加密保存在此浏览器，稍后自动同步到 Mac。" : "账号密码已保存。", false,
             { ...notice, expires: Date.now() + 120_000 }, true);
           return;
         }
         review.disabled = false;
         close.disabled = false;
-        review.textContent = saved ? "修改账号密码" : "重试保存";
+        review.textContent = saved ? "修改账号密码" : update ? "重试更新" : "重试保存";
         if (!result?.ok) description.textContent = saved
           ? "请点击浏览器工具栏的 PasswordVault 图标修改账号密码。"
-          : result?.error === "expired" || result?.error === "cancelled"
-            ? "这次填写已过期或取消，请重新填写后保存。"
-            : "保存未完成，请重试，或打开插件检查解锁及连接状态。";
+          : result?.error === "expired"
+            ? "这次填写已过期，请重新填写后保存。"
+            : result?.error === "cancelled"
+              ? "已在 Mac 上取消或超时未确认，可重试。"
+              : result?.error === "offline-full"
+                ? "离线暂存已满，请连接并解锁 Mac 完成同步后重试。"
+                : update
+                  ? "更新需要 Mac 应用已打开并解锁，请检查后重试。"
+                  : "保存未完成，请重试，或打开插件检查解锁及连接状态。";
       };
       card.append(review);
     }
@@ -145,7 +161,11 @@
       return;
     if (activeNotice?.id === notice.id && banner?.isConnected) return;
     showBanner(
-      "检测到填写的账号和密码。是否保存？请核对凭据，确认可用后再保存。",
+      notice.choose
+        ? "检测到新密码，但无法确定对应的账号。请选择要更新的账号。"
+        : notice.update
+          ? "此账号的密码与已保存的不同。是否更新已保存的账号？确认新密码可用后再更新。"
+          : "检测到填写的账号和密码。是否保存？请核对凭据，确认可用后再保存。",
       true,
       notice,
     );
@@ -170,9 +190,50 @@
     )
       showBanner("请先打开并解锁 PasswordVault，再提交登录以保存账号。", false);
   });
-  let hasPassword = !!document.querySelector(
-    'input[type="password"], input[autocomplete~="current-password"], input[autocomplete~="new-password"]',
-  );
+  // Some sites render passwords in plain `type="text"` inputs (for example
+  // name="password" placeholder="设置登录密码"). Recognize only explicit password
+  // names/labels and never captcha, OTP, hint or search fields.
+  function textHints(el: HTMLInputElement) {
+    return [
+      el.name,
+      el.id,
+      el.placeholder,
+      el.getAttribute("aria-label"),
+      el.labels?.[0]?.textContent,
+    ]
+      .filter(Boolean)
+      .join(" ");
+  }
+  function namedPassword(el: HTMLInputElement) {
+    if (el.type !== "text") return false;
+    const tokens = el.autocomplete.toLowerCase().split(/\s+/);
+    if (tokens.some((t) => ["username", "email", "tel", "one-time-code"].includes(t)))
+      return false;
+    const hints = textHints(el);
+    if (/验证码|校验码|动态码|captcha|otp|code|hint|提示|question|问题|search|搜索/i.test(hints))
+      return false;
+    return (
+      /^(?:(?:user|login|new|confirm|re)[_-]?)?(?:pass(?:word)?|passwd|pwd)(?:[_-]?(?:confirm(?:ation)?|again|repeat|2))?$/i.test(el.name) ||
+      /^(?:(?:user|login|new|confirm|re)[_-]?)?(?:pass(?:word)?|passwd|pwd)(?:[_-]?(?:confirm(?:ation)?|again|repeat|2))?$/i.test(el.id) ||
+      /密码|口令|password|passwort|contraseña|mot de passe|пароль/i.test(hints)
+    );
+  }
+  function newPassword(el: HTMLInputElement) {
+    if (el.autocomplete.toLowerCase().split(/\s+/).includes("new-password")) return true;
+    return (
+      namedPassword(el) &&
+      /new|set|create|confirm|repeat|again|register|sign.?up|设置|新|创建|确认|重复|再次|注册/i.test(
+        textHints(el),
+      )
+    );
+  }
+  let hasPassword =
+    !!document.querySelector(
+      'input[type="password"], input[autocomplete~="current-password"], input[autocomplete~="new-password"]',
+    ) ||
+    Array.from(document.querySelectorAll<HTMLInputElement>('input[type="text"]')).some(
+      namedPassword,
+    );
   const refreshStatus = () =>
     send({ action: "login-pending", hasPassword }).then((result) => {
       enabled = result?.data?.enabled === true;
@@ -234,7 +295,8 @@
       input.type === "text" &&
       (tokens.includes("current-password") ||
         tokens.includes("new-password") ||
-        knownPasswords.get(input) === signature(input))
+        knownPasswords.get(input) === signature(input) ||
+        namedPassword(input))
     );
   };
   const visible = (input: HTMLInputElement) => {
@@ -528,7 +590,7 @@
         fields.changePassword ||
         fields.multiStep ||
         (target !== fields.username && target !== fields.password) ||
-        fields.password.autocomplete.split(/\s+/).includes("new-password") ||
+        newPassword(fields.password) ||
         !fields.username.checkValidity() ||
         !fields.password.checkValidity()
       )

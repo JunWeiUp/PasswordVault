@@ -3,10 +3,12 @@ import { DocumentLibrary } from "./DocumentLibrary";
 import { cleanup, signal, Scroll, View } from "nsh";
 import { Attachments, Files } from "passwordvault/native";
 import { Banner, Btn, Field, Group, openSheet, Row, SheetFooter, SheetTitle, T, TextBox, Toggle, copySecret } from "../kit";
+import { Icon } from "../icons";
 import { call, createItem, dest, edit, errorText, editing, flush, items, load, now, onLock, phase, toast, vaultInstance, type Item, type ItemType } from "../store";
 import { openSettings } from "../Settings";
-import { blankDevice, connectionCommand, importedDevice, planDeviceImport, type DeviceDocument, type DeviceImportGroup, type DeviceData, type DeviceFile } from "./model";
-export { deviceSubtitle, deviceSearchText, connectionCommand } from "./model";
+import { c } from "../theme";
+import { blankDevice, connectionCommand, deviceSubtitle, deviceTitle, importedDevice, planDeviceImport, type DeviceDocument, type DeviceImportGroup, type DeviceData, type DeviceFile } from "./model";
+export { deviceTitle, deviceSubtitle, deviceSearchText, connectionCommand } from "./model";
 
 export const devicesWarning = "启用后升级为格式 7，并先保留加密快照。旧版客户端无法打开此库，需更新客户端。中继同步将暂停；即使全部升级，也需后续版本完成能力协商后才能恢复同步。";
 export function askEnableDevices(done?: () => void) {
@@ -40,7 +42,7 @@ export async function newDevice() {
   if (phase() !== "unlocked") return;
   const status = await call({ op: "devices-status" });
   if (!status.enabled) { askEnableDevices(() => void newDevice()); return; }
-  await createItem("device" as ItemType, { title: "未命名设备", device: blankDevice() });
+  await createItem("device" as ItemType, { title: "", device: blankDevice() });
 }
 
 export async function importDeviceDocuments() {
@@ -158,7 +160,20 @@ export function DeviceDetail(props: { item: Item; editable?: boolean; onOpenSett
     } catch (e) { if (alive) error.set(errorText(e)); }
     finally { if (alive) busy.set(false); }
   };
-  return <View><Row gap={8} style={{ padding: 18 }}>{[["commands", "脚本与资料"], ["ai", "AI 访问"]].map(([key, label]) => <Btn label={label} kind={tab() === key ? "primary" : "ghost"} onPress={() => tab.set(key)} />)}</Row>
+  return <View>
+    <Row gap={16} style={{ marginBottom: 14 }}>
+      <View style={{ width: 60, height: 60, borderRadius: 60 * 0.24, borderWidth: 1, borderColor: c().line, backgroundColor: c().surface, alignItems: "center", justifyContent: "center" }}>
+        <Icon name="server" size={30} tint="#617795" />
+      </View>
+      <View style={{ flex: 1, minWidth: 0, gap: 4 }}>
+        <If when={!!props.editable && writable()} else={<T size={26} weight="600" lines={2} selectable>{deviceTitle(props.item)}</T>}>
+          <T size={11.5} color={c().muted}>标题</T>
+          <TextBox label="设备标题" placeholder="可选，设置后默认显示为标题内容" value={props.item.title ?? ""} onChange={value => { if (writable()) edit(owner, i => { i.title = value; }); }} />
+        </If>
+        <T size={12} color={c().muted} lines={1}>{deviceSubtitle(props.item)}</T>
+      </View>
+    </Row>
+    <Row gap={8} style={{ paddingVertical: 8 }}>{[["commands", "脚本与资料"], ["ai", "AI 访问"]].map(([key, label]) => <Btn label={label} kind={tab() === key ? "primary" : "ghost"} onPress={() => tab.set(key)} />)}</Row>
     <View style={{ paddingVertical: 16, gap: 16 }}>
       <If when={error()}><Banner tone="err" title={error()} /></If>
       <If when={tab() === "commands"}><DocumentLibrary commands={data().commands} editable={!!props.editable && writable()} canManage={writable()} onEdit={() => editing.set(!editing())} onRun={row => void openScriptRun(row)} busy={busy()} onChange={rows => set("commands", rows)} onImport={() => void importDocuments()} /></If>

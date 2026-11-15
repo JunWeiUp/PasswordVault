@@ -47,7 +47,7 @@ function displayFields(item: SearchItem): string[] {
     add(device.host, device.port, device.username, device.authMethod, device.aliases, device.notes);
     each(device.services, (service) => add(service.name, service.kind, service.remotePort, service.localPort, service.path));
     each(device.commands, (command) => {
-      add(command.title);
+      add(command.label, command.title);
       if (!command.secret) add(command.text);
     });
     each(device.files, (file) => add(file.name, file.mime));
@@ -69,7 +69,8 @@ function entry(item: SearchItem): SearchEntry {
   let cached = index.get(item);
   if (!cached) {
     const fields = displayFields(item).map(normalize).filter(Boolean);
-    cached = { title: normalize(item.title ?? ""), fields, compact: fields.map(compact) };
+    const displayTitle = item.type === "device" ? (item.title?.trim() || item.device?.host?.trim() || "") : (item.title ?? "");
+    cached = { title: normalize(displayTitle), fields, compact: fields.map(compact) };
     index.set(item, cached);
   }
   return cached;

@@ -13,6 +13,7 @@ let tabUpdated;
 let permissionAdded;
 const session = {};
 let duplicate = false;
+let sameUser = false;
 const scripts = new Map();
 const badges = [];
 let accountCount = 1;
@@ -50,14 +51,15 @@ globalThis.chrome = {
           data: Array.from({ length: accountCount }, (_, i) => ({
             id: i ? `fixture-${i}` : "fixture",
             title: "Test",
-            username: "fixture@example.com",
+            // Same username only when a test models an existing record for it.
+            username: duplicate || sameUser ? "fixture@example.com" : "existing@example.com",
           })),
         };
       if (request.op === "fill")
         return {
           ok: true,
           data: {
-            username: duplicate ? "fixture@example.com" : "fixture",
+            username: duplicate || sameUser ? "fixture@example.com" : "fixture",
             password: "synthetic-only",
           },
         };
@@ -333,6 +335,52 @@ test("login detection is enabled by default and enforces frame identity and brow
   );
 });
 
+test("changed password for a saved username offers an update, not a duplicate", async () => {
+  stored.mode = "native"; nativeFailure = undefined; operationFailure = undefined;
+  tabURL = page.url; duplicate = false; sameUser = true; accountCount = 1; permissionGranted = true;
+  const source = {...page,documentId:"update-document"};
+  const changed = {...submitted,["pass"+"word"]:"Fictional changed secret"};
+  const notice = (await send(changed, source)).data.notice;
+  assert.equal(notice.update, true);
+  assert.equal(notice.choose, false);
+  assert.equal(JSON.stringify(notice).includes("Fictional changed secret"), false);
+  const pending = (await send({ action: "matches" })).data.pending;
+  assert.equal(pending.updateId, "fixture");
+  const before = nativeCalls.length;
+  const result = await send({action:"login-save",id:notice.id},source);
+  assert.equal(result.ok,true);
+  assert.equal(result.data.updated,true);
+  const writes = nativeCalls.slice(before).filter(call=>["save","sync-save","update-login"].includes(call.op));
+  assert.deepEqual(writes.map(call=>call.op),["update-login"]);
+  assert.equal(writes[0].id,"fixture");
+  assert.equal(writes[0].username,submitted.username);
+  assert.equal(writes[0]["pass"+"word"],"Fictional changed secret");
+  sameUser = false;
+});
+
+test("change-password forms infer the only account and ask when ambiguous", async () => {
+  stored.mode = "native"; nativeFailure = undefined; operationFailure = undefined;
+  tabURL = page.url; duplicate = false; sameUser = true; permissionGranted = true;
+  const source = {...page,documentId:"change-password-document"};
+  const change = {action:"login-submitted",changePassword:true,username:"",["pass"+"word"]:"Fictional new secret"};
+  accountCount = 1;
+  let notice = (await send(change, source)).data.notice;
+  assert.equal(notice.choose, false);
+  assert.equal(notice.update, true);
+  assert.equal((await send({ action: "matches" })).data.pending.username, "fixture@example.com");
+  await send({action:"login-dismiss"},source);
+  accountCount = 2;
+  notice = (await send(change, source)).data.notice;
+  assert.equal(notice.choose, true);
+  assert.equal(notice.update, false);
+  const before = nativeCalls.length;
+  assert.equal((await send({action:"login-save",id:notice.id},source)).error,"choose-account");
+  assert.equal(nativeCalls.slice(before).some(call=>["save","sync-save","update-login"].includes(call.op)),false);
+  assert.equal((await send({action:"login-open",id:notice.id},source)).ok,true);
+  await send({action:"login-dismiss"},source);
+  accountCount = 1; sameUser = false;
+});
+
 test("pending credentials stay ephemeral and are only exposed to the trusted popup", async () => {
   const result = await send(
     { ...submitted, origin: "https://attacker.test", tabId: 999 },
@@ -352,6 +400,8 @@ test("pending credentials stay ephemeral and are only exposed to the trusted pop
       id: pending.id,
       origin: pending.origin,
       expires: pending.expires,
+      update: false,
+      choose: false,
     },
   });
   assert.equal((await send({ action: "matches" }, page)).error, "forbidden");

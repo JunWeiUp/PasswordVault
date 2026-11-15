@@ -1,8 +1,8 @@
 ## Changes
 
-- Replace primary-device sync with symmetric bidirectional sync. Devices that join a group by scanning an invitation sync both ways automatically; there is no primary confirmation, per-device authorization, pending queue or conflict list. The newer edit wins and older versions stay in entry history.
-- Existing groups upgrade in place on first sync with an encrypted pre-upgrade snapshot; unconfirmed mobile edits are kept and old conflict versions move to entry history. Update every device in a group; older versions stop exchanging until updated.
-- Show sync progress on Android, refresh the Android workspace layout, add a low-memory Mac background service and broader desktop search, and fix Mac unlock stalls caused by repeated executable validation.
+- Add extension parity to NSH Mac (`update-login`, `open-entry`, one-time-code and card/identity requests with per-request Mac confirmation), refresh extension-saved accounts in the open Mac window immediately, detect plaintext `type="text"` password fields, offer "Update account" and change-password account inference/selection in the save banner, and show the pending offline-sync count in the popup.
+- Preserve the browser "auto-unlock Mac at startup" option across certificate-signed Mac updates by binding Keychain grants to the signed designated requirement with CDHash fallback for ad-hoc builds.
+- Add optional titles for Devices & Services entries and script/document rows, display titles by default when set, include them in search, and expose non-secret script labels to AI projections.
 
 ## Downloads
 

@@ -1,5 +1,5 @@
 import { expect, open, test } from "nsh/test";
-import { blankDevice, connectionCommand, deviceSearchText, importedDevice, planDeviceImport } from "../ui/devices/model";
+import { blankDevice, commandTitle, connectionCommand, deviceSearchText, deviceTitle, importedDevice, planDeviceImport } from "../ui/devices/model";
 import type { Item } from "../ui/store";
 
 test("device imports preserve exact secret text and explicitly skip prior and selected duplicates", () => {
@@ -49,6 +49,11 @@ test("device import previews before creating and repeated import does not duplic
   expect(app.texts().includes("概览")).toBe(false);
   expect(app.texts().includes("文件")).toBe(false);
   await app.waitFor("text:资料目录");
+  await app.clear("label:设备标题");
+  await app.type("label:设备标题", "主力控制台");
+  await app.press("text:切换设备只读");
+  expect(app.texts()).toContain("主力控制台");
+  await app.press("text:切换设备编辑");
   await app.press("text:AI 访问");
   await app.waitFor("text:打开 AI 访问设置");
 
@@ -87,6 +92,11 @@ test("device search excludes sensitive notes commands files and service paths", 
   expect(text.includes("studio")).toBe(true);
   expect(text.includes("browser")).toBe(true);
   expect(text.includes("secret")).toBe(false);
+  expect(deviceTitle({ id: "d1", type: "device", title: "主力开发机", device: data } as Item)).toBe("主力开发机");
+  expect(deviceTitle({ id: "d2", type: "device", title: "   ", device: data } as Item)).toBe("lab.example.com");
+  expect(deviceTitle({ id: "d3", type: "device", title: "", device: blankDevice() } as Item)).toBe("未命名设备");
+  expect(commandTitle({ title: "deploy.py", label: "生产一键部署" })).toBe("生产一键部署");
+  expect(commandTitle({ title: "deploy.py", label: "   " })).toBe("deploy.py");
 });
 
 test("document editor opens full Python text and preserves full filenames", async () => {
@@ -110,6 +120,10 @@ test("document editor opens full Python text and preserves full filenames", asyn
   expect(app.texts().includes("点击运行")).toBe(false);
   await app.press("label:打开 示例设备-用于检查完整长标题显示的自动备份与健康检查脚本.py");
   expect(app.value("label:资料正文")).toBe("print('updated')");
+  await app.type("label:资料标题", "自动备份与健康检查");
+  expect(app.texts()).toContain("自动备份与健康检查");
+  expect(app.value("label:完整文件名（含扩展名）")).toBe("示例设备-用于检查完整长标题显示的自动备份与健康检查脚本.py");
+  expect(app.texts()).toContain("点击运行");
   await app.press("text:新建资料");
   expect(app.value("label:资料正文")).toBe("");
   await app.setViewport(1100, 900);

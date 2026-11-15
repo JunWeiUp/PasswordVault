@@ -247,6 +247,22 @@ function Popup() {
                 onRefresh={() => run(async () => {})} />
             </details>
           )}
+          {state.mode === "native" && !captured && (
+            <div class={`sync-count ${state.queued ? "pending" : "done"}`} role="status" aria-live="polite">
+              <span>
+                {state.queued
+                  ? `${state.queued} 个账号待同步到 Mac 客户端`
+                  : state.available === false
+                    ? "Mac 客户端未连接 · 没有待同步的账号"
+                    : "已全部同步到 Mac 客户端"}
+              </span>
+              {!!state.queued && (
+                <button class="text-button" type="button" disabled={busy} onClick={() => run(async () => {})}>
+                  立即同步
+                </button>
+              )}
+            </div>
+          )}
           {state.mode === "native" && (
             <p class="muted" role="status">
               {captured ? (state.queued ? `已暂存 ${state.queued} 个账号，确认后加入同步队列。` : state.syncReady ? "后台保存已开启。" : "支持离线保存，账号会加密暂存。") : state.queued

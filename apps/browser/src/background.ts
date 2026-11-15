@@ -615,7 +615,8 @@ chrome.runtime.onMessage.addListener((request, sender, respond) => {
           : pageAction
             ? handleLoginPage(request, sender, reminderCore, captureEpoch, async (value, validate) => {
                 try {
-                  return await handle({ action: "save-captured", tabId: value.tabId, origin: value.origin, username: value.username, password: value.password }, validate);
+                  if (!value.username.trim()) throw new Error("choose-account");
+                  return await handle({ action: "save-captured", tabId: value.tabId, origin: value.origin, username: value.username, password: value.password, updateId: value.updateId, updateAccountId: value.updateAccountId }, validate);
                 } finally {
                   value.username = "";
                   value.password = "";

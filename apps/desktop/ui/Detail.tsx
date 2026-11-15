@@ -18,7 +18,7 @@ import { formatCode, secondsLeft, useCode } from "./totp";
 import { askGeneratedPassword } from "./Tools";
 import { RichNoteEditor } from "./notes/RichNoteEditor";
 import { openItemHistory } from "./history";
-import { DeviceDetail } from "./devices";
+import { DeviceDetail, deviceTitle } from "./devices";
 import { AccountDetail } from "./entries/AccountDetail";
 import { CodeDetail } from "./entries/CodeDetail";
 import { openSettings } from "./Settings";
@@ -37,7 +37,7 @@ function Toolbar(props: { item: Item; extra?: JSX.Element }) {
           <T size={12} color={c().muted}>{item().category}</T>
         </If>
         <Icon name="chev" size={11} tint={c().faint} />
-        <T size={12} weight="500" lines={1} style={{ flexShrink: 1 }}>{item().title || "未命名"}</T>
+        <T size={12} weight="500" lines={1} style={{ flexShrink: 1 }}>{item().type === "device" ? deviceTitle(item()) : item().title || "未命名"}</T>
       </Row>
       <View desktop={{ windowDrag: false }} style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
         <If when={item().isDeleted} else={

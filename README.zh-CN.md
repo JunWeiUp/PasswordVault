@@ -14,7 +14,7 @@
 
 原生客户端目前为**开发预览版**。[平台状态](#选择你的工作空间)与[安全模型](docs/security/SECURITY_MODEL.md)记录当前限制，独立安全审查仍待完成。
 
-**下载原生版 2.4.2：** [GitHub Release](https://github.com/JunWeiUp/PasswordVault/releases/tag/v2.4.2) · [安装方式与签名限制](docs/releases/NATIVE-RELEASE-NOTES.md)。包含 Android、Mac、Windows x64、解压式插件、Web 和 iOS 模拟器包，各一个。
+**下载原生版 2.5.4：** [GitHub Release](https://github.com/JunWeiUp/PasswordVault/releases/tag/v2.5.4) · [安装方式与签名限制](docs/releases/NATIVE-RELEASE-NOTES.md)。包含 Android、Mac、Windows x64、解压式插件、Web 和 iOS 模拟器包，各一个。
 
 **Mac 客户端说明：** 当前开发与本机日常版本位于 [`apps/desktop`](apps/desktop/README.md)（NSH 0.4.0，macOS 14+ / Apple Silicon）。[`apps/macos-legacy`](apps/macos-legacy/README.md) 是保留的旧版 SwiftUI Mac 客户端；下文涉及 macOS 13+/Intel 与旧协调发布的说明属于该旧版。
 Mac 开发版本使用独立 Rust 后台服务。关闭窗口会先保存草稿并退出界面；已授权的浏览器查询和锁定管理继续运行。重新打开应用可编辑，选择“退出”则停止两个进程。验证方式和限制见[桌面指南](apps/desktop/README.md)。
@@ -95,7 +95,7 @@ Mac 开发版本使用独立 Rust 后台服务。关闭窗口会先保存草稿�
 | **Windows 桌面** | NSH x64 便携包，共用密码库、笔记与平台适配层 | Windows 11 ARM 虚拟机的真实窗口账号及富文本流程通过；浏览器/AI 本机通信、终端运行及更多硬件验收仍待完成 |
 | **Linux 桌面** | 无原生桌面客户端 | 尚未实现 |
 
-本次统一版本为 **2.5.0**：NSH Mac build **35**、浏览器 **2.5.0**、Android build **25000**、iOS build **19**。个人同步改为对等双向同步：扫码加入设备组即自动双向同步，同时修改以较新的为准，旧版本保留在条目历史；Android 需 8.0+。检查通过不代表已上架应用商店或通过生产安全验收，详见[安装说明](docs/releases/NATIVE-RELEASE-NOTES.md)及[中继配置](docs/architecture/PERSONAL-RELAY.md)。
+本次统一版本为 **2.5.4**：NSH Mac build **39**、浏览器 **2.5.4**、Android build **25004**、iOS build **20**。本次更新补齐 NSH Mac 扩展能力（更新密码、在 Mac 打开、验证码与银行卡/身份确认、窗口即时刷新、明文密码框识别及离线待同步数量提示），保持证书签名 Mac 更新后的“启动自动解锁”授权，并为设备与脚本资料增加可选标题（设置后默认优先显示）。Android 需 8.0+。检查通过不代表已上架应用商店或通过生产安全验收，详见[安装说明](docs/releases/NATIVE-RELEASE-NOTES.md)及[中继配置](docs/architecture/PERSONAL-RELAY.md)。
 
 </details>
 
@@ -188,7 +188,7 @@ Native Shell Mac 客户端的设备资料支持导入 Python、Shell、JavaScrip
 
 [应用目录](apps/README.md) · [NSH Mac 工具](tool/macos-nsh/README.md)
 
-[2.4.2 安装说明](config/release/INSTALL.md) · [发行说明](config/release/NOTES.md)
+[2.5.4 安装说明](config/release/INSTALL.md) · [发行说明](config/release/NOTES.md)
 
 旧 SwiftUI Mac 仅保留源码与手动构建入口，已关闭独立 CI，本次不发布旧 Mac 包。
 

@@ -29,6 +29,43 @@
   >();
   const identity = (el: HTMLInputElement) =>
     [el.id, el.name, el.autocomplete].join("\u0000");
+  // Some sites render passwords in plain `type="text"` inputs (for example
+  // name="password" placeholder="设置登录密码"). Recognize only explicit password
+  // names/labels and never captcha, OTP, hint or search fields.
+  function textHints(el: HTMLInputElement) {
+    return [
+      el.name,
+      el.id,
+      el.placeholder,
+      el.getAttribute("aria-label"),
+      el.labels?.[0]?.textContent,
+    ]
+      .filter(Boolean)
+      .join(" ");
+  }
+  function namedPassword(el: HTMLInputElement) {
+    if (el.type !== "text") return false;
+    const tokens = el.autocomplete.toLowerCase().split(/\s+/);
+    if (tokens.some((t) => ["username", "email", "tel", "one-time-code"].includes(t)))
+      return false;
+    const hints = textHints(el);
+    if (/验证码|校验码|动态码|captcha|otp|code|hint|提示|question|问题|search|搜索/i.test(hints))
+      return false;
+    return (
+      /^(?:(?:user|login|new|confirm|re)[_-]?)?(?:pass(?:word)?|passwd|pwd)(?:[_-]?(?:confirm(?:ation)?|again|repeat|2))?$/i.test(el.name) ||
+      /^(?:(?:user|login|new|confirm|re)[_-]?)?(?:pass(?:word)?|passwd|pwd)(?:[_-]?(?:confirm(?:ation)?|again|repeat|2))?$/i.test(el.id) ||
+      /密码|口令|password|passwort|contraseña|mot de passe|пароль/i.test(hints)
+    );
+  }
+  function newPassword(el: HTMLInputElement) {
+    if (el.autocomplete.toLowerCase().split(/\s+/).includes("new-password")) return true;
+    return (
+      namedPassword(el) &&
+      /new|set|create|confirm|repeat|again|register|sign.?up|设置|新|创建|确认|重复|再次|注册/i.test(
+        textHints(el),
+      )
+    );
+  }
   function credentialField(el: HTMLInputElement) {
     const tokens = el.autocomplete.toLowerCase().split(/\s+/);
     if (tokens.includes("username") && ["text", "email", "tel"].includes(el.type)) return true;
@@ -42,6 +79,7 @@
     const prior = passwordFields.get(el);
     return (
       tokens.includes("current-password") ||
+      namedPassword(el) ||
       (prior?.form === el.form && prior?.identity === identity(el))
     );
   }
@@ -190,7 +228,7 @@
     const r = c.input.getBoundingClientRect();
     host.style.left = `${Math.max(8, Math.min(r.right - 300, innerWidth - 308))}px`;
     host.style.top = `${Math.max(8, Math.min(r.bottom + 6, innerHeight - 330))}px`;
-    if (c.input.autocomplete.split(/\s+/).includes("new-password")) {
+    if (newPassword(c.input)) {
       status.textContent = "生成随机密码，仅填入当前字段；提交成功后请确认保存。";
       head.textContent = "PasswordVault · 生成密码";
       const options = document.createElement("div");
@@ -245,7 +283,7 @@
             if (byte < ceiling && value.length < length) value += alphabet[byte % alphabet.length];
           }
         }
-        const targets = c.input.form ? Array.from(c.input.form.querySelectorAll<HTMLInputElement>("input")).filter(input=>input.autocomplete.split(/\s+/).includes("new-password") && eligible(input)) : [c.input];
+        const targets = c.input.form ? Array.from(c.input.form.querySelectorAll<HTMLInputElement>("input")).filter(input=>newPassword(input) && eligible(input)) : [c.input];
         if (!targets.includes(c.input) || targets.length > 2) { value=""; return; }
         for(const input of targets) {
           if(!eligible(input) || input.form!==form || href!==location.href) break;
@@ -406,13 +444,13 @@
       }
     }
     for (const [input, c] of controls)
-      if ((!count && !input.autocomplete.split(/\s+/).includes("new-password")) || !eligible(input) || !c.host.isConnected) {
+      if ((!count && !newPassword(input)) || !eligible(input) || !c.host.isConnected) {
         if (menuControl === c) close();
         c.host.remove();
         controls.delete(input);
       }
     for (const input of inputs.slice(0, 50))
-      if ((count || input.autocomplete.split(/\s+/).includes("new-password")) && !controls.has(input)) add(input);
+      if ((count || newPassword(input)) && !controls.has(input)) add(input);
     for (const c of controls.values()) position(c);
   }
   function schedule() {

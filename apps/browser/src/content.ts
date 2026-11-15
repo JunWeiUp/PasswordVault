@@ -8,6 +8,46 @@
     !input.readOnly &&
     input.getClientRects().length > 0 &&
     getComputedStyle(input).visibility !== "hidden";
+  // Some sites render passwords in plain `type="text"` inputs (for example
+  // name="password" placeholder="设置登录密码"). Recognize only explicit password
+  // names/labels and never captcha, OTP, hint or search fields.
+  function textHints(el: HTMLInputElement) {
+    return [
+      el.name,
+      el.id,
+      el.placeholder,
+      el.getAttribute("aria-label"),
+      el.labels?.[0]?.textContent,
+    ]
+      .filter(Boolean)
+      .join(" ");
+  }
+  function namedPassword(el: HTMLInputElement) {
+    if (el.type !== "text") return false;
+    const tokens = el.autocomplete.toLowerCase().split(/\s+/);
+    if (
+      tokens.some((t) =>
+        ["username", "email", "tel", "one-time-code"].includes(t),
+      )
+    )
+      return false;
+    const hints = textHints(el);
+    if (
+      /验证码|校验码|动态码|captcha|otp|code|hint|提示|question|问题|search|搜索/i.test(
+        hints,
+      )
+    )
+      return false;
+    return (
+      /^(?:(?:user|login|new|confirm|re)[_-]?)?(?:pass(?:word)?|passwd|pwd)(?:[_-]?(?:confirm(?:ation)?|again|repeat|2))?$/i.test(
+        el.name,
+      ) ||
+      /^(?:(?:user|login|new|confirm|re)[_-]?)?(?:pass(?:word)?|passwd|pwd)(?:[_-]?(?:confirm(?:ation)?|again|repeat|2))?$/i.test(
+        el.id,
+      ) ||
+      /密码|口令|password|passwort|contraseña|mot de passe|пароль/i.test(hints)
+    );
+  }
   chrome.runtime.onMessage.addListener((request, sender, respond) => {
     if (
       sender.id !== chrome.runtime.id ||
@@ -16,8 +56,8 @@
     )
       return;
     const passwords = Array.from(
-      document.querySelectorAll<HTMLInputElement>('input[type="password"]'),
-    ).filter(visible);
+      document.querySelectorAll<HTMLInputElement>("input"),
+    ).filter((v) => (v.type === "password" || namedPassword(v)) && visible(v));
     const password =
       passwords.find((v) => v.autocomplete === "current-password") ??
       passwords[0];
@@ -34,7 +74,20 @@
         scope.querySelectorAll<HTMLInputElement>(
           'input[type="email"],input[type="text"]',
         ),
-      ).filter(visible)[0];
+      ).filter(
+        (v) =>
+          visible(v) &&
+          !passwords.includes(v) &&
+          !!(
+            v.compareDocumentPosition(password) &
+            Node.DOCUMENT_POSITION_FOLLOWING
+          ),
+      )[0] ??
+      Array.from(
+        scope.querySelectorAll<HTMLInputElement>(
+          'input[type="email"],input[type="text"]',
+        ),
+      ).filter((v) => visible(v) && !passwords.includes(v))[0];
     if (request.action === "vault-capture") {
       const group = passwords.filter((p) => p.form === password.form);
       if (
