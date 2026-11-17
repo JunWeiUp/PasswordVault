@@ -127,7 +127,6 @@ def public_asset_names(tag):
         f'PasswordVault-macOS-{tag}.zip',
         f'PasswordVault-iOS-Simulator-{tag}.zip',
         f'PasswordVault-Extension-{tag}.zip',
-        f'PasswordVault-Web-{tag}.zip',
         f'PasswordVault-Windows-x64-{tag}.zip',
     ]
 
@@ -142,7 +141,7 @@ def package(root, inputs, tag):
         names[0]: inputs / 'android-arm64-v8a.apk',
         names[1]: inputs / 'PasswordVault-macos-arm64.zip',
         names[2]: inputs / 'PasswordVault-ios-simulator.zip',
-        names[5]: inputs / 'PasswordVault-windows-x64.zip',
+        names[4]: inputs / 'PasswordVault-windows-x64.zip',
     }
     for path in sources.values():
         if not path.is_file() or path.is_symlink() or path.stat().st_size == 0:
@@ -161,7 +160,6 @@ def package(root, inputs, tag):
         for name, source in sources.items():
             shutil.copyfile(source, staging / name)
         archive(browser, staging / names[3])
-        archive(browser, staging / names[4])
         metadata = dict(data, product='PasswordVault', status='release', tag=tag, commit=commit,
                         android_package='com.securepass.vault.nativepreview', macos_distribution='ad-hoc-signed, not notarized',
                         ios_distribution='simulator only; not installable on iPhone',

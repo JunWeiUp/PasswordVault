@@ -25,26 +25,17 @@ import org.junit.runner.RunWith
 /** Real entry points only: no relay endpoint, invitation, simulated grant or external service. */
 @RunWith(AndroidJUnit4::class)
 class DesignAuxiliaryTest {
-    @Test fun accountMenusHistoryShareAndSelection() = runBlocking<Unit> {
+    @Test fun accountMenusHistoryAndSelection() = runBlocking<Unit> {
         withFixture("accounts") {
             action("账号")
             click(ACCOUNT)
             action("更多操作")
-            visible("临时分享")
+            visible("版本历史")
+            assertFalse("Temporary sharing was removed", device.hasObject(By.text("临时分享")))
             shot("item")
             click("版本历史")
             visible("查看版本")
             shot("hist")
-            back()
-            action("更多操作")
-            click("临时分享")
-            visible("分享服务配置")
-            // An unconfigured fixture opens configuration by default; toggling would close it.
-            scrollTo(By.text("分享服务地址（HTTPS）"))
-            visible("分享服务地址（HTTPS）")
-            // Opening configuration is local. Never check/save a service or create a link.
-            assertFalse(device.hasObject(By.text("复制完整链接")))
-            shot("share")
             back()
             scrollTo(By.textStartsWith("密码历史（"))
             tap(By.textStartsWith("密码历史（"))

@@ -6,7 +6,7 @@
 
 ## Downloads
 
-Six packages: Android ARM64, macOS, Windows x64, iOS Simulator, Chromium extension and Web.
+Five packages: Android ARM64, macOS, Windows x64, iOS Simulator and Chromium extension.
 
 A valid invitation grants full access to the vault; share it only with your own devices. Windows is an unsigned portable x64 package; extract the whole folder. Mac requires Apple Silicon / macOS 14+ and is not notarized. The iOS package is simulator-only. Preserve an encrypted backup before upgrading. A regular release does not imply completed production-security acceptance.
 

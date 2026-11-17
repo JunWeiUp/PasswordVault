@@ -16,16 +16,16 @@ toolchain_bin="$(dirname "$("$rustup_cmd" which --toolchain "$channel" rustc)")"
 # Keep the fork ahead of the toolchain's official Cargo, while pinning rustc.
 export PATH="$root/tool/nsh-cargo:$HOME/.cargo/bin:$toolchain_bin:$PATH"
 export RUSTUP_TOOLCHAIN="$channel"
-# Core and desktop pin different rustc versions; isolate dependency metadata.
+# Desktop is a separate workspace with its own lockfile; isolate dependency metadata from core.
 export CARGO_SHARED_DEPS="${CARGO_SHARED_DEPS:-0}"
 export CARGO="$root/tool/nsh-cargo/cargo"
 if ! "$CARGO" --version | grep -q 'huacnlee/cargo'; then
   printf 'huacnlee/cargo is required: https://huacnlee.github.io/cargo/\n' >&2
   exit 2
 fi
-nsh_cmd="${NSH_BIN:-$HOME/.nsh-0.4.0/bin/nsh}"
-if [[ ! -x "$nsh_cmd" ]] || [[ "$("$nsh_cmd" --version)" != 'nsh 0.4.0 '* ]]; then
-  printf 'NSH 0.4.0 is required; set NSH_BIN to its executable.\n' >&2
+nsh_cmd="${NSH_BIN:-$HOME/.nsh-0.5.1/bin/nsh}"
+if [[ ! -x "$nsh_cmd" ]] || [[ "$("$nsh_cmd" --version)" != 'nsh 0.5.1 '* ]]; then
+  printf 'NSH 0.5.1 is required; set NSH_BIN to its executable.\n' >&2
   exit 2
 fi
 cd "$app"

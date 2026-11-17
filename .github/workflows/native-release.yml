@@ -68,7 +68,7 @@ jobs:
           log-accepted-android-sdk-licenses: false
       - name: Install pinned native targets
         run: |
-          rustup toolchain install 1.96.0 --profile minimal --target aarch64-linux-android
+          rustup toolchain install 1.98.0 --profile minimal --target aarch64-linux-android
           sdkmanager 'platforms;android-36' 'build-tools;36.0.0' 'ndk;27.0.12077973'
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
@@ -133,7 +133,7 @@ jobs:
           cp downloaded/native-macos-nsh-developer-preview/*.zip release-input/
           cp downloaded/native-ios-simulator-preview/*.zip release-input/
           cp downloaded/native-windows-desktop/*.zip release-input/
-      - name: Package six downloads and internal verification records
+      - name: Package five downloads and internal verification records
         env:
           RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
         run: |

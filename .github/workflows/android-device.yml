@@ -47,7 +47,7 @@ jobs:
           log-accepted-android-sdk-licenses: false
       - name: Install pinned native targets
         run: |
-          rustup toolchain install 1.96.0 --profile minimal --target aarch64-linux-android
+          rustup toolchain install 1.98.0 --profile minimal --target aarch64-linux-android
           sdkmanager 'platforms;android-36' 'build-tools;36.0.0' 'ndk;27.0.12077973'
       - if: inputs.run_tests
         run: bash tool/check_native.sh core

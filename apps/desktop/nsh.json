@@ -11,6 +11,8 @@
       "schemes": [
         "https"
       ]
-    }
+    },
+    "picker": true,
+    "statusBar": true
   }
 }

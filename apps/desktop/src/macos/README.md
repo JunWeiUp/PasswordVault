@@ -2,7 +2,7 @@
 
 The preview uses `com.securepass.vault.nshpreview.biometric`, with a SHA-256
 account derived from the canonical vault base directory. It never queries the
-SwiftUI app's service. Moving a vault requires enrollment again.
+legacy client's Keychain service. Moving a vault requires enrollment again.
 
 Enrollment requires an unlocked session and master-password reauthentication
 through `vault_core::Header::unlock`. The resulting root must match the live

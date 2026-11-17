@@ -7,7 +7,7 @@ on:
       component:
         description: Build only this component (all is expensive)
         type: choice
-        options: [macos, windows, android, ios, browser, core, services, all]
+        options: [macos, windows, android, ios, browser, core, all]
         default: macos
       run_tests:
         description: Also run optional tests and additional checks
@@ -39,7 +39,6 @@ jobs:
       browser: ${{ steps.select.outputs.browser }}
       android: ${{ steps.select.outputs.android }}
       ios: ${{ steps.select.outputs.ios }}
-      services: ${{ steps.select.outputs.services }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -61,7 +60,7 @@ jobs:
       - uses: ./.github/actions/ci-rust-cache
         with:
           component: core
-      - run: rustup toolchain install 1.96.0 --profile minimal --component rustfmt,clippy
+      - run: rustup toolchain install 1.98.0 --profile minimal --component rustfmt,clippy
       - name: Check core (tests are opt-in)
         env:
           RUN_TESTS: ${{ inputs.run_tests }}
@@ -70,7 +69,7 @@ jobs:
             bash tool/check_native.sh core
           else
             source tool/cargo_fork_env.sh
-            RUSTUP_TOOLCHAIN=1.96.0 cargo check -p vault-core --locked
+            RUSTUP_TOOLCHAIN=1.98.0 cargo check -p vault-core --locked
           fi
   android-native:
     name: Build Android development APK
@@ -96,7 +95,7 @@ jobs:
           log-accepted-android-sdk-licenses: false
       - name: Install native targets and Android tools
         run: |
-          rustup toolchain install 1.96.0 --profile minimal --target aarch64-linux-android
+          rustup toolchain install 1.98.0 --profile minimal --target aarch64-linux-android
           sdkmanager 'platforms;android-36' 'build-tools;36.0.0' 'ndk;27.0.12077973'
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
@@ -140,7 +139,7 @@ jobs:
             x86_64) simulator_target=x86_64-apple-ios ;;
             *) echo 'Unsupported runner architecture' >&2; exit 1 ;;
           esac
-          rustup toolchain install 1.96.0 --profile minimal --target "aarch64-apple-ios,$simulator_target"
+          rustup toolchain install 1.98.0 --profile minimal --target "aarch64-apple-ios,$simulator_target"
           brew install xcodegen
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
@@ -197,7 +196,7 @@ jobs:
         run: |
           rustup toolchain install 1.98.0 --profile minimal
           curl --fail --show-error --silent --location https://nsh.dev/install.sh -o "$RUNNER_TEMP/nsh-install.sh"
-          NSH_VERSION=v0.4.0 NSH_INSTALL_DIR="$HOME/.nsh-0.4.0" sh "$RUNNER_TEMP/nsh-install.sh"
+          NSH_VERSION=v0.5.1 NSH_INSTALL_DIR="$HOME/.nsh-0.5.1" sh "$RUNNER_TEMP/nsh-install.sh"
       - if: inputs.run_tests
         run: bash tool/nsh_mac.sh check
       - name: Synthetic-vault native and interface tests
@@ -245,7 +244,7 @@ jobs:
           retention-days: 3
 
   browser-native:
-    name: Build Web and Chromium extension
+    name: Build Chromium extension
     needs: changes
     if: needs.changes.outputs.browser == 'true'
     runs-on: ubuntu-latest
@@ -263,7 +262,7 @@ jobs:
           cache: npm
           cache-dependency-path: apps/browser/package-lock.json
       - name: Install Rust target
-        run: rustup toolchain install 1.96.0 --profile minimal --component clippy --target wasm32-unknown-unknown
+        run: rustup toolchain install 1.98.0 --profile minimal --component clippy --target wasm32-unknown-unknown
       - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
         id: wasm-tool
         with:
@@ -272,7 +271,7 @@ jobs:
       - name: Install pinned WASM tool
         if: steps.wasm-tool.outputs.cache-hit != 'true'
         run: |
-          export RUSTUP_TOOLCHAIN=1.96.0
+          export RUSTUP_TOOLCHAIN=1.98.0
           source tool/cargo_fork_env.sh
           cargo install wasm-bindgen-cli --version 0.2.128 --locked
       - run: bash tool/check_native.sh browser
@@ -285,35 +284,10 @@ jobs:
           if-no-files-found: error
           retention-days: 3
 
-  capability-services:
-    name: Share and browser relay services
-    needs: changes
-    if: needs.changes.outputs.services == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-        with:
-          persist-credentials: false
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
-        with:
-          node-version: '24'
-          cache: npm
-          cache-dependency-path: |
-            services/share/package-lock.json
-            services/sync-gateway/package-lock.json
-      - run: npm --prefix services/share ci
-      - run: npm --prefix services/share run check
-      - if: inputs.run_tests
-        run: npm --prefix services/share test
-      - run: npm --prefix services/sync-gateway ci
-      - if: inputs.run_tests
-        run: npm --prefix services/sync-gateway test
-
   native-validation:
     name: Analyze, test, and validate
     if: always()
-    needs: [changes, native-core, macos-nsh, windows-desktop, android-native, ios-native, browser-native, capability-services]
+    needs: [changes, native-core, macos-nsh, windows-desktop, android-native, ios-native, browser-native]
     runs-on: ubuntu-latest
     steps:
       - name: Require successful applicable native checks

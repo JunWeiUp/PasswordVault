@@ -21,10 +21,10 @@ class CIChangesTests(unittest.TestCase):
         for platform in ['macos', 'browser', 'android', 'ios']:
             self.assertEqual(classify([f'apps/{platform}/src/example.code']), {platform})
 
-    def test_legacy_mac_has_no_standalone_job_but_shared_sources_remain_covered(self):
-        self.assertEqual(classify(['apps/macos-legacy/Sources/UserFeedback.swift']), set())
-        self.assertEqual(classify(['apps/macos-legacy/Sources/Models.swift']), {'ios'})
-        self.assertEqual(classify(['apps/macos-legacy/Resources/BrowserIdentity.json']), {'macos', 'browser'})
+    def test_shared_inputs_cover_every_consumer(self):
+        self.assertEqual(classify(['apps/ios/Sources/Models.swift']), {'ios'})
+        self.assertEqual(classify(['apps/browser/identity.json']), {'macos', 'browser'})
+        self.assertEqual(classify(['assets/branding/AppIcon.appiconset/icon_512_2.png']), {'core', 'macos', 'windows', 'browser', 'android', 'ios'})
         self.assertEqual(classify(['apps/desktop/ui/Detail.tsx']), {'macos', 'windows'})
 
     def test_core_and_toolchain_changes_cover_every_native_consumer(self):
@@ -42,13 +42,13 @@ class CIChangesTests(unittest.TestCase):
     def test_native_runs_are_requested_and_tests_are_opt_in(self):
         self.assertEqual(requested('release'), {'macos', 'windows', 'ios', 'browser'})
         self.assertEqual(requested('macos'), {'macos'})
-        self.assertEqual(requested('services'), {'services'})
-        self.assertEqual(requested('all'), set(SCOPES) | {'services'})
-        with self.assertRaises(ValueError):
-            requested('typo')
-        workflow = Path(__file__).resolve().parent.parent / '.github/workflows/native.yml'
-        section = re.split(r'(?m)^  [a-z][a-z0-9-]*:', workflow.read_text().split('  capability-services:', 1)[1])[0]
-        self.assertIn("if: needs.changes.outputs.services == 'true'", section)
+        self.assertEqual(requested('all'), set(SCOPES))
+        for retired in ('services', 'typo'):
+            with self.assertRaises(ValueError):
+                requested(retired)
+        workflow = (Path(__file__).resolve().parent.parent / '.github/workflows/native.yml').read_text()
+        self.assertNotIn('capability-services', workflow)
+        section = re.split(r'(?m)^  [a-z][a-z0-9-]*:', workflow.split('  macos-nsh:', 1)[1])[0]
         self.assertIn('if: inputs.run_tests', section)
 
     def test_multiple_platform_changes_are_unioned(self):

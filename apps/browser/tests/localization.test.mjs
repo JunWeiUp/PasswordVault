@@ -4,7 +4,7 @@ import {readFile} from "node:fs/promises";
 import ts from "typescript";
 const translations=JSON.parse(await readFile(new URL("../src/translations.en.json",import.meta.url),"utf8"));
 test("explicit UI translations cover all literal calls and preserve placeholders",async()=>{
- for(const name of ["app","Capabilities","RecoveryPanel","ShareDialog","HistoryDialog","WebDAVPanel","RichNoteEditor","PeerLibraries","PasskeyDetails"]){
+ for(const name of ["app","Capabilities","RecoveryPanel","HistoryDialog","WebDAVPanel","RichNoteEditor","PasskeyDetails"]){
   const source=await readFile(new URL(`../src/${name}.tsx`,import.meta.url),"utf8");
   const file=ts.createSourceFile(name,source,99,true,4);
   function visit(node){

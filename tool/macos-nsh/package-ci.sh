@@ -11,7 +11,7 @@ RUSTUP_TOOLCHAIN="$channel" "$CARGO" build --manifest-path apps/desktop/Cargo.to
 app="$root/apps/desktop/.nsh/out/PasswordVault.app"
 bash tool/macos-nsh/icon.sh "$app"
 cp apps/desktop/target/release/pv-browser-host apps/desktop/target/release/pv-mcp "$app/Contents/MacOS/"
-cp apps/macos-legacy/Resources/BrowserIdentity.json "$app/Contents/Resources/"
+cp apps/browser/identity.json "$app/Contents/Resources/BrowserIdentity.json"
 /usr/libexec/PlistBuddy -c 'Add :PVVaultDirectoryName string PasswordVaultNative' "$app/Contents/Info.plist"
 bash tool/macos-nsh/embed-service.sh "$app" apps/desktop/target/release/pv-background -
 for helper in pv-browser-host pv-mcp; do

@@ -17,7 +17,7 @@ def main():
     shutil.copy2(service_source,service_bin)
     (service_app/'Contents/Info.plist').write_bytes(plistlib.dumps({'CFBundleIdentifier':'com.securepass.vault.background.qa.service','CFBundleExecutable':'pv-background','CFBundleName':'PasswordVault QA Background','LSBackgroundOnly':True,'LSUIElement':True}))
     subprocess.run(['codesign','--force','--sign','-',str(service_app)],check=True,capture_output=True)
-    shutil.copy2(ROOT/'apps/macos-legacy/Resources/BrowserIdentity.json',res/'BrowserIdentity.json')
+    shutil.copy2(ROOT/'apps/browser/identity.json',res/'BrowserIdentity.json')
     subprocess.run(['codesign','--force','--sign','-',str(app)],check=True,capture_output=True)
     directory=work/'h/Library/Application Support/Q/vault';env={**os.environ,'HOME':str(work/'h'),'PV_DISABLE_HOTKEY':'1','MallocDeferredReclaim':'0','MallocLargeCache':'0','PV_SERVICE_DIAGNOSTICS':'1'}
     log=(work/'server.log').open('wb')

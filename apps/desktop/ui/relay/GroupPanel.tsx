@@ -46,7 +46,7 @@ export function GroupPanel(props: { group: any; busy: boolean; online?: string[]
   const exit = (op: "leave" | "disband") => openSheet({ render: close => <ExitConfirmation op={op} close={close} act={props.act} /> });
   cleanup(onLock(() => { relayPassword.set(""); joinPassword.set(""); }));
   return <View style={{ gap: 12 }}>
-    <If when={props.group.legacy}><Banner tone="warn" title="旧手动接入需要显式迁移">请先在现有 SwiftUI 版迁移，或清除本机接入后重新建组。</Banner></If>
+    <If when={props.group.legacy}><Banner tone="warn" title="旧手动接入需要重新建组">请清除本机接入后重新创建或加入设备组。</Banner></If>
     <If when={props.group.legacy || (props.group.state && !(props.group.state.members ?? []).some((m: any) => m.device === props.group.device))}>
       <Btn label="清除本机接入" disabled={props.busy} onPress={() => confirm({ title: "清除本机接入", text: "归档本机同步日志、保留资料并更新设备标识。此操作不会撤销服务器上的旧凭据。", ok: "清除接入", danger: true, onConfirm: () => act({ op: "clear-local" }) })} />
     </If>

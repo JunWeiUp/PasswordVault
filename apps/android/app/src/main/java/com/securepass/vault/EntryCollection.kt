@@ -400,11 +400,9 @@ internal fun EntryMenu(expanded: Boolean, dismiss: () -> Unit, item: JSONObject,
     val scope = rememberCoroutineScope()
     val editable = vault.canEdit(item)
     var history by remember(item.optString("id")) { mutableStateOf(false) }
-    var share by remember(item.optString("id")) { mutableStateOf(false) }
     var moving by remember(item.optString("id")) { mutableStateOf(false) }
     val state by vault.state.collectAsState()
     if (history) HistoryDialog(vault, item.optString("id"), t) { history = false }
-    if (share) ShareDialog(vault, item.optString("id"), t) { share = false }
     if (expanded) ModalBottomSheet(onDismissRequest = dismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), containerColor = MaterialTheme.colorScheme.surface) {
         Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
             Text(item.optString("title"), Modifier.padding(horizontal = 20.dp, vertical = 8.dp), style = MaterialTheme.typography.titleLarge)
@@ -418,7 +416,6 @@ internal fun EntryMenu(expanded: Boolean, dismiss: () -> Unit, item: JSONObject,
                 }
                 if (editable) action(t("移动到分类", "Move to category"), Icons.Outlined.FolderOpen) { dismiss(); moving = true }
                 action(t("版本历史", "Version history"), Icons.Outlined.History) { dismiss(); history = true }
-                action(t("临时分享", "Temporary share"), Icons.Outlined.Share) { dismiss(); share = true }
                 if (item.optString("type") == "totp") action(t("导出 otpauth 链接", "Export otpauth link"), Icons.Outlined.QrCode) { dismiss(); vault.copy(totpSetupUri(item)) }
             } else action(t("恢复", "Restore"), Icons.Outlined.Restore, editable) { dismiss(); scope.launch { vault.trash(item) } }
             HorizontalDivider(Modifier.padding(horizontal = 20.dp))

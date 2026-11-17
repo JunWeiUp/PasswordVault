@@ -1,6 +1,6 @@
 # Downloads
 
-Each release provides six packages:
+Each release provides five packages:
 
 | Package | Use |
 | --- | --- |
@@ -9,7 +9,6 @@ Each release provides six packages:
 | Windows x64 ZIP | Extract the entire folder and run `PasswordVault.exe`; keep its `nsh` subfolder beside it. |
 | iOS Simulator ZIP | Xcode 26.3 / iOS 26.2 Simulator; not an iPhone IPA. |
 | Extension ZIP | Extract to a permanent folder and load unpacked in Chrome or Edge. |
-| Web ZIP | Extract and serve over HTTPS or localhost. |
 
 Mac public builds are ad-hoc signed, not notarized; Touch ID
 is not guaranteed. Keep a verified encrypted backup before upgrading or switching

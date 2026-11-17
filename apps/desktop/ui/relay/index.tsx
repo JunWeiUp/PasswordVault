@@ -26,7 +26,7 @@ export function relayErrorText(error: unknown) {
     DevicesSyncBlocked: RELAY_UPGRADE_MESSAGE, InvitationExpired: "邀请已过期，请生成新邀请。",
     ApprovalConflict: "设备组已变化，此次审批未完成；请刷新后重新核对。",
     ManagerRequired: "此操作需要设备组管理员。", VerificationCodeMismatch: "配对码不一致，请重新核对。",
-    AnotherJoinPending: "已有待处理的入组申请，请先完成当前申请。", LegacyRelayResetRequired: "旧手动接入需要显式迁移，请先在现有 SwiftUI 版处理。",
+    AnotherJoinPending: "已有待处理的入组申请，请先完成当前申请。", LegacyRelayResetRequired: "旧手动接入需要重新建组：请清除本机接入后重新创建或加入设备组。",
     GroupAccessRevoked: "本机设备组权限已被撤销。", PeerLibraryIdentityRequired: "对等库需要通过独立的身份回执授权。",
     RelayConnection: "暂时无法连接中继，改动保留在本机。", RelayHttp409: "设备组已被其他设备修改，请刷新后重试。",
     RelayIdentityChanged: "本机接入已变更，旧操作已取消。",

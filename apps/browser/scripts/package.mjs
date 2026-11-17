@@ -13,14 +13,7 @@ const metadata = JSON.parse(
   await readFile(new URL("../package.json", import.meta.url)),
 );
 await mkdir("dist/icons", { recursive: true });
-await cp("../../assets/icon/icon.png", "dist/icons/brand.png").catch(
-  async () => {
-    await cp(
-      "../macos-legacy/Resources/Assets.xcassets/BrandMark.imageset/brand.png",
-      "dist/icons/brand.png",
-    );
-  },
-);
+await cp("../../assets/branding/passwordvault-icon-512.png", "dist/icons/brand.png");
 const manifest = {
   manifest_version: 3,
   name: "PasswordVault",

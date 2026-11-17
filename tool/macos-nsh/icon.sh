@@ -6,7 +6,7 @@ app="${1:?application bundle required}"
 work="$(mktemp -d /tmp/pv-icon.XXXXXX)"
 trap 'rm -rf "$work"' EXIT
 mkdir -p "$work/AppIcon.iconset" "$app/Contents/Resources"
-python3 - "$root/apps/macos-legacy/Resources/Assets.xcassets/AppIcon.appiconset" "$work/AppIcon.iconset" <<'PY'
+python3 - "$root/assets/branding/AppIcon.appiconset" "$work/AppIcon.iconset" <<'PY'
 import json, pathlib, shutil, sys
 source, target = map(pathlib.Path, sys.argv[1:])
 for entry in json.loads((source / 'Contents.json').read_text())['images']:

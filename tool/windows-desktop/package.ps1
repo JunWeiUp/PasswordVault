@@ -3,7 +3,7 @@ param([string] $OutDir = 'native-test-output\windows-desktop')
 $ErrorActionPreference = 'Stop'
 $root = Split-Path (Split-Path $PSScriptRoot)
 $output = if ([IO.Path]::IsPathRooted($OutDir)) { $OutDir } else { Join-Path $root $OutDir }
-$icon = Join-Path $root 'apps\macos-legacy\Resources\Assets.xcassets\AppIcon.appiconset\icon_512_2.png'
+$icon = Join-Path $root 'assets\branding\AppIcon.appiconset\icon_512_2.png'
 & (Join-Path $root 'tool\nsh_windows.ps1') -Command package -NshArguments @('App.tsx', '--target', 'windows', '--out', $output, '--icon', $icon)
 $metadata = Get-Content (Join-Path $root 'apps\desktop\nsh.json') -Raw | ConvertFrom-Json
 $bundle = Join-Path $output $metadata.name

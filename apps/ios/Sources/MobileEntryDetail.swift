@@ -16,12 +16,6 @@ struct MobileEntryDetail: View {
           Section {
             Text(item.title).font(.title2.bold())
             NavigationLink(store.t("版本历史", "Version history")) { MobileHistoryView(id: id) }
-            if !item.isDeleted {
-              NavigationLink(store.t("临时分享", "Temporary share")) {
-                ShareComposer(id: id, settings: store.settings, unlocked: store.unlocked, t: store.t, perform: store.perform, refresh: { try? await store.refresh() }, copy: store.copy)
-                  .navigationTitle(store.t("临时分享", "Temporary share"))
-              }
-            }
             if !item.category.isEmpty {
               Label(item.category, systemImage: "folder").foregroundStyle(.secondary)
             }

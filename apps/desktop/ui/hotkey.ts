@@ -12,7 +12,7 @@ export const SHORTCUT_LABEL: Record<ShortcutChoice, string> = {
   disabled: "关闭",
 };
 export const shortcut = signal<ShortcutChoice>("command-shift-space");
-/** false when another app (e.g. the SwiftUI PasswordVault) already holds the shortcut. */
+/** false when another app already holds the shortcut. */
 export const shortcutAvailable = signal(true);
 
 export async function setShortcut(choice: ShortcutChoice) {

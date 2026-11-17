@@ -14,9 +14,9 @@
 
 Native clients are in **developer preview**. [Platform availability](#choose-your-workspace) and the [security model](docs/security/SECURITY_MODEL.md) describe current limits; an independent security review is still pending.
 
-**Release 2.5.4:** [GitHub Release](https://github.com/JunWeiUp/PasswordVault/releases/tag/v2.5.4) · [Installation and limits](config/release/INSTALL.md). Includes current NSH Mac, Windows x64, Android, extension, Web and iOS Simulator packages.
+**Release 2.5.4:** [GitHub Release](https://github.com/JunWeiUp/PasswordVault/releases/tag/v2.5.4) · [Installation and limits](config/release/INSTALL.md). Includes NSH Mac, Windows x64, Android, extension, Web and iOS Simulator packages. Upcoming releases ship five packages: the standalone Web package is retired in favor of the browser extension.
 
-**Mac client status:** [`apps/desktop`](apps/desktop/README.md) is the current development and local daily client (NSH 0.4.0, macOS 14+ / Apple Silicon). [`apps/macos-legacy`](apps/macos-legacy/README.md) is the retained legacy SwiftUI Mac client. References below to macOS 13+/Intel and older coordinated releases apply to that legacy client.
+**Mac client status:** [`apps/desktop`](apps/desktop/README.md) is the only Mac client (NSH 0.5.1, macOS 14+ / Apple Silicon), shared with Windows. The legacy SwiftUI Mac client has been removed from the source tree; it remains available in Git history.
 
 Mac development builds use a separate Rust background service. Closing the window saves drafts and exits the interface; authorized browser queries and lock management stay available. Reopen the app to edit, or choose Quit to stop both processes. See the [desktop guide](apps/desktop/README.md) for verification and limits.
 
@@ -73,23 +73,20 @@ Browser 2.2.11 / Mac 2.2.11 can show and fill current-site accounts while Mac is
 | --- | --- | --- |
 | **Mac · current NSH** | macOS 14+ / Apple Silicon; official native rich editor | [Current Mac](apps/desktop/README.md) |
 | **Windows · Desktop** | Shared NSH interface and Rust vault; x64 | [Windows build guide](tool/windows-desktop/README.md) |
-| **Mac · legacy SwiftUI** | macOS 13+ / Apple Silicon and Intel; compatibility and rollback | [Legacy Mac](apps/macos-legacy/README.md) |
 | **Android · 8.0+** | Native mobile preview; system Autofill on Android 8+ | [Android guide](apps/android/README.md) |
 | **iPhone / iPad · iOS 16+** | Native simulator preview; signed-device distribution pending | [iOS guide](apps/ios/README.md) |
 | **Chromium browsers** | Unpacked extension; connect to Mac or create a separate vault | [Extension setup](#run-from-source) |
 
-Standalone Web is also available with a smaller feature set. Windows has a native x64 portable package in this release; Linux has no native desktop client yet. These are development builds, not App Store or extension-store releases. Moving between separate vaults requires an explicit transfer; installation does not automatically sync them.
+Windows has a native x64 portable package in this release; Linux has no native desktop client yet. These are development builds, not App Store or extension-store releases. Moving between separate vaults requires an explicit transfer; installation does not automatically sync them.
 
 <details>
 <summary>Versions, platform validation and remaining delivery gates</summary>
 
 | Client | Current scope | Validation and delivery |
 | --- | --- | --- |
-| **Legacy Mac · SwiftUI** | SwiftUI desktop app; universal Apple Silicon/Intel build; local Tiptap rich editor | Development build. Checks include native-window continuous Return/focus tests, formatting, encrypted images and archive failure paths. Physical IME coverage, macOS 13/Intel hardware and distribution signing/notarization remain open |
 | **Android 8.0+** | Kotlin/Compose preview; account/code/wallet workflows aligned with the legacy app, separate Notes design | Emulator UI plus scoped physical non-UI checks. Camera/fingerprint, older devices and original production-signing-key upgrades remain gated. System Autofill requires Android 8+ |
 | **iOS 16+ / iPadOS 16+** | SwiftUI app and Password AutoFill extension | Simulator flows and device-architecture compilation pass. Eligible team provisioning, signed-device installation and hardware acceptance remain open |
 | **Chromium extension** | Lightweight MV3; Mac connection and independent vault; explicit fill/save | Scoped Edge/ego lite, DOM and signed-helper checks. Broader Google Chrome/site coverage remains open; unpacked installation |
-| **Standalone Web** | Independent encrypted vault, CRUD, TOTP, backup/import and utilities | Sharing/WebDAV/QR UI, full theme/language parity and automatic legacy OPFS migration remain incomplete |
 | **Windows desktop** | NSH x64 portable package; shared vault, notes and platform adapters | Windows 11 ARM VM: native-window account and rich-editor flows pass. Browser/AI IPC, terminal handoff and broader hardware acceptance remain open |
 | **Linux desktop** | No native desktop client | Not implemented |
 
@@ -99,7 +96,7 @@ The coordinated release is **2.5.4**: NSH Mac build **39**, browser **2.5.4**, A
 
 ## Run from source
 
-### Legacy SwiftUI Mac and browser
+### Mac and browser
 
 Install the pinned Rust, Node.js, Xcode and XcodeGen tools from [native setup](docs/migrations/NATIVE-MIGRATION.md#build-and-launch), then run from the repository root:
 
@@ -111,9 +108,9 @@ bash tool/check_native.sh macos
 bash tool/check_native.sh browser
 ```
 
-The Native Shell Mac client in `apps/desktop` uses NSH 0.4.0 and its official native `RichEditor`. Project Rust build scripts require [huacnlee/cargo](https://huacnlee.github.io/cargo/) while retaining the pinned rustc toolchains. See [Mac build instructions](apps/desktop/README.md).
+All Rust code uses one pinned toolchain (1.98.0). `check_native.sh macos` checks the Native Shell desktop client in `apps/desktop`, which uses NSH 0.5.1 and its official native `RichEditor`. Project Rust build scripts require [huacnlee/cargo](https://huacnlee.github.io/cargo/) with the pinned rustc. See [Mac build instructions](apps/desktop/README.md).
 
-The Mac app is built at `apps/macos-legacy/build/Build/Products/Release/PasswordVault.app`; the unpacked extension is in `apps/browser/dist`. The Mac build also bundles the note editor and its dependency licenses locally. For evaluation, follow the native guide's **isolated synthetic vault** instructions.
+The unpacked extension is in `apps/browser/dist`. For evaluation, follow the native guide's **isolated synthetic vault** instructions.
 
 1. Load `apps/browser/dist` from `chrome://extensions` or `edge://extensions` with developer mode enabled.
 2. For Mac mode, register the browser connection in **Mac Settings → Browser**, select **Connect to Mac** in the extension and confirm pairing in Mac.
@@ -159,7 +156,6 @@ Use [development checks](docs/development/DEVELOPMENT.md), the [artifact registr
 | Passkeys and filling | [Provider trust boundaries and verification](docs/browser/PASSKEYS.md) |
 | Peer libraries | [Causal synchronization and family roles](docs/architecture/PEER-LIBRARIES.md) |
 | Devices and services | [Format 7, compatibility, encrypted attachments and sync gate](docs/architecture/DEVICE-ITEMS.md) |
-| Temporary sharing | [Self-hosted share service](services/share/README.md) |
 | Platform evidence | [Native migration](docs/migrations/NATIVE-MIGRATION.md) · [Mac field parity](docs/platforms/MAC-MOBILE-PARITY.md) · [Mobile acceptance](docs/platforms/MOBILE-IMPLEMENTATION.md) · [Android parity](docs/platforms/ANDROID-LEGACY-PARITY.md) · [Browser acceptance](docs/browser/BROWSER-ACCEPTANCE.md) |
 | Progress | [TODO](docs/product/TODO.md) · [Changelog](docs/releases/CHANGELOG.md) |
 
@@ -187,5 +183,3 @@ Device documents on the Native Shell Mac client support importing UTF-8 scripts 
 [Application directory](apps/README.md) · [NSH Mac tools](tool/macos-nsh/README.md)
 
 [2.5.4 installation](config/release/INSTALL.md) · [Release notes](config/release/NOTES.md)
-
-The legacy SwiftUI Mac is source-only with manual build tooling; its standalone CI is disabled and current releases do not include a legacy Mac package.

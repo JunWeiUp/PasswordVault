@@ -65,7 +65,7 @@ cp "$stub/Contents/embedded.provisionprofile" "$app/Contents/embedded.provisionp
 helper_channel="$(sed -n 's/^channel = "\(.*\)"/\1/p' "$root/apps/desktop/rust-toolchain.toml")"
 (cd "$copy/apps/desktop" && cargo +"$helper_channel" build --release --bin pv-browser-host)
 cp "$copy/apps/desktop/target/release/pv-browser-host" "$app/Contents/MacOS/pv-browser-host"
-cp "$root/apps/macos-legacy/Resources/BrowserIdentity.json" "$app/Contents/Resources/BrowserIdentity.json"
+cp "$root/apps/browser/identity.json" "$app/Contents/Resources/BrowserIdentity.json"
 codesign --force --options runtime --timestamp=none --sign "$identity_name" "$app/Contents/MacOS/pv-browser-host"
 codesign --verify --strict "$app/Contents/MacOS/pv-browser-host"
 # --- End browser helper; outer app signing follows -------------------------

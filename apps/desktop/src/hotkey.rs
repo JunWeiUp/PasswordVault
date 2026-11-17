@@ -1,5 +1,5 @@
-//! Global Quick Access shortcut (Carbon `RegisterEventHotKey`), matching the
-//! SwiftUI app's choices: "command-shift-space" (default), "command-option-p",
+//! Global Quick Access shortcut (Carbon `RegisterEventHotKey`) with the
+//! choices: "command-shift-space" (default), "command-option-p",
 //! "disabled". The handler only raises a flag and activates the app; TSX polls
 //! `Hotkey.poll()` and opens Quick Access when the vault is unlocked.
 //! Disabled under tests (`PV_DISABLE_HOTKEY`) so test hosts never take the
@@ -107,7 +107,7 @@ mod imp {
         ) -> i32;
     }
 
-    const SIGNATURE: u32 = u32::from_be_bytes(*b"PVQA"); // as in the SwiftUI app
+    const SIGNATURE: u32 = u32::from_be_bytes(*b"PVQA"); // stable hot-key signature
     const KEYBOARD: u32 = u32::from_be_bytes(*b"keyb");
     const HOTKEY_PRESSED: u32 = 5;
     const DIRECT_OBJECT: u32 = u32::from_be_bytes(*b"----");
