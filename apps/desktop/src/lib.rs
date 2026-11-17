@@ -18,7 +18,9 @@ mod qa_window;
 mod relay;
 mod session;
 pub use data_dir::data_directory_name;
+mod breach;
 mod hotkey;
+mod login_item;
 mod window_ctl;
 
 mod attachments;
@@ -52,6 +54,8 @@ fn native(registry: &mut Registry) {
     registry.module::<recovery_io::RecoveryIO>();
     registry.module::<hotkey::Hotkey>();
     registry.module::<window_ctl::WindowCtl>();
+    registry.module::<login_item::LoginItem>();
+    registry.module::<breach::Breach>();
     registry
         .module::<backup::Backup>()
         .module::<files::Files>()
@@ -233,7 +237,7 @@ impl Platform {
     /// Integrations enabled in this build; unsupported transports remain closed.
     pub fn capabilities() -> String {
         let mac = cfg!(target_os = "macos");
-        serde_json::json!({"browser":mac,"ai":mac,"terminal":mac,"globalHotkeys":mac,"recoveryPrinting":mac}).to_string()
+        serde_json::json!({"browser":mac,"ai":mac,"terminal":mac,"globalHotkeys":mac,"recoveryPrinting":mac,"loginItem":mac,"captureProtection":mac}).to_string()
     }
     /// Drains system lock notifications and returns system idle seconds.
     pub fn poll_lock_signals() -> String {

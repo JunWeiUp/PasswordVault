@@ -9,9 +9,9 @@ import { Banner, Btn, Group, OptionRow, Row, T, TextBox, Toggle } from "./kit";
 import { call, errorText, saveSettings, settings, toast, vaultDirectory } from "./store";
 import { c, radius, TEXT_SCALES, textScale } from "./theme";
 import { appVersion } from "./version";
-import { CLIPBOARD_CHOICES, clipboardSeconds, setClipboardSeconds, setTrayIcon, trayIcon } from "./preferences";
+import { CLIPBOARD_CHOICES, clipboardSeconds, hideFromCapture, setClipboardSeconds, setHideFromCapture, setTrayIcon, trayIcon } from "./preferences";
 import { SHORTCUT_LABEL, setShortcut, shortcut, shortcutAvailable, type ShortcutChoice } from "./hotkey";
-import { isMac, desktopCapabilities, biometricAvailability, biometricEnabled, biometricError, disableBiometrics, enableBiometrics } from "./native";
+import { isMac, desktopCapabilities, biometricAvailability, biometricEnabled, biometricError, disableBiometrics, enableBiometrics, loginItemStatus, openLoginItemSettings, setLoginItem, type LoginStatus } from "./native";
 import { openSheet, SheetFooter, SheetTitle } from "./kit";
 import { BackupPage } from "./settings/BackupPage";
 import { RecoverySettings } from "./recovery";
@@ -87,6 +87,8 @@ function General() {
             onChange={(v) => setClipboardSeconds(Number(v))} />
         </OptionRow>
       </Group>
+      <If when={desktopCapabilities.loginItem}><GroupTitle text="启动" />
+      <Group><LoginItemRow /></Group></If>
       <GroupTitle text={isMac ? "菜单栏" : "通知区域"} />
       <Group>
         <Toggle title={isMac ? "在菜单栏显示图标" : "在通知区域显示图标"} note="提供快速访问、锁定和打开主窗口；图标菜单不显示任何资料"
@@ -98,6 +100,26 @@ function General() {
           <Picker value={shortcut()} options={(Object.keys(SHORTCUT_LABEL) as ShortcutChoice[]).map((k) => [k, SHORTCUT_LABEL[k]])} onChange={(v) => void setShortcut(v as ShortcutChoice)} />
         </OptionRow>
       </Group></If>
+    </>
+  );
+}
+
+const loginStatus = signal<LoginStatus>("notRegistered");
+function LoginItemRow() {
+  loginStatus.set(loginItemStatus());
+  const note = () =>
+    loginStatus() === "requiresApproval" ? "等待你在“系统设置 › 通用 › 登录项”中允许"
+      : loginStatus() === "notFound" ? "系统找不到这个应用，请从“应用程序”文件夹启动后再开启"
+        : "登录这台 Mac 后自动打开 PasswordVault（保持锁定，需要解锁后才能查看资料）";
+  return (
+    <>
+      <Toggle title="登录时启动" note={note()} checked={loginStatus() === "enabled" || loginStatus() === "requiresApproval"}
+        onChange={(on) => {
+          try { loginStatus.set(setLoginItem(on)); } catch (e) { loginStatus.set(loginItemStatus()); toast(`无法更改登录项：${String(e)}`); }
+        }} />
+      <If when={loginStatus() === "requiresApproval"}>
+        <OptionRow title="需要系统批准" note="macOS 要求你在系统设置中允许登录项"><Btn label="打开登录项设置" onPress={openLoginItemSettings} /></OptionRow>
+      </If>
     </>
   );
 }
@@ -185,6 +207,11 @@ function Security() {
           note={!biometricAvailability() ? "这台 Mac 没有可用的 Touch ID" : bio() ? "已启用 · 重启后首次仍可用主密码" : "启用前需要输入当前主密码"}
           checked={bio()} disabled={!biometricAvailability()}
           onChange={(v) => (v ? askEnableBiometrics() : void disableBiometrics().then(() => { bio.set(false); toast("Touch ID 已停用"); }, (e) => toast(biometricError(e))))} />
+      </Group></If>
+      <If when={desktopCapabilities.captureProtection}><GroupTitle text="隐私" />
+      <Group>
+        <Toggle title="截屏、录屏和屏幕共享时隐藏窗口" note="开启后，截图、录屏和会议共享中看不到 PasswordVault 的窗口；只影响这台电脑"
+          checked={hideFromCapture()} onChange={setHideFromCapture} />
       </Group></If>
       <GroupTitle text="修改主密码" />
       <Group style={{ paddingVertical: 12, gap: 8 }}>

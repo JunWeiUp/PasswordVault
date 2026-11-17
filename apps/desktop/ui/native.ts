@@ -1,7 +1,13 @@
 // Bind the store's one Vault instance; never create a second native session.
-import { Platform, Vault } from "passwordvault/native";
+import { LoginItem, Platform, Vault, WindowCtl } from "passwordvault/native";
 export const isMac = Platform.isMacos();
-export const desktopCapabilities = JSON.parse(Platform.capabilities()) as { browser: boolean; ai: boolean; terminal: boolean; globalHotkeys: boolean; recoveryPrinting: boolean };
+export const desktopCapabilities = JSON.parse(Platform.capabilities()) as { browser: boolean; ai: boolean; terminal: boolean; globalHotkeys: boolean; recoveryPrinting: boolean; loginItem: boolean; captureProtection: boolean };
+export type LoginStatus = "enabled" | "requiresApproval" | "notRegistered" | "notFound" | "unsupported";
+export const loginItemStatus = (): LoginStatus => LoginItem.status() as LoginStatus;
+export const setLoginItem = (on: boolean): LoginStatus => LoginItem.set(on) as LoginStatus;
+export const openLoginItemSettings = (): void => LoginItem.openSettings();
+/** Keeps app windows out of screenshots, recordings and screen sharing where supported. */
+export const setCaptureProtection = (on: boolean): boolean => WindowCtl.setCaptureProtection(on);
 let bound: Vault | undefined;
 export function bindNativeVault(vault: Vault): void { bound = vault; }
 function vault(): Vault {

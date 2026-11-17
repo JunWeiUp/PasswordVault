@@ -6,6 +6,7 @@ import { create, errorText, unlock, load, vaultDirectory } from "./store";
 import { isMac, biometricAvailability, biometricEnabled, biometricError, unlockWithBiometrics } from "./native";
 import { c } from "./theme";
 import { askRecoveryReset, askEmergencyRestore } from "./recovery";
+import { importBackup } from "./backup";
 import { Logo } from "./Sidebar";
 
 function Centered(props: { children: any; width?: number }) {
@@ -83,6 +84,8 @@ const first = signal("");
 const second = signal("");
 const createError = signal("");
 const creating = signal(false);
+/** Chosen "restore from encrypted backup": create the vault, then import the backup into it. */
+const restoreAfterCreate = signal(false);
 
 export function OnboardingScreen() {
   const error = createError;
@@ -97,6 +100,10 @@ export function OnboardingScreen() {
       await create(first());
       first.set("");
       second.set("");
+      if (restoreAfterCreate()) {
+        restoreAfterCreate.set(false);
+        void importBackup();
+      }
     } catch (e) {
       error.set(errorText(e));
     } finally {
@@ -107,8 +114,10 @@ export function OnboardingScreen() {
     <Centered width={560}>
       <If when={step() === 0} else={
         <View style={{ gap: 12 }}>
-          <T size={24} weight="600">设置主密码</T>
-          <T color={c().muted}>主密码用于加密整个密码库。我们无法帮你找回，请务必记住。</T>
+          <T size={24} weight="600">{restoreAfterCreate() ? "为恢复设置新的主密码" : "设置主密码"}</T>
+          <T color={c().muted}>{restoreAfterCreate()
+            ? "先创建新的密码库，随后选择加密备份文件，并输入创建备份时使用的密码；备份内容会合并进这个新密码库。"
+            : "主密码用于加密整个密码库。我们无法帮你找回，请务必记住。"}</T>
           <T size={12} color={c().ink2} style={{ marginTop: 8 }}>主密码</T>
           <TextBox testID="create-password" value={first()} onChange={(v) => first.set(v)} masked autoFocus placeholder="至少 10 个字符" />
           <If when={first()}><Strength level={strengthOf(first())} /></If>
@@ -117,7 +126,7 @@ export function OnboardingScreen() {
           <T size={12} color={c().red}>{problem() || error()}</T>
           <Banner tone="warn" title="建议使用 4 个以上随机单词组成的短语">例如「海港-枫叶-安静-银色」。</Banner>
           <Row style={{ justifyContent: "space-between" }}>
-            <Btn label="返回" onPress={() => step.set(0)} />
+            <Btn label="返回" onPress={() => { restoreAfterCreate.set(false); step.set(0); }} />
             <Btn label={busy() ? "正在创建…" : "创建密码库"} kind="primary" disabled={!ready()} onPress={submit} />
           </Row>
         </View>
@@ -126,8 +135,8 @@ export function OnboardingScreen() {
           <Logo size={56} />
           <T size={26} weight="600" style={{ marginTop: 8 }}>欢迎使用 PasswordVault</T>
           <T color={c().muted}>密码、验证码、钱包和笔记全部在本机加密保存。</T>
-          <Choice icon="plus" title="创建新的密码库" text="设置主密码，从空白开始" onPress={() => step.set(1)} recommended />
-          <Choice icon="archive" title="从加密备份恢复" text="将在备份与导入接入后提供" disabled />
+          <Choice icon="plus" title="创建新的密码库" text="设置主密码，从空白开始" onPress={() => { restoreAfterCreate.set(false); step.set(1); }} recommended />
+          <Choice icon="archive" title="从加密备份恢复" text="设置新的主密码后，选择备份文件合并恢复" onPress={() => { restoreAfterCreate.set(true); step.set(1); }} />
           <Choice icon="key" title="使用应急备份与恢复密钥" text="选择完整应急备份，恢复为新密码库" onPress={askEmergencyRestore} />
           <T size={11} color={c().muted} style={{ marginTop: 10 }}>此预览版使用独立数据目录：{vaultDirectory}</T>
         </View>
