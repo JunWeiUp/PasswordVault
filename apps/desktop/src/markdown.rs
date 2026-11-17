@@ -549,6 +549,18 @@ fn to_markdown(source: &str) -> Result<Value, String> {
         json!({"markdown":markdown,"lossless":supported_atoms(&doc) && normalize(&doc) == normalize(&restored)}),
     )
 }
+fn html_page(markdown: &str, title: &str) -> String {
+    let body = comrak::markdown_to_html(markdown, &options());
+    let title = title
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;");
+    format!(
+        "<!doctype html>\n<html lang=\"zh-CN\">\n<head>\n<meta charset=\"utf-8\">\n<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">\n<title>{title}</title>\n<style>body{{max-width:760px;margin:40px auto;padding:0 20px;font:16px/1.7 -apple-system,\"PingFang SC\",\"Segoe UI\",sans-serif;color:#242a35}}pre,code{{font-family:\"SF Mono\",Menlo,Consolas,monospace}}pre{{background:#f3f5f8;padding:12px;border-radius:8px;overflow:auto}}table{{border-collapse:collapse}}td,th{{border:1px solid #e4e8ef;padding:6px 10px}}</style>\n</head>\n<body>\n<h1>{title}</h1>\n{body}</body>\n</html>\n"
+    )
+}
+
 /// Markdown conversion for the lightweight native note editor. No network or file access.
 #[module]
 pub struct NoteMarkdown;
@@ -557,6 +569,14 @@ impl NoteMarkdown {
     /// Returns JSON {markdown,lossless}. A false gate must never be edited/saved.
     pub fn to_markdown(note_document_json: String) -> Result<String, String> {
         to_markdown(&note_document_json).map(|v| v.to_string())
+    }
+    /// A standalone HTML page for "save as HTML". Raw HTML in the source is omitted
+    /// (comrak's safe default), so an export cannot carry scripts or embedded markup.
+    pub fn to_html(markdown: String, title: String) -> Result<String, String> {
+        if markdown.len() > LIMIT {
+            return Err("NoteTooLarge".into());
+        }
+        Ok(html_page(&markdown, &title))
     }
     /// Parses GFM locally, returning JSON {noteDocument,text} for rich-v1 storage.
     pub fn from_markdown(markdown: String) -> Result<String, String> {
@@ -571,6 +591,13 @@ impl NoteMarkdown {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn html_export_escapes_the_title_and_drops_raw_html() {
+        let page = html_page("# 标题\n\n<script>alert(1)</script>\n\n**粗体**", "a<b>&\"c");
+        assert!(page.contains("<title>a&lt;b&gt;&amp;&quot;c</title>"));
+        assert!(page.contains("<strong>粗体</strong>"));
+        assert!(!page.contains("<script>"));
+    }
     #[test]
     fn gfm_round_trip_corpus() {
         let cases = [
