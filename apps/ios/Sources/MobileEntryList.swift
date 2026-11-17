@@ -7,9 +7,11 @@ struct MobileEntryList: View {
   @State private var category = ""
   @State private var editor: VaultItem?
   @State private var deleting: VaultItem?
+  @State private var walletKind = ""
   private var entries: [VaultItem] {
     store.items.filter {
-      (destination == .trash ? $0.isDeleted : !$0.isDeleted && ($0.type == destination.itemType || (destination == .passwords && ["creditCard", "identity"].contains($0.type))))
+      (destination == .trash ? $0.isDeleted : !$0.isDeleted && destination.listedTypes.contains($0.type))
+        && (walletKind.isEmpty || $0.type == walletKind)
         && (category.isEmpty || $0.category == category)
         && (search.isEmpty
           || [$0.title, $0.username, $0.note, $0.category].joined(separator: " ")
@@ -25,6 +27,14 @@ struct MobileEntryList: View {
       let family = !(store.settings["activePeerLibrary"]?.string ?? "").isEmpty
       Label(family ? store.t("家庭库：", "Family: ") + (store.settings["_peerLibraryName"]?.string ?? store.t("家庭资料库", "Family library")) : store.t("个人资料库", "Personal library"), systemImage: family ? "person.2" : "person.crop.circle")
         .font(.caption.weight(.medium)).foregroundStyle(.secondary).accessibilityIdentifier("current-library")
+      if destination == .wallets {
+        Picker(store.t("类型", "Type"), selection: $walletKind) {
+          Text(store.t("全部", "All")).tag("")
+          Text(store.t("银行卡", "Cards")).tag("creditCard")
+          Text(store.t("证件", "IDs")).tag("identity")
+          Text(store.t("加密货币", "Crypto")).tag("crypto")
+        }.pickerStyle(.segmented).accessibilityIdentifier("wallet-kind")
+      }
       if destination == .notes && !store.categories.isEmpty {
         Picker(store.t("分类", "Category"), selection: $category) {
           Text(store.t("全部", "All")).tag("")
@@ -42,6 +52,10 @@ struct MobileEntryList: View {
         }.padding(.vertical, 24)
       }
       ForEach(entries) { item in
+        Group {
+        if destination == .codes {
+          MobileCodeRow(item: item)
+        } else {
         NavigationLink {
           MobileEntryDetail(id: item.id)
         } label: {
@@ -61,6 +75,8 @@ struct MobileEntryList: View {
                 ? item.note.components(separatedBy: "\n").first ?? "" : item.username
             ).lineLimit(2).foregroundStyle(.secondary)
           }.padding(.vertical, 6)
+        }
+        }
         }
         .swipeActions {
           Button(role: .destructive) {
@@ -99,10 +115,12 @@ struct MobileEntryList: View {
       if let kind = destination.itemType {
         ToolbarItem(placement: .navigationBarTrailing) {
           Menu {
-            Button(store.t("新建条目", "New entry")) { editor = .blank(type: kind, title: "") }
-            if destination == .passwords {
+            if destination == .wallets {
               Button(store.t("银行卡", "Payment card")) { editor = .blank(type: "creditCard", title: "") }
-              Button(store.t("身份资料", "Identity")) { editor = .blank(type: "identity", title: "") }
+              Button(store.t("证件", "Identity document")) { editor = .blank(type: "identity", title: "") }
+              Button(store.t("加密货币钱包", "Crypto wallet")) { editor = .blank(type: kind, title: "") }
+            } else {
+              Button(store.t("新建条目", "New entry")) { editor = .blank(type: kind, title: "") }
             }
           } label: { Image(systemName: "plus") }.accessibilityLabel(store.t("新建", "Add")).disabled(!store.canWriteLibrary)
         }

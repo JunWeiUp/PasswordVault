@@ -8,6 +8,9 @@ struct MobileEntryDetail: View {
   @State private var revealing = Set<String>()
   @State private var deleting = false
   @State private var code = ""
+  /// Field key waiting for the user's confirmation before a wallet secret is shown.
+  @State private var confirmingReveal: String?
+  @State private var screenCaptured = UIScreen.main.isCaptured
   private var item: VaultItem? { store.items.first { $0.id == id } }
   var body: some View {
     Group {
@@ -51,10 +54,11 @@ struct MobileEntryDetail: View {
               value(store.t("地址", "Address"), item.string("address"), key: "address")
               value(
                 store.t("私钥", "Private key"), item.string("privateKey"), key: "privateKey",
-                secret: true)
+                secret: true, confirm: true)
+              // Recovery phrases are never copied to the clipboard; they are shown only after confirmation.
               value(
                 store.t("助记词", "Recovery phrase"), item.string("mnemonic"), key: "mnemonic",
-                secret: true)
+                secret: true, confirm: true, copyable: false)
             }
           }
           PasskeyRecordsView(item: item, perform: store.perform, refresh: { try? await store.refresh() }, t: store.t, editable: store.canEdit(item))
@@ -149,6 +153,23 @@ struct MobileEntryDetail: View {
     .sheet(item: $editor) { item in
       if item.type == "secureNote" { MobileRichNoteEditor(item: item) } else { MobileEntryEditor(item: item) }
     }
+    .confirmationDialog(
+      store.t("显示钱包密钥？", "Show wallet secret?"),
+      isPresented: Binding(get: { confirmingReveal != nil }, set: { if !$0 { confirmingReveal = nil } }),
+      titleVisibility: .visible
+    ) {
+      Button(store.t("确认周围无人，显示", "No one is watching — show")) {
+        if let key = confirmingReveal { revealing.insert(key) }
+        confirmingReveal = nil
+      }
+      Button(store.t("取消", "Cancel"), role: .cancel) { confirmingReveal = nil }
+    } message: {
+      Text(store.t("拿到它的人可以转走全部资产。请确认周围无人，并且没有在录屏或投屏。", "Anyone who sees it can move all funds. Make sure no one is watching and the screen is not being recorded or mirrored."))
+    }
+    .onReceive(NotificationCenter.default.publisher(for: UIScreen.capturedDidChangeNotification)) { _ in
+      screenCaptured = UIScreen.main.isCaptured
+    }
+    .onDisappear { revealing.removeAll() }
     .task(id: item) {
       guard let item, item.type == "totp" else { return }
       while !Task.isCancelled {
@@ -163,21 +184,38 @@ struct MobileEntryDetail: View {
     }
   }
   @ViewBuilder private func value(
-    _ label: String, _ value: String, key: String, secret: Bool = false
+    _ label: String, _ value: String, key: String, secret: Bool = false,
+    confirm: Bool = false, copyable: Bool = true
   ) -> some View {
     if !value.isEmpty {
+      // Confirmed secrets stay hidden while the screen is recorded or mirrored.
+      let hiddenByCapture = confirm && screenCaptured
+      let shown = !secret || (revealing.contains(key) && !hiddenByCapture)
       VStack(alignment: .leading, spacing: 8) {
         Text(label).font(.caption).foregroundStyle(.secondary)
-        Text(secret && !revealing.contains(key) ? "••••••••••••" : value).font(.body.monospaced())
-          .textSelection(.enabled)
+        if shown && !copyable {
+          Text(value).font(.body.monospaced())
+        } else {
+          Text(shown ? value : "••••••••••••").font(.body.monospaced()).textSelection(.enabled)
+        }
+        if hiddenByCapture && revealing.contains(key) {
+          Text(store.t("正在录屏或投屏，已隐藏。", "Hidden while the screen is recorded or mirrored."))
+            .font(.caption).foregroundStyle(.orange)
+        }
         HStack {
           if secret {
             Button(revealing.contains(key) ? store.t("隐藏", "Hide") : store.t("显示", "Show")) {
-              if revealing.contains(key) { revealing.remove(key) } else { revealing.insert(key) }
+              if revealing.contains(key) { revealing.remove(key) }
+              else if confirm { confirmingReveal = key }
+              else { revealing.insert(key) }
             }
           }
-          Button(store.t("复制", "Copy")) { store.copy(value) }
+          if copyable { Button(store.t("复制", "Copy")) { store.copy(value) } }
         }.buttonStyle(.bordered).controlSize(.regular)
+        if !copyable {
+          Text(store.t("助记词不支持复制，请抄写在离线介质上。", "Recovery phrases can't be copied; write them down offline."))
+            .font(.caption).foregroundStyle(.secondary)
+        }
       }.padding(.vertical, 4)
     }
   }
