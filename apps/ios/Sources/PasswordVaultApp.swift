@@ -58,13 +58,13 @@ struct PasswordVaultApp: App {
 
 struct MobileTabs: View {
   @Environment(\.horizontalSizeClass) private var sizeClass
-  @State private var selected: Destination? = .passwords
+  @State private var selected: Destination? = .notes
   @EnvironmentObject private var store: MobileVaultStore
   var body: some View {
     if sizeClass == .regular {
       NavigationSplitView {
         List(selection: $selected) {
-          ForEach([Destination.passwords, .notes, .codes, .wallets, .settings], id: \.self) {
+          ForEach([Destination.notes, .passwords, .codes, .wallets, .settings], id: \.self) {
             kind in
             NavigationLink(value: kind) {
               Label(kind.title(chinese: store.chinese), systemImage: kind.symbol)
@@ -76,13 +76,13 @@ struct MobileTabs: View {
           if selected == .settings {
             MobileSettingsView()
           } else {
-            MobileEntryList(destination: selected ?? .passwords)
+            MobileEntryList(destination: selected ?? .notes)
           }
         }.id(selected)
       }.navigationSplitViewStyle(.balanced)
     } else {
       TabView {
-        ForEach([Destination.passwords, .notes, .codes, .wallets], id: \.self) { kind in
+        ForEach([Destination.notes, .passwords, .codes, .wallets], id: \.self) { kind in
           NavigationStack { MobileEntryList(destination: kind) }
             .tabItem { Label(kind.title(chinese: store.chinese), systemImage: kind.symbol) }
         }

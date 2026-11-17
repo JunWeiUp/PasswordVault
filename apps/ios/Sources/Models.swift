@@ -158,6 +158,14 @@ struct VaultDocument: Codable {
 enum Destination: String, CaseIterable, Identifiable {
   case notes, passwords, codes, wallets, generator, audit, backups, sharing, trash, settings
   var id: String { rawValue }
+  /// Entry types listed under this destination. Wallets group cards, identities and crypto
+  /// wallets; stored `type` values are unchanged.
+  var listedTypes: Set<String> {
+    switch self {
+    case .wallets: return ["crypto", "creditCard", "identity"]
+    default: return itemType.map { [$0] } ?? []
+    }
+  }
   var itemType: String? {
     switch self {
     case .notes: return "secureNote"
