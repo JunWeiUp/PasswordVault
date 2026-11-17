@@ -6,6 +6,7 @@ import { batch, computed, effect, signal } from "nsh";
 import { Vault } from "passwordvault/native";
 import { bindNativeVault } from "./native";
 import { clearSearchIndex, searchItems } from "./search";
+import { sortMode } from "./preferences";
 import { Browser } from "passwordvault/native";
 
 export type ItemType = "password" | "totp" | "crypto" | "secureNote" | "creditCard" | "identity" | "device";
@@ -112,11 +113,14 @@ export const visible = computed<Item[]>(() => {
   if (f === "card") list = list.filter((i) => i.type === "creditCard");
   if (f === "identity") list = list.filter((i) => i.type === "identity");
   if (f === "crypto") list = list.filter((i) => i.type === "crypto");
-  return searchItems([...list].sort(
-    (a, b) =>
-      Number(!!b.isPinned) - Number(!!a.isPinned) ||
-      String(b.updatedAt ?? "").localeCompare(String(a.updatedAt ?? "")),
-  ), q);
+  const mode = sortMode();
+  const order = (a: Item, b: Item) =>
+    mode === "title"
+      ? String(a.title ?? "").localeCompare(String(b.title ?? ""), "zh-Hans-CN", { numeric: true, sensitivity: "base" })
+      : mode === "created"
+        ? String(b.createdAt ?? b.updatedAt ?? "").localeCompare(String(a.createdAt ?? a.updatedAt ?? ""))
+        : String(b.updatedAt ?? "").localeCompare(String(a.updatedAt ?? ""));
+  return searchItems([...list].sort((a, b) => Number(!!b.isPinned) - Number(!!a.isPinned) || order(a, b)), q);
 });
 
 export const selected = computed<Item | undefined>(() => {
@@ -484,6 +488,17 @@ export async function addCategory(name: string) {
     const doc = await call<{ settings: Record<string, any> }>({ op: "list" });
     settings.set(doc.settings ?? {});
     noteCategory.set(name.trim());
+  } catch (e) {
+    toast(errorText(e));
+  }
+}
+export async function renameCategory(name: string, to: string) {
+  await flush();
+  try {
+    const result = await call<{ updated: number }>({ op: "category-rename", name, to: to.trim(), time: now() });
+    await load();
+    if (noteCategory() === name) noteCategory.set(to.trim());
+    toast(`已重命名为「${to.trim()}」${result.updated ? `，${result.updated} 篇笔记已移动` : ""}`);
   } catch (e) {
     toast(errorText(e));
   }

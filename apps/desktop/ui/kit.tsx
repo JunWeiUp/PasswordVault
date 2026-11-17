@@ -3,6 +3,7 @@ import { Clipboard, type JSX, signal, Text, View } from "nsh";
 import { Dialog, Input, Switch } from "nsh/base";
 import { Icon, type IconName } from "./icons";
 import { toast } from "./store";
+import { clipboardSeconds } from "./preferences";
 import { c, MONO, radius, fs } from "./theme";
 
 export function T(props: {
@@ -104,18 +105,22 @@ export function Group(props: { children?: any; style?: any }) {
   );
 }
 
-const CLEAR_AFTER_MS = 30_000;
 /** Copies `value`; clears the clipboard after 30 s if it still holds this value. */
 export async function copySecret(value: string, label: string) {
   if (!value) return;
   try {
     await Clipboard.writeText(value);
-    toast(`已复制${label} · 30 秒后清除`);
+    const seconds = clipboardSeconds();
+    if (seconds <= 0) {
+      toast(`已复制${label}`);
+      return;
+    }
+    toast(`已复制${label} · ${seconds >= 60 ? `${seconds / 60} 分钟` : `${seconds} 秒`}后清除`);
     setTimeout(async () => {
       try {
         if ((await Clipboard.readText()) === value) await Clipboard.writeText("");
       } catch {}
-    }, CLEAR_AFTER_MS);
+    }, seconds * 1000);
   } catch {
     toast("无法写入剪贴板");
   }
