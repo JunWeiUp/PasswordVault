@@ -139,3 +139,61 @@ fn category_validation_and_stale_settings_preserve_existing_folders() {
         Err(VaultError::Locked)
     ));
 }
+
+fn rename(session: &VaultSession, name: &str, to: &str) -> Result<Value> {
+    call(
+        session,
+        json!({"op":"category-rename","name":name,"to":to,"time":"2020-03-01T00:00:00Z"}),
+    )
+}
+
+#[test]
+fn renaming_a_category_moves_live_and_trashed_notes_only() {
+    let folder = tempfile::tempdir().unwrap();
+    let session = create(&folder);
+    let legacy = json!({"items":[
+        {"id":"note","type":"secureNote","title":"Note","category":"家庭","note":"Keep this body","futureField":{"keep":true}},
+        {"id":"trash","type":"secureNote","title":"Trash","category":"家庭","isDeleted":true,"note":"Keep trashed body"},
+        {"id":"account","type":"password","title":"Account","category":"家庭","password":"Synthetic only"}
+    ]});
+    call(
+        &session,
+        json!({"op":"import","content":legacy.to_string()}),
+    )
+    .unwrap();
+    call(&session, json!({"op":"category-add","name":"Work"})).unwrap();
+    assert_eq!(rename(&session, "家庭", " Family ").unwrap()["updated"], 2);
+    let doc = call(&session, json!({"op":"list"})).unwrap();
+    assert_eq!(doc["settings"]["noteCategories"], json!(["Family", "Work"]));
+    assert_eq!(doc["items"][0]["category"], "Family");
+    assert_eq!(doc["items"][0]["updatedAt"], "2020-03-01T00:00:00Z");
+    assert_eq!(doc["items"][0]["note"], "Keep this body");
+    assert_eq!(doc["items"][0]["futureField"]["keep"], true);
+    assert_eq!(doc["items"][1]["category"], "Family");
+    assert_eq!(doc["items"][1]["isDeleted"], true);
+    assert_eq!(doc["items"][2]["category"], "家庭");
+
+    // Changing only letter case is allowed; it updates the notes again.
+    assert_eq!(rename(&session, "Family", "family").unwrap()["updated"], 2);
+}
+
+#[test]
+fn renaming_rejects_collisions_unknown_names_and_invalid_input_without_changes() {
+    let folder = tempfile::tempdir().unwrap();
+    let session = create(&folder);
+    call(&session, json!({"op":"category-add","name":"Home"})).unwrap();
+    call(&session, json!({"op":"category-add","name":"Work"})).unwrap();
+    let before = call(&session, json!({"op":"list"})).unwrap();
+    assert!(rename(&session, "Home", "work").is_err());
+    assert!(rename(&session, "Missing", "Other").is_err());
+    assert!(rename(&session, "Home", "  ").is_err());
+    assert!(rename(&session, "Home", "bad\nname").is_err());
+    assert!(rename(&session, "Home", &"x".repeat(81)).is_err());
+    assert!(call(
+        &session,
+        json!({"op":"category-rename","name":"Home","to":"Other","time":"not a time"})
+    )
+    .is_err());
+    assert_eq!(call(&session, json!({"op":"list"})).unwrap(), before);
+    assert_eq!(rename(&session, "Home", "Home").unwrap()["updated"], 0);
+}

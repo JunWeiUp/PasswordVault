@@ -2,7 +2,7 @@
 import { signal, View } from "nsh";
 import { Btn, confirm, copySecret, openSheet, SheetFooter, SheetTitle, T, TextBox } from "./kit";
 import {
-  addCategory, deleteForever, emptyTrash, items, moveToTrash, removeCategory, type Item,
+  addCategory, deleteForever, emptyTrash, items, moveToTrash, removeCategory, renameCategory, type Item,
 } from "./store";
 import { c } from "./theme";
 
@@ -24,6 +24,31 @@ export function askCategory() {
           <SheetFooter>
             <Btn label="取消" onPress={close} />
             <Btn label="添加" kind="primary" disabled={!name().trim()} onPress={submit} />
+          </SheetFooter>
+        </View>
+      );
+    },
+  });
+}
+
+export function askRenameCategory(current: string) {
+  const name = signal(current);
+  openSheet({
+    width: 420,
+    render: (close) => {
+      const submit = () => {
+        const v = name().trim();
+        if (!v || v === current) return;
+        close();
+        void renameCategory(current, v);
+      };
+      return (
+        <View style={{ gap: 10 }}>
+          <SheetTitle title={`重命名分类「${current}」`} text="分类中的笔记（包括回收站中的）会一并移到新名称下。" />
+          <TextBox testID="category-rename" value={name()} onChange={(v) => name.set(v)} autoFocus onSubmit={submit} />
+          <SheetFooter>
+            <Btn label="取消" onPress={close} />
+            <Btn testID="category-rename-confirm" label="重命名" kind="primary" disabled={!name().trim() || name().trim() === current} onPress={submit} />
           </SheetFooter>
         </View>
       );

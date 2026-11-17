@@ -241,6 +241,62 @@ impl Document {
         }
         Ok(count)
     }
+
+    /// Renames a note category: every note in it, including trashed ones, moves to the
+    /// new name. Non-note items are untouched; categories stay sorted by name.
+    pub fn rename_note_category(
+        &mut self,
+        from: &str,
+        to: &str,
+        updated_at: &str,
+    ) -> Result<usize> {
+        let to = to.trim();
+        if from.is_empty()
+            || to.is_empty()
+            || to.chars().count() > 80
+            || to.chars().any(char::is_control)
+            || chrono::DateTime::parse_from_rfc3339(updated_at).is_err()
+        {
+            return Err(VaultError::InvalidData);
+        }
+        let categories = self.note_categories();
+        if !categories.iter().any(|value| value == from) {
+            return Err(VaultError::InvalidData);
+        }
+        // A different category may not take the new name; changing only letter case is allowed.
+        if categories
+            .iter()
+            .any(|value| value != from && value.to_lowercase() == to.to_lowercase())
+        {
+            return Err(VaultError::AlreadyExists);
+        }
+        if from == to {
+            return Ok(0);
+        }
+        for item in self
+            .items
+            .iter()
+            .filter(|item| item["type"] == "secureNote" && item["category"] == from)
+        {
+            crate::authorize_item_write(self, item)?;
+        }
+        let renamed = categories
+            .into_iter()
+            .map(|value| if value == from { to.to_owned() } else { value })
+            .collect();
+        self.store_note_categories(renamed)?;
+        let mut count = 0;
+        for item in self
+            .items
+            .iter_mut()
+            .filter(|item| item["type"] == "secureNote" && item["category"] == from)
+        {
+            item["category"] = json!(to);
+            item["updatedAt"] = json!(updated_at);
+            count += 1;
+        }
+        Ok(count)
+    }
 }
 
 fn merge_named(dest: &mut Vec<Value>, source: Vec<Value>) {

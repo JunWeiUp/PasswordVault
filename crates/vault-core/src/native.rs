@@ -487,6 +487,9 @@ impl DiskVault {
             "category-remove" => self.mutate(|doc| {
                 Ok(json!({"updated":doc.remove_note_category(string("name")?,string("time")?)?}))
             }),
+            "category-rename" => self.mutate(|doc| {
+                Ok(json!({"updated":doc.rename_note_category(string("name")?,string("to")?,string("time")?)?}))
+            }),
             "save" => {
                 // A summary lacks note structures; writing it back would drop them.
                 if request["item"]["noteSummary"] == true {

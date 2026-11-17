@@ -1,6 +1,6 @@
 // Settings: one window-wide dialog with a section list. Sections that depend on
 // native services not yet ported say so instead of pretending to work.
-import { setColorScheme, signal, Storage, View, Scroll } from "nsh";
+import { Clipboard, openUrl, setColorScheme, signal, Storage, View, Scroll } from "nsh";
 import { Dialog } from "nsh/base";
 import { Menu } from "nsh/desktop";
 import { Platform } from "passwordvault/native";
@@ -9,6 +9,7 @@ import { Banner, Btn, Group, OptionRow, Row, T, TextBox, Toggle } from "./kit";
 import { call, errorText, saveSettings, settings, toast, vaultDirectory } from "./store";
 import { c, radius, TEXT_SCALES, textScale } from "./theme";
 import { appVersion } from "./version";
+import { CLIPBOARD_CHOICES, clipboardSeconds, setClipboardSeconds, setTrayIcon, trayIcon } from "./preferences";
 import { SHORTCUT_LABEL, setShortcut, shortcut, shortcutAvailable, type ShortcutChoice } from "./hotkey";
 import { isMac, desktopCapabilities, biometricAvailability, biometricEnabled, biometricError, disableBiometrics, enableBiometrics } from "./native";
 import { openSheet, SheetFooter, SheetTitle } from "./kit";
@@ -81,7 +82,15 @@ function General() {
       </Group>
       <GroupTitle text="剪贴板" />
       <Group>
-        <OptionRow title="自动清除剪贴板" note="清除前确认内容未被替换"><T size={12.5} color={c().muted}>30 秒</T></OptionRow>
+        <OptionRow title="自动清除剪贴板" note="清除前确认内容未被替换；只影响本机">
+          <Picker value={String(clipboardSeconds())} options={CLIPBOARD_CHOICES.map(([v, l]) => [String(v), l] as [string, string])}
+            onChange={(v) => setClipboardSeconds(Number(v))} />
+        </OptionRow>
+      </Group>
+      <GroupTitle text={isMac ? "菜单栏" : "通知区域"} />
+      <Group>
+        <Toggle title={isMac ? "在菜单栏显示图标" : "在通知区域显示图标"} note="提供快速访问、锁定和打开主窗口；图标菜单不显示任何资料"
+          checked={trayIcon()} onChange={setTrayIcon} />
       </Group>
       <If when={desktopCapabilities.globalHotkeys}><GroupTitle text="快速访问" />
       <Group>
@@ -205,9 +214,31 @@ function About() {
         <T size={12} color={c().muted}>加密核心 vault-core · SQLCipher</T>
       </Group>
       <View style={{ height: 12 }} />
+      <Group>
+        <OptionRow title="发布说明" note="在 GitHub Releases 查看各版本变更与下载">
+          <Btn label="打开" onPress={() => openLink(`${REPO}/releases`)} />
+        </OptionRow>
+        <OptionRow title="许可与第三方声明" note="MIT 许可；附带依赖的许可声明">
+          <Btn label="打开" onPress={() => openLink(`${REPO}/blob/main/config/release/THIRD_PARTY_NOTICES.md`)} />
+        </OptionRow>
+        <OptionRow title="隐私说明" note="资料只在本机加密保存；只在你主动操作（同步、备份、泄露检查）时联网，不收集使用数据">
+          <Btn label="查看" onPress={() => openLink(`${REPO}#readme`)} />
+        </OptionRow>
+        <OptionRow title="复制诊断信息" note="仅包含版本与系统信息，不含资料、路径或账号">
+          <Btn testID="copy-diagnostics" label="复制" onPress={() => void Clipboard.writeText(diagnostics()).then(() => toast("已复制诊断信息"), () => toast("无法写入剪贴板"))} />
+        </OptionRow>
+      </Group>
+      <View style={{ height: 12 }} />
       <Banner tone="warn" title="尚未完成独立安全审计">请保留加密备份；完整限制见 docs/security/SECURITY_MODEL.md。</Banner>
     </>
   );
+}
+
+const REPO = "https://github.com/JunWeiUp/PasswordVault";
+const openLink = (url: string) => void openUrl(url).catch(() => toast("无法打开链接"));
+/** Version and platform only: never vault content, paths, accounts or device names. */
+export function diagnostics(): string {
+  return [`PasswordVault ${appVersion}`, `Platform: ${isMac ? "macOS" : "Windows"}`, "UI: Native Shell 0.5.1"].join("\n");
 }
 
 const PAGES: Record<Tab, () => any> = {

@@ -1,7 +1,7 @@
 // PasswordVault for Mac — Native Shell preview. The UI follows
 // docs/design/macos-app; Mac vault commands run in the headless Rust owner.
 import { effect, keymap, mount, platform, signal, View } from "nsh";
-import { Menu, Window } from "nsh/desktop";
+import { Menu, Tray, Window } from "nsh/desktop";
 import { Detail } from "./ui/Detail";
 import { ItemList, newInCurrent, searchFocus } from "./ui/ItemList";
 import { closeSheet, SheetHost, sheetOpen, T, copySecret } from "./ui/kit";
@@ -25,6 +25,7 @@ import { connectBrowser } from "./ui/browser";
 import { pollEvery } from "./ui/polling";
 import { WindowCtl } from "passwordvault/native";
 import { AiApprovalHost } from "./ui/ai";
+import { loadPreferences, trayIcon } from "./ui/preferences";
 
 // NSH 0.5 replaced the static window API with WindowRef; `Window.get` is reactive,
 // so this applies once the main window exists.
@@ -139,6 +140,23 @@ async function quitApplication() {
   try { await WindowCtl.quit(); } catch { toast("退出未完成，请重试。"); }
 }
 onLock(() => closeSheet());
+void loadPreferences();
+// Menu bar / notification-area icon. Its menu never shows vault content.
+effect(() => {
+  if (!trayIcon()) { Tray.set(null); return; }
+  const on = unlocked();
+  const show = () => { if (!windowShown()) WindowCtl.show(); Window.get("main")?.focus(); };
+  Tray.set({
+    tooltip: "PasswordVault",
+    menu: [
+      { label: "打开 PasswordVault", onSelect: show },
+      { label: "快速访问", disabled: !on, onSelect: () => { show(); if (!quickAccessOpen()) openQuickAccess(); } },
+      { label: "锁定", disabled: !on, onSelect: () => void lock() },
+      { type: "separator" },
+      { label: "退出 PasswordVault", onSelect: () => void quitApplication() },
+    ],
+  });
+});
 void Storage.getItem("textScale").then((v) => {
   const n = Number(v);
   if (TEXT_SCALES.some(([s]) => s === n)) textScale.set(n);

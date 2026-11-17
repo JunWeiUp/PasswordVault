@@ -1,14 +1,14 @@
 import { isMac, desktopCapabilities } from "./native";
 // The left column: destinations, note categories, tools, sync status, settings and lock.
 import { Scroll, Text, View } from "nsh";
-import { titleBar } from "nsh/desktop";
+import { Menu, titleBar } from "nsh/desktop";
 import { Icon, type IconName } from "./icons";
 import { IconBtn, T } from "./kit";
 import {
   audit, countIn, dest, go, items, lock, noteCategories, noteCategory, query, type Dest,
 } from "./store";
 import { c, fs, layout } from "./theme";
-import { askCategory, askRemoveCategory } from "./sheets";
+import { askCategory, askRemoveCategory, askRenameCategory } from "./sheets";
 import { openQuickAccess } from "./QuickAccess";
 import { openSettings } from "./Settings";
 import { appVersion } from "./version";
@@ -96,7 +96,10 @@ export function Sidebar() {
                 {(cat) => (
                   <NavRow indent icon="folder" label={cat()} active={noteCategory() === cat()} count={notesCount(cat())}
                     onPress={() => { noteCategory.set(cat()); query.set(""); }}
-                    onContextMenu={() => askRemoveCategory(cat())} />
+                    onContextMenu={(e: any) => void Menu.popup([
+                      { label: "重命名…", onSelect: () => askRenameCategory(cat()) },
+                      { label: "删除分类…", onSelect: () => askRemoveCategory(cat()) },
+                    ], e?.pagePosition)} />
                 )}
               </Each>
             </If>

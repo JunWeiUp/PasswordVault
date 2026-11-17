@@ -13,6 +13,7 @@ import { c, layout, MONO, fs } from "./theme";
 import { secondsLeft, TotpText } from "./totp";
 import { deviceSubtitle, deviceTitle, importDeviceDocuments, newDevice } from "./devices";
 import { askAddCode } from "./entries/CodeDetail";
+import { SORT_LABEL, setSortMode, sortMode, type SortMode } from "./preferences";
 
 export const searchFocus = signal(0);
 const itemTitle = (item: Item) => (item.type === "device" ? deviceTitle(item) : item.title || "未命名");
@@ -225,6 +226,14 @@ export function ItemList() {
         <View desktop={{ windowDrag: false }} style={{ flexDirection: "row", alignItems: "center", gap: 4, marginTop: 10, minHeight: 24 }}>
           {/* Rebuilt per destination: a component body runs only once. */}
           <Each of={[dest()]} key={(d) => d}>{() => <Chips />}</Each>
+          <View style={{ flex: 1 }} />
+          <View role="button" testID="sort-menu" accessibilityLabel={`排序：${SORT_LABEL[sortMode()]}`} tooltip="排序方式（置顶项目始终在前）"
+            onPress={(e: any) => void Menu.popup((Object.keys(SORT_LABEL) as SortMode[]).map((m) => ({ label: SORT_LABEL[m], checked: sortMode() === m, onSelect: () => setSortMode(m) })), e?.pagePosition)}
+            style={{ flexDirection: "row", alignItems: "center", gap: 3, paddingHorizontal: 6, paddingVertical: 4, borderRadius: 6, cursor: "pointer" }}
+            hoverStyle={{ backgroundColor: c().field }}>
+            <T size={11.5} color={c().muted}>{SORT_LABEL[sortMode()]}</T>
+            <Icon name="chevd" size={10} tint={c().faint} />
+          </View>
         </View>
       </View>
       <Scroll style={{ flex: 1 }} contentStyle={{ paddingHorizontal: 8, paddingBottom: 10 }}>

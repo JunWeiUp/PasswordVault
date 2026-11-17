@@ -436,6 +436,11 @@ impl BrowserVault {
             "category-remove" => Ok(
                 json!({"updated":self.document.remove_note_category(text("name")?,text("time")?)?}),
             ),
+            "category-rename" => Ok(json!({"updated":self.document.rename_note_category(
+                text("name")?,
+                text("to")?,
+                text("time")?
+            )?})),
             "save" => {
                 let mut item = self.peer_prepare_save(&request["item"])?;
                 preserve_passkeys_for_edit(&self.document, &mut item)?;
