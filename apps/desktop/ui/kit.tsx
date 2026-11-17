@@ -64,9 +64,10 @@ export function Btn(props: {
   );
 }
 
-export function IconBtn(props: { icon: IconName; label: string; onPress?: (e?: any) => void; tint?: string; fill?: boolean; size?: number; disabled?: boolean }) {
+export function IconBtn(props: { icon: IconName; label: string; onPress?: (e?: any) => void; tint?: string; fill?: boolean; size?: number; disabled?: boolean; testID?: string }) {
   return (
     <View
+      testID={props.testID}
       role="button"
       accessibilityLabel={props.label}
       tooltip={props.label}

@@ -71,11 +71,47 @@ impl Files {
             .await
             .map_err(|_| "Storage".to_string())?
     }
+    /// Writes a user-requested note export (`.md` or `.html`) to a path the user chose.
+    /// The file is created new with owner-only permissions; existing files are refused.
+    pub async fn save_note_export(path: String, contents: String) -> Result<(), String> {
+        blocking(move || save_note_export(&path, &contents))
+            .await
+            .map_err(|_| "Storage".to_string())?
+    }
+}
+
+const NOTE_EXPORT_LIMIT: usize = 16 * 1024 * 1024;
+fn save_note_export(path: &str, contents: &str) -> Result<(), String> {
+    let path = std::path::Path::new(path);
+    let extension = path.extension().and_then(|e| e.to_str()).map(str::to_ascii_lowercase);
+    if !matches!(extension.as_deref(), Some("md" | "markdown" | "html" | "htm"))
+        || !path.is_absolute()
+        || contents.len() > NOTE_EXPORT_LIMIT
+    {
+        return Err("InvalidData".into());
+    }
+    crate::backup::write_new(path, contents.as_bytes())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn note_exports_only_write_new_markdown_or_html_files() {
+        let root = std::env::temp_dir().join(format!("pv-note-export-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&root).unwrap();
+        struct Cleanup(std::path::PathBuf);
+        impl Drop for Cleanup { fn drop(&mut self) { let _ = std::fs::remove_dir_all(&self.0); } }
+        let _cleanup = Cleanup(root.clone());
+        let md = root.join("note.md");
+        save_note_export(md.to_str().unwrap(), "# hi").unwrap();
+        assert_eq!(std::fs::read_to_string(&md).unwrap(), "# hi");
+        assert_eq!(save_note_export(md.to_str().unwrap(), "again").unwrap_err(), "AlreadyExists");
+        for bad in ["note.txt", "note", "relative.md"] {
+            let path = if bad == "relative.md" { bad.to_string() } else { root.join(bad).to_string_lossy().into_owned() };
+            assert!(save_note_export(&path, "x").is_err(), "{bad}");
+        }
+    }
     #[test]
     fn device_documents_are_bounded_utf8_inert_and_preserved() {
         let root = std::env::temp_dir().join(format!("pv-device-import-{}", uuid::Uuid::new_v4()));

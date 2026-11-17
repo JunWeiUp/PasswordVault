@@ -18,6 +18,7 @@ import { formatCode, secondsLeft, useCode } from "./totp";
 import { askGeneratedPassword } from "./Tools";
 import { RichNoteEditor } from "./notes/RichNoteEditor";
 import { openItemHistory } from "./history";
+import { askExportNote } from "./notes/export";
 import { DeviceDetail, deviceTitle } from "./devices";
 import { AccountDetail } from "./entries/AccountDetail";
 import { CodeDetail } from "./entries/CodeDetail";
@@ -44,7 +45,7 @@ function Toolbar(props: { item: Item; extra?: JSX.Element }) {
           <>
             <IconBtn icon="star" label={item().isFavorite ? "取消收藏" : "收藏"} fill={item().isFavorite} tint={item().isFavorite ? "#e3a008" : undefined} onPress={() => toggleFavorite(item())} />
             {props.extra}
-            <IconBtn icon="more" label="更多操作" onPress={() => void Menu.popup(moreMenu(item()))} />
+            <IconBtn testID="detail-more" icon="more" label="更多操作" onPress={() => void Menu.popup(moreMenu(item()))} />
           </>
         }>
           <Btn testID="restore" label="恢复" icon="history" onPress={() => void restore(item())} />
@@ -63,6 +64,10 @@ function moreMenu(item: Item) {
     ...(item.passwordHistory?.length ? [{ label: "密码历史…", onSelect: () => showPasswordHistory(item) }] : []),
     { label: "版本历史…", onSelect: () => openItemHistory(item) },
     { label: "复制条目链接", onSelect: () => copySecret(`passwordvault://item/${item.id}`, "条目链接") },
+    ...(item.type === "secureNote" ? [
+      { label: "另存为 Markdown…", onSelect: () => askExportNote(item, "markdown") },
+      { label: "另存为 HTML…", onSelect: () => askExportNote(item, "html") },
+    ] : []),
     { type: "separator" as const },
     ...rowMenu(item).filter((m: any) => m.label === "置顶" || m.label === "取消置顶"),
     { label: "移到回收站…", shortcut: "mod+backspace", onSelect: () => askTrash(item) },

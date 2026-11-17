@@ -1,9 +1,10 @@
 // Quick Access: a keyboard-first search panel over the window. Closes on lock.
-import { computed, signal, View } from "nsh";
+import { computed, keymap, openUrl, signal, View } from "nsh";
 import { Dialog, Input } from "nsh/base";
 import { Icon } from "./icons";
 import { copySecret, T } from "./kit";
-import { items, onLock, reveal, totpCode, TYPE_NAME, type Item } from "./store";
+import { items, onLock, reveal, toast, totpCode, TYPE_NAME, type Item } from "./store";
+import { websites } from "./entries/model";
 import { Tile } from "./ItemList";
 import { deviceSubtitle, deviceTitle } from "./devices";
 import { searchItems } from "./search";
@@ -36,6 +37,35 @@ async function primary(item: Item | undefined) {
   else reveal(item);
 }
 
+/** ⌘C copies the username, ⌘O opens the first website, ⌘↩ shows the item in the main window. */
+async function secondary(action: "username" | "website" | "reveal") {
+  const item = results()[index()];
+  if (!item) return;
+  if (action === "username") {
+    if (!item.username) return toast("这个项目没有用户名");
+    open.set(false);
+    await copySecret(item.username, "用户名");
+  } else if (action === "website") {
+    const site = websites(String(item.url ?? ""))[0];
+    if (!site) return toast("这个项目没有网站");
+    open.set(false);
+    await openUrl(site).catch(() => toast("无法打开该网址"));
+  } else {
+    open.set(false);
+    reveal(item);
+  }
+}
+
+function QuickKeys() {
+  // Bound while the panel is open; removed with it. "always" lets them work in the search field.
+  keymap.bind({
+    "mod+c": () => void secondary("username"),
+    "mod+o": () => void secondary("website"),
+    "mod+enter": () => void secondary("reveal"),
+  }, { when: "always" });
+  return null;
+}
+
 function key(e: { key: string }) {
   const n = results().length;
   if (e.key === "ArrowDown") index.set(Math.min(n - 1, index() + 1));
@@ -46,6 +76,8 @@ function key(e: { key: string }) {
 export function QuickAccessHost() {
   return (
     <If when={open()}>
+      <>
+      <QuickKeys />
       <Dialog open animation="fade" onOpenChange={({ open: visible }) => !visible && open.set(false)} backdropStyle={{ backgroundColor: "rgba(13,23,40,0.2)" }}
         style={{ alignSelf: "center", marginTop: 120, width: 640, backgroundColor: c().surface, borderRadius: radius.sheet, borderWidth: 1, borderColor: c().line, overflow: "hidden" }}>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 18, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: c().line }}>
@@ -78,13 +110,15 @@ export function QuickAccessHost() {
           </If>
         </View>
         <View style={{ flexDirection: "row", gap: 14, paddingHorizontal: 16, paddingVertical: 9, borderTopWidth: 1, borderTopColor: c().line }}>
-          <T size={11} color={c().muted}>↩ 复制凭据或打开项目</T>
-          <T size={11} color={c().muted}>↑↓ 选择</T>
-          <T size={11} color={c().muted}>esc 关闭</T>
+          <T size={11} color={c().muted}>↩ 复制密码/验证码</T>
+          <T size={11} color={c().muted}>{keymap.label("mod+c")} 复制用户名</T>
+          <T size={11} color={c().muted}>{keymap.label("mod+o")} 打开网站</T>
+          <T size={11} color={c().muted}>{keymap.label("mod+enter")} 在主窗口显示</T>
           <View style={{ flex: 1 }} />
           <T size={11} color={c().muted}>锁定时自动关闭</T>
         </View>
       </Dialog>
+      </>
     </If>
   );
 }

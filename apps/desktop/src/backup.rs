@@ -249,7 +249,7 @@ fn listing(base: &Url, xml: &str) -> Result<String, String> {
     }
     Ok(json!(rows).to_string())
 }
-fn write_new(path: &Path, bytes: &[u8]) -> Result<(), String> {
+pub(crate) fn write_new(path: &Path, bytes: &[u8]) -> Result<(), String> {
     #[cfg(unix)]
     use std::os::unix::fs::OpenOptionsExt;
     let parent = path.parent().ok_or("InvalidData")?;
