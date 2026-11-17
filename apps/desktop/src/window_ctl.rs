@@ -13,6 +13,20 @@ impl WindowCtl {
     pub fn install() {
         imp::install();
     }
+    /// Keeps every app window out of screenshots, screen recording and screen sharing
+    /// (macOS `NSWindowSharingNone`). Windows reports false until it is verified there.
+    pub fn set_capture_protection(on: bool) -> bool {
+        #[cfg(target_os = "macos")]
+        {
+            imp::set_capture_protection(on);
+            true
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            let _ = on;
+            false
+        }
+    }
     /// Hides the main window (⌘W).
     pub fn hide() {
         #[cfg(target_os = "macos")]
@@ -28,6 +42,7 @@ impl WindowCtl {
                     .activateIgnoringOtherApps(true);
             }
             window.makeKeyAndOrderFront(None);
+            imp::refresh_capture_protection();
         });
     }
     /// Called only after the interface confirms all drafts were saved.
@@ -139,6 +154,33 @@ mod imp {
             };
             if let Some(window) = main_window(mtm) {
                 f(&window);
+            }
+        });
+        // SAFETY: the block touches AppKit only after checking it runs on the main thread.
+        unsafe { NSOperationQueue::mainQueue().addOperationWithBlock(&block) };
+    }
+
+    static CAPTURE_PROTECTED: AtomicBool = AtomicBool::new(false);
+
+    /// Applies the sharing type to every window now; windows opened later get it from
+    /// `refresh_capture_protection`, which `show` calls.
+    pub fn set_capture_protection(on: bool) {
+        CAPTURE_PROTECTED.store(on, Ordering::SeqCst);
+        refresh_capture_protection();
+    }
+
+    pub fn refresh_capture_protection() {
+        let block = block2::RcBlock::new(|| {
+            let Some(mtm) = MainThreadMarker::new() else {
+                return;
+            };
+            let sharing = if CAPTURE_PROTECTED.load(Ordering::SeqCst) {
+                objc2_app_kit::NSWindowSharingType::None
+            } else {
+                objc2_app_kit::NSWindowSharingType::ReadOnly
+            };
+            for window in NSApplication::sharedApplication(mtm).windows().iter() {
+                window.setSharingType(sharing);
             }
         });
         // SAFETY: the block touches AppKit only after checking it runs on the main thread.

@@ -18,14 +18,14 @@ import { c, TEXT_SCALES, textScale } from "./ui/theme";
 import { Storage } from "nsh";
 import { Generator, Health } from "./ui/Tools";
 import { exportBackup } from "./ui/backup";
-import { isMac, onLockSignals } from "./ui/native";
+import { desktopCapabilities, isMac, onLockSignals, setCaptureProtection } from "./ui/native";
 import { startShortcut } from "./ui/hotkey";
 import { quickAccessOpen } from "./ui/QuickAccess";
 import { connectBrowser } from "./ui/browser";
 import { pollEvery } from "./ui/polling";
 import { WindowCtl } from "passwordvault/native";
 import { AiApprovalHost } from "./ui/ai";
-import { loadPreferences, trayIcon } from "./ui/preferences";
+import { hideFromCapture, loadPreferences, trayIcon } from "./ui/preferences";
 
 // NSH 0.5 replaced the static window API with WindowRef; `Window.get` is reactive,
 // so this applies once the main window exists.
@@ -141,6 +141,10 @@ async function quitApplication() {
 }
 onLock(() => closeSheet());
 void loadPreferences();
+effect(() => {
+  const on = hideFromCapture();
+  if (desktopCapabilities.captureProtection) setCaptureProtection(on);
+});
 // Menu bar / notification-area icon. Its menu never shows vault content.
 effect(() => {
   if (!trayIcon()) { Tray.set(null); return; }

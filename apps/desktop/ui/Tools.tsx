@@ -6,6 +6,7 @@ import {
   Btn, copySecret, Empty, Group, openSheet, Row, SheetFooter, SheetTitle, Strength, T, Toggle,
 } from "./kit";
 import { audit, createItem, edit, generatePassword, items, lock, onLock, refreshAudit, reveal, toast, type Item } from "./store";
+import { breachProgress, breachResults, checkable, startBreachCheck, stopBreachCheck } from "./breach";
 import { Tile } from "./ItemList";
 import { c, layout, MONO } from "./theme";
 
@@ -180,6 +181,48 @@ export function askGeneratedPassword(item: Item) {
 
 const healthTab = signal<"weak" | "reused" | "expired">("weak");
 
+/** Have I Been Pwned check: started by the user, results only for this session. */
+function BreachCheck() {
+  const exposedItems = () => checkable().filter((i) => { const r = breachResults()[i.id]; return r && "exposed" in r && r.exposed > 0; });
+  const failed = () => Object.values(breachResults()).filter((r) => "failed" in r).length;
+  const checked = () => Object.keys(breachResults()).length;
+  const progress = breachProgress;
+  return (
+    <Group style={{ paddingVertical: 14, gap: 8, marginBottom: 22 }}>
+      <Row gap={10} style={{ alignItems: "center" }}>
+        <View style={{ flex: 1, gap: 3 }}>
+          <T size={14} weight="600">已知泄露检查</T>
+          <T size={11.5} color={c().muted}>向 Have I Been Pwned 查询密码是否出现在公开泄露中。只发送密码 SHA-1 的前 5 位，不发送密码、完整哈希、账号或网站；需要你主动开始。</T>
+        </View>
+        <If when={progress()} else={<Btn testID="breach-start" label={checked() ? "重新检查" : "开始检查"} kind="primary" disabled={!checkable().length} onPress={() => void startBreachCheck()} />}>
+          <Btn testID="breach-stop" label="停止" onPress={stopBreachCheck} />
+        </If>
+      </Row>
+      <If when={progress()}>
+        <T size={12} color={c().muted}>正在检查 {progress()?.done ?? 0}/{progress()?.total ?? 0}…</T>
+      </If>
+      <If when={!progress() && checked()}>
+        <T size={12} color={exposedItems().length ? c().red : failed() ? c().orange : c().green}>
+          {exposedItems().length ? `${exposedItems().length} 个账号的密码出现在已知泄露中，请尽快更换。` : failed() ? "本次未发现泄露记录，但部分检查未完成，未完成不代表安全。" : "本次查询未发现泄露记录。"}
+          {failed() && exposedItems().length ? ` 另有 ${failed()} 个检查未完成。` : ""}
+        </T>
+        <Each of={exposedItems()} key={(i) => i.id}>
+          {(item) => (
+            <Row gap={12} style={{ paddingVertical: 8, borderTopWidth: 1, borderTopColor: c().line2 }}>
+              <Tile item={item()} />
+              <View style={{ flex: 1 }}>
+                <T size={13}>{item().title || "未命名"}</T>
+                <T size={11.5} color={c().red}>出现 {(breachResults()[item().id] as { exposed: number }).exposed.toLocaleString()} 次</T>
+              </View>
+              <Btn label="去更换" onPress={() => reveal(item())} />
+            </Row>
+          )}
+        </Each>
+      </If>
+    </Group>
+  );
+}
+
 export function Health() {
   effect(() => void refreshAudit());
   const list = (k: "weak" | "reused" | "expired") => items().filter((i) => !i.isDeleted && audit()[i.id]?.[k]);
@@ -206,6 +249,7 @@ export function Health() {
           {card("reused", "重复使用", "多个账号使用同一密码")}
           {card("expired", "需要更换", "超过条目设定的更换周期")}
         </Row>
+        <BreachCheck />
         <If when={list(healthTab()).length} else={<Empty icon="check" title="没有发现问题" text="这一类没有需要处理的密码。" />}>
           <Group style={{ paddingHorizontal: 0 }}>
             <Each of={list(healthTab())} key={(i) => i.id}>
