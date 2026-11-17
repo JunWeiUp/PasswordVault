@@ -26,8 +26,11 @@ import { pollEvery } from "./ui/polling";
 import { WindowCtl } from "passwordvault/native";
 import { AiApprovalHost } from "./ui/ai";
 
-Window.setTitle("PasswordVault");
-Window.setTitleBar({ style: isMac ? "hidden" : "default", height: 40 });
+// NSH 0.5 replaced the static window API with WindowRef; `Window.get` is reactive,
+// so this applies once the main window exists.
+effect(() => {
+  Window.get("main")?.set({ title: "PasswordVault", titleBar: { style: isMac ? "hidden" : "default", height: 40 } });
+});
 
 const unlocked = () => phase() === "unlocked";
 const DESTS: Dest[] = ["all", "accounts", "codes", "wallets", "notes", "devices"];
@@ -94,7 +97,7 @@ effect(() => {
         { label: "锁定", shortcut: "mod+l", disabled: !on, onSelect: () => void lock() },
       ],
     },
-    { label: "窗口", submenu: [{ role: "minimize" }, { role: "zoom" }, { type: "separator" }, { label: isMac ? "关闭窗口" : "最小化窗口", shortcut: "mod+w", onSelect: () => isMac ? WindowCtl.hide() : Window.minimize() }] },
+    { label: "窗口", submenu: [{ role: "minimize" }, { role: "zoom" }, { type: "separator" }, { label: isMac ? "关闭窗口" : "最小化窗口", shortcut: "mod+w", onSelect: () => isMac ? WindowCtl.hide() : Window.get("main")?.minimize() }] },
   ]);
 });
 

@@ -29,41 +29,30 @@ def windows_fixture(path, version, machine=0x8664, extra=None):
 
 
 class NativeReleaseTests(unittest.TestCase):
-    def test_macos_build_with_and_without_private_signing_config(self):
-        # Execute the real script with inert build tools, including on the
-        # system Bash 3.2 used by hosted Mac runners. No real vault or keychain.
-        with tempfile.TemporaryDirectory(prefix='pv signing fixture ') as temp:
+    def test_macos_check_runs_the_nsh_desktop_client(self):
+        # Execute the real script with inert tools; the legacy SwiftUI client is gone.
+        with tempfile.TemporaryDirectory(prefix='pv macos check ') as temp:
             root = Path(temp)
             (root / 'tool').mkdir()
-            (root / 'tool/check_native.sh').write_bytes((ROOT / 'tool/check_native.sh').read_bytes())
-            (root / 'tool/cargo_fork_env.sh').write_bytes((ROOT / 'tool/cargo_fork_env.sh').read_bytes())
+            for name in ['check_native.sh', 'cargo_fork_env.sh']:
+                (root / 'tool' / name).write_bytes((ROOT / 'tool' / name).read_bytes())
+            capture = root / 'arguments.txt'
+            (root / 'tool/nsh_mac.sh').write_text('printf \'%s\\n\' "$@" > "$PV_TEST_ARGUMENTS"\n')
             tools = root / 'bin'
             tools.mkdir()
-            for name in ['cargo', 'npm', 'lipo', 'xcodegen']:
+            for name in ['cargo', 'npm']:
                 path = tools / name
-                path.write_text('#!/bin/sh\necho \"huacnlee/cargo fixture\"\nexit 0\n' if name == 'cargo' else '#!/bin/sh\nexit 0\n')
+                path.write_text('#!/bin/sh\necho "huacnlee/cargo fixture"\nexit 0\n' if name == 'cargo' else '#!/bin/sh\nexit 0\n')
                 path.chmod(0o755)
             rustup = tools / 'rustup'
             rustup.write_text('#!/bin/sh\nprintf \'%s/rustc\\n\' "$(dirname "$0")"\n')
             rustup.chmod(0o755)
-            builder = tools / 'xcodebuild'
-            builder.write_text('#!/bin/sh\nprintf \'%s\\n\' "$@" > "$PV_TEST_ARGUMENTS"\n')
-            builder.chmod(0o755)
-            capture = root / 'arguments.txt'
             env = {**os.environ, 'PATH': str(tools) + os.pathsep + os.defpath,
                    'PV_CARGO_FORK': str(tools / 'cargo'), 'PV_TEST_ARGUMENTS': str(capture)}
-            config = root / 'private/signing/macos/Signing.local.xcconfig'
-            for signed in [False, True]:
-                if signed:
-                    config.parent.mkdir(parents=True)
-                    config.write_text('// fictional signing configuration\n')
-                subprocess.run(['/bin/bash', 'tool/check_native.sh', 'macos'], cwd=root, env=env,
-                               check=True, capture_output=True, text=True)
-                args = capture.read_text().splitlines()
-                self.assertEqual('-xcconfig' in args, signed)
-                if signed:
-                    self.assertEqual(args[args.index('-xcconfig') + 1], 'private/signing/macos/Signing.local.xcconfig')
-                self.assertEqual(args[-1], 'build')
+            subprocess.run(['/bin/bash', 'tool/check_native.sh', 'macos'], cwd=root, env=env,
+                           check=True, capture_output=True, text=True)
+            self.assertEqual(capture.read_text().splitlines(), ['check'])
+            self.assertFalse((root / 'apps/macos-legacy').exists())
 
     def test_coordinated_versions_and_wrong_tag(self):
         data = validate_versions(ROOT)
@@ -73,7 +62,7 @@ class NativeReleaseTests(unittest.TestCase):
 
     def test_mismatched_browser_lock_is_rejected(self):
         files = ['native-version.json', 'apps/browser/package.json', 'apps/browser/package-lock.json',
-                 'apps/desktop/nsh.json', 'apps/macos-legacy/Info.plist', 'apps/android/app/build.gradle.kts', 'apps/ios/project.yml']
+                 'apps/desktop/nsh.json', 'apps/android/app/build.gradle.kts', 'apps/ios/project.yml']
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             for name in files:
@@ -92,7 +81,7 @@ class NativeReleaseTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             for name in ['native-version.json', 'apps/browser/package.json', 'apps/browser/package-lock.json',
-                         'apps/desktop/nsh.json', 'apps/macos-legacy/Info.plist', 'apps/android/app/build.gradle.kts', 'apps/ios/project.yml']:
+                         'apps/desktop/nsh.json', 'apps/android/app/build.gradle.kts', 'apps/ios/project.yml']:
                 target = root / name
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_bytes((ROOT / name).read_bytes())
@@ -222,7 +211,8 @@ class NativeReleaseTests(unittest.TestCase):
             output = root / 'release_assets'
             downloads = sorted(path.name for path in output.iterdir() if path.suffix in ('.apk', '.zip'))
             self.assertEqual(downloads, sorted(public_asset_names(tag)))
-            self.assertEqual(len(downloads), 6)
+            self.assertEqual(len(downloads), 5)
+            self.assertFalse(any("-Web-" in name for name in downloads))
             self.assertFalse(any('source.zip' in name or 'x86-' in name for name in downloads))
             self.assertTrue((output / 'SHA256SUMS').is_file())
 

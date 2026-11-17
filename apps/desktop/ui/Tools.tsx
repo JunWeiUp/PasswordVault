@@ -3,7 +3,7 @@ import { shortcutLabel } from "./shortcut-label";
 import { effect, Scroll, signal, View } from "nsh";
 import { Icon } from "./icons";
 import {
-  Banner, Btn, copySecret, Empty, Group, openSheet, Row, SheetFooter, SheetTitle, Strength, T, Toggle,
+  Btn, copySecret, Empty, Group, openSheet, Row, SheetFooter, SheetTitle, Strength, T, Toggle,
 } from "./kit";
 import { audit, createItem, edit, generatePassword, items, lock, onLock, refreshAudit, reveal, toast, type Item } from "./store";
 import { Tile } from "./ItemList";
@@ -206,7 +206,6 @@ export function Health() {
           {card("reused", "重复使用", "多个账号使用同一密码")}
           {card("expired", "需要更换", "超过条目设定的更换周期")}
         </Row>
-        <Banner tone="info" title="在线泄露检查尚未接入此预览版">Have I Been Pwned 检查（默认关闭、需你主动开始）仍由 SwiftUI 版提供。</Banner>
         <If when={list(healthTab()).length} else={<Empty icon="check" title="没有发现问题" text="这一类没有需要处理的密码。" />}>
           <Group style={{ paddingHorizontal: 0 }}>
             <Each of={list(healthTab())} key={(i) => i.id}>

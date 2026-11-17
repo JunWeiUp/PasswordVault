@@ -27,15 +27,10 @@ def classify(paths):
             selected |= {'android', 'ios'}
         elif path.startswith('apps/shared/note-editor/'):
             selected |= {'macos', 'ios', 'android', 'browser'}
-        elif path.startswith('services/'):
-            continue  # Service builds are explicitly requested in the native workflow.
         elif path.startswith('apps/desktop/'):
             selected |= {'macos', 'windows'}
-        elif path.startswith('apps/macos-legacy/'):
-            if path.startswith('apps/macos-legacy/Resources/'):
-                selected |= {'macos', 'browser'}
-            elif path in {'apps/macos-legacy/Sources/Models.swift', 'apps/macos-legacy/Sources/WebDAVListing.swift', 'apps/macos-legacy/Tests/WebDAVListingTests.swift'}:
-                selected |= {'ios'}
+        elif path == 'apps/browser/identity.json':
+            selected |= {'macos', 'browser'}  # The Mac bundle embeds it as BrowserIdentity.json.
         elif path.startswith('apps/'):
             component = path.split('/')[1]
             selected |= {component} if component in NATIVE else set(SCOPES)
@@ -66,7 +61,7 @@ def select(event_name, event, git_diff):
 
 
 def requested(component):
-    allowed = set(SCOPES) | {'services'}
+    allowed = set(SCOPES)
     if component == 'release':
         return {'macos', 'windows', 'ios', 'browser'}  # Android is signed once by the caller.
     if component == 'all':
@@ -80,7 +75,7 @@ def main():
     if '--requested' in sys.argv:
         selected = requested(os.environ['CI_COMPONENT'])
         with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
-            for scope in (*SCOPES, 'services'):
+            for scope in SCOPES:
                 output.write(f'{scope}={str(scope in selected).lower()}\n')
         print('Requested components: ' + ', '.join(sorted(selected)))
         return

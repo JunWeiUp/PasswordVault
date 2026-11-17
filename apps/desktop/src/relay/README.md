@@ -115,7 +115,7 @@ Native APIs from `passwordvault/native`:
 ## Deliberate compatibility gates
 
 - Legacy manually imported credentials without a verified group chain require
-  explicit migration in the existing SwiftUI app (`LegacyRelayResetRequired`), or
+  clearing the local enrollment (`LegacyRelayResetRequired`), or
   the confirmed local-only reset before fresh enrollment. That reset does not claim
   server-side credential revocation.
   This port never silently bootstraps trust from a server or replaces that identity.

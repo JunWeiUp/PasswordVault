@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")/.."
-rust_bin="$(dirname "$(rustup which --toolchain 1.96.0 rustc)")"
-export RUSTUP_TOOLCHAIN=1.96.0
+rust_bin="$(dirname "$(rustup which --toolchain 1.98.0 rustc)")"
+export RUSTUP_TOOLCHAIN=1.98.0
 source tool/cargo_fork_env.sh
 case "$(uname -s)" in
   Darwin) host_library=libvault_core.dylib; ndk_host=darwin-x86_64 ;;

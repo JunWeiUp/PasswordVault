@@ -14,9 +14,9 @@
 
 原生客户端目前为**开发预览版**。[平台状态](#选择你的工作空间)与[安全模型](docs/security/SECURITY_MODEL.md)记录当前限制，独立安全审查仍待完成。
 
-**下载原生版 2.5.4：** [GitHub Release](https://github.com/JunWeiUp/PasswordVault/releases/tag/v2.5.4) · [安装方式与签名限制](docs/releases/NATIVE-RELEASE-NOTES.md)。包含 Android、Mac、Windows x64、解压式插件、Web 和 iOS 模拟器包，各一个。
+**下载原生版 2.5.4：** [GitHub Release](https://github.com/JunWeiUp/PasswordVault/releases/tag/v2.5.4) · [安装方式与签名限制](docs/releases/NATIVE-RELEASE-NOTES.md)。包含 Android、Mac、Windows x64、解压式插件、Web 和 iOS 模拟器包，各一个。后续版本改为发布五个包：独立 Web 包已停用，由浏览器插件替代。
 
-**Mac 客户端说明：** 当前开发与本机日常版本位于 [`apps/desktop`](apps/desktop/README.md)（NSH 0.4.0，macOS 14+ / Apple Silicon）。[`apps/macos-legacy`](apps/macos-legacy/README.md) 是保留的旧版 SwiftUI Mac 客户端；下文涉及 macOS 13+/Intel 与旧协调发布的说明属于该旧版。
+**Mac 客户端说明：** [`apps/desktop`](apps/desktop/README.md) 是唯一的 Mac 客户端（NSH 0.5.1，macOS 14+ / Apple Silicon），与 Windows 共用源码。旧版 SwiftUI Mac 客户端已从源码中移除，可在 Git 历史中找到。
 Mac 开发版本使用独立 Rust 后台服务。关闭窗口会先保存草稿并退出界面；已授权的浏览器查询和锁定管理继续运行。重新打开应用可编辑，选择“退出”则停止两个进程。验证方式和限制见[桌面指南](apps/desktop/README.md)。
 
 
@@ -75,23 +75,20 @@ Mac 开发版本使用独立 Rust 后台服务。关闭窗口会先保存草稿�
 | --- | --- | --- |
 | **Mac · 当前 NSH** | macOS 14+ / Apple Silicon，官方原生富文本编辑器 | [当前 Mac](apps/desktop/README.md) |
 | **Windows · Desktop** | 共用 NSH 界面与 Rust 密码库，x64 构建 | [Windows 构建说明](tool/windows-desktop/README.md) |
-| **Mac · 旧版 SwiftUI** | macOS 13+ / Apple Silicon 与 Intel，兼容与回退保留 | [旧 Mac 说明](apps/macos-legacy/README.md) |
 | **Android · 8.0+** | 原生移动预览版；Android 8+ 支持系统自动填充 | [Android 指南](apps/android/README.md) |
 | **iPhone / iPad · iOS 16+** | 原生模拟器预览；签名设备分发待完成 | [iOS 指南](apps/ios/README.md) |
 | **Chromium 浏览器** | 解压安装插件，连接 Mac 或创建独立资料库 | [插件配置](#快速开始) |
 
-另有功能范围较小的独立 Web；Windows 已提供本次发行的原生 x64 便携包，Linux 暂无原生桌面客户端。以上是开发版本，尚未上架应用商店或扩展商店。独立资料库之间需要明确迁移数据，安装应用不会自动同步。
+Windows 已提供本次发行的原生 x64 便携包，Linux 暂无原生桌面客户端。以上是开发版本，尚未上架应用商店或扩展商店。独立资料库之间需要明确迁移数据，安装应用不会自动同步。
 
 <details>
 <summary>版本、平台验证与待完成的发行工作</summary>
 
 | 客户端 | 当前能力 | 验证与交付状态 |
 | --- | --- | --- |
-| **旧 Mac · SwiftUI** | SwiftUI 桌面应用，Apple Silicon/Intel 通用构建，本地 Tiptap 图文编辑器 | 开发版本。检查包含完整窗口连续回车与焦点、格式编辑、加密图片和备份失败路径。实体输入法覆盖、macOS 13/Intel 硬件、发行签名和公证仍待完成 |
 | **Android 8.0+** | Kotlin/Compose 预览；账号/验证码/钱包对齐旧版操作，笔记采用独立设计 | 已有模拟器 UI 和限定实机非 UI 检查；相机/指纹、旧设备与原生产签名升级仍待验收。系统自动填充需要 Android 8+ |
 | **iOS 16+ / iPadOS 16+** | SwiftUI 应用与 Password AutoFill 扩展 | 模拟器流程及设备架构编译通过；合格团队配置、签名设备安装和硬件验收仍未完成 |
 | **Chromium 扩展** | 轻量 MV3，Mac 连接和独立资料库，明确选择后填充/保存 | 已有限定 Edge/ego lite、DOM 和签名 helper 检查；更广的 Google Chrome/网站覆盖待完成，采用解压安装 |
-| **独立 Web** | 独立加密资料库、增删改查、TOTP、备份/导入和工具 | 共享/WebDAV/QR 界面、完整主题/语言对齐及旧 OPFS 自动迁移尚未完成 |
 | **Windows 桌面** | NSH x64 便携包，共用密码库、笔记与平台适配层 | Windows 11 ARM 虚拟机的真实窗口账号及富文本流程通过；浏览器/AI 本机通信、终端运行及更多硬件验收仍待完成 |
 | **Linux 桌面** | 无原生桌面客户端 | 尚未实现 |
 
@@ -101,7 +98,7 @@ Mac 开发版本使用独立 Rust 后台服务。关闭窗口会先保存草稿�
 
 ## 快速开始
 
-### 旧版 SwiftUI Mac 与浏览器
+### Mac 与浏览器
 
 先按[原生安装说明](docs/migrations/NATIVE-MIGRATION.md#build-and-launch)准备固定版本的 Rust、Node.js、Xcode 和 XcodeGen，再从仓库根目录运行：
 
@@ -113,9 +110,9 @@ bash tool/check_native.sh macos
 bash tool/check_native.sh browser
 ```
 
-`apps/desktop` 中的 Mac 客户端已使用 NSH 0.4.0 和官方原生 `RichEditor`。项目 Rust 构建脚本要求使用 [huacnlee/cargo](https://huacnlee.github.io/cargo/)，并保留固定的 rustc 工具链。详见 [Mac 构建说明](apps/desktop/README.md)。
+全部 Rust 代码使用同一个固定工具链（1.98.0）。`check_native.sh macos` 检查 `apps/desktop` 中的 Native Shell 桌面客户端，它使用 NSH 0.5.1 和官方原生 `RichEditor`。项目 Rust 构建脚本要求使用 [huacnlee/cargo](https://huacnlee.github.io/cargo/)，并使用固定的 rustc。详见 [Mac 构建说明](apps/desktop/README.md)。
 
-Mac 应用生成于 `apps/macos-legacy/build/Build/Products/Release/PasswordVault.app`，解压扩展位于 `apps/browser/dist`。Mac 构建会将编辑器及依赖许可一同本地打包。评估时请使用原生指南中的**隔离虚构资料库**流程。
+解压扩展位于 `apps/browser/dist`。评估时请使用原生指南中的**隔离虚构资料库**流程。
 
 1. 在 `chrome://extensions` 或 `edge://extensions` 开启开发者模式，加载 `apps/browser/dist`。
 2. 使用 Mac 模式时，先在 **Mac 设置 → 浏览器**登记连接，再在插件选择**连接 Mac**，并在 Mac 中确认配对。
@@ -161,7 +158,6 @@ Mac 应用生成于 `apps/macos-legacy/build/Build/Products/Release/PasswordVaul
 | 通行密钥与填充 | [Provider 信任边界与验证](docs/browser/PASSKEYS.md) |
 | 对等资料库 | [因果同步与家庭库权限](docs/architecture/PEER-LIBRARIES.md) |
 | 设备与服务 | [格式 7、兼容性、加密附件与同步门禁](docs/architecture/DEVICE-ITEMS.md) |
-| 临时分享 | [自托管加密分享服务](services/share/README.md) |
 | 平台证据 | [原生迁移](docs/migrations/NATIVE-MIGRATION.md) · [Mac 字段对齐](docs/platforms/MAC-MOBILE-PARITY.md) · [移动端验收](docs/platforms/MOBILE-IMPLEMENTATION.md) · [安卓对齐](docs/platforms/ANDROID-LEGACY-PARITY.md) · [浏览器验收](docs/browser/BROWSER-ACCEPTANCE.md) |
 | 进度 | [TODO](docs/product/TODO.md) · [更新记录](docs/releases/CHANGELOG.md) |
 
@@ -189,7 +185,5 @@ Native Shell Mac 客户端的设备资料支持导入 Python、Shell、JavaScrip
 [应用目录](apps/README.md) · [NSH Mac 工具](tool/macos-nsh/README.md)
 
 [2.5.4 安装说明](config/release/INSTALL.md) · [发行说明](config/release/NOTES.md)
-
-旧 SwiftUI Mac 仅保留源码与手动构建入口，已关闭独立 CI，本次不发布旧 Mac 包。
 
 CI 成本策略：普通 PR 仅做轻量仓库/密钥检查；原生构建仅手动或发布触发，测试默认关闭。主分支合并后不重复构建，详见 [CI 说明](docs/development/CI.md)。

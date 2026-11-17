@@ -11,10 +11,7 @@ import {
   status,
 } from "./client";
 import { NativeConnectionPanel } from "./NativeConnectionPanel";
-import { ShareDialog } from "./ShareDialog";
 import { RecoveryDialog, RecoveryPanel } from "./RecoveryPanel";
-import { PeerLibraries } from "./PeerLibraries";
-import { peerRelay } from "./peer-relay";
 import { PasskeyDetails } from "./PasskeyDetails";
 import { WebDAVPanel } from "./WebDAVPanel";
 import { RichNoteEditor, flushRichNote } from "./RichNoteEditor";
@@ -144,7 +141,6 @@ function App() {
   useLayoutEffect(() => {
     if (editing) changedDraft(editing);
   }, [editing?.id]);
-  const [sharing, setSharing] = useState<string>();
   const [history, setHistory] = useState<string>();
   const [recovering, setRecovering] = useState(false);
   const actionBusy = useRef(false);
@@ -152,7 +148,6 @@ function App() {
   const generation = useRef(0);
   useEffect(() => {
     if (!doc) {
-      setSharing(undefined);
       setHistory(undefined);
     } else setRecovering(false);
   }, [!!doc]);
@@ -174,15 +169,9 @@ function App() {
       pendingDraft.current = undefined;
       setRecoveredDraft(undefined);
       setEditing(undefined);
-      setSharing(undefined);
       setHistory(undefined);
     }
   }
-  useEffect(() => {
-    if (doc) void peerRelay.start(refresh).catch(() => {});
-    else peerRelay.stop();
-    return () => peerRelay.stop();
-  }, [!!doc]);
   async function run(work: () => Promise<unknown>) {
     if (actionBusy.current) return;
     actionBusy.current = true;
@@ -215,7 +204,6 @@ function App() {
             pendingDraft.current = undefined;
             setRecoveredDraft(undefined);
             setEditing(undefined);
-            setSharing(undefined);
             setHistory(undefined);
           }
         })
@@ -725,12 +713,6 @@ function App() {
                     {item.type === "secureNote" ? t("笔记") : t("条目")}
                   </span>
                   <div class="actions">
-                    <button
-                      disabled={item.isDeleted}
-                      onClick={() => setSharing(item.id)}
-                    >
-                      {t("分享")}
-                    </button>
                     <button onClick={() => setHistory(item.id)}>
                       {t("版本历史")}
                     </button>
@@ -920,15 +902,6 @@ function App() {
           {error}
           <button onClick={() => setError("")}>{t("关闭")}</button>
         </div>
-      )}
-      {doc && state?.unlocked && sharing && (
-        <ShareDialog
-          id={sharing}
-          settings={doc.settings}
-          close={() => setSharing(undefined)}
-          refresh={refresh}
-          copy={copy}
-        />
       )}
       {doc && state?.unlocked && history && (
         <HistoryDialog
@@ -1395,7 +1368,6 @@ function Tools({ section, doc, refresh, run, setToast, copy, openItem, readOnly 
         <SecurityCenterPanel items={doc.items} openItem={openItem} />
       ) : (
         <>
-          <details><summary>{t("对等同步与家庭库")}</summary><PeerLibraries onComplete={refresh} /></details>
           <p class="muted">
             {t("此资料库保存在当前浏览器中，请定期导出加密备份。")}
           </p>

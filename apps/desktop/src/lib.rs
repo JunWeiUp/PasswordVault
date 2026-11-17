@@ -61,7 +61,7 @@ fn native(registry: &mut Registry) {
 }
 
 /// Data directory used when no explicit directory is given. It is separate from
-/// the SwiftUI app's `PasswordVaultNative` directory so the preview never opens
+/// the daily `PasswordVaultNative` directory so the preview never opens
 /// a production vault by accident.
 
 fn vault_directory() -> PathBuf {

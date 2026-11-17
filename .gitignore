@@ -92,9 +92,6 @@ coverage/
 
 # Native rewrite build outputs and local integration state
 /target
-/apps/macos-legacy/build/
-/apps/macos-legacy/Generated/
-/apps/macos-legacy/PasswordVault.xcodeproj/
 /apps/browser/node_modules/
 /apps/browser/dist/
 /apps/browser/wasm/
@@ -128,7 +125,6 @@ coverage/
 /vendor/common-relay/swift/.build/
 /vendor/common-relay/swift/.swiftpm/
 
-/services/sync-gateway/node_modules/
 
 # Project documentation is kept locally and not published.
 /docs/

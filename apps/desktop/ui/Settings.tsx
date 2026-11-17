@@ -62,9 +62,6 @@ function Title(props: { title: string; text: string }) {
 function GroupTitle(props: { text: string }) {
   return <T size={12} weight="600" style={{ marginTop: 16, marginBottom: 7 }}>{props.text}</T>;
 }
-function NotYet(props: { what: string }) {
-  return <Banner tone="info" title="尚未接入此预览版">{props.what}仍由现有 SwiftUI 版提供。原生能力移植完成后在此开放，数据格式保持不变。</Banner>;
-}
 
 function General() {
   return (
@@ -88,7 +85,7 @@ function General() {
       </Group>
       <If when={desktopCapabilities.globalHotkeys}><GroupTitle text="快速访问" />
       <Group>
-        <OptionRow title="全局快捷键" note={shortcutAvailable() ? "在任何应用中打开快速访问；锁定时只唤起主窗口" : "该快捷键已被其他应用占用（例如正在运行的 SwiftUI 版），请换一个"}>
+        <OptionRow title="全局快捷键" note={shortcutAvailable() ? "在任何应用中打开快速访问；锁定时只唤起主窗口" : "该快捷键已被其他应用占用，请换一个"}>
           <Picker value={shortcut()} options={(Object.keys(SHORTCUT_LABEL) as ShortcutChoice[]).map((k) => [k, SHORTCUT_LABEL[k]])} onChange={(v) => void setShortcut(v as ShortcutChoice)} />
         </OptionRow>
       </Group></If>
@@ -208,7 +205,7 @@ function About() {
         <T size={12} color={c().muted}>加密核心 vault-core · SQLCipher</T>
       </Group>
       <View style={{ height: 12 }} />
-      <Banner tone="warn" title="尚未完成独立安全审计">请保留加密备份；完整限制见 docs/security/SECURITY_MODEL.md。此预览版与 SwiftUI 版并行开发，尚未达到功能对等。</Banner>
+      <Banner tone="warn" title="尚未完成独立安全审计">请保留加密备份；完整限制见 docs/security/SECURITY_MODEL.md。</Banner>
     </>
   );
 }

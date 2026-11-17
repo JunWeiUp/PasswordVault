@@ -25,10 +25,7 @@ targets:
     sources:
       - Sources
       - path: ../shared/Relay
-      - path: ../shared/Share
       - path: ../shared/Capabilities
-      - path: ../macos-legacy/Sources/WebDAVListing.swift
-      - path: ../macos-legacy/Sources/Models.swift
       - path: Generated/VaultCore.swift
       - path: ../shared/note-editor/dist/NoteEditor.html
         buildPhase: resources
@@ -73,10 +70,8 @@ targets:
     sources:
       - Tests
       - path: ../shared/RelayTests
-      - path: ../shared/ShareTests
       - path: ../../vendor/common-relay/protocol/group-vectors.json
         buildPhase: resources
-      - path: ../macos-legacy/Tests/WebDAVListingTests.swift
     dependencies:
       - target: PasswordVault
     settings:
@@ -104,7 +99,7 @@ targets:
       - Autofill
       - Sources/MobileCore.swift
       - Sources/CredentialRequestLifetime.swift
-      - path: ../macos-legacy/Sources/Models.swift
+      - Sources/Models.swift
       - Generated/VaultCore.swift
     settings:
       base:

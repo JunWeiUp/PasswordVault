@@ -1,6 +1,6 @@
 # Native rich notes
 
-The note body uses Native Shell 0.4.0's official `RichEditor`, with its Rust
+The note body uses Native Shell 0.5.1's official `RichEditor`, with its Rust
 ProseMirror state, StarterKit and TableKit. There is no WebView. The existing
 `RichNoteEditor` application wrapper supplies the toolbar, owner-bound attachment
 loading, preview/edit state, and encrypted-save integration.

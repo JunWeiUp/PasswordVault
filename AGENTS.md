@@ -21,7 +21,7 @@ Maintain these canonical guides and update the relevant document when behavior c
 ├── AGENTS.md
 ├── README.md / README.zh-CN.md
 ├── LICENSE
-├── apps/ / crates/ / services/ / vendor/
+├── apps/ / crates/ / vendor/
 ├── config/signing/              # Public signing fingerprint and example only
 ├── private/                     # Ignored local keys, notes and retained data
 ├── native-test-output/dist/     # Existing loaded extension; preserve its path
@@ -39,7 +39,7 @@ Maintain these canonical guides and update the relevant document when behavior c
     └── images/                 # Documentation image assets
 ```
 
-Use `docs/design/DESIGN.md` for visual and interaction principles, `docs/product/TODO.md` for current priorities and progress, and `docs/releases/CHANGELOG.md` for completed changes. The `docs/` guides own product scope, architecture/data organization, component conventions, page/route behavior, development workflow, artifact construction/distribution, and deployment respectively. Keep navigation in `README.md` and `README.zh-CN.md` synchronized.
+UI changes follow the local design hub `docs/design/index.html`: the **PC 端完整界面** tab (`#mac`) is the baseline for Mac/Windows UI and the **移动端完整界面** tab (`#android`) for iOS/Android UI; the **其他** tab is historical reference only. Bump the design version (`private/tools/design_version.py bump`) before each design change. Use `docs/design/DESIGN.md` for visual and interaction principles, `docs/product/TODO.md` for current priorities and progress, and `docs/releases/CHANGELOG.md` for completed changes. The `docs/` guides own product scope, architecture/data organization, component conventions, page/route behavior, development workflow, artifact construction/distribution, and deployment respectively. Keep navigation in `README.md` and `README.zh-CN.md` synchronized.
 
 Keep source directories aligned with the native toolchains. Security, privacy, installation, localization, branding, and release-note documents supplement this tree. `REGISTRY.md` describes application artifacts because this repository has no public component registry; `DEPLOYMENT.md` describes the configured GitHub release pipeline. Do not imply that a template-specific hosting provider is configured.
 
@@ -47,17 +47,15 @@ Keep source directories aligned with the native toolchains. Security, privacy, i
 
 Every delivered browser-extension update must increment `apps/browser/package.json` and its lockfile version. Use `npm run release:local` to increment the patch version and validate/build; verify the loaded extension version after refreshing it. The manifest and popup version must come from package metadata, never independent hardcoded values.
 
-Current Mac code lives in `apps/desktop`; `apps/macos-legacy` is the legacy SwiftUI client. Browser and core code live in `apps/browser` and `crates/vault-core`. Use the pinned Rust toolchain and `bash tool/check_native.sh core|macos|browser`; see `docs/migrations/NATIVE-MIGRATION.md` for Swift tests and fixture setup. The owner has authorized removal of legacy Flutter clients. Preserve native legacy-data readers and compatibility fixtures; source removal does not waive parity or migration gates. Do not test against a real vault or report compilation as Touch ID, device, browser integration, or production-security acceptance.
+Mac and Windows code lives in `apps/desktop` (NSH); iOS in `apps/ios`, Android in `apps/android`, the browser extension in `apps/browser` and the shared core in `crates/vault-core`. All Rust uses one pinned toolchain (`rust-toolchain.toml`, 1.98.0); keep `apps/desktop/rust-toolchain.toml` identical. Use `bash tool/check_native.sh core|macos|browser`; see `docs/migrations/NATIVE-MIGRATION.md` for fixture setup. The owner has authorized removal of legacy Flutter clients. Preserve native legacy-data readers and compatibility fixtures; source removal does not waive parity or migration gates. Do not test against a real vault or report compilation as Touch ID, device, browser integration, or production-security acceptance.
 
-## Isolated macOS tests
+## Technology stacks
 
-Run XCTest with `bash tool/test_macos_isolated.sh` (optional `-only-testing:…` arguments). It copies source/build prerequisites to `/tmp` and uses a distinct QA bundle ID/display name. Never launch test applications from a Documents-based repository, and never reset TCC or grant broad Documents access to make tests pass.
+The owner consolidated the project to four client stacks over one Rust core: NSH (TSX + Rust) for Mac and Windows, SwiftUI for iOS, Kotlin/Compose for Android, and the TypeScript Chromium extension. The legacy SwiftUI Mac client and the standalone Web package were removed at the owner's request; do not reintroduce them or add another client stack without a new owner request. Move shared business logic into `crates/vault-core` rather than duplicating it per client.
 
-## Current and legacy Mac clients
+## Mac client and isolated tests
 
-`apps/desktop` is the current NSH Mac client; `apps/macos-legacy` is the retained legacy SwiftUI client. Shared web-editor source lives in `apps/shared/note-editor`; its generated `dist/` is ignored. Mac NSH platform tools live in `tool/macos-nsh/`; `tool/nsh_mac.sh` remains the stable CLI entry point. Preserve legacy paths and identifiers still used by mobile/release tooling.
-
-The owner has retired the standalone SwiftUI Mac CI and release artifact. Only NSH Mac ships in new releases; iOS checks still cover shared legacy Swift inputs.
+`apps/desktop` is the only Mac client. Shared web-editor source lives in `apps/shared/note-editor`; its generated `dist/` is ignored. Mac NSH platform tools live in `tool/macos-nsh/`; `tool/nsh_mac.sh` remains the stable CLI entry point. Shared branding assets live in `assets/branding/` and the browser identity in `apps/browser/identity.json`. Run desktop UI tests with `bash tool/nsh_mac.sh test` against a fresh synthetic vault in a temporary directory, and real-window checks with `bash tool/macos-nsh/gui.sh` (it stages a `/tmp` copy). Never launch test applications from a Documents-based repository, and never reset TCC or grant broad Documents access to make tests pass.
 
 ## Dependency update policy
 
@@ -67,8 +65,8 @@ without a new owner request. Dependency updates are reviewed and run manually.
 
 ## Release presentation
 
-Keep release notes concise and publish exactly six application packages: one Android ARM64 APK, one Chromium extension ZIP, one iOS Simulator ZIP, one NSH macOS ZIP, one Windows x64 ZIP and one Web ZIP. Do not publish extra x86 APKs, source archives or standalone metadata/documentation attachments. Keep internal signature/checksum verification and link license notices in the description.
+Keep release notes concise and publish exactly five application packages: one Android ARM64 APK, one Chromium extension ZIP, one iOS Simulator ZIP, one NSH macOS ZIP and one Windows x64 ZIP. Do not publish extra x86 APKs, source archives or standalone metadata/documentation attachments. Keep internal signature/checksum verification and link license notices in the description.
 
 ## CI cost policy
 
-Keep automatic PR checks lightweight. Native builds run only on explicit workflow dispatch or releases; tests default off and are opt-in. Do not reintroduce main-push duplication, always-on service tests, metadata-only workflows or redundant release Android builds without an owner request. Preserve tag/signature/package verification and the six release artifacts.
+Keep automatic PR checks lightweight. Native builds run only on explicit workflow dispatch or releases; tests default off and are opt-in. Do not reintroduce main-push duplication, metadata-only workflows or redundant release Android builds without an owner request. Preserve tag/signature/package verification and the five release artifacts.

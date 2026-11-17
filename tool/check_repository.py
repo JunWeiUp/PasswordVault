@@ -44,8 +44,7 @@ def main():
     require(package['version'] == lock['version'] == lock['packages']['']['version'],
             'Browser package and lockfile versions differ.')
     version()
-    for path in ['crates/vault-core/Cargo.toml', 'apps/macos-legacy/project.yml',
-                 'apps/ios/project.yml', 'apps/android/settings.gradle.kts']:
+    for path in ['crates/vault-core/Cargo.toml', 'apps/ios/project.yml', 'apps/android/settings.gradle.kts']:
         require(Path(path).is_file(), f'Missing native source input: {path}')
 
     tracked = subprocess.check_output(['git', 'ls-files', '-z'], text=True).split('\0')
