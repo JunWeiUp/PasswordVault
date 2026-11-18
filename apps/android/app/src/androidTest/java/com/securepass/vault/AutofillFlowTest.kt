@@ -56,9 +56,8 @@ class AutofillFlowTest {
             val prompt = device.wait(Until.findObject(By.textContains("PasswordVault ·")), 10_000)
             assertNotNull("System Autofill prompt", prompt)
             prompt.click()
-            assertTrue(device.wait(Until.hasObject(By.text("解锁资料库")), 10_000))
-            device.findObjects(By.clazz("android.widget.EditText"))[0].text = password
-            device.findObject(By.text("解锁")).click()
+            // AutofillActivity shows the shared lock screen.
+            unlockFromLockScreen(device, password)
             assertTrue(device.wait(Until.hasObject(By.text("Autofill synthetic fixture")), 10_000))
             device.findObject(By.text("Autofill synthetic fixture")).click()
             assertTrue(device.wait(Until.hasObject(By.text("向此应用填入？ / Fill this app?")), 5_000))
