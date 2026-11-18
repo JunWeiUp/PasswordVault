@@ -32,14 +32,20 @@ class IdentityDocumentEditTest {
 
     private fun visible(text: String) = assertTrue("Missing $text", device.wait(Until.hasObject(By.text(text)), 10_000))
 
-    private fun type(label: String, value: String) {
-        runCatching { UiScrollable(UiSelector().scrollable(true)).scrollIntoView(UiSelector().description(label)) }
-        val field = device.wait(Until.findObject(By.desc(label)), 5_000)
-        assertNotNull("Field $label", field)
-        field.click()
-        val focused = device.wait(Until.findObject(By.focused(true).clazz("android.widget.EditText")), 3_000)
-        assertNotNull("Focused $label", focused)
-        focused.text = value
+    private fun type(label: String, value: String, concealed: Boolean = false) {
+        repeat(3) { attempt ->
+            runCatching { UiScrollable(UiSelector().scrollable(true)).scrollIntoView(UiSelector().description(label)) }
+            val field = device.wait(Until.findObject(By.desc(label)), 5_000)
+            assertNotNull("Field $label", field)
+            field.click()
+            val focused = device.wait(Until.findObject(By.focused(true).clazz("android.widget.EditText")), 3_000)
+            assertNotNull("Focused $label", focused)
+            focused.text = value
+            device.waitForIdle()
+            // Confirm the value landed (concealed values render as bullets and are not checked here).
+            val landed = concealed || device.wait(Until.hasObject(By.text(value)), 2_000)
+            if (landed || attempt == 2) return
+        }
     }
 
     private fun openEditor() {
@@ -79,7 +85,7 @@ class IdentityDocumentEditTest {
             visible("户籍地址")
             openEditor()
             type("证件类型", "居民身份证")
-            type("证件号码", "FIXTURE-0001")
+            type("证件号码", "FIXTURE-0001", concealed = true)
             type("签发日期", "2024-13-01")
             device.findObject(By.text("保存")).click()
             visible("请输入有效日期，格式 YYYY-MM-DD")
