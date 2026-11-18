@@ -166,33 +166,45 @@ private fun EntryDetailContent(
                     Text(t("助记词只在此页面显示，不提供复制。请避免旁观或屏幕共享。", "The recovery phrase is shown only on this page and cannot be copied. Avoid onlookers and screen sharing."), Modifier.padding(horizontal = 5.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
-            "creditCard", "identity" -> {
-                val card = type == "creditCard"
-                val group = item.optJSONObject(if (card) "card" else "identity") ?: JSONObject()
-                if (card) {
-                    PaymentCardPreview(group, t)
-                    if (!deleted) FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(onClick = { copy(group.optString("number")) }, enabled = group.optString("number").isNotBlank()) { Text(t("复制卡号", "Copy card number")) }
-                        OutlinedButton(onClick = { copy(group.optString("securityCode")) }, enabled = group.optString("securityCode").isNotBlank()) { Text(t("复制安全码", "Copy security code")) }
+            "creditCard" -> {
+                val group = item.optJSONObject("card") ?: JSONObject()
+                PaymentCardPreview(group, t)
+                if (!deleted) FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(onClick = { copy(group.optString("number")) }, enabled = group.optString("number").isNotBlank()) { Text(t("复制卡号", "Copy card number")) }
+                    OutlinedButton(onClick = { copy(group.optString("securityCode")) }, enabled = group.optString("securityCode").isNotBlank()) { Text(t("复制安全码", "Copy security code")) }
+                }
+                DetailSection(t("银行卡信息", "Card information")) {
+                    val preferred = listOf("cardholder", "number", "expiryDate", "securityCode", "pin")
+                    val combined = setOf("bank", "brand", "expiryMonth", "expiryYear")
+                    val fields = preferred.filter { group.has(it) || (it == "expiryDate" && (group.has("expiryMonth") || group.has("expiryYear"))) }
+                    (fields + group.keys().asSequence().toList().filter { it !in preferred && it !in combined }.sorted()).forEach { field ->
+                        val value = if (field == "expiryDate") group.optString(field).ifBlank { listOf(group.optString("expiryMonth"), group.optString("expiryYear").takeLast(2)).filter { it.isNotBlank() }.joinToString("/") } else group.optString(field)
+                        DetailField(if (field == "expiryDate") t("有效期", "Expiry") else structuredFieldLabel(field, t), value, vault, t, secret = field in listOf("number", "securityCode", "pin"), monospace = field in listOf("number", "securityCode", "pin"))
                     }
                 }
-                DetailSection(if (card) t("银行卡信息", "Card information") else t("证件信息", "Identity information")) {
-                    val preferred = if (card) listOf("cardholder", "number", "expiryDate", "securityCode", "pin") else listOf("fullName", "documentType", "documentNumber", "idNumber", "passportNumber", "issuingAuthority", "expiryDate")
-                    val combined = if (card) setOf("bank", "brand", "expiryMonth", "expiryYear") else setOf("firstName", "lastName")
-                    val fields = preferred.filter { group.has(it) || (it == "expiryDate" && card && (group.has("expiryMonth") || group.has("expiryYear"))) || (it == "fullName" && !card && (group.has("firstName") || group.has("lastName"))) }
-                    (fields + group.keys().asSequence().toList().filter { it !in preferred && it !in combined }.sorted()).forEach { field ->
-                        val value = when {
-                            card && field == "expiryDate" -> group.optString(field).ifBlank { listOf(group.optString("expiryMonth"), group.optString("expiryYear").takeLast(2)).filter { it.isNotBlank() }.joinToString("/") }
-                            !card && field == "fullName" -> group.optString(field).ifBlank { if (t("zh", "en") == "zh") group.optString("lastName") + group.optString("firstName") else listOf(group.optString("firstName"), group.optString("lastName")).filter { it.isNotBlank() }.joinToString(" ") }
-                            else -> group.optString(field)
-                        }
-                        DetailField(if (field == "fullName") t("姓名", "Name") else if (card && field == "expiryDate") t("有效期", "Expiry") else structuredFieldLabel(field, t), value, vault, t, secret = field in listOf("number", "securityCode", "pin", "documentNumber", "idNumber", "passportNumber"), monospace = field in listOf("number", "securityCode", "pin"))
+            }
+            "identity" -> {
+                val group = item.optJSONObject("identity") ?: JSONObject()
+                DetailSection(t("证件信息", "Identity document")) {
+                    val name = IdentityDocument.holderName(group, t("zh", "en") == "zh")
+                    if (name.isNotBlank()) DetailField(t("姓名", "Name"), name, vault, t)
+                    IdentityDocument.FIELDS.forEach { spec ->
+                        val value = IdentityDocument.value(item, spec.id)
+                        if (value.isNotBlank()) DetailField(IdentityDocument.label(spec.id, t), value, vault, t, secret = spec.kind == "concealed", monospace = spec.kind == "concealed")
                     }
+                    // Legacy/imported identity keys stay visible (read-only) and are never rewritten.
+                    IdentityDocument.legacyIdentityKeys(group).filter { it !in setOf("fullName", "name") || name.isBlank() }.forEach { field ->
+                        DetailField(structuredFieldLabel(field, t), group.optString(field), vault, t, secret = field in listOf("documentNumber", "idNumber", "passportNumber"))
+                    }
+                }
+                val contact = IdentityDocument.CORE_IDENTITY_FIELDS.filter { it !in setOf("firstName", "lastName") && group.optString(it).isNotBlank() }
+                if (contact.isNotEmpty()) DetailSection(t("联系信息", "Contact details")) {
+                    contact.forEach { field -> DetailField(structuredFieldLabel(field, t), group.optString(field), vault, t) }
                 }
             }
         }
         PasskeyRecordsPanel(item, vault, t)
-        val custom = item.optJSONArray("customFields")?.objects().orEmpty()
+        val custom = item.optJSONArray("customFields")?.objects().orEmpty().filter { type != "identity" || !IdentityDocument.isDocumentField(it) }
         custom.groupBy { it.optString("group").ifBlank { t("自定义字段", "Custom fields") } }.forEach { (name, fields) ->
             DetailSection(name) { fields.forEach { DetailField(it.optString("label"), it.optString("value"), vault, t, secret = it.optString("kind") == "concealed") } }
         }
@@ -241,7 +253,7 @@ internal fun DetailHero(item: JSONObject, t: (String, String) -> String) {
         }
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
             Text(item.optString("title"), style = MaterialTheme.typography.titleLarge)
-            val subtitle = when (type) { "totp" -> item.optString("username"); "crypto" -> item.optString("network"); "device" -> item.optJSONObject("device")?.optString("host").orEmpty(); "creditCard" -> item.optJSONObject("card")?.optString("brand").orEmpty(); "identity" -> t("身份证件", "Identity"); else -> listOf(item.optString("url"), item.optString("category")).filter { it.isNotBlank() }.joinToString(" · ") }
+            val subtitle = when (type) { "totp" -> item.optString("username"); "crypto" -> item.optString("network"); "device" -> item.optJSONObject("device")?.optString("host").orEmpty(); "creditCard" -> item.optJSONObject("card")?.optString("brand").orEmpty(); "identity" -> listOf(IdentityDocument.value(item, "document.type").ifBlank { t("身份证件", "Identity") }, IdentityDocument.holderName(item.optJSONObject("identity"), t("zh", "en") == "zh")).filter { it.isNotBlank() }.joinToString(" · "); else -> listOf(item.optString("url"), item.optString("category")).filter { it.isNotBlank() }.joinToString(" · ") }
             if (subtitle.isNotBlank()) Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }

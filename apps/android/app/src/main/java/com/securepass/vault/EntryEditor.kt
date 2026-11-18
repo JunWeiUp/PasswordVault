@@ -158,6 +158,10 @@ fun EntryEditor(
             error = t("请填写名称", "Enter a name")
             return
         }
+        if (type == "identity" && IdentityDocument.invalidDates(submitted).isNotEmpty()) {
+            error = t("证件日期格式应为 YYYY-MM-DD", "Document dates must use YYYY-MM-DD")
+            return
+        }
         val accounts = submitted.optJSONArray("accounts")?.objects().orEmpty()
         if (
             accounts.any {

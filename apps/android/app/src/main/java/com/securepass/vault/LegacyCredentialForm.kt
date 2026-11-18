@@ -839,6 +839,7 @@ internal fun AlignedStructuredFieldsEditor(
     t: (String, String) -> String,
 ) {
     val fields = draft.optJSONArray("customFields") ?: JSONArray()
+    val identity = draft.optString("type") == "identity"
     EditorFormSection {
         EditorHeading(t("自定义字段", "Custom fields"))
         for (index in 0 until fields.length()) {
@@ -846,7 +847,7 @@ internal fun AlignedStructuredFieldsEditor(
             fun change(name: String, value: String) {
                 val next = JSONArray(fields.toString()); next.getJSONObject(index).put(name, value); set("customFields", next)
             }
-            key(field.optString("id"), index) {
+            if (!(identity && IdentityDocument.isDocumentField(field))) key(field.optString("id"), index) {
                 EditorField(t("字段名称", "Field label"), field.optString("label"), { change("label", it) }, vault, t, copy = false)
                 EditorField(t("分组", "Group"), field.optString("group"), { change("group", it) }, vault, t, copy = false)
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -867,18 +868,59 @@ internal fun AlignedStructuredFieldsEditor(
 @Composable
 private fun AlignedStructuredGroup(draft: JSONObject, vault: VaultRepository, set: (String, Any) -> Unit, t: (String, String) -> String) {
     val type = draft.optString("type")
-    val groupName = when (type) { "creditCard" -> "card"; "identity" -> "identity"; else -> null }
-    if (groupName != null) {
-        val group = draft.optJSONObject(groupName) ?: JSONObject()
-        val standard = if (type == "creditCard") listOf("bank", "brand", "cardholder", "number", "expiryMonth", "expiryYear", "securityCode", "pin") else listOf("fullName", "documentType", "documentNumber", "issuingAuthority", "expiryDate", "firstName", "lastName", "email", "phone", "address1", "address2", "city", "region", "postalCode", "country", "company")
-        EditorFormSection {
-            EditorHeading(if (type == "creditCard") t("银行卡信息", "Card information") else t("证件信息", "Identity information"))
-            (standard + group.keys().asSequence().toList().filter { it !in standard }.sorted()).forEach { field ->
-                EditorField(structuredFieldLabel(field, t), group.optString(field), { value ->
-                    set(groupName, JSONObject(group.toString()).put(field, value))
-                }, vault, t, secret = field in listOf("number", "securityCode", "pin", "documentNumber", "idNumber", "passportNumber"), copy = false)
-            }
+    if (type == "identity") return IdentityDocumentEditor(draft, vault, set, t)
+    if (type != "creditCard") return
+    val group = draft.optJSONObject("card") ?: JSONObject()
+    val standard = IdentityDocument.CORE_CARD_FIELDS
+    EditorFormSection {
+        EditorHeading(t("银行卡信息", "Card information"))
+        standard.forEach { field ->
+            EditorField(structuredFieldLabel(field, t), group.optString(field), { value ->
+                set("card", JSONObject(group.toString()).put(field, value))
+            }, vault, t, secret = field in listOf("number", "securityCode"), copy = false)
         }
+        LegacyStructuredValues(group, group.keys().asSequence().filter { it !in standard }.sorted().toList(), vault, t)
+    }
+}
+
+/** Names stay in `identity`; document data is written only to the shared `document.*` custom fields. */
+@Composable
+private fun IdentityDocumentEditor(draft: JSONObject, vault: VaultRepository, set: (String, Any) -> Unit, t: (String, String) -> String) {
+    val group = draft.optJSONObject("identity") ?: JSONObject()
+    fun identity(field: String, value: String) = set("identity", JSONObject(group.toString()).put(field, value))
+    EditorFormSection {
+        EditorHeading(t("证件信息", "Identity document"))
+        EditorField(structuredFieldLabel("lastName", t), group.optString("lastName"), { identity("lastName", it) }, vault, t, copy = false)
+        EditorField(structuredFieldLabel("firstName", t), group.optString("firstName"), { identity("firstName", it) }, vault, t, copy = false)
+        IdentityDocument.FIELDS.forEach { spec ->
+            val value = IdentityDocument.value(draft, spec.id)
+            EditorField(IdentityDocument.label(spec.id, t), value, { next ->
+                set("customFields", IdentityDocument.withValue(draft.optJSONArray("customFields"), spec.id, next))
+            }, vault, t, secret = spec.kind == "concealed", copy = false)
+            if (spec.kind == "date") Text(
+                if (IdentityDocument.isValidDate(value.trim())) t("格式：YYYY-MM-DD", "Format: YYYY-MM-DD") else t("请输入有效日期，格式 YYYY-MM-DD", "Enter a valid date as YYYY-MM-DD"),
+                Modifier.padding(start = 5.dp),
+                style = MaterialTheme.typography.bodySmall,
+                color = if (IdentityDocument.isValidDate(value.trim())) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error,
+            )
+        }
+        LegacyStructuredValues(group, IdentityDocument.legacyIdentityKeys(group), vault, t)
+    }
+    EditorFormSection {
+        EditorHeading(t("联系信息", "Contact details"))
+        IdentityDocument.CORE_IDENTITY_FIELDS.filter { it !in setOf("lastName", "firstName") }.forEach { field ->
+            EditorField(structuredFieldLabel(field, t), group.optString(field), { identity(field, it) }, vault, t, copy = false)
+        }
+    }
+}
+
+/** Keys the core no longer accepts for writing: displayed read-only so nothing is lost or re-sent edited. */
+@Composable
+private fun LegacyStructuredValues(group: JSONObject, keys: List<String>, vault: VaultRepository, t: (String, String) -> String) {
+    if (keys.isEmpty()) return
+    Text(t("旧版字段（只读）", "Legacy fields (read-only)"), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    keys.forEach { key ->
+        DetailField(structuredFieldLabel(key, t), group.optString(key), vault, t, secret = key in listOf("number", "securityCode", "pin", "documentNumber", "idNumber", "passportNumber"))
     }
 }
 
