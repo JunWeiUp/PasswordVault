@@ -91,6 +91,8 @@ internal fun EntryCollection(
     var categoryToRemove by remember { mutableStateOf<String?>(null) }
     var emptyingTrash by remember { mutableStateOf(false) }
     var audit by remember { mutableStateOf(emptyList<JSONObject>()) }
+    val relayState by vault.relay.state.collectAsState()
+    val offline = relayOffline(relayState)
     DisposableEffect(page) { onDispose { ui.selectedIds.value = emptySet(); ui.selecting.value = false } }
     LaunchedEffect(ui.selecting.value) { if (ui.selecting.value) toolsSheet = false }
     LaunchedEffect(state.entries) {
@@ -194,6 +196,7 @@ internal fun EntryCollection(
                     }
                 }
             }
+            if (offline && page != "trash") OfflineBanner(t, Modifier.fillMaxWidth().padding(start = 10.dp, end = 10.dp, bottom = 12.dp))
             if (page == "totp") Text(t("点按复制当前验证码 · 时间以手机系统时钟为准", "Tap to copy the current code · Uses your device clock"),
                 Modifier.padding(start = 16.dp, end = 16.dp, bottom = 12.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             if (page == "password" && audit.isNotEmpty() && search.isBlank() && !favorites && kind.isEmpty()) Surface(

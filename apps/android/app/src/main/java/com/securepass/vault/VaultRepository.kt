@@ -537,9 +537,12 @@ class VaultRepository(
         clipboard.setPrimaryClip(clip)
         copied = clip
         activity()
-        mutable.value = mutable.value.copy(notice = "已复制，30 秒后清除 / Copied; clears in 30 seconds")
-        Handler(Looper.getMainLooper())
-            .postDelayed({ if (copied === clip) clearClipboard() }, 30_000)
+        // Settings › General › Clear clipboard; 0 keeps the clip until the vault locks.
+        val seconds = AppPreferences.clipboardSeconds(context)
+        mutable.value = mutable.value.copy(notice = AppPreferences.copiedNotice(seconds))
+        if (seconds > 0)
+            Handler(Looper.getMainLooper())
+                .postDelayed({ if (copied === clip) clearClipboard() }, seconds * 1_000L)
     }
 
     private fun clearClipboard() {

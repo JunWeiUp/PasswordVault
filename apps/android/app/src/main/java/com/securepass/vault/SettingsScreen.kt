@@ -53,6 +53,11 @@ fun SettingsScreen(
     val scope = rememberCoroutineScope()
     val relayState by vault.relay.state.collectAsStateWithLifecycle()
     var page by remember { mutableStateOf(initialPage) }
+    val uiPrefs = remember(context) { context.getSharedPreferences(AppPreferences.FILE, 0) }
+    var clipboardSeconds by remember { mutableIntStateOf(AppPreferences.clipboardSeconds(context)) }
+    var startChoice by remember { mutableStateOf(uiPrefs.getString(AppPreferences.START_PAGE, null)?.takeIf { it in AppPreferences.START_CHOICES } ?: AppPreferences.DEFAULT_START) }
+    var licenses by remember { mutableStateOf(false) }
+    if (licenses) LicensesDialog(t) { licenses = false }
     val notifySubpageChanged by rememberUpdatedState(onSubpageChanged)
     LaunchedEffect(page) { notifySubpageChanged(page != "home") }
     DisposableEffect(Unit) {
@@ -329,9 +334,23 @@ fun SettingsScreen(
                                 TextButton(onClick = language) { Text("简体中文 / English", fontSize = 12.sp) }
                             }
                         }
+                        SettingsLabel(t("启动", "Startup"))
+                        SettingsGroup {
+                            SettingsOption(t("打开时显示", "Show on open")) {
+                                SettingsChoice(AppPreferences.startLabel(startChoice, t), AppPreferences.START_CHOICES.map { AppPreferences.startLabel(it, t) }) { label ->
+                                    startChoice = AppPreferences.START_CHOICES.first { AppPreferences.startLabel(it, t) == label }
+                                    uiPrefs.edit().putString(AppPreferences.START_PAGE, startChoice).apply()
+                                }
+                            }
+                        }
                         SettingsLabel(t("剪贴板", "Clipboard"))
                         SettingsGroup {
-                            SettingsOption(t("自动清除剪贴板", "Clear clipboard"), t("30 秒 · 仅清除未被替换的内容", "30 seconds · only if unchanged"))
+                            SettingsOption(t("自动清除剪贴板", "Clear clipboard"), t("仅清除未被替换的内容；锁定时总会清除", "Only if unchanged; always cleared on lock")) {
+                                SettingsChoice(AppPreferences.clipboardLabel(clipboardSeconds, t), AppPreferences.CLIPBOARD_CHOICES.map { AppPreferences.clipboardLabel(it, t) }) { label ->
+                                    clipboardSeconds = AppPreferences.CLIPBOARD_CHOICES.first { AppPreferences.clipboardLabel(it, t) == label }
+                                    uiPrefs.edit().putInt(AppPreferences.CLIPBOARD_SECONDS, clipboardSeconds).apply()
+                                }
+                            }
                             SettingsRule()
                             SettingsOption(t("标记为敏感内容", "Mark as sensitive"), t("Android 13+ 隐藏秘密预览", "Hide secret previews on Android 13+"))
                         }
@@ -551,7 +570,15 @@ fun SettingsScreen(
                         Text("${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE}) · Android")
                         Text(t("原生 Compose 界面 · vault-core 共享核心", "Native Compose interface · shared vault-core"), fontSize = 13.sp)
                         }
-                        SettingsGroup { SettingsOption(t("安全模型", "Security model"), t("当前文档仍列有未解决项，不声称生产级安全", "Unresolved items remain; no production-security claim")) }
+                        SettingsGroup {
+                            SettingsDestination(t("更新日志", "Release notes"), t("在浏览器中打开 GitHub 发布页", "Opens the GitHub releases page in your browser"), Icons.Default.Description) {
+                                try { context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(AppPreferences.RELEASES_URL))) } catch (_: android.content.ActivityNotFoundException) { }
+                            }
+                            SettingsRule()
+                            SettingsDestination(t("开源许可", "Open-source licenses"), t("随应用附带的许可文本", "License texts bundled with the app"), Icons.Default.Info) { licenses = true }
+                            SettingsRule()
+                            SettingsOption(t("安全模型", "Security model"), t("当前文档仍列有未解决项，不声称生产级安全", "Unresolved items remain; no production-security claim"))
+                        }
                         Text(t("安全模型仍有待解决项；当前版本不代表生产安全验收已完成。", "The security model has unresolved items; this version does not represent completed production security acceptance."), style = MaterialTheme.typography.bodyMedium)
                     }
                 }

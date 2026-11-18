@@ -31,10 +31,14 @@ internal fun VaultWorkspace(
     language: () -> Unit,
 ) {
     val wide = LocalConfiguration.current.screenWidthDp >= 600
+    val context = androidx.compose.ui.platform.LocalContext.current
+    // Settings › General › Show on open picks the first bottom destination after unlocking.
+    val startPage = remember { AppPreferences.startPage(context) }
     var page by rememberSaveable {
-        mutableStateOf(vault.pendingDraft?.let { workspaceDestination(JSONObject(it).optString("type")) } ?: "secureNote")
+        mutableStateOf(vault.pendingDraft?.let { workspaceDestination(JSONObject(it).optString("type")) } ?: startPage)
     }
-    var root by rememberSaveable { mutableStateOf("secureNote") }
+    var root by rememberSaveable { mutableStateOf(startPage) }
+    LaunchedEffect(root) { AppPreferences.rememberLastPage(context, root) }
     val drawer = rememberDrawerState(DrawerValue.Closed)
     var detailMenu by remember { mutableStateOf(false) }
     var selected by rememberSaveable {

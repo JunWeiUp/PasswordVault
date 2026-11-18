@@ -1,0 +1,15 @@
+Android client dependencies
+
+The Android app is built with the following open-source components. Each retains its own license; exact versions are recorded in apps/android/app/build.gradle.kts.
+
+- Kotlin standard library and kotlinx.coroutines (JetBrains): Apache License 2.0
+- AndroidX: Activity, Compose (UI, Material 3, Material Icons), Lifecycle, Fragment, Biometric, Credentials, CameraX, Concurrent (Google / The Android Open Source Project): Apache License 2.0
+- OkHttp (Square): Apache License 2.0
+- ZXing core (ZXing authors): Apache License 2.0
+- Markwon (Dimitry Ivanov): Apache License 2.0
+- Java Native Access (JNA): Apache License 2.0 or LGPL 2.1 (used under Apache License 2.0)
+- Android desugared JDK libraries (Google): GPL 2.0 with the Classpath Exception
+- common-relay (vendored in this repository): see vendor/common-relay/java/LICENSE
+- vault-core (shared Rust core in this repository): MIT; its Rust dependencies, including SQLCipher and SQLite, retain their own licenses
+
+Apache License 2.0: https://www.apache.org/licenses/LICENSE-2.0
