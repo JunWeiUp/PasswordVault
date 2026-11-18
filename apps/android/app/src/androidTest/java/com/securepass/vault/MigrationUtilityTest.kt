@@ -14,6 +14,7 @@ import androidx.test.uiautomator.By
 import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.Until
 import java.io.File
+import java.util.regex.Pattern
 import java.util.UUID
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
@@ -93,9 +94,73 @@ class MigrationUtilityTest {
                     )
                 }
             assertFalse(GeneratorOptions(4, false, false, false, false).enabled)
+            // Word mode goes through the same core op and response key.
+            listOf(
+                    GeneratorOptions(passphrase = true) to Regex("[a-z]+(-[a-z]+){4}"),
+                    GeneratorOptions(passphrase = true, words = 3, separator = " ", capitalize = true) to
+                        Regex("[A-Z][a-z]+( [A-Z][a-z]+){2}"),
+                    GeneratorOptions(passphrase = true, words = 10, separator = ".", number = true) to
+                        Regex("[a-z]+[0-9]?(\\.[a-z]+[0-9]?){9}"),
+                )
+                .forEach { (options, pattern) ->
+                    val phrase = repo.command("generate", options.request()).getString("password")
+                    assertTrue(phrase, pattern.matches(phrase))
+                    if (options.number) assertEquals(phrase, 1, phrase.count { it.isDigit() })
+                }
+            assertTrue(
+                runCatching {
+                        repo.command("generate", GeneratorOptions(passphrase = true, words = 11).request())
+                    }
+                    .isFailure
+            )
         } finally {
             repo.close()
             base.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun passphraseFillsTheEditorDraftThroughUseThisPassword() = runBlocking {
+        val inst = InstrumentationRegistry.getInstrumentation()
+        val context = inst.targetContext
+        val device = UiDevice.getInstance(inst)
+        val utilityBase = File(context.cacheDir, "utility-${UUID.randomUUID()}")
+        val repo = VaultRepository(context, utilityBase)
+        while (!repo.state.value.ready) delay(10)
+        repo.authenticate("1", true)
+        val used = mutableStateOf<String?>(null)
+        val scenario =
+            ActivityScenario.launch<MainActivity>(
+                Intent(context, MainActivity::class.java)
+                    .putExtra("uiTestVault", UUID.randomUUID().toString())
+                    .putExtra("qaScreenshots", true)
+            )
+        try {
+            scenario.onActivity { activity ->
+                activity.setContent {
+                    LegacyVaultTheme(dark = false) {
+                        Surface(Modifier.fillMaxSize().safeDrawingPadding().padding(20.dp)) {
+                            PasswordGeneratorControls(repo, { zh, _ -> zh }, onUse = { used.value = it })
+                        }
+                    }
+                }
+            }
+            assertTrue(device.wait(Until.hasObject(By.text("单词组合")), 8000))
+            device.findObject(By.text("单词组合")).click()
+            val shown = device.wait(Until.findObject(By.text(Pattern.compile("[a-z]+(-[a-z]+){4}"))), 5000)
+            assertNotNull("Passphrase shown", shown)
+            val phrase = shown.text
+            device.findObject(By.text("使用这个密码")).click()
+            val deadline = System.currentTimeMillis() + 5000
+            while (used.value == null && System.currentTimeMillis() < deadline) delay(50)
+            assertEquals(phrase, used.value)
+        } catch (failure: Throwable) {
+            device.dumpWindowHierarchy(File(context.getExternalFilesDir(null), "passphrase-use-failure.xml"))
+            throw failure
+        } finally {
+            scenario.close()
+            repo.close()
+            utilityBase.deleteRecursively()
         }
     }
 
@@ -146,15 +211,49 @@ class MigrationUtilityTest {
             device.findObject(By.text("关闭")).click()
             val switches = listOf("大写字母 A–Z", "小写字母 a–z", "数字 0–9", "符号 !@#…")
             assertTrue(device.wait(Until.hasObject(By.desc(switches.first())), 5000))
-            for (label in switches) device.findObject(By.desc(label)).click()
+            // Retry dropped taps by reading the switch state rather than toggling blindly.
+            // The accessibility cache can report a switch's previous state, so clear it first.
+            fun fresh() {
+                if (android.os.Build.VERSION.SDK_INT >= 33) inst.uiAutomation.clearCache()
+            }
+            fun setSwitch(label: String, on: Boolean) {
+                repeat(5) {
+                    fresh()
+                    val node = device.wait(Until.findObject(By.desc(label)), 3000)
+                    if (node.isChecked == on) return
+                    node.click()
+                    android.os.SystemClock.sleep(300)
+                }
+                fresh()
+                assertTrue("$label checked=$on", device.hasObject(By.desc(label).checked(on)))
+            }
+            for (label in switches) setSwitch(label, false)
             assertTrue(device.wait(Until.hasObject(By.text("至少选择一种字符类型")), 5000))
             assertFalse(device.findObject(By.text("重新生成")).parent.isEnabled)
             assertFalse(device.findObject(By.text("复制")).parent.isEnabled)
             device.takeScreenshot(
                 File(context.getExternalFilesDir(null), "legacy-generator-disabled.png")
             )
-            device.findObject(By.desc("数字 0–9")).click()
+            setSwitch("数字 0–9", true)
             assertTrue(device.wait(Until.gone(By.text("至少选择一种字符类型")), 5000))
+            // Word mode: switching hides the character classes and shows a passphrase.
+            device.findObject(By.text("单词组合")).click()
+            assertTrue(device.wait(Until.hasObject(By.text("单词数 5")), 5000))
+            assertFalse(device.hasObject(By.desc("大写字母 A–Z")))
+            assertTrue(device.hasObject(By.textContains("2048 个英文单词")))
+            assertTrue(device.wait(Until.hasObject(By.text(Pattern.compile("[a-z]+(-[a-z]+){4}"))), 5000))
+            device.findObject(By.desc("分隔符 .")).click()
+            setSwitch("首字母大写", true)
+            setSwitch("加入一个数字", true)
+            assertTrue(
+                device.wait(
+                    Until.hasObject(By.text(Pattern.compile("([A-Z][a-z]+[0-9]?\\.){4}[A-Z][a-z]+[0-9]?"))),
+                    5000,
+                )
+            )
+            assertTrue(device.findObject(By.text("复制")).parent.isEnabled)
+            device.findObject(By.text("随机字符")).click()
+            assertTrue(device.wait(Until.hasObject(By.desc("大写字母 A–Z")), 5000))
         } catch (failure: Throwable) {
             device.takeScreenshot(
                 File(context.getExternalFilesDir(null), "legacy-utility-failure.png")

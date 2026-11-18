@@ -12,7 +12,9 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
@@ -30,17 +32,37 @@ internal data class GeneratorOptions(
     val lower: Boolean = true,
     val digits: Boolean = true,
     val symbols: Boolean = true,
+    /** Word mode: the core joins words from its passphrase list instead of characters. */
+    val passphrase: Boolean = false,
+    val words: Int = 5,
+    val separator: String = "-",
+    val capitalize: Boolean = false,
+    val number: Boolean = false,
 ) {
     val enabled: Boolean
-        get() = upper || lower || digits || symbols
+        get() = if (passphrase) words in WORDS && separator in SEPARATORS else upper || lower || digits || symbols
 
     fun request(): JSONObject =
-        JSONObject()
-            .put("length", length)
-            .put("upper", upper)
-            .put("lower", lower)
-            .put("digits", digits)
-            .put("symbols", symbols)
+        if (passphrase)
+            JSONObject()
+                .put("mode", "passphrase")
+                .put("words", words)
+                .put("separator", separator)
+                .put("capitalize", capitalize)
+                .put("number", number)
+        else
+            JSONObject()
+                .put("length", length)
+                .put("upper", upper)
+                .put("lower", lower)
+                .put("digits", digits)
+                .put("symbols", symbols)
+
+    companion object {
+        /** Mirrors the core limits; the core validates every request again. */
+        val WORDS = 3..10
+        val SEPARATORS = listOf("-", ".", "_", " ")
+    }
 }
 
 @Composable
@@ -70,13 +92,18 @@ internal fun PasswordGeneratorControls(
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Surface(shape = RoundedCornerShape(20.dp), border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant), color = MaterialTheme.colorScheme.background) {
             Row(Modifier.fillMaxWidth()) {
-                Surface(Modifier.weight(1f), color = MaterialTheme.colorScheme.secondaryContainer) {
-                    Box(Modifier.heightIn(min = 40.dp), contentAlignment = Alignment.Center) {
-                        Text(t("随机字符", "Random characters"), fontSize = 13.sp, color = MaterialTheme.colorScheme.primary)
+                listOf(false to t("随机字符", "Random characters"), true to t("单词组合", "Passphrase")).forEach { (words, label) ->
+                    val selected = options.passphrase == words
+                    Surface(
+                        selected = selected,
+                        onClick = { options = options.copy(passphrase = words) },
+                        modifier = Modifier.weight(1f).semantics { role = Role.Tab },
+                        color = if (selected) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.background,
+                    ) {
+                        Box(Modifier.heightIn(min = 40.dp), contentAlignment = Alignment.Center) {
+                            Text(label, fontSize = 13.sp, color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
                     }
-                }
-                Box(Modifier.weight(1f).heightIn(min = 40.dp), contentAlignment = Alignment.Center) {
-                    Text(t("单词组合", "Passphrase"), fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f))
                 }
             }
         }
@@ -115,7 +142,39 @@ internal fun PasswordGeneratorControls(
                 Text(t("复制", "Copy"), fontSize = 14.sp)
             }
         }
-        SettingsCard {
+        if (options.passphrase) SettingsCard {
+            Column(Modifier.padding(horizontal = 15.dp, vertical = 11.dp)) {
+                Text(t("单词数 ${options.words}", "Words ${options.words}"), fontSize = 14.sp)
+                Slider(options.words.toFloat(), { options = options.copy(words = it.toInt()) },
+                    valueRange = GeneratorOptions.WORDS.first.toFloat()..GeneratorOptions.WORDS.last.toFloat(),
+                    steps = GeneratorOptions.WORDS.last - GeneratorOptions.WORDS.first - 1,
+                    modifier = Modifier.semantics { contentDescription = t("单词数", "Number of words") })
+            }
+            SettingsRule()
+            SettingsOption(t("分隔符", "Separator")) {
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    GeneratorOptions.SEPARATORS.forEach { separator ->
+                        val label = if (separator == " ") t("空格", "Space") else separator
+                        FilterChip(
+                            selected = options.separator == separator,
+                            onClick = { options = options.copy(separator = separator) },
+                            label = { Text(label, fontFamily = FontFamily.Monospace) },
+                            modifier = Modifier.semantics { contentDescription = t("分隔符 $label", "Separator $label") },
+                        )
+                    }
+                }
+            }
+            listOf(
+                Triple(t("首字母大写", "Capitalize words"), options.capitalize, "capitalize"),
+                Triple(t("加入一个数字", "Include a number"), options.number, "number"),
+            ).forEach { (label, checked, key) ->
+                SettingsRule()
+                SettingsOption(label) {
+                    Switch(checked, { enabled -> options = if (key == "capitalize") options.copy(capitalize = enabled) else options.copy(number = enabled) },
+                        Modifier.semantics { contentDescription = label })
+                }
+            }
+        } else SettingsCard {
             Column(Modifier.padding(horizontal = 15.dp, vertical = 11.dp)) {
                 Text(t("长度 ${options.length}", "Length ${options.length}"), fontSize = 14.sp)
                 Slider(options.length.toFloat(), { options = options.copy(length = it.toInt()) },
@@ -141,6 +200,9 @@ internal fun PasswordGeneratorControls(
             SettingsRule()
             SettingsOption(t("排除易混淆字符", "Exclude ambiguous characters"), t("当前核心暂不支持此规则", "Not supported by the current core"))
         }
-        SettingsHint(t("生成在本机完成，范围 4–64；规则由原生核心再次校验。生成历史不保存。单词组合尚未接入。", "Generated locally, 4–64 characters; rules are validated by the native core. No generation history is saved. Passphrases are not yet supported."))
+        SettingsHint(
+            if (options.passphrase) t("生成在本机完成，从 2048 个英文单词中随机选取 3–10 个；规则由原生核心再次校验。生成历史不保存。", "Generated locally from 3–10 random words of a 2048-word English list; rules are validated by the native core. No generation history is saved.")
+            else t("生成在本机完成，范围 4–64；规则由原生核心再次校验。生成历史不保存。", "Generated locally, 4–64 characters; rules are validated by the native core. No generation history is saved.")
+        )
     }
 }
