@@ -46,6 +46,7 @@ internal fun VaultWorkspace(
     }
     var editing by remember { mutableStateOf(vault.pendingDraft?.let(::JSONObject)) }
     var editingRestored by remember { mutableStateOf(vault.pendingDraft != null) }
+    var editingGenerator by remember { mutableStateOf(false) }
     var deleting by remember { mutableStateOf<JSONObject?>(null) }
     var createChooser by remember { mutableStateOf(false) }
     var codeChooser by remember { mutableStateOf(false) }
@@ -304,6 +305,12 @@ internal fun VaultWorkspace(
                                 t,
                                 { deleting = current },
                                 { scope.launch { if (vault.trash(current)) selected = null } },
+                                generatePassword = {
+                                    editingRestored = false
+                                    editingGenerator = true
+                                    editing = JSONObject(current.toString())
+                                },
+                                openHealth = { selected = null; settingsStart = "health"; page = "settings" },
                             )
                         }
                     page == "settings" ->
@@ -354,9 +361,10 @@ internal fun VaultWorkspace(
     }
     current?.let { item -> EntryMenu(detailMenu, { detailMenu = false }, item, vault, t, { editingRestored = false; editing = JSONObject(item.toString()) }, { deleting = item }) }
     editing?.let {
-        EntryEditor(it, vault, t, restoredDraft = editingRestored) {
+        EntryEditor(it, vault, t, restoredDraft = editingRestored, openGenerator = editingGenerator) {
             editing = null
             editingRestored = false
+            editingGenerator = false
         }
     }
     if (generator) QuickGenerator(vault, t) { generator = false }

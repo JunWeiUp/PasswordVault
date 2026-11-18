@@ -24,9 +24,11 @@ internal fun EntryDetail(
     t: (String, String) -> String,
     onDelete: () -> Unit,
     restore: () -> Unit,
+    generatePassword: (() -> Unit)? = null,
+    openHealth: (() -> Unit)? = null,
 ) {
     DetailPrivacy(vault, item.optString("id")) {
-        EntryDetailContent(item, vault, t, onDelete, restore)
+        EntryDetailContent(item, vault, t, onDelete, restore, generatePassword, openHealth)
     }
 }
 
@@ -38,6 +40,8 @@ private fun EntryDetailContent(
     t: (String, String) -> String,
     onDelete: () -> Unit,
     restore: () -> Unit,
+    generatePassword: (() -> Unit)?,
+    openHealth: (() -> Unit)?,
 ) {
     val state by vault.state.collectAsState()
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -51,6 +55,14 @@ private fun EntryDetailContent(
     var nextCode by remember(item.optString("id"), item.optString("secret"), item.optInt("period", 30)) { mutableStateOf("") }
     var remaining by remember(item.optString("id")) { mutableIntStateOf(0) }
     val period = item.optInt("period", 30).coerceAtLeast(1)
+    // Same core audit the list's "Needs attention" chip uses; re-run when the entry changes.
+    var healthFinding by remember(item.optString("id")) { mutableStateOf<JSONObject?>(null) }
+    LaunchedEffect(item.toString()) {
+        healthFinding =
+            if (type == "password" && !deleted)
+                runCatching { vault.audit().objects().firstOrNull { it.optString("id") == item.optString("id") } }.getOrNull()
+            else null
+    }
     LaunchedEffect(item.toString()) {
         if (type == "totp" || (type == "password" && item.optString("secret").isNotBlank()))
             while (true) {
@@ -93,6 +105,9 @@ private fun EntryDetailContent(
         when (type) {
             "device" -> DeviceDetailContent(item, vault, t)
             "password" -> {
+                if (!deleted) healthIssue(healthFinding)?.let { issue ->
+                    AccountHealthBanner(issue, t, generatePassword?.takeIf { writable }, openHealth)
+                }
                 if (!deleted) FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Button(onClick = { copy(item.optString("password")) }, enabled = item.optString("password").isNotEmpty(), contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)) {
                         Icon(Icons.Outlined.ContentCopy, null, Modifier.size(16.dp)); Spacer(Modifier.width(6.dp)); Text(t("复制密码", "Copy password"))
@@ -109,6 +124,7 @@ private fun EntryDetailContent(
                 DetailSection(t("登录信息", "Login information")) {
                     DetailField(t("用户名", "Username"), item.optString("username"), vault, t)
                     DetailField(t("密码", "Password"), item.optString("password"), vault, t, secret = true)
+                    PasswordStrengthBar(item.optString("password"), t, Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 10.dp))
                     if (item.optString("url").isNotBlank()) DetailField(t("网站", "Website"), item.optString("url"), vault, t)
                     if (item.optString("secret").isNotBlank()) DetailCodeRow(code, remaining, period, copy, t, compact = true)
                     if (item.optInt("passwordDuration") > 0) DetailValue(t("密码有效期", "Password validity"), t("${item.optInt("passwordDuration")} 天", "${item.optInt("passwordDuration")} days"))

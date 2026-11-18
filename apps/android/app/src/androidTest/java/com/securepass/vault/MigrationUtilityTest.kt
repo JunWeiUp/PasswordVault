@@ -134,7 +134,7 @@ class MigrationUtilityTest {
                             )
                         else
                             Surface(Modifier.fillMaxSize().safeDrawingPadding().padding(20.dp)) {
-                                PasswordGeneratorControls(repo) { zh, _ -> zh }
+                                PasswordGeneratorControls(repo, { zh, _ -> zh })
                             }
                     }
                 }

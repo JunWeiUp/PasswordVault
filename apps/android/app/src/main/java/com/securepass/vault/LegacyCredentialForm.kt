@@ -108,6 +108,7 @@ internal fun LegacyCredentialForm(
                 secret = true,
                 generate = { generatePassword(null) },
             )
+            if (kind == "password") PasswordStrengthBar(draft.optString("password"), t, Modifier.fillMaxWidth().padding(horizontal = 4.dp))
             draft
                 .optString("passwordLastChanged")
                 .takeIf { it.isNotBlank() }

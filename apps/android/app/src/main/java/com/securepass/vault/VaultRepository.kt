@@ -64,6 +64,9 @@ class VaultRepository(
     private val draftFileLock = Any()
     @Volatile private var lastActivity = clock()
     private var copied: ClipData? = null
+    /** Class name of the last failed mutation (e.g. "Storage"); never a message or field value. */
+    @Volatile var lastFailureKind: String? = null
+        private set
 
     private val screenLockReceiver =
         object : BroadcastReceiver() {
@@ -456,9 +459,13 @@ class VaultRepository(
 
     suspend fun mutate(op: String, values: JSONObject): Boolean =
         mutex.withLock {
-            if (!mutable.value.unlocked || mutable.value.busy) return@withLock false
+            if (!mutable.value.unlocked || mutable.value.busy) {
+                lastFailureKind = if (!mutable.value.unlocked) "Locked" else "Busy"
+                return@withLock false
+            }
             val generation = epoch
             mutable.value = mutable.value.copy(busy = true)
+            lastFailureKind = null
             try {
                 withContext(Dispatchers.IO) {
                     raw(op, values)
@@ -466,6 +473,7 @@ class VaultRepository(
                 }
                 generation == epoch && mutable.value.unlocked
             } catch (failure: Exception) {
+                lastFailureKind = failure::class.simpleName ?: "Unknown"
                 mutable.value =
                     mutable.value.copy(
                         error = if (failure is com.securepass.vault.core.VaultException.StaleEdit) "此条目已在其他设备修改，草稿保留。请对照新版本后重试 / Entry changed on another device; draft retained. Review the latest version." else "操作未完成，原资料仍保留 / Operation failed; existing data is preserved"

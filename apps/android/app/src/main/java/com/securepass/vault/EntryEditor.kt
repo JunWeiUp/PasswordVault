@@ -25,6 +25,7 @@ fun EntryEditor(
     vault: VaultRepository,
     t: (String, String) -> String,
     restoredDraft: Boolean = false,
+    openGenerator: Boolean = false,
     close: () -> Unit,
 ) {
     val state by vault.state.collectAsState()
@@ -56,6 +57,10 @@ fun EntryEditor(
     var replace by remember { mutableStateOf(false) }
     var deleting by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+    // Null while closed; "" targets the main password, otherwise an additional account's ID.
+    var generatorFor by remember { mutableStateOf(if (openGenerator && type == "password") "" else null) }
+    var saveFailed by remember { mutableStateOf(false) }
+    var failureKind by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
     val snackbar = remember { SnackbarHostState() }
     LaunchedEffect(error) {
@@ -167,6 +172,7 @@ fun EntryEditor(
             )
         saving = true
         error = null
+        saveFailed = false
         scope.launch {
             try {
                 val secret = submitted.optString("secret")
@@ -185,7 +191,12 @@ fun EntryEditor(
                 if (vault.save(prepareEntrySave(submitted, vault.state.value.entries))) {
                     vault.discardDraft()
                     close()
-                } else error = t("保存失败，输入已保留", "Could not save; your input is preserved")
+                } else {
+                    failureKind = vault.lastFailureKind
+                    saveFailed = true
+                    // The inline banner replaces the global error dialog for this failure.
+                    vault.clearMessage()
+                }
             } catch (_: Exception) {
                 error = t("内容无效，请检查密钥和间隔", "Invalid content; check the setup key and period")
             } finally {
@@ -195,26 +206,21 @@ fun EntryEditor(
     }
     fun generate(accountId: String?) {
         if (busy) return
-        working = true
-        scope.launch {
-            try {
-                val password =
-                    vault.command("generate", JSONObject().put("length", 16)).getString("password")
-                if (accountId == null) set("password", password)
-                else {
-                    val accounts = JSONObject(draftText).optJSONArray("accounts") ?: JSONArray()
-                    accounts
-                        .objects()
-                        .firstOrNull { it.optString("id") == accountId }
-                        ?.put("password", password)
-                    set("accounts", accounts)
-                }
-            } catch (_: Exception) {
-                error = t("无法生成密码", "Could not generate password")
-            } finally {
-                working = false
-            }
+        generatorFor = accountId ?: ""
+    }
+    fun useGenerated(password: String) {
+        val target = generatorFor ?: return
+        generatorFor = null
+        if (target.isEmpty()) set("password", password)
+        else {
+            val accounts = JSONArray(JSONObject(draftText).optJSONArray("accounts")?.toString() ?: "[]")
+            accounts.objects().firstOrNull { it.optString("id") == target }?.put("password", password)
+            set("accounts", accounts)
         }
+        scope.launch { snackbar.showSnackbar(t("已填入新密码，记得保存", "New password filled in; remember to save")) }
+    }
+    fun copyFailureDetails() {
+        vault.copy(saveFailureDetails(failureKind, type, existing, android.os.Build.VERSION.SDK_INT, BuildConfig.VERSION_NAME))
     }
     fun wallet(generate: Boolean, source: String = "mnemonic") {
         if (busy) return
@@ -267,6 +273,7 @@ fun EntryEditor(
     ) {
         Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp).imePadding(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text(t("手动输入密钥", "Enter secret manually"), style = MaterialTheme.typography.titleLarge)
+            if (saveFailed) SaveFailureBanner(existing, t, ::save, ::copyFailureDetails, enabled = !busy, stale = failureKind == "StaleEdit")
             error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             EditorField(t("发行方", "Issuer"), draft.optString("title"), { set("title", it); set("issuer", it) }, vault, t, copy = false)
             EditorField(t("账号", "Account"), draft.optString("username"), { set("username", it) }, vault, t, copy = false)
@@ -355,6 +362,7 @@ fun EntryEditor(
                     verticalArrangement =
                         Arrangement.spacedBy(18.dp),
                 ) {
+                    if (saveFailed) SaveFailureBanner(existing, t, ::save, ::copyFailureDetails, enabled = !busy, stale = failureKind == "StaleEdit")
                     error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                     if (working || deriving) LinearProgressIndicator(Modifier.fillMaxWidth())
                     LegacyCredentialForm(
@@ -399,6 +407,18 @@ fun EntryEditor(
             }
         }
     }
+    if (generatorFor != null)
+        AlertDialog(
+            onDismissRequest = { generatorFor = null },
+            title = { Text(t("密码生成器", "Password generator")) },
+            text = {
+                Column(Modifier.verticalScroll(rememberScrollState())) {
+                    PasswordGeneratorControls(vault, t, onUse = ::useGenerated)
+                }
+            },
+            confirmButton = {},
+            dismissButton = { TextButton(onClick = { generatorFor = null }) { Text(t("取消", "Cancel")) } },
+        )
     if (discard)
         AlertDialog(
             onDismissRequest = { discard = false },
