@@ -1,6 +1,40 @@
 // Isolated-world UI: only explicit trusted clicks can request a fill. Passwords are
 // delivered once to the selected live field, not returned as account-list metadata.
 (() => {
+  // In-page UI language. Content scripts cannot read the extension pages' localStorage, so
+  // the pages mirror the language to chrome.storage.local ("uiLanguage"); in-page UI stays light.
+  const INLINE_EN: Record<string, string> = {
+    "PasswordVault · 生成密码": "PasswordVault · Generate password",
+    "PasswordVault · 选择账号": "PasswordVault · Choose login",
+    "PasswordVault 匹配账号": "PasswordVault matching logins",
+    "PasswordVault：选择本站账号": "PasswordVault: choose a login for this site",
+    "仅填入当前表单，不自动登录": "Fills this form only; never signs in automatically",
+    "关闭": "Close",
+    "大写字母 A–Z": "Uppercase A–Z",
+    "密码长度（8–128）": "Password length (8–128)",
+    "小写字母 a–z": "Lowercase a–z",
+    "数字 0–9": "Digits 0–9",
+    "无法填入：请解锁资料库或关闭后重新选择": "Couldn't fill: unlock the vault, or close and choose again",
+    "未填写用户名": "No username",
+    "本站暂无可用账号": "No logins for this site",
+    "正在查找账号…": "Finding logins…",
+    "特殊字符 !@#$%&*+-": "Symbols !@#$%&*+-",
+    "生成并填入 {length} 位密码": "Generate and fill a {length}-character password",
+    "生成随机密码，仅填入当前字段；提交成功后请确认保存。": "Generates a random password into this field only; confirm saving after you submit successfully.",
+    "请先在 PasswordVault 中解锁，再重试": "Unlock PasswordVault, then try again",
+    "请输入有效长度并至少选择一种字符": "Enter a valid length and choose at least one character type",
+    "账号": "Login"
+  };
+  let inlineLanguage: "zh" | "en" = "zh";
+  const inlineText = (text: string): string => (inlineLanguage === "en" ? INLINE_EN[text] ?? text : text);
+  try {
+    void chrome.storage.local.get("uiLanguage").then((value) => { inlineLanguage = value.uiLanguage === "en" ? "en" : "zh"; }, () => {});
+    chrome.storage.onChanged.addListener((changes, area) => {
+      if (area === "local" && changes.uiLanguage) inlineLanguage = changes.uiLanguage.newValue === "en" ? "en" : "zh";
+    });
+  } catch {
+    // Without storage access the in-page UI stays Chinese.
+  }
   const context = window as typeof window & { __pvInline?: boolean };
   if (context.__pvInline || !/^https?:$/.test(location.protocol)) return;
   // Only same-origin embedded login pages may use the top page's vault matches.
@@ -205,18 +239,18 @@
       ":host{all:initial}.card{box-sizing:border-box;width:300px;max-width:calc(100vw - 16px);font:13px/1.5 system-ui;background:#fff;color:#1d2739;border:1px solid #d9dfeb;border-radius:12px;max-height:calc(100vh - 16px);display:flex;flex-direction:column;box-shadow:0 8px 32px #15254430;padding:8px}.head{font-weight:600;padding:8px}button{font:inherit;display:block;text-align:left;width:100%;border:0;border-radius:8px;background:white;color:inherit;padding:10px;cursor:pointer}button:hover,button:focus-visible{background:#eaf0ff;outline:2px solid #b8ceff}small{display:block;color:#65718a;overflow:hidden;text-overflow:ellipsis}strong{display:block;overflow:hidden;text-overflow:ellipsis}.list{max-height:240px;min-height:0;overflow:auto}.generator{display:grid;gap:8px;padding:8px}.generator label{display:flex;align-items:center;gap:8px}.generator input[type=number]{width:72px;font:inherit}.generator input[type=checkbox]{accent-color:#2761d8}button:disabled{opacity:.5;cursor:default}.status{padding:10px;color:#65718a}";
     const card = document.createElement("section");
     card.className = "card";
-    card.setAttribute("aria-label", "PasswordVault 匹配账号");
+    card.setAttribute("aria-label", inlineText("PasswordVault 匹配账号"));
     const head = document.createElement("div");
     head.className = "head";
-    head.textContent = "PasswordVault · 选择账号";
+    head.textContent = inlineText("PasswordVault · 选择账号");
     const status = document.createElement("div");
     status.className = "status";
     status.setAttribute("role", "status");
-    status.textContent = "正在查找账号…";
+    status.textContent = inlineText("正在查找账号…");
     const list = document.createElement("div");
     list.className = "list";
     const dismiss = document.createElement("button");
-    dismiss.textContent = "关闭";
+    dismiss.textContent = inlineText("关闭");
     dismiss.onclick = (e) => {
       if (e.isTrusted) {
         close();
@@ -229,12 +263,12 @@
     host.style.left = `${Math.max(8, Math.min(r.right - 300, innerWidth - 308))}px`;
     host.style.top = `${Math.max(8, Math.min(r.bottom + 6, innerHeight - 330))}px`;
     if (newPassword(c.input)) {
-      status.textContent = "生成随机密码，仅填入当前字段；提交成功后请确认保存。";
-      head.textContent = "PasswordVault · 生成密码";
+      status.textContent = inlineText("生成随机密码，仅填入当前字段；提交成功后请确认保存。");
+      head.textContent = inlineText("PasswordVault · 生成密码");
       const options = document.createElement("div");
       options.className = "generator";
       const lengthLabel = document.createElement("label");
-      lengthLabel.textContent = "密码长度（8–128）";
+      lengthLabel.textContent = inlineText("密码长度（8–128）");
       const lengthInput = document.createElement("input");
       lengthInput.type = "number";
       lengthInput.min = "8";
@@ -244,10 +278,10 @@
       lengthLabel.append(lengthInput);
       options.append(lengthLabel);
       const groups = [
-        ["大写字母 A–Z", "ABCDEFGHIJKLMNOPQRSTUVWXYZ"],
-        ["小写字母 a–z", "abcdefghijklmnopqrstuvwxyz"],
-        ["数字 0–9", "0123456789"],
-        ["特殊字符 !@#$%&*+-", "!@#$%&*+-"],
+        [inlineText("大写字母 A–Z"), "ABCDEFGHIJKLMNOPQRSTUVWXYZ"],
+        [inlineText("小写字母 a–z"), "abcdefghijklmnopqrstuvwxyz"],
+        [inlineText("数字 0–9"), "0123456789"],
+        [inlineText("特殊字符 !@#$%&*+-"), "!@#$%&*+-"],
       ].map(([title, alphabet]) => {
         const label = document.createElement("label");
         const checkbox = document.createElement("input");
@@ -263,7 +297,7 @@
         const valid = Number.isInteger(length) && length >= 8 && length <= 128 &&
           groups.some(group => group.checkbox.checked);
         generate.disabled = !valid;
-        generate.textContent = valid ? `生成并填入 ${length} 位密码` : "请输入有效长度并至少选择一种字符";
+        generate.textContent = valid ? inlineText("生成并填入 {length} 位密码").replace("{length}", String(length)) : inlineText("请输入有效长度并至少选择一种字符");
         return valid;
       };
       options.addEventListener("input", validate);
@@ -324,19 +358,19 @@
     }
     if (!result?.ok || !result.data?.accounts?.length) {
       status.textContent = result?.ok
-        ? "本站暂无可用账号"
-        : "请先在 PasswordVault 中解锁，再重试";
+        ? inlineText("本站暂无可用账号")
+        : inlineText("请先在 PasswordVault 中解锁，再重试");
       dismiss.focus();
       return;
     }
-    status.textContent = "仅填入当前表单，不自动登录";
+    status.textContent = inlineText("仅填入当前表单，不自动登录");
     for (const account of result.data.accounts as Account[]) {
       const button = document.createElement("button");
       button.type = "button";
       const title = document.createElement("strong");
-      title.textContent = account.title || "账号";
+      title.textContent = account.title || inlineText("账号");
       const user = document.createElement("small");
-      user.textContent = account.username || "未填写用户名";
+      user.textContent = account.username || inlineText("未填写用户名");
       button.append(title, user);
       button.onclick = async (e) => {
         if (!e.isTrusted || ownRevision !== revision || !eligible(c.input))
@@ -373,7 +407,7 @@
           close();
           c.input.focus();
         } else {
-          status.textContent = "无法填入：请解锁资料库或关闭后重新选择";
+          status.textContent = inlineText("无法填入：请解锁资料库或关闭后重新选择");
           dismiss.focus();
         }
       };
@@ -410,8 +444,8 @@
     const button = document.createElement("button");
     button.type = "button";
     button.textContent = "P";
-    button.title = "PasswordVault：选择本站账号";
-    button.setAttribute("aria-label", "PasswordVault：选择本站账号");
+    button.title = inlineText("PasswordVault：选择本站账号");
+    button.setAttribute("aria-label", inlineText("PasswordVault：选择本站账号"));
     button.setAttribute("aria-expanded", "false");
     root.append(style, button);
     const c = { input, host, button };
