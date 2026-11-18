@@ -8,7 +8,11 @@ struct PasswordVaultApp: App {
   var body: some Scene {
     WindowGroup {
       Group {
-        if store.unlocked { MobileTabs() } else { MobileUnlockView() }
+        if store.unlocked {
+          if store.offerBiometrics { MobileBiometricOffer() } else { MobileTabs() }
+        } else {
+          MobileUnlockView()
+        }
       }
       .environmentObject(store)
       .background(MobileActivityObserver(onActivity: store.activity).allowsHitTesting(false))
@@ -124,23 +128,49 @@ struct MobileUnlockView: View {
   @State private var importing = false
   @State private var pendingImport: URL?
   @State private var backupPassword = ""
+  /// First run: the welcome step comes before setting the master password.
+  @State private var started = false
+  @State private var otherDevice = false
   var body: some View {
+    if !store.ready {
+      ProgressView()
+    } else if !store.exists && !started {
+      MobileWelcome(start: { other in
+        otherDevice = other
+        started = true
+      })
+    } else {
+      form
+    }
+  }
+  private var form: some View {
     NavigationStack {
       Form {
         Section {
           VStack(alignment: .leading, spacing: 12) {
-            Image(systemName: "lock.shield.fill").font(.system(size: 45)).foregroundStyle(.blue)
+            Image(systemName: store.exists ? "lock.shield.fill" : "key.fill").font(.system(size: 45)).foregroundStyle(.blue)
             Text(
               store.exists
-                ? store.t("解锁资料库", "Unlock your vault") : store.t("留下重要的资料", "Keep what matters")
+                ? store.t("PasswordVault 已锁定", "PasswordVault is locked") : store.t("设置主密码", "Set a master password")
             ).font(.title.bold())
             Text(
               store.exists
-                ? store.t("你的资料仅在解锁后显示。", "Your information is visible only when unlocked.")
+                ? (UserDefaults.standard.bool(forKey: "biometricEnabled")
+                  ? store.t("输入主密码，或使用\(MobileBiometrics.name(store.t))解锁。", "Enter your master password or use \(MobileBiometrics.name(store.t)).")
+                  : store.t("输入主密码以解锁。", "Enter your master password to unlock."))
                 : store.t(
-                  "创建本机加密资料库。请妥善保存主密码。",
-                  "Create an encrypted vault on this device. Keep your master password safe.")
+                  "主密码用于加密本机密码库，忘记后无法找回（除非设置恢复密钥）。至少 1 个字符；加密强度不会因长度降低，但建议使用长密码。",
+                  "The master password encrypts this vault and can't be recovered unless you set up a recovery key. At least 1 character; encryption strength stays the same, but a long password is recommended.")
             ).foregroundStyle(.secondary)
+            if !store.exists {
+              OnboardingDots(step: 1)
+              if otherDevice {
+                Text(store.t(
+                  "设置主密码后，可在 设置 › 同步与设备 中扫描邀请加入设备组；也可以在下方从备份创建。",
+                  "After setting the password, scan an invitation in Settings › Sync & devices, or create the vault from a backup below."))
+                  .font(.footnote).foregroundStyle(.secondary)
+              }
+            }
           }.padding(.vertical, 16)
           if store.legacyAvailable {
             Text(
@@ -149,21 +179,26 @@ struct MobileUnlockView: View {
                 "Legacy data found. Verify its password to migrate; original files are retained."))
             SecureField(store.t("旧版主密码", "Legacy master password"), text: $legacyPassword)
           }
-          SecureField(store.t("主密码", "Master password"), text: $password).textContentType(.password)
-            .accessibilityIdentifier("vault.password")
+          VStack(alignment: .leading, spacing: 6) {
+            SecureField(store.t("主密码", "Master password"), text: $password).textContentType(.password)
+              .accessibilityIdentifier("vault.password")
+              .onChange(of: password) { _ in store.unlockError = nil }
+              .onSubmit { if store.exists && !password.isEmpty { submit() } }
+            if let message = store.unlockError {
+              Label(message, systemImage: "exclamationmark.circle.fill")
+                .font(.footnote).foregroundStyle(.red)
+                .accessibilityIdentifier("vault.password.error")
+            }
+          }
           if !store.exists {
             SecureField(store.t("再次输入主密码", "Confirm master password"), text: $confirmation)
               .textContentType(.newPassword)
-          }
-          Button {
-            let value = password
-            Task {
-              await store.authenticate(value, create: !store.exists, legacyPassword: legacyPassword)
-              password = ""
-              confirmation = ""
-              legacyPassword = ""
+            if !confirmation.isEmpty {
+              Text(password == confirmation ? store.t("✓ 一致", "✓ Matches") : store.t("两次输入不一致", "Passwords don't match"))
+                .font(.footnote).foregroundStyle(password == confirmation ? Color.green : Color.red)
             }
-          } label: {
+          }
+          Button(action: submit) {
             HStack {
               Spacer()
               if store.busy { ProgressView() }
@@ -190,7 +225,7 @@ struct MobileUnlockView: View {
         }
         if store.exists && UserDefaults.standard.bool(forKey: "biometricEnabled") {
           Section {
-            Button(store.t("使用 Face ID / Touch ID", "Use Face ID / Touch ID")) {
+            Button(store.t("使用", "Use ") + MobileBiometrics.name(store.t) + store.t("解锁", "")) {
               Task { await store.authenticateBiometric() }
             }.disabled(store.busy)
           }
@@ -207,7 +242,15 @@ struct MobileUnlockView: View {
               "资料加密保存在本机。主密码不会保存。",
               "Data is encrypted on this device. The master password is not stored."))
         }
-      }.navigationTitle("PasswordVault")
+      }.navigationTitle(store.exists ? "PasswordVault" : store.t("设置主密码", "Master password"))
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+          if !store.exists {
+            ToolbarItem(placement: .navigationBarLeading) {
+              Button(store.t("返回", "Back")) { started = false }.disabled(store.busy)
+            }
+          }
+        }
         .fileImporter(
           isPresented: $importing, allowedContentTypes: [.data, .json, .commaSeparatedText]
         ) { result in
@@ -249,5 +292,115 @@ struct MobileUnlockView: View {
           Text(store.t("未加密的 JSON / CSV 可留空。", "Leave blank for unencrypted JSON / CSV."))
         }
     }
+  }
+}
+
+extension MobileUnlockView {
+  fileprivate func submit() {
+    let value = password
+    let create = !store.exists
+    Task {
+      await store.authenticate(value, create: create, legacyPassword: legacyPassword)
+      // A wrong password stays in the field so it can be corrected; anything else is cleared.
+      if store.unlockError == nil { password = "" }
+      confirmation = ""
+      legacyPassword = ""
+    }
+  }
+}
+
+/// Step indicator for the three first-run steps.
+struct OnboardingDots: View {
+  let step: Int
+  var body: some View {
+    HStack(spacing: 6) {
+      ForEach(0..<3) { index in
+        Capsule().fill(index == step ? Color.accentColor : Color.secondary.opacity(0.3))
+          .frame(width: index == step ? 18 : 6, height: 6)
+      }
+    }.accessibilityHidden(true)
+  }
+}
+
+/// First-run welcome step.
+struct MobileWelcome: View {
+  @EnvironmentObject private var store: MobileVaultStore
+  let start: (_ otherDevice: Bool) -> Void
+  var body: some View {
+    ScrollView {
+      VStack(spacing: 20) {
+        Image(systemName: "lock.shield.fill").font(.system(size: 56)).foregroundStyle(.blue).padding(.top, 40)
+        Text(store.t("欢迎使用 PasswordVault", "Welcome to PasswordVault")).font(.title.bold())
+          .multilineTextAlignment(.center)
+        Text(store.t("账号、验证码、钱包和笔记，本机加密保存，可与你的其他设备端到端加密同步。",
+          "Accounts, codes, wallets and notes, encrypted on this device and synced end-to-end with your other devices."))
+          .foregroundStyle(.secondary).multilineTextAlignment(.center)
+        VStack(alignment: .leading, spacing: 16) {
+          feature("lock", store.t("只有你能打开", "Only you can open it"), store.t("主密码不会离开这台设备", "Your master password never leaves this device"))
+          feature("arrow.triangle.2.circlepath", store.t("与其他设备同步", "Sync with your devices"), store.t("扫码加入设备组即自动双向同步；中继只转发密文", "Scan to join a device group and sync both ways; the relay only forwards ciphertext"))
+          feature("person.badge.key", store.t("在任何应用中填充", "Fill in any app"), store.t("系统自动填充与通行密钥", "System AutoFill and passkeys"))
+        }.padding(.vertical, 8)
+        OnboardingDots(step: 0)
+        Button { start(false) } label: {
+          Text(store.t("新建密码库", "Create a vault")).frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.borderedProminent).controlSize(.large)
+        .accessibilityIdentifier("onboarding.start")
+        Button(store.t("我已在其他设备上使用", "I already use it on another device")) { start(true) }
+        Picker("Language", selection: $store.language) {
+          Text("简体中文").tag("zh")
+          Text("English").tag("en")
+        }
+        .pickerStyle(.segmented).frame(maxWidth: 260)
+        .onChange(of: store.language) { UserDefaults.standard.set($0, forKey: "language") }
+      }
+      .padding(.horizontal, 24).padding(.bottom, 24)
+      .frame(maxWidth: 520)
+      .frame(maxWidth: .infinity)
+    }
+  }
+  private func feature(_ symbol: String, _ title: String, _ detail: String) -> some View {
+    HStack(alignment: .top, spacing: 14) {
+      Image(systemName: symbol).font(.title3).foregroundStyle(.blue).frame(width: 28)
+      VStack(alignment: .leading, spacing: 2) {
+        Text(title).font(.headline)
+        Text(detail).font(.subheadline).foregroundStyle(.secondary)
+      }
+    }
+  }
+}
+
+/// Last first-run step: offer biometric unlock (shown only when the device supports it).
+struct MobileBiometricOffer: View {
+  @EnvironmentObject private var store: MobileVaultStore
+  var body: some View {
+    let name = MobileBiometrics.name(store.t)
+    VStack(spacing: 20) {
+      Spacer()
+      Image(systemName: name.contains("Touch") || name.contains("触控") ? "touchid" : "faceid")
+        .font(.system(size: 60)).foregroundStyle(.blue)
+      Text(store.t("使用\(name)解锁？", "Unlock with \(name)?")).font(.title.bold()).multilineTextAlignment(.center)
+      Text(store.t("主密码仍然有效。设备新增\(name)数据后需要重新输入主密码。",
+        "Your master password still works. After biometric data changes on this device, enter the master password again."))
+        .foregroundStyle(.secondary).multilineTextAlignment(.center)
+      OnboardingDots(step: 2)
+      Spacer()
+      Button {
+        Task {
+          await store.enrollBiometrics()
+          store.offerBiometrics = false
+        }
+      } label: {
+        Text(store.t("启用\(name)解锁", "Turn on \(name)")).frame(maxWidth: .infinity)
+      }
+      .buttonStyle(.borderedProminent).controlSize(.large).disabled(store.busy)
+      .accessibilityIdentifier("onboarding.biometric.enable")
+      Button(store.t("以后再说", "Not now")) {
+        store.offerBiometrics = false
+        store.notice = store.t("可稍后在 设置 › 安全 中启用", "You can turn it on later in Settings › Security")
+      }
+      .accessibilityIdentifier("onboarding.biometric.skip")
+    }
+    .padding(24).frame(maxWidth: 520)
   }
 }

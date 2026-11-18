@@ -33,6 +33,9 @@ final class AutofillSystemTest: XCTestCase {
     }
     let app = XCUIApplication()
     app.launch()
+    // First run opens on the welcome step.
+    let start = app.buttons["onboarding.start"]
+    if start.waitForExistence(timeout: 10) { start.tap() }
     let password = app.secureTextFields["vault.password"]
     XCTAssertTrue(password.waitForExistence(timeout: 10))
     let creating = app.buttons["创建资料库"].exists

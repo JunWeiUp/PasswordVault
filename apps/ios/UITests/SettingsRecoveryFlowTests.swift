@@ -3,6 +3,11 @@ import XCTest
 /// Settings › General start tab and clipboard duration, recovery-key spot check, password health cards.
 final class SettingsRecoveryFlowTests: XCTestCase {
   private func unlock(_ app: XCUIApplication, create: Bool) {
+    if create {
+      let start = app.buttons["onboarding.start"]
+      XCTAssertTrue(start.waitForExistence(timeout: 10))
+      start.tap()
+    }
     let password = app.secureTextFields["vault.password"]
     XCTAssertTrue(password.waitForExistence(timeout: 10))
     password.tap()

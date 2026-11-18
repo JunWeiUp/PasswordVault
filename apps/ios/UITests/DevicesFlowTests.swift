@@ -6,6 +6,9 @@ final class DevicesFlowTests: XCTestCase {
     let app = XCUIApplication()
     app.launchArguments = ["--ui-test-vault", UUID().uuidString, "--ui-test-device-fixture"]
     app.launch()
+    // First run opens on the welcome step.
+    let start = app.buttons["onboarding.start"]
+    if start.waitForExistence(timeout: 10) { start.tap() }
     let password = app.secureTextFields["vault.password"]
     XCTAssertTrue(password.waitForExistence(timeout: 10))
     password.tap()

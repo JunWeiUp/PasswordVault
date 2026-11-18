@@ -26,6 +26,10 @@ final class MobileVaultStore: ObservableObject {
   @Published var sharedMembers: [JSONValue] = []
   @Published var settings: [String: JSONValue] = [:]
   @Published var error: String?
+  /// Wrong master password on the lock screen, shown under the field instead of an alert.
+  @Published var unlockError: String?
+  /// After creating a vault: offer biometric unlock once (only when the device supports it).
+  @Published var offerBiometrics = false
   @Published var notice: String?
   /// Entry just moved to Trash; the app shows an undo banner for it until it times out.
   @Published var undoTrashID: String?
@@ -126,6 +130,7 @@ final class MobileVaultStore: ObservableObject {
     }
     busy = true
     error = nil
+    unlockError = nil
     let generation = epoch
     defer { busy = false }
     do {
@@ -159,6 +164,7 @@ final class MobileVaultStore: ObservableObject {
       sharedMembers = document.sharedMembers
       exists = true
       legacyAvailable = false
+      offerBiometrics = create && Self.biometricsOfferable
       unlocked = true
       activity()
       await recoverDraft(core)
@@ -166,7 +172,9 @@ final class MobileVaultStore: ObservableObject {
         if create { await installUITestDeviceFixture(password: password) }
       #endif
     } catch {
-      if create && legacyAvailable {
+      if !create, case VaultError.Authentication = error {
+        unlockError = t("主密码不正确。请注意大小写和输入法。", "Incorrect master password. Check Caps Lock and the keyboard language.")
+      } else if create && legacyAvailable {
         self.error = t(
           "旧库未完成迁移。请检查旧密码；若缺少迁移密钥或包含旧版共享资料，请从旧版导出加密备份再导入。原文件保留。",
           "Legacy migration did not complete. Check the old password; if keys are missing or legacy sharing is present, export an encrypted backup from the old app and import it. Source files are retained."
@@ -285,6 +293,7 @@ final class MobileVaultStore: ObservableObject {
     notice = nil
     undoTrashID = nil
     error = nil
+    offerBiometrics = false
     if clipboardChange == UIPasteboard.general.changeCount { UIPasteboard.general.items = [] }
     clipboardChange = nil
     let previous = core
@@ -315,6 +324,13 @@ final class MobileVaultStore: ObservableObject {
       await previous?.close()
       if background != .invalid { UIApplication.shared.endBackgroundTask(background) }
     }
+  }
+  /// Biometric unlock can be offered after creating a vault.
+  static var biometricsOfferable: Bool {
+    #if DEBUG
+      if ProcessInfo.processInfo.arguments.contains("--ui-test-biometric-offer") { return true }
+    #endif
+    return MobileBiometrics.available && !UserDefaults.standard.bool(forKey: "biometricEnabled")
   }
   func enrollBiometrics() async {
     guard let core, unlocked else { return }
