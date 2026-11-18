@@ -383,14 +383,16 @@ final class MobileVaultStore: ObservableObject {
     let currentIDs = Set(values.map { ($0.object["rpId"]?.string ?? "") + ":" + ($0.object["id"]?.string ?? "") })
     let removed = previous.filter { !currentIDs.contains(($0.object["rpId"]?.string ?? "") + ":" + ($0.object["id"]?.string ?? "")) }.compactMap(identity)
     if !removed.isEmpty {
-      let success: Bool = await withCheckedContinuation { continuation in
-        ASCredentialIdentityStore.shared.removeCredentialIdentities(removed) { success, _ in continuation.resume(returning: success) }
+      // The system store may never call back when its service is unreachable; give up after
+      // a bounded wait so refresh, unlock and save never hang. A later refresh retries.
+      let success = await boundedCompletion(timeout: 5, fallback: false) { done in
+        ASCredentialIdentityStore.shared.removeCredentialIdentities(removed) { success, _ in done(success) }
       }
       if !success { return }
     }
     let identities = values.compactMap(identity)
-    let success: Bool = await withCheckedContinuation { continuation in
-      ASCredentialIdentityStore.shared.saveCredentialIdentities(identities) { success, _ in continuation.resume(returning: success) }
+    let success = await boundedCompletion(timeout: 5, fallback: false) { done in
+      ASCredentialIdentityStore.shared.saveCredentialIdentities(identities) { success, _ in done(success) }
     }
     if success, let encoded = try? JSONEncoder().encode(values) { preferences?.set(encoded, forKey: "passkey-identity-index") }
   }
