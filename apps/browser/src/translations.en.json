@@ -447,5 +447,9 @@
   "连接这台 Mac": "Connect to this Mac",
   "点击发起连接，然后在 Mac 弹窗中选择「允许连接」。": "Click Connect, then choose “Allow connection” in the Mac prompt.",
   "已连接 Mac": "Connected to the Mac",
-  "账号保存在 Mac 上。锁定 Mac 资料库后，插件也会停止读取。": "Logins are stored on the Mac. When the Mac vault locks, the extension stops reading too."
+  "账号保存在 Mac 上。锁定 Mac 资料库后，插件也会停止读取。": "Logins are stored on the Mac. When the Mac vault locks, the extension stops reading too.",
+  "正在同步…": "Syncing…",
+  "将同时填入安全码。": "The security code will be filled too.",
+  "不会填入安全码。": "The security code won't be filled.",
+  "填入": "Fill"
 }

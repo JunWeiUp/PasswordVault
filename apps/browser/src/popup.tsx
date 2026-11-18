@@ -10,6 +10,8 @@ import { NativeConnectionPanel } from "./NativeConnectionPanel";
 import { MAC_DOWNLOAD_URL } from "./native-connection";
 import "./style.css";
 import { version } from "../package.json";
+import { tileFor } from "./tiles";
+import { syncTone } from "./popup-state";
 function Popup() {
   useLocale();
   const tabParameter = new URL(location.href).searchParams.get("sourceTabId");
@@ -25,7 +27,10 @@ function Popup() {
   const [matches, setMatches] = useState<any>();
   const [captured, setCaptured] = useState<any>();
   const [matchesError, setMatchesError] = useState("");
-  const [notice, setNotice] = useState("");
+  const [notice, setNoticeText] = useState("");
+  const [noticeTone, setNoticeTone] = useState<"ok" | "muted">("ok");
+  const [syncing, setSyncing] = useState(false);
+  const setNotice = (text: string, tone: "ok" | "muted" = "ok") => { setNoticeText(text); setNoticeTone(tone); };
   const busyRef = useRef(false);
   const refreshing = useRef(0);
   const revision = useRef(0);
@@ -250,7 +255,7 @@ function Popup() {
             </details>
           )}
           {state.mode === "native" && !captured && (
-            <div class={`sync-count ${state.queued ? "pending" : "done"}`} role="status" aria-live="polite">
+            <div class={`sync-count ${syncTone(state)}`} role="status" aria-live="polite">
               <span>
                 {state.queued
                   ? fmt(t("{queued} 个账号待同步到 Mac 客户端"),{"queued":state.queued})
@@ -259,8 +264,8 @@ function Popup() {
                     : t("已全部同步到 Mac 客户端")}
               </span>
               {!!state.queued && (
-                <button class="text-button" type="button" disabled={busy} onClick={() => run(async () => {})}>
-                  {t("立即同步")}
+                <button class="text-button" type="button" disabled={busy || syncing} onClick={() => { setSyncing(true); void run(async () => {}).finally(() => setSyncing(false)); }}>
+                  {syncing ? t("正在同步…") : t("立即同步")}
                 </button>
               )}
             </div>
@@ -339,12 +344,12 @@ function Popup() {
                       id: captured.id,
                     });
                   setCaptured(undefined);
-                  setNotice(t("已取消保存。"));
+                  setNotice(t("已取消保存。"), "muted");
                 })
               }
             />
           )}
-          {notice && <p role="status">{notice}</p>}
+          {notice && <p class={noticeTone === "ok" ? "notice-ok" : "notice-muted"} role="status">{notice}</p>}
           {matchesError && (
             <p class="empty-small" role="status">
               {matchesError}
@@ -399,7 +404,7 @@ function Popup() {
                           })
                         }
                       >
-                        <span class="record-symbol">⌘</span>
+                        <span class={`tile tone-${tileFor(account.title).tone}`} aria-hidden="true">{tileFor(account.title).initial}</span>
                         <span>
                           <strong>{account.title}</strong>
                           <small>{account.username || t("未填写账号")}</small>

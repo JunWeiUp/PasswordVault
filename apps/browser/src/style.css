@@ -32,6 +32,15 @@
   --shadow: 0 3px 17px #1b2f451a;
   --pop: 0 12px 40px #1b2a4430;
   --shadow-lg: 0 20px 70px #243c5710;
+  /* Record tiles keep light initials in both themes. */
+  --tile-0: #3265db;
+  --tile-1: #2f8f63;
+  --tile-2: #b86a12;
+  --tile-3: #cf3f3f;
+  --tile-4: #7a5af5;
+  --tile-5: #1d2b48;
+  --tile-6: #5c6573;
+  --tile-ink: #fff;
   /* Legacy aliases used across the stylesheet and components. */
   --subtle: var(--soft);
   --selection: var(--blue-soft);
@@ -1132,9 +1141,60 @@ summary {
   background: var(--green-soft);
   color: var(--green);
 }
+.sync-count.off {
+  background: var(--soft);
+  color: var(--muted);
+}
 .sync-count.pending {
   background: var(--orange-soft);
   color: var(--orange);
   font-weight: 600;
 }
 .sync-count .text-button { white-space: nowrap; }
+
+.tile {
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  color: var(--tile-ink);
+  font-weight: 650;
+  font-size: 13px;
+  background: var(--tile-6);
+}
+.tile.tone-0 { background: var(--tile-0); }
+.tile.tone-1 { background: var(--tile-1); }
+.tile.tone-2 { background: var(--tile-2); }
+.tile.tone-3 { background: var(--tile-3); }
+.tile.tone-4 { background: var(--tile-4); }
+.tile.tone-5 { background: var(--tile-5); }
+.tile.tone-6 { background: var(--tile-6); }
+.notice-ok {
+  color: var(--green);
+  font-size: 12px;
+  margin: 6px 0;
+}
+.notice-muted {
+  color: var(--muted);
+  font-size: 12px;
+  margin: 6px 0;
+}
+.confirm-card {
+  border: 1px solid var(--blue-line);
+  background: var(--blue-soft);
+  border-radius: 10px;
+  padding: 12px;
+  margin-top: 10px;
+}
+.confirm-card p {
+  margin: 0 0 10px;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.confirm-card .actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
