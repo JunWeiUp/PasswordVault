@@ -28,10 +28,7 @@ struct MobileSettingsView: View {
         NavigationLink(store.t("通用", "General")) { MobileGeneralSettings() }
         NavigationLink(store.t("安全", "Security")) { MobileSecuritySettings() }
         NavigationLink(store.t("自动填充与通行密钥", "AutoFill & passkeys")) { MobileAutofillSettings() }
-        NavigationLink(store.t("同步与设备", "Sync & devices")) {
-          ScrollView { RelaySettingsView(relay: store.relay, t: store.t).padding() }
-            .navigationTitle(store.t("同步与设备", "Sync & devices"))
-        }
+        NavigationLink(store.t("同步与设备", "Sync & devices")) { MobileSyncDevicesView(relay: store.relay) }
         NavigationLink(store.t("备份与导入", "Backups & import")) { MobileBackupSettings() }
       }
       Section(store.t("工具", "Tools")) {

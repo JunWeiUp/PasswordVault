@@ -82,6 +82,46 @@ final class SettingsFlowTests: XCTestCase {
     XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS '尚未完成独立安全审计'")).firstMatch.exists)
   }
 
+  /// Sync & devices before joining: the join landing, the paste flow with a rejected
+  /// invitation and the peer-library link. No relay is contacted.
+  func testSyncAndDevicesJoinLanding() {
+    let app = XCUIApplication()
+    app.launchArguments = ["--ui-test-vault", UUID().uuidString]
+    app.launch()
+    let start = app.buttons["onboarding.start"]
+    if start.waitForExistence(timeout: 10) { start.tap() }
+    let password = app.secureTextFields["vault.password"]
+    XCTAssertTrue(password.waitForExistence(timeout: 10))
+    password.tap()
+    password.typeText("1")
+    let confirm = app.secureTextFields.element(boundBy: 1)
+    confirm.tap()
+    confirm.typeText("1")
+    app.buttons["vault.unlock"].tap()
+    XCTAssertTrue(app.tabBars.buttons["设置"].waitForExistence(timeout: 10))
+    app.tabBars.buttons["设置"].tap()
+    app.buttons["同步与设备"].tap()
+    XCTAssertTrue(app.staticTexts["同步你的设备"].waitForExistence(timeout: 10))
+    XCTAssertTrue(app.buttons["relay.join.scan"].exists)
+    XCTAssertTrue(app.buttons["relay.create"].exists)
+    XCTAssertTrue(app.buttons["对等库与家庭库"].exists)
+    let shot = XCTAttachment(screenshot: app.screenshot())
+    shot.name = "sync-join-landing"
+    shot.lifetime = .keepAlways
+    add(shot)
+
+    app.buttons["relay.join.paste"].tap()
+    XCTAssertTrue(app.navigationBars["加入设备组"].waitForExistence(timeout: 5))
+    let link = app.textViews.firstMatch.exists ? app.textViews.firstMatch : app.textFields["邀请链接或旧版邀请内容"]
+    link.tap()
+    link.typeText("not-an-invitation")
+    app.buttons["读取邀请"].tap()
+    XCTAssertTrue(app.staticTexts["relay-enrollment-error"].waitForExistence(timeout: 5), "An invalid invitation is rejected")
+    XCTAssertFalse(app.staticTexts["relay-invitation-endpoint"].exists)
+    app.buttons["返回"].tap()
+    XCTAssertTrue(app.staticTexts["同步你的设备"].waitForExistence(timeout: 5))
+  }
+
   private func waitFor(_ element: XCUIElement, _ predicate: String) -> Bool {
     let expectation = XCTNSPredicateExpectation(predicate: NSPredicate(format: predicate), object: element)
     return XCTWaiter.wait(for: [expectation], timeout: 10) == .completed

@@ -16,6 +16,19 @@ final class RelayGroupTests: XCTestCase {
     }
     return (core, relay, path)
   }
+  /// Lists show the offline banner only for a set-up device group; no group means no banner.
+  func testOfflineNeedsADeviceGroupAndClearsOnLock() async throws {
+    let (_, relay, path) = try await fixture("mobile")
+    defer { try? FileManager.default.removeItem(at: path) }
+    XCTAssertTrue(relay.credentialsReady)
+    XCTAssertFalse(relay.hasManagedGroup)
+    XCTAssertFalse(relay.connected)
+    XCTAssertFalse(relay.offline, "Without a group there is nothing to sync")
+    relay.setUnlocked(false)
+    XCTAssertFalse(relay.connected)
+    XCTAssertFalse(relay.connecting)
+    XCTAssertFalse(relay.offline, "A locked vault shows no relay state")
+  }
   private func server() throws -> String {
     guard let url = ProcessInfo.processInfo.environment["PV_GROUP_TEST_URL"], url.hasPrefix("ws://127.0.0.1:") else {
       throw XCTSkip("Requires a disposable local relay with self-service-apps=passwordvault")
