@@ -4,6 +4,7 @@ import { Banner, Btn, Group, Row, T, TextBox, confirm, copySecret, openSheet, Sh
 import { onLock } from "../store";
 import { c } from "../theme";
 import { InvitationQR, relayErrorText } from "./index";
+import { keyFingerprint } from "./fingerprint";
 function ExitConfirmation(props: { op: "leave" | "disband"; close: () => void; act: (v: Record<string, unknown>) => Promise<void> }) {
   const busy = signal(false), error = signal("");
   let alive = true;
@@ -43,6 +44,18 @@ export function GroupPanel(props: { group: any; busy: boolean; online?: string[]
   const personal = () => !props.group.peerLibrary;
   const manager = () => (props.group.state?.members ?? []).some((m: any) => m.device === props.group.device && m.manager);
   const act = (v: Record<string, unknown>) => void props.act(v).catch(() => {});
+  const joinMode = signal<"auto" | "manual">("auto");
+  const approval = (note: string) => <If when={props.group.applicant}>
+    <Banner tone="info" title={`${props.group.applicant} 申请加入`}>双方配对码应一致：{props.group.code}</Banner>
+    <TextBox value={code()} onChange={(v) => code.set(v.toUpperCase())} placeholder="输入对方显示的配对码" />
+    <T size={12}>{note}</T>
+    <Btn label="批准加入设备组" disabled={props.busy || code() !== props.group.code} onPress={() => act({ op: "approve", code: code(), manager: false })} />
+  </If>;
+  const showKey = (m: any) => openSheet({ render: close => <View style={{ gap: 10 }}>
+    <SheetTitle title={`${m.name} 的公钥指纹`} text="设备组记录中固定的签名公钥。可与该设备“设置 › 同步”中显示的指纹逐组核对。" />
+    <T mono size={13} selectable>{keyFingerprint(m.signing_key)}</T>
+    <SheetFooter><Btn label="完成" kind="primary" onPress={close} /></SheetFooter>
+  </View> });
   const exit = (op: "leave" | "disband") => openSheet({ render: close => <ExitConfirmation op={op} close={close} act={props.act} /> });
   cleanup(onLock(() => { relayPassword.set(""); joinPassword.set(""); }));
   return <View style={{ gap: 12 }}>
@@ -89,14 +102,23 @@ export function GroupPanel(props: { group: any; busy: boolean; online?: string[]
     <If when={props.group.state}>
       <Row><T weight="600" style={{ flex: 1 }}>{props.group.state?.name || "设备组"}</T><Btn label="刷新设备组" disabled={props.busy} onPress={() => act({ op: "refresh" })} /></Row>
       <If when={personal() && manager()}>
-        <T size={12} color={c().muted}>在新设备上扫描二维码即可加入并开始双向同步，无需再确认。邀请 10 分钟内有效，只能使用一次。</T>
-        <Btn label="邀请设备" disabled={props.busy || !!props.group.invitationLink} onPress={() => act({ op: "invite", mode: "auto" })} />
+        <If when={!props.group.invitationLink}>
+          <Row gap={8}><T size={12} weight="600">加入方式</T>
+            <Btn testID="join-mode-auto" label="扫码后自动加入" kind={joinMode() === "auto" ? "primary" : undefined} onPress={() => joinMode.set("auto")} />
+            <Btn testID="join-mode-manual" label="核对配对码后批准" kind={joinMode() === "manual" ? "primary" : undefined} onPress={() => joinMode.set("manual")} />
+          </Row>
+        </If>
+        <T size={12} color={c().muted}>{(props.group.invitationLink ? props.group.invitationMode : joinMode()) === "manual"
+          ? "新设备扫描后提交申请，你在这里核对双方配对码一致后再批准加入。邀请 10 分钟内有效，只能使用一次。"
+          : "在新设备上扫描二维码即可加入并开始双向同步，无需再确认。邀请 10 分钟内有效，只能使用一次。"}</T>
+        <Btn label="邀请设备" disabled={props.busy || !!props.group.invitationLink} onPress={() => act({ op: "invite", mode: joinMode() })} />
         <If when={props.group.invitationLink}>
           <InvitationQR link={props.group.invitationLink} />
           <T size={11} color={c().muted}>持有此邀请的设备可以获得完整密码库，请只交给你自己的设备。</T>
           <TextBox value={props.group.invitationLink || ""} onChange={() => {}} masked label="邀请链接" />
-          <Row><Btn label="复制邀请链接" onPress={() => void copySecret(props.group.invitationLink, "邀请链接")} /><Btn label="取消邀请" disabled={props.busy} onPress={() => act({ op: "cancel-invitation" })} /></Row>
+          <Row><Btn label="复制邀请链接" onPress={() => void copySecret(props.group.invitationLink, "邀请链接")} /><Btn label="取消邀请" disabled={props.busy} onPress={() => act({ op: "cancel-invitation" })} /><If when={props.group.invitationMode === "manual"}><Btn label="检查加入申请" disabled={props.busy} onPress={() => act({ op: "check-request" })} /></If></Row>
         </If>
+        {approval("批准后该设备加入设备组，并与组内设备双向同步全部密码库内容。")}
       </If>
       <If when={personal() && !manager()}>
         <T size={12} color={c().muted}>{`请在管理设备“${(props.group.state?.members ?? []).find((m: any) => m.manager)?.name ?? "创建者"}”上邀请新设备。`}</T>
@@ -110,12 +132,7 @@ export function GroupPanel(props: { group: any; busy: boolean; online?: string[]
           <TextBox value={props.group.invitationLink || ""} onChange={() => {}} masked label="邀请链接" />
           <Row><Btn label="复制邀请链接" onPress={() => void copySecret(props.group.invitationLink, "邀请链接")} /><Btn label="取消邀请" disabled={props.busy} onPress={() => act({ op: "cancel-invitation" })} /><If when={props.group.invitationMode === "manual"}><Btn label="检查加入申请" disabled={props.busy} onPress={() => act({ op: "check-request" })} /></If></Row>
         </If>
-        <If when={props.group.applicant}>
-          <Banner tone="info" title={`${props.group.applicant} 申请加入`}>双方配对码应一致：{props.group.code}</Banner>
-          <TextBox value={code()} onChange={(v) => code.set(v.toUpperCase())} placeholder="输入对方显示的配对码" />
-          <T size={12}>此步骤只确认设备组成员身份，不更改对等密码库权限。</T>
-          <Btn label="批准加入设备组" disabled={props.busy || code() !== props.group.code} onPress={() => act({ op: "approve", code: code(), manager: false })} />
-        </If>
+        {approval("此步骤只确认设备组成员身份，不更改对等密码库权限。")}
       </If>
       <Group style={{ gap: 8, paddingVertical: 12 }}>
         <TextBox value={renamed()} onChange={(v) => renamed.set(v)} placeholder="新的设备名称" />
@@ -126,6 +143,7 @@ export function GroupPanel(props: { group: any; busy: boolean; online?: string[]
           <If when={m.device !== props.group.device}>
             <T size={11} color={c().muted}>{props.online?.includes(m.device) ? "在线" : "离线"}</T>
           </If>
+          <If when={keyFingerprint(m.signing_key)}><Btn kind="ghost" label="查看公钥指纹" onPress={() => showKey(m)} /></If>
         </View>)}
       </Group>
       <Row><Btn label="退出设备组" disabled={props.busy} onPress={() => exit("leave")} />

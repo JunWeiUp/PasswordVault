@@ -1,15 +1,15 @@
 // Settings: one window-wide dialog with a section list. Sections that depend on
 // native services not yet ported say so instead of pretending to work.
-import { Clipboard, openUrl, setColorScheme, signal, Storage, View, Scroll } from "nsh";
+import { cleanup, Clipboard, openUrl, setColorScheme, signal, Storage, View, Scroll } from "nsh";
 import { Dialog } from "nsh/base";
 import { Menu } from "nsh/desktop";
 import { Platform } from "passwordvault/native";
 import { Icon, type IconName } from "./icons";
 import { Banner, Btn, Group, OptionRow, Row, T, TextBox, Toggle } from "./kit";
-import { call, errorText, saveSettings, settings, toast, vaultDirectory } from "./store";
+import { call, errorText, onLock, saveSettings, settings, toast, vaultDirectory } from "./store";
 import { c, radius, TEXT_SCALES, textScale } from "./theme";
 import { appVersion } from "./version";
-import { CLIPBOARD_CHOICES, clipboardSeconds, hideFromCapture, setClipboardSeconds, setHideFromCapture, setTrayIcon, trayIcon } from "./preferences";
+import { CLIPBOARD_CHOICES, clipboardSeconds, DENSITY_LABEL, hideFromCapture, listDensity, quickCloseAfterCopy, setClipboardSeconds, setHideFromCapture, setListDensity, setQuickCloseAfterCopy, setTrayIcon, trayIcon, type ListDensity } from "./preferences";
 import { SHORTCUT_LABEL, setShortcut, shortcut, shortcutAvailable, type ShortcutChoice } from "./hotkey";
 import { isMac, desktopCapabilities, biometricAvailability, biometricEnabled, biometricError, disableBiometrics, enableBiometrics, loginItemStatus, openLoginItemSettings, setLoginItem, type LoginStatus } from "./native";
 import { openSheet, SheetFooter, SheetTitle } from "./kit";
@@ -76,6 +76,10 @@ function General() {
           <Picker value={String(textScale())} options={TEXT_SCALES.map(([v, l]) => [String(v), l] as [string, string])}
             onChange={(v) => { textScale.set(Number(v)); void Storage.setItem("textScale", v); }} />
         </OptionRow>
+        <OptionRow title="列表密度" note="紧凑模式在列表中显示更多项目">
+          <Picker value={listDensity()} options={(Object.keys(DENSITY_LABEL) as ListDensity[]).map((k) => [k, DENSITY_LABEL[k]])}
+            onChange={(v) => setListDensity(v as ListDensity)} />
+        </OptionRow>
         <OptionRow title="语言" note="其他语言将在本地化接入后提供"><Picker value="zh" options={[["zh", "简体中文"]]} onChange={() => {}} /></OptionRow>
       </Group>
       <GroupTitle text="剪贴板" />
@@ -98,6 +102,11 @@ function General() {
           <Picker value={shortcut()} options={(Object.keys(SHORTCUT_LABEL) as ShortcutChoice[]).map((k) => [k, SHORTCUT_LABEL[k]])} onChange={(v) => void setShortcut(v as ShortcutChoice)} />
         </OptionRow>
       </Group></If>
+      <GroupTitle text="快速访问面板" />
+      <Group>
+        <Toggle title="复制后关闭快速访问" note="关闭后，复制密码、验证码或用户名时面板保持打开，便于连续复制"
+          checked={quickCloseAfterCopy()} onChange={setQuickCloseAfterCopy} />
+      </Group>
     </>
   );
 }
@@ -124,7 +133,51 @@ function LoginItemRow() {
 
 const bio = signal(false);
 
-function askEnableBiometrics() {
+/**
+ * First-run offer after creating a vault. The just-entered master password is held
+ * only while this sheet is open and is dropped on close or lock.
+ */
+export function offerBiometricsAfterCreate(password: string) {
+  openSheet({ width: 440, render: (close) => <BiometricOffer password={password} close={close} /> });
+}
+
+function BiometricOffer(props: { password: string; close: () => void }) {
+  let held: string | null = props.password;
+  const busy = signal(false);
+  const error = signal("");
+  const drop = () => { held = null; };
+  cleanup(drop);
+  cleanup(onLock(() => { drop(); props.close(); }));
+  const later = () => { drop(); props.close(); };
+  const enable = async () => {
+    if (busy() || !held) return;
+    busy.set(true);
+    error.set("");
+    try {
+      await enableBiometrics(held);
+      drop();
+      bio.set(true);
+      props.close();
+      toast("Touch ID 已启用");
+    } catch (e) {
+      error.set(biometricError(e));
+    } finally {
+      busy.set(false);
+    }
+  };
+  return (
+    <View style={{ gap: 10 }}>
+      <SheetTitle title="使用 Touch ID 解锁？" text="解锁凭据保存在这台 Mac 的钥匙串中，需要生物识别才能读取，不会同步到其他设备。主密码仍可随时使用。" />
+      <If when={error()}><T size={12} color={c().red}>{error()}</T></If>
+      <SheetFooter>
+        <Btn label="稍后在设置中启用" disabled={busy()} onPress={later} />
+        <Btn label={busy() ? "正在启用…" : "启用 Touch ID"} kind="primary" disabled={busy()} onPress={enable} />
+      </SheetFooter>
+    </View>
+  );
+}
+
+function askEnableBiometrics(reverify = false) {
   const pw = signal("");
   const busy = signal(false);
   const error = signal("");
@@ -140,7 +193,7 @@ function askEnableBiometrics() {
           pw.set("");
           bio.set(true);
           close();
-          toast("Touch ID 已启用");
+          toast(reverify ? "Touch ID 已重新验证" : "Touch ID 已启用");
         } catch (e) {
           error.set(String(e).includes("Authentication") ? "主密码不正确。" : biometricError(e));
         } finally {
@@ -149,12 +202,14 @@ function askEnableBiometrics() {
       };
       return (
         <View style={{ gap: 10 }}>
-          <SheetTitle title="启用 Touch ID" text="输入当前主密码确认。解锁凭据保存在这台 Mac 的钥匙串中，需要指纹才能读取，不会同步到其他设备。" />
+          <SheetTitle title={reverify ? "重新验证 Touch ID" : "启用 Touch ID"} text={reverify
+            ? "应用签名或钥匙串变化后，Touch ID 可能无法读取旧凭据。输入当前主密码，重新保存这台 Mac 的解锁凭据。"
+            : "输入当前主密码确认。解锁凭据保存在这台 Mac 的钥匙串中，需要指纹才能读取，不会同步到其他设备。"} />
           <TextBox value={pw()} onChange={(v) => pw.set(v)} masked autoFocus placeholder="当前主密码" onSubmit={go} />
           <T size={12} color={c().red}>{error()}</T>
           <SheetFooter>
             <Btn label="取消" onPress={close} />
-            <Btn label={busy() ? "正在启用…" : "启用"} kind="primary" disabled={!pw() || busy()} onPress={go} />
+            <Btn label={busy() ? (reverify ? "正在验证…" : "正在启用…") : reverify ? "重新验证" : "启用"} kind="primary" disabled={!pw() || busy()} onPress={go} />
           </SheetFooter>
         </View>
       );
@@ -205,6 +260,9 @@ function Security() {
           note={!biometricAvailability() ? "这台 Mac 没有可用的 Touch ID" : bio() ? "已启用 · 重启后首次仍可用主密码" : "启用前需要输入当前主密码"}
           checked={bio()} disabled={!biometricAvailability()}
           onChange={(v) => (v ? askEnableBiometrics() : void disableBiometrics().then(() => { bio.set(false); toast("Touch ID 已停用"); }, (e) => toast(biometricError(e))))} />
+        <If when={bio() && biometricAvailability()}>
+          <OptionRow title="重新验证 Touch ID" note="签名或钥匙串变化后使用"><Btn testID="reverify-touch-id" label="重新验证…" onPress={() => askEnableBiometrics(true)} /></OptionRow>
+        </If>
       </Group></If>
       <If when={desktopCapabilities.captureProtection}><GroupTitle text="隐私" />
       <Group>
@@ -263,7 +321,7 @@ const REPO = "https://github.com/JunWeiUp/PasswordVault";
 const openLink = (url: string) => void openUrl(url).catch(() => toast("无法打开链接"));
 /** Version and platform only: never vault content, paths, accounts or device names. */
 export function diagnostics(): string {
-  return [`PasswordVault ${appVersion}`, `Platform: ${isMac ? "macOS" : "Windows"}`, "UI: Native Shell 0.5.1"].join("\n");
+  return [`PasswordVault ${appVersion}`, `Platform: ${isMac ? "macOS" : "Windows"}`, "UI: Native Shell 0.6.0"].join("\n");
 }
 
 const PAGES: Record<Tab, () => any> = {

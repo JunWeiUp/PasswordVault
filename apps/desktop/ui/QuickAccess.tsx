@@ -8,6 +8,7 @@ import { websites } from "./entries/model";
 import { Tile } from "./ItemList";
 import { deviceSubtitle, deviceTitle } from "./devices";
 import { searchItems } from "./search";
+import { quickCloseAfterCopy } from "./preferences";
 import { c, MONO, radius, fs } from "./theme";
 
 const open = signal(false);
@@ -28,7 +29,8 @@ const results = computed<Item[]>(() => searchItems(
 
 async function primary(item: Item | undefined) {
   if (!item) return;
-  open.set(false);
+  const copies = item.type === "totp" || item.type === "password" || item.type === "creditCard" || item.type === "crypto";
+  if (!copies || quickCloseAfterCopy()) open.set(false);
   if (item.type === "totp" || (item.type === "password" && !item.password && item.secret)) {
     await copySecret(await totpCode(item.secret, item.period ?? 30), "验证码");
   } else if (item.type === "password") await copySecret(item.password, "密码");
@@ -43,7 +45,7 @@ async function secondary(action: "username" | "website" | "reveal") {
   if (!item) return;
   if (action === "username") {
     if (!item.username) return toast("这个项目没有用户名");
-    open.set(false);
+    if (quickCloseAfterCopy()) open.set(false);
     await copySecret(item.username, "用户名");
   } else if (action === "website") {
     const site = websites(String(item.url ?? ""))[0];
@@ -115,7 +117,7 @@ export function QuickAccessHost() {
           <T size={11} color={c().muted}>{keymap.label("mod+o")} 打开网站</T>
           <T size={11} color={c().muted}>{keymap.label("mod+enter")} 在主窗口显示</T>
           <View style={{ flex: 1 }} />
-          <T size={11} color={c().muted}>锁定时自动关闭</T>
+          <T size={11} color={c().muted}>{quickCloseAfterCopy() ? "复制后关闭 · 锁定时关闭" : "锁定时自动关闭"}</T>
         </View>
       </Dialog>
       </>

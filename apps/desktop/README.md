@@ -1,6 +1,6 @@
 # PasswordVault Desktop — Native Shell
 
-This is the shared desktop client on [Native Shell](https://nsh.dev) 0.5.1.
+This is the shared desktop client on [Native Shell](https://nsh.dev) 0.6.0.
 It uses a Rust crate with a TSX interface, and the interface follows
 [the complete Mac design](../../docs/design/index.html). It is the only Mac client; the legacy
 SwiftUI client was removed from the source tree (see Git history).
@@ -40,10 +40,10 @@ and global shortcuts. Windows uses the system title bar and Ctrl-key hints.
 
 ## Commands
 
-Run these commands from the repository root. The wrapper pins NSH 0.5.1 and
+Run these commands from the repository root. The wrapper pins NSH 0.6.0 and
 Rust 1.98.0 while requiring [huacnlee/cargo](https://huacnlee.github.io/cargo/).
-Install NSH with `NSH_VERSION=v0.5.1 NSH_INSTALL_DIR="$HOME/.nsh-0.5.1"`
-using the official installer, or set `NSH_BIN` to another 0.5.1 executable.
+Install NSH with `NSH_VERSION=v0.6.0 NSH_INSTALL_DIR="$HOME/.nsh-0.6.0"`
+using the official installer, or set `NSH_BIN` to another 0.6.0 executable.
 The Cargo bridge in `tool/nsh-cargo/cargo` links generated NSH executables to
 the paths NSH expects because the fork ignores `--target-dir`; compilation
 and compilation caches remain owned by the fork. Desktop wrappers isolate dependency
