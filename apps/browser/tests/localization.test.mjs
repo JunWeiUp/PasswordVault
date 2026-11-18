@@ -23,3 +23,11 @@ test("popup status and error messages from shared modules have English translati
   for(const match of source.matchAll(/"([^"\n]*[\u3400-\u9fff][^"\n]*)"/g))assert.ok(translations[match[1]],`${name}: ${match[1]}`);
  }
 });
+test("full-page dates follow the UI language instead of a fixed locale",async()=>{
+ for(const name of ["app","Capabilities","HistoryDialog","WebDAVPanel","RecoveryPanel"]){
+  const source=await readFile(new URL(`../src/${name}.tsx`,import.meta.url),"utf8");
+  assert.equal(/toLocale(?:Date|Time)?String\("zh-CN"/.test(source),false,name);
+ }
+ const i18n=await readFile(new URL("../src/i18n.ts",import.meta.url),"utf8");
+ assert.match(i18n,/language==="en"\?"en-US":"zh-CN"/);
+});

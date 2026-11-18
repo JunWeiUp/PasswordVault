@@ -1198,3 +1198,92 @@ summary {
   justify-content: flex-end;
   gap: 8px;
 }
+.record.with-tile {
+  flex-direction: row;
+  align-items: center;
+  gap: 11px;
+}
+.record-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+}
+.editor-status {
+  margin-top: 12px;
+}
+.panel,
+.recovery-panel {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 16px 18px;
+  margin: 0 0 16px;
+}
+.panel > h2,
+.panel h3 {
+  margin-top: 0;
+  font-size: 15px;
+}
+.status-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  margin: 10px 0;
+}
+.status-table th,
+.status-table td {
+  text-align: left;
+  border-bottom: 1px solid var(--line2);
+  padding: 6px 8px;
+  vertical-align: top;
+}
+.status-table th {
+  color: var(--muted);
+  font-weight: 500;
+}
+.status-note {
+  display: block;
+  color: var(--muted);
+  margin-top: 3px;
+}
+.pill {
+  display: inline-block;
+  border-radius: 999px;
+  padding: 1px 8px;
+  margin-right: 4px;
+  font-size: 11px;
+  background: var(--soft);
+  color: var(--ink2);
+}
+.pill.ok {
+  background: var(--green-soft);
+  color: var(--green);
+}
+.pill.warn {
+  background: var(--orange-soft);
+  color: var(--orange);
+}
+.pill.err {
+  background: var(--red-soft);
+  color: var(--red);
+}
+.audit-group {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  margin: 10px 0;
+  overflow: hidden;
+}
+.audit-group > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 14px;
+  background: var(--soft);
+}
+.audit-group > article {
+  padding: 8px 14px;
+  border-top: 1px solid var(--line2);
+}

@@ -1,6 +1,8 @@
 import {t,useLocale} from "./i18n";
 import { useEffect, useRef, useState } from "preact/hooks";
 import { command } from "./client";
+import { fmt } from "./i18n";
+import { groupSecurityFindings, type SecurityGroupKey } from "./security-groups";
 
 type Item = { id: string; type: string; title: string; [key: string]: any };
 const card = [["cardholder", "持卡人"], ["number", "卡号"], ["expiryMonth", "到期月"], ["expiryYear", "到期年"], ["securityCode", "安全码"], ["brand", "卡组织"]];
@@ -45,8 +47,10 @@ export function ImportReviewPanel({ onComplete }: { onComplete: () => Promise<vo
     <input aria-label={t("导入文件")} type="file" accept=".csv,.1pux" disabled={busy} onChange={async e => { const file = e.currentTarget.files?.[0]; e.currentTarget.value = ""; if (!file) return; if (file.size > 64 * 1024 * 1024) { setMessage(t("文件超过 64 MiB 限制。")); return; } try { const data = base64(new Uint8Array(await file.arrayBuffer())); const kind = file.name.toLowerCase().endsWith(".1pux") ? "1pux" : "csv"; setSource(data); setFormat(kind); setMapping({}); await inspect(data, kind, {}); } catch { setMessage(t("读取文件失败。")); } }} />
     {message && <p role="status">{message}</p>}
     {preview && <><fieldset disabled={busy}><legend>{t("导入预检")}</legend>{format === "csv" && <>{["title", "username", "password", "url", "notes"].map(key => <label key={key}>{t(({title:"标题",username:"用户名",password:"密码",url:"网址",notes:"备注"} as Record<string,string>)[key])}<select value={mapping[key] ?? ""} onChange={e => { const next = { ...mapping }; if (e.currentTarget.value) next[key] = e.currentTarget.value; else delete next[key]; setMapping(next); }}><option value="">{t("自动匹配")}</option>{preview.columns.map((column: string) => <option>{column}</option>)}</select></label>)}<button onClick={() => inspect()}>{t("重新预检映射")}</button></>}
-    {preview.rows.map((row: any) => <article key={row.index}><label><input type="checkbox" checked={choices[row.index] ? choices[row.index] === "add" : !row.duplicateIds.length} onChange={e => setChoices({ ...choices, [row.index]: e.currentTarget.checked ? "add" : "skip" })} />{row.item.title} {row.duplicateIds.length > 0 && t("（重复或同名）")}</label>{row.warnings.map((warning: string) => <p>{warning}</p>)}</article>)}
-    {preview.failures.map((failure: any) => <p role="alert">{t("行")}{failure.row}: {failure.reason}</p>)}<button disabled={!preview.rows.length || JSON.stringify(mapping) !== checkedMapping} onClick={commit}>{t("确认导入")}</button></fieldset></>}
+    <table class="status-table"><thead><tr><th>{t("导入")}</th><th>{t("标题")}</th><th>{t("用户名")}</th><th>{t("状态")}</th></tr></thead><tbody>
+    {preview.rows.map((row: any) => { const add = choices[row.index] ? choices[row.index] === "add" : !row.duplicateIds.length; return <tr key={row.index}><td><input type="checkbox" aria-label={fmt(t("导入 {title}"), { title: row.item.title ?? "" })} checked={add} onChange={e => setChoices({ ...choices, [row.index]: e.currentTarget.checked ? "add" : "skip" })} /></td><td>{row.item.title}</td><td>{row.item.username ?? ""}</td><td>{row.duplicateIds.length > 0 ? <span class="pill warn">{t("重复或同名")}</span> : row.warnings.length ? <span class="pill warn">{t("需要检查")}</span> : <span class="pill ok">{t("新增")}</span>}{!add && <span class="pill">{t("跳过")}</span>}{row.warnings.map((warning: string) => <small class="status-note">{warning}</small>)}</td></tr>; })}
+    {preview.failures.map((failure: any) => <tr role="alert"><td></td><td colSpan={2}>{t("行")}{failure.row}</td><td><span class="pill err">{t("无法导入")}</span><small class="status-note">{failure.reason}</small></td></tr>)}
+    </tbody></table><button disabled={!preview.rows.length || JSON.stringify(mapping) !== checkedMapping} onClick={commit}>{t("确认导入")}</button></fieldset></>}
   </section>;
 }
 
@@ -60,6 +64,9 @@ function securityFindingTitle(kind: string): string {
     default: return t("其他安全提醒");
   }
 }
+function securityGroupTitle(key: SecurityGroupKey): string {
+  return ({ weak: t("弱密码"), reused: t("重复使用的密码"), breach: t("泄露的密码"), expired: t("过期的密码"), twoFactor: t("可启用双重验证"), passkey: t("支持通行密钥"), other: t("其他安全提醒") } as Record<SecurityGroupKey, string>)[key];
+}
 function securityFindingDetails(finding: any): string {
   if (finding.kind !== "passwordHealth") return "";
   return [finding.weak === true ? t("密码较弱") : "", finding.reused === true ? t("密码重复使用") : "", finding.expired === true ? t("密码已超过设置的有效期") : ""].filter(Boolean).join(" · ");
@@ -67,12 +74,12 @@ function securityFindingDetails(finding: any): string {
 
 export function SecurityCenterPanel({ items, openItem }: { items: Item[]; openItem: (id: string) => void }) {
   useLocale();
-  const [report, setReport] = useState<any>(); const [enabled, setEnabled] = useState(false); const [busy, setBusy] = useState(false); const [results, setResults] = useState<Record<string, string>>({}); const [message, setMessage] = useState("");
+  const [report, setReport] = useState<any>(); const [enabled, setEnabled] = useState(false); const [busy, setBusy] = useState(false); const [results, setResults] = useState<Record<string, string>>({}); const [message, setMessage] = useState(""); const [breached, setBreached] = useState<string[]>([]);
   const abort = useRef<AbortController>(); const alive = useRef(true);
   useEffect(() => { void refresh(); return () => { alive.current = false; abort.current?.abort(); }; }, []);
   async function refresh() { try { const value = await command({ op: "security-audit" }); if (alive.current) setReport(value); } catch { if (alive.current) setMessage(t("本地检查未完成。")); } }
   async function check() {
-    abort.current?.abort(); const controller = new AbortController(); abort.current = controller; setBusy(true); setResults({});
+    abort.current?.abort(); const controller = new AbortController(); abort.current = controller; setBusy(true); setResults({}); setBreached([]);
     for (const item of items.filter(i => i.type === "password" && !i.isDeleted)) {
       if (controller.signal.aborted) break;
       let outcome = t("无密码可检查");
@@ -87,6 +94,7 @@ export function SecurityCenterPanel({ items, openItem }: { items: Item[]; openIt
           count += (await command({ op: "breach-response", suffix: parts.suffix, response: text })).count;
         }
         if (passwords.length) outcome = count > 0 ? t("发现泄露记录，请更换密码") : t("本次查询未发现记录");
+        if (count > 0 && !controller.signal.aborted && alive.current) setBreached(current => [...current, item.id]);
       } catch { outcome = t("检查未完成，请重试"); }
       if (!controller.signal.aborted && alive.current) setResults(current => ({ ...current, [item.id]: outcome }));
     }
@@ -95,8 +103,9 @@ export function SecurityCenterPanel({ items, openItem }: { items: Item[]; openIt
   return <section><h3>{t("安全中心")}</h3><p>{t("网站目录覆盖有限，未列入的网站未检查；提示不代表账号已开启验证。目录更新：")}{report?.catalogUpdatedAt ?? t("未知")}</p><button onClick={refresh}>{t("重新检查")}</button>
     <label>{t("导入更新目录")}<input type="file" accept=".json" onChange={async e => { const file = e.currentTarget.files?.[0]; e.currentTarget.value = ""; if (!file) return; try { if (file.size > 8 * 1024 * 1024) throw Error("Too large"); await command({ op: "security-catalog", catalog: JSON.parse(await file.text()) }); await refresh(); } catch { setMessage(t("目录导入失败，已保留原目录。")); } }} /></label>
     <details><summary>{t("数据来源与许可")}</summary><p>{report?.catalogLicense}</p>{report?.catalogSources?.map((source: any) => <p><a href={source.url} target="_blank" rel="noreferrer">{source.name}</a> · {source.revision}</p>)}<pre style={{ whiteSpace: "pre-wrap" }}>{report?.catalogLicenseText}</pre></details>
-    {report?.findings.map((finding: any) => <article key={finding.key}><button onClick={() => openItem(finding.id)}>{finding.title ?? finding.id} · {securityFindingTitle(finding.kind)}</button>{securityFindingDetails(finding) && <p>{securityFindingDetails(finding)}</p>}{finding.ignored && <span>{t("已忽略")}</span>}{finding.source && <a href={finding.source} target="_blank" rel="noreferrer">{t("查看依据")}</a>}{finding.incident && <a href={finding.incident.source} target="_blank" rel="noreferrer">{finding.incident.title}</a>}<button onClick={async () => { try { await command({ op: "security-ignore", key: finding.key, ignored: !finding.ignored }); await refresh(); } catch { setMessage(t("无法保存忽略设置。")); } }}>{finding.ignored ? t("恢复提醒") : t("忽略此项")}</button></article>)}
-    <label><input type="checkbox" checked={enabled} onChange={e => { setEnabled(e.currentTarget.checked); if (!e.currentTarget.checked) { abort.current?.abort(); setResults({}); } }} />{t("允许本次联网泄露密码检查")}</label>
+    {groupSecurityFindings(report?.findings ?? [], items.filter(i => breached.includes(i.id)).map(i => ({ id: i.id, title: i.title }))).map(group => <section class="audit-group" key={group.key}><header><strong>{securityGroupTitle(group.key)}</strong><span class={`pill ${group.count ? (group.key === "twoFactor" || group.key === "passkey" ? "" : "warn") : "ok"}`}>{fmt(t("{count} 项"), { count: group.count })}</span></header>
+    {group.findings.map((finding: any) => finding.kind === "breach" ? <article key={finding.key}><button onClick={() => openItem(finding.id)}>{finding.title ?? finding.id} · {t("发现泄露记录，请更换密码")}</button></article> : <article key={`${group.key}:${finding.key}`}><button onClick={() => openItem(finding.id)}>{finding.title ?? finding.id} · {securityFindingTitle(finding.kind)}</button>{securityFindingDetails(finding) && <p>{securityFindingDetails(finding)}</p>}{finding.ignored && <span>{t("已忽略")}</span>}{finding.source && <a href={finding.source} target="_blank" rel="noreferrer">{t("查看依据")}</a>}{finding.incident && <a href={finding.incident.source} target="_blank" rel="noreferrer">{finding.incident.title}</a>}<button onClick={async () => { try { await command({ op: "security-ignore", key: finding.key, ignored: !finding.ignored }); await refresh(); } catch { setMessage(t("无法保存忽略设置。")); } }}>{finding.ignored ? t("恢复提醒") : t("忽略此项")}</button></article>)}</section>)}
+    <label><input type="checkbox" checked={enabled} onChange={e => { setEnabled(e.currentTarget.checked); if (!e.currentTarget.checked) { abort.current?.abort(); setResults({}); setBreached([]); } }} />{t("允许本次联网泄露密码检查")}</label>
     <p>{t("仅向 Have I Been Pwned 发送 SHA-1 前 5 位，并请求填充响应。不会发送密码、完整哈希、账号或站点；网络失败不表示安全。")}</p>
     <button disabled={!enabled || busy} onClick={check}>{t("检查 / 重新检查")}</button>{items.filter(i => i.type === "password" && !i.isDeleted).map(item => <p key={item.id}>{item.title}: {results[item.id] ?? t("未检查")}</p>)}{message && <p role="alert">{message}</p>}
   </section>;

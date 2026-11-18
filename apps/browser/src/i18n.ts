@@ -17,6 +17,8 @@ addEventListener("storage",(event:StorageEvent)=>{if(event.key==="pv-language")l
 export function setLocale(next:Language){language=next;savePreference("pv-language",next);apply();for(const listener of listeners)listener();}
 export function setTheme(next:Theme){theme=next;savePreference("pv-theme",next);apply();for(const listener of listeners)listener();}
 export function t(text:string):string {return language==="en"?(translations[text]??text):(chineseLabels[text]??text);}
+/** BCP 47 locale for dates in the current UI language. */
+export function dateLocale():string {return language==="en"?"en-US":"zh-CN";}
 /** Fills `{name}` placeholders after translation. */
 export function fmt(text:string,values:Record<string,unknown>):string {return text.replace(/\{(\w+)\}/g,(m,k)=>k in values?String(values[k]):m);}
 export function useLocale(){const[,refresh]=useState(0);useEffect(()=>{const notify=()=>refresh(n=>n+1);listeners.add(notify);return()=>{listeners.delete(notify);};},[]);return {language,theme,setLocale,setTheme};}
