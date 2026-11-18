@@ -6,6 +6,7 @@
   "rust": ".",
   "appearance": "system",
   "capabilities": {
+    "application": true,
     "clipboard": true,
     "openUrl": {
       "schemes": [

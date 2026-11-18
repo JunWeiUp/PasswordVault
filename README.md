@@ -16,7 +16,7 @@ Native clients are in **developer preview**. [Platform availability](#choose-you
 
 **Release 2.5.4:** [GitHub Release](https://github.com/JunWeiUp/PasswordVault/releases/tag/v2.5.4) · [Installation and limits](config/release/INSTALL.md). Includes NSH Mac, Windows x64, Android, extension, Web and iOS Simulator packages. Upcoming releases ship five packages: the standalone Web package is retired in favor of the browser extension.
 
-**Mac client status:** [`apps/desktop`](apps/desktop/README.md) is the only Mac client (NSH 0.5.1, macOS 14+ / Apple Silicon), shared with Windows. The legacy SwiftUI Mac client has been removed from the source tree; it remains available in Git history.
+**Mac client status:** [`apps/desktop`](apps/desktop/README.md) is the only Mac client (NSH 0.6.0, macOS 14+ / Apple Silicon), shared with Windows. The legacy SwiftUI Mac client has been removed from the source tree; it remains available in Git history.
 
 Mac development builds use a separate Rust background service. Closing the window saves drafts and exits the interface; authorized browser queries and lock management stay available. Reopen the app to edit, or choose Quit to stop both processes. See the [desktop guide](apps/desktop/README.md) for verification and limits.
 
@@ -108,7 +108,7 @@ bash tool/check_native.sh macos
 bash tool/check_native.sh browser
 ```
 
-All Rust code uses one pinned toolchain (1.98.0). `check_native.sh macos` checks the Native Shell desktop client in `apps/desktop`, which uses NSH 0.5.1 and its official native `RichEditor`. Project Rust build scripts require [huacnlee/cargo](https://huacnlee.github.io/cargo/) with the pinned rustc. See [Mac build instructions](apps/desktop/README.md).
+All Rust code uses one pinned toolchain (1.98.0). `check_native.sh macos` checks the Native Shell desktop client in `apps/desktop`, which uses NSH 0.6.0 and its official native `RichEditor`. Project Rust build scripts require [huacnlee/cargo](https://huacnlee.github.io/cargo/) with the pinned rustc. See [Mac build instructions](apps/desktop/README.md).
 
 The unpacked extension is in `apps/browser/dist`. For evaluation, follow the native guide's **isolated synthetic vault** instructions.
 

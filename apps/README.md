@@ -2,7 +2,7 @@
 
 | Directory | Role | Status |
 | --- | --- | --- |
-| `desktop/` | Native Shell 0.5 / Rust / TSX shared desktop client | Current Mac development and Windows x64 preview; macOS 14+ Apple Silicon, Windows 11 ARM VM validation |
+| `desktop/` | Native Shell 0.6 / Rust / TSX shared desktop client | Current Mac development and Windows x64 preview; macOS 14+ Apple Silicon, Windows 11 ARM VM validation |
 | `ios/` | SwiftUI mobile client and AutoFill extension | Active mobile client |
 | `android/` | Kotlin/Compose mobile client | Active mobile client |
 | `browser/` | Chromium extension | Active browser client |

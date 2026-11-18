@@ -265,7 +265,7 @@ const REPO = "https://github.com/JunWeiUp/PasswordVault";
 const openLink = (url: string) => void openUrl(url).catch(() => toast("无法打开链接"));
 /** Version and platform only: never vault content, paths, accounts or device names. */
 export function diagnostics(): string {
-  return [`PasswordVault ${appVersion}`, `Platform: ${isMac ? "macOS" : "Windows"}`, "UI: Native Shell 0.5.1"].join("\n");
+  return [`PasswordVault ${appVersion}`, `Platform: ${isMac ? "macOS" : "Windows"}`, "UI: Native Shell 0.6.0"].join("\n");
 }
 
 const PAGES: Record<Tab, () => any> = {
