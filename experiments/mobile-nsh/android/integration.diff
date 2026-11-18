@@ -1,0 +1,35 @@
+diff --git a/apps/android/app/build.gradle.kts b/apps/android/app/build.gradle.kts
+index 378c790..08547af 100644
+--- a/apps/android/app/build.gradle.kts
++++ b/apps/android/app/build.gradle.kts
+@@ -82,6 +82,8 @@ android {
+     testBuildType = providers.gradleProperty("testBuildType").orElse("debug").get()
+     sourceSets["main"].java.srcDir("src/main/generated")
+     sourceSets["main"].assets.srcDir(layout.buildDirectory.dir("generated/note-editor-assets"))
++    // Shared NSH mobile UI bundle (tool/mobile-nsh/build-bundle.sh) as assets/nsh.
++    sourceSets["main"].assets.srcDir("../../../experiments/mobile-nsh/ui/build")
+     compileOptions {
+         isCoreLibraryDesugaringEnabled = true
+         sourceCompatibility = JavaVersion.VERSION_17
+@@ -101,6 +103,8 @@ android {
+ dependencies {
+     implementation("androidx.credentials:credentials:1.5.0")
+     implementation(project(":common-relay"))
++    // Native Shell embedding SDK (tool/mobile-nsh/fetch-embed.sh).
++    implementation(files("../../../vendor/nsh-embed/v0.5.1/nsh-embed-android/nsh-embed-android/nsh.aar"))
+     implementation("androidx.camera:camera-camera2:1.4.2")
+     implementation("androidx.camera:camera-lifecycle:1.4.2")
+     implementation("androidx.camera:camera-view:1.4.2")
+diff --git a/apps/android/app/src/main/java/com/securepass/vault/VaultWorkspace.kt b/apps/android/app/src/main/java/com/securepass/vault/VaultWorkspace.kt
+index 59982ad..583c49d 100644
+--- a/apps/android/app/src/main/java/com/securepass/vault/VaultWorkspace.kt
++++ b/apps/android/app/src/main/java/com/securepass/vault/VaultWorkspace.kt
+@@ -324,6 +324,8 @@ internal fun VaultWorkspace(
+                         )
+                     page == "relay" -> RelaySettingsScreen(vault, t)
+                     page == "webdav" -> WebDavScreen(vault, state, t)
++                    // Pilot of the NSH mobile UI: the codes list is the shared TSX page.
++                    page == "totp" -> NshCodesScreen(vault, state, open = { selected = it })
+                     else ->
+                         key(page) {
+                             EntryCollection(
