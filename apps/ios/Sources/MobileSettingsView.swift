@@ -48,6 +48,8 @@ struct MobileSettingsView: View {
 
 struct MobileGeneralSettings: View {
   @EnvironmentObject private var store: MobileVaultStore
+  @AppStorage(StartTab.key) private var startTab = Destination.notes.rawValue
+  @AppStorage(ClipboardClear.key) private var clipboardSeconds = 30
   var body: some View {
     Form {
       Section(store.t("外观与语言", "Appearance & language")) {
@@ -65,6 +67,26 @@ struct MobileGeneralSettings: View {
           Text("简体中文").tag("zh")
           Text("English").tag("en")
         }.onChange(of: store.language) { UserDefaults.standard.set($0, forKey: "language") }
+      }
+      Section {
+        Picker(store.t("打开时显示", "Open to"), selection: $startTab) {
+          ForEach(StartTab.options) { Text($0.title(chinese: store.chinese)).tag($0.rawValue) }
+        }
+      } header: {
+        Text(store.t("启动", "Startup"))
+      } footer: {
+        Text(store.t("解锁后先显示这个页面。仅保存在本机。", "Shown first after unlocking. Saved on this device only."))
+      }
+      Section {
+        Picker(store.t("自动清除剪贴板", "Clear clipboard"), selection: $clipboardSeconds) {
+          ForEach(ClipboardClear.options, id: \.self) { Text(ClipboardClear.label($0, t: store.t)).tag($0) }
+        }
+      } header: {
+        Text(store.t("剪贴板", "Clipboard"))
+      } footer: {
+        Text(store.t(
+          "复制的内容只留在本机，不会通过“通用剪贴板”同步到其他设备。锁定时，如剪贴板未被替换也会清除。",
+          "Copies stay on this device and are not shared through Universal Clipboard. Locking also clears the clipboard if it was not replaced."))
       }
     }.navigationTitle(store.t("通用", "General"))
   }
@@ -341,31 +363,93 @@ struct GeneratorOptions: Equatable {
   }
 }
 
+/// Password health filters over the core `audit` results (weak, reused, expired).
+enum AuditFilter: String, CaseIterable, Identifiable {
+  case weak, reused, expired
+  var id: String { rawValue }
+  func matches(_ result: JSONValue) -> Bool { result.object[rawValue]?.bool == true }
+  func label(_ t: (String, String) -> String) -> String {
+    switch self {
+    case .weak: return t("弱密码", "Weak")
+    case .reused: return t("重复使用", "Reused")
+    case .expired: return t("需要更换", "Due for change")
+    }
+  }
+  static func filtered(_ results: [JSONValue], by filter: AuditFilter?) -> [JSONValue] {
+    guard let filter else { return results }
+    return results.filter(filter.matches)
+  }
+}
+
 struct MobileAuditView: View {
   @EnvironmentObject private var store: MobileVaultStore
   @State private var results: [JSONValue] = []
+  @State private var filter: AuditFilter?
+  @State private var breachCheck = false
+  @State private var selected: VaultItem?
   var body: some View {
     List {
-      ForEach(Array(results.enumerated()), id: \.offset) { _, value in
-        VStack(alignment: .leading) {
-          Text(value.object["title"]?.string ?? "").font(.headline)
-          Text(
-            [
-              value.object["weak"]?.bool == true ? store.t("密码较弱", "Weak password") : "",
-              value.object["reused"]?.bool == true ? store.t("密码重复", "Reused password") : "",
-              value.object["expired"]?.bool == true ? store.t("密码过期", "Expired password") : "",
-            ].filter { !$0.isEmpty }.joined(separator: " · ")
-          ).foregroundStyle(.secondary)
+      Section {
+        LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
+          ForEach(AuditFilter.allCases) { kind in
+            Button { filter = filter == kind ? nil : kind } label: {
+              card(kind.label(store.t), "\(results.filter(kind.matches).count)", selected: filter == kind)
+            }
+            .buttonStyle(.borderless)
+            .accessibilityIdentifier("health.\(kind.rawValue)")
+            .accessibilityAddTraits(filter == kind ? .isSelected : [])
+          }
+          Button { breachCheck = true } label: {
+            card(store.t("已知泄露", "Known breaches"), store.t("检查", "Check"), selected: false)
+          }
+          .buttonStyle(.borderless)
+          .accessibilityIdentifier("health.breach")
+          .accessibilityHint(store.t("在安全中心联网检查；不会自动联网。", "Checks online in the Security center; never automatic."))
         }
+        .listRowInsets(EdgeInsets(top: 8, leading: 0, bottom: 8, trailing: 0))
+        .listRowBackground(Color.clear)
+      } footer: {
+        Text(store.t(
+          "检查弱密码、重复使用和到期需要更换的密码。这不是对应用本身的安全审计。",
+          "Checks weak, reused and expired passwords. This is not a security audit of the app itself."))
       }
-      if results.isEmpty { Text(store.t("未发现风险条目", "No issues found")) }
-    }.navigationTitle(store.t("密码健康", "Password health")).task {
+      Section(filter.map { $0.label(store.t) } ?? store.t("需要处理", "Needs attention")) {
+        let shown = AuditFilter.filtered(results, by: filter)
+        ForEach(Array(shown.enumerated()), id: \.offset) { _, value in
+          Button { selected = store.items.first { $0.id == value.object["id"]?.string } } label: {
+            VStack(alignment: .leading) {
+              Text(value.object["title"]?.string ?? "").font(.headline).foregroundStyle(Color(uiColor: .label))
+              Text(
+                AuditFilter.allCases.filter { $0.matches(value) }.map { $0.label(store.t) }
+                  .joined(separator: " · ")
+              ).foregroundStyle(Color(uiColor: .secondaryLabel))
+            }
+          }
+        }
+        if shown.isEmpty { Text(store.t("未发现风险条目", "No issues found")) }
+      }
+    }
+    .navigationTitle(store.t("密码健康", "Password health"))
+    .navigationDestination(isPresented: $breachCheck) { MobileSecurityCenter() }
+    .sheet(item: $selected) { item in NavigationStack { MobileEntryDetail(id: item.id) } }
+    .task(id: store.items) {
       do { results = try await store.perform(["op": .string("audit")]).array } catch {
         store.report(error)
       }
     }
   }
-
+  private func card(_ title: String, _ value: String, selected: Bool) -> some View {
+    VStack(alignment: .leading, spacing: 4) {
+      Text(value).font(.title2.bold()).foregroundStyle(selected ? Color.accentColor : Color(uiColor: .label))
+      Text(title).font(.subheadline).foregroundStyle(Color(uiColor: .secondaryLabel))
+    }
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .padding(14)
+    .background(
+      selected ? Color.accentColor.opacity(0.15) : Color(uiColor: .secondarySystemGroupedBackground),
+      in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+    .accessibilityElement(children: .combine)
+  }
 }
 
 private struct MobileSecurityCenter: View {

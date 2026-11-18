@@ -498,11 +498,12 @@ final class MobileVaultStore: ObservableObject {
     } catch { report(error) }
   }
   func copy(_ text: String) {
-    UIPasteboard.general.setItems(
-      [[UTType.utf8PlainText.identifier: text]],
-      options: [.localOnly: true, .expirationDate: Date().addingTimeInterval(30)])
+    let seconds = ClipboardClear.seconds()
+    var options: [UIPasteboard.OptionsKey: Any] = [.localOnly: true]
+    if seconds > 0 { options[.expirationDate] = Date().addingTimeInterval(TimeInterval(seconds)) }
+    UIPasteboard.general.setItems([[UTType.utf8PlainText.identifier: text]], options: options)
     clipboardChange = UIPasteboard.general.changeCount
-    notice = t("已复制，30 秒后清除", "Copied; clears after 30 seconds")
+    notice = ClipboardClear.notice(seconds, t: t)
     activity()
   }
   func report(_ failure: Error) {
@@ -535,4 +536,39 @@ struct TrashPlan {
     removable = deleted.filter { canEdit($0) && $0.string("sharedVaultId").isEmpty }
     kept = deleted.count - removable.count
   }
+}
+
+/// Per-device clipboard auto-clear duration. Copies stay local-only (no Handoff); 0 means no
+/// timed expiry, but locking still clears an unchanged clipboard.
+enum ClipboardClear {
+  static let key = "clipboardClearSeconds"
+  static let options = [15, 30, 60, 120, 0]
+  static func seconds(_ defaults: UserDefaults = .standard) -> Int {
+    let value = defaults.object(forKey: key) as? Int ?? 30
+    return options.contains(value) ? value : 30
+  }
+  static func label(_ seconds: Int, t: (String, String) -> String) -> String {
+    switch seconds {
+    case 0: return t("从不", "Never")
+    case 60: return t("1 分钟", "1 minute")
+    case 120: return t("2 分钟", "2 minutes")
+    default: return t("\(seconds) 秒", "\(seconds) seconds")
+    }
+  }
+  static func notice(_ seconds: Int, t: (String, String) -> String) -> String {
+    seconds > 0
+      ? t("已复制，\(label(seconds, t: t))后清除", "Copied; clears after \(label(seconds, t: t))")
+      : t("已复制，锁定时清除", "Copied; clears when the vault locks")
+  }
+}
+
+/// Tab shown after unlocking, stored per device as a `Destination` raw value.
+enum StartTab {
+  static let key = "startTab"
+  static let options: [Destination] = [.notes, .passwords, .codes, .wallets]
+  static func resolve(_ raw: String?) -> Destination {
+    guard let value = Destination(rawValue: raw ?? ""), options.contains(value) else { return .notes }
+    return value
+  }
+  static var current: Destination { resolve(UserDefaults.standard.string(forKey: key)) }
 }
