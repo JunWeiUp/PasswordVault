@@ -39,7 +39,7 @@ final class WalletCodesFlowTests: XCTestCase {
     XCTAssertTrue(app.segmentedControls["wallet-kind"].waitForExistence(timeout: 5))
     app.buttons["新建"].tap()
     XCTAssertTrue(app.buttons["银行卡"].waitForExistence(timeout: 5))
-    XCTAssertTrue(app.buttons["证件"].exists)
+    XCTAssertTrue(app.buttons["身份证件"].exists)
     app.buttons["加密货币钱包"].tap()
     let title = app.textFields["entry.title"]
     XCTAssertTrue(title.waitForExistence(timeout: 5))
@@ -64,6 +64,72 @@ final class WalletCodesFlowTests: XCTestCase {
     reveal.tap()
     XCTAssertTrue(app.buttons["隐藏"].waitForExistence(timeout: 5))
     attach(app, "phrase-shown")
+  }
+
+  /// Identity documents: created in the editor, shown with labels, number concealed until revealed.
+  func testIdentityDocumentCreateRevealAndEdit() {
+    let app = XCUIApplication()
+    app.launchArguments = ["--ui-test-vault", UUID().uuidString]
+    app.launch()
+    let password = app.secureTextFields["vault.password"]
+    XCTAssertTrue(password.waitForExistence(timeout: 10))
+    password.tap()
+    password.typeText("1")
+    let confirm = app.secureTextFields.element(boundBy: 1)
+    confirm.tap()
+    confirm.typeText("1")
+    app.buttons["vault.unlock"].tap()
+
+    XCTAssertTrue(app.tabBars.buttons["钱包"].waitForExistence(timeout: 10))
+    app.tabBars.buttons["钱包"].tap()
+    app.buttons["新建"].tap()
+    XCTAssertTrue(app.buttons["身份证件"].waitForExistence(timeout: 5))
+    app.buttons["身份证件"].tap()
+    let title = app.textFields["entry.title"]
+    XCTAssertTrue(title.waitForExistence(timeout: 5))
+    title.tap()
+    title.typeText("Passport fixture")
+    let type = app.textFields["document.type"]
+    for _ in 0..<6 where !type.isHittable { app.swipeUp() }
+    type.tap()
+    type.typeText("Passport")
+    let number = app.textFields["证件号码"]
+    number.tap()
+    number.typeText("E7654321")
+    let expiry = app.buttons["添加有效期至"]
+    for _ in 0..<3 where !expiry.isHittable { app.swipeUp() }
+    expiry.tap()
+    attach(app, "identity-editor")
+    XCTAssertTrue(waitFor(app.buttons["保存"], "isEnabled == true"))
+    app.buttons["保存"].tap()
+
+    let row = app.buttons.containing(NSPredicate(format: "label CONTAINS 'Passport fixture'")).firstMatch
+    XCTAssertTrue(row.waitForExistence(timeout: 10))
+    row.tap()
+    XCTAssertTrue(app.staticTexts["证件信息"].waitForExistence(timeout: 5))
+    XCTAssertTrue(app.staticTexts["证件类型"].exists)
+    XCTAssertTrue(app.staticTexts["Passport"].exists)
+    XCTAssertTrue(app.staticTexts["有效期至"].exists)
+    XCTAssertFalse(app.staticTexts["E7654321"].exists, "The number is concealed")
+    XCTAssertFalse(app.staticTexts["document.number"].exists, "Field ids are never shown")
+    let copy = app.buttons.matching(NSPredicate(format: "label == '复制'")).element(boundBy: 1)
+    XCTAssertFalse(copy.isEnabled, "The number copies only after it is revealed")
+    attach(app, "identity-concealed")
+    app.buttons.matching(NSPredicate(format: "label == '显示'")).firstMatch.tap()
+    XCTAssertTrue(app.staticTexts["E7654321"].waitForExistence(timeout: 5))
+    XCTAssertTrue(copy.isEnabled)
+    copy.tap()
+    attach(app, "identity-revealed")
+
+    // Editing keeps the document fields and updates the value in place.
+    app.buttons["编辑"].tap()
+    let typeEdit = app.textFields["document.type"]
+    for _ in 0..<6 where !typeEdit.isHittable { app.swipeUp() }
+    XCTAssertEqual(typeEdit.value as? String, "Passport")
+    typeEdit.tap()
+    typeEdit.typeText(" card")
+    app.buttons["保存"].tap()
+    XCTAssertTrue(app.staticTexts["Passport card"].waitForExistence(timeout: 10))
   }
 
   private func waitFor(_ element: XCUIElement, _ predicate: String) -> Bool {

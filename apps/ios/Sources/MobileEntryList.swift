@@ -149,7 +149,7 @@ struct MobileEntryList: View {
           Menu {
             if destination == .wallets {
               Button(store.t("银行卡", "Payment card")) { editor = .blank(type: "creditCard", title: "") }
-              Button(store.t("证件", "Identity document")) { editor = .blank(type: "identity", title: "") }
+              Button(store.t("身份证件", "Identity document")) { editor = .blank(type: "identity", title: "") }
               Button(store.t("加密货币钱包", "Crypto wallet")) { editor = .blank(type: kind, title: "") }
             } else {
               Button(store.t("新建条目", "New entry")) { editor = .blank(type: kind, title: "") }

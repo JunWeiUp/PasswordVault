@@ -10,8 +10,8 @@ struct StructuredFieldsEditor: View {
   @State private var exportError = ""
   @State private var revealing = Set<String>()
   let t: (String, String) -> String
-  private let card = [("cardholder", "持卡人", "Cardholder"), ("number", "卡号", "Card number"), ("expiryMonth", "到期月", "Expiry month"), ("expiryYear", "到期年", "Expiry year"), ("securityCode", "安全码", "Security code"), ("brand", "卡组织", "Card brand")]
-  private let identity = [("firstName", "名", "First name"), ("lastName", "姓", "Last name"), ("email", "邮箱", "Email"), ("phone", "电话", "Phone"), ("address1", "地址", "Address"), ("address2", "地址补充", "Address line 2"), ("city", "城市", "City"), ("region", "省 / 州", "Region"), ("postalCode", "邮编", "Postal code"), ("country", "国家", "Country"), ("company", "公司", "Company")]
+  private let card = StructuredLabels.card
+  private let identity = StructuredLabels.identity
   var body: some View {
     if item.type == "creditCard" || item.type == "identity" {
       let group = item.type == "creditCard" ? "card" : "identity"
@@ -26,6 +26,7 @@ struct StructuredFieldsEditor: View {
         }
       }
     }
+    if item.type == "identity" { documentSection }
     if let attachments = item.fields["importSource"]?.object["attachments"]?.array, !attachments.isEmpty {
       Section(t("导入的附件", "Imported attachments")) {
         ForEach(Array(attachments.enumerated()), id: \.offset) { _, attachment in
@@ -43,7 +44,8 @@ struct StructuredFieldsEditor: View {
       }
     }
     Section(t("自定义字段", "Custom fields")) {
-      ForEach(Array((item.fields["customFields"]?.array ?? []).enumerated()), id: \.offset) { index, value in
+      // Identity document fields have their own section; every other field is listed here.
+      ForEach(Array((item.fields["customFields"]?.array ?? []).enumerated()).filter { item.type != "identity" || !IdentityDocument.isDocument($0.element) }, id: \.offset) { index, value in
         VStack(alignment: .leading) {
           TextField(t("字段名称", "Field label"), text: custom(index, "label"))
           TextField(t("分组", "Group"), text: custom(index, "group"))
@@ -74,6 +76,67 @@ struct StructuredFieldsEditor: View {
         item.fields["customFields"] = .array(values)
       }.disabled((item.fields["customFields"]?.array.count ?? 0) >= 256)
     }
+  }
+  /// Identity document fields stored as `customFields` (shared schema with the other clients).
+  @ViewBuilder private var documentSection: some View {
+    Section(t("证件信息", "Document")) {
+      TextField(t("证件类型", "Document type"), text: document("document.type"))
+        .accessibilityIdentifier("document.type")
+      // Not an account password, so no SecureField (it would trigger the system "Save
+      // password?" prompt). A stored number stays masked until revealed; a new one is typed.
+      HStack {
+        if revealing.contains("document.number") || IdentityDocument.value(item.fields["customFields"]?.array ?? [], "document.number").isEmpty {
+          TextField(t("证件号码", "Document number"), text: document("document.number"))
+            .textInputAutocapitalization(.characters).autocorrectionDisabled().privacySensitive()
+        } else {
+          Text(t("证件号码", "Document number"))
+          Spacer()
+          Text("••••••••").foregroundStyle(.secondary)
+        }
+        if !IdentityDocument.value(item.fields["customFields"]?.array ?? [], "document.number").isEmpty {
+          Button(revealing.contains("document.number") ? t("隐藏", "Hide") : t("显示", "Reveal")) {
+            if revealing.contains("document.number") { revealing.remove("document.number") } else { revealing.insert("document.number") }
+          }.buttonStyle(.borderless)
+        }
+      }
+      TextField(t("签发机关", "Issued by"), text: document("document.issuer"))
+      dateRow("document.issueDate", t("签发日期", "Issue date"))
+      dateRow("document.expiryDate", t("有效期至", "Expires"))
+    }
+  }
+  @ViewBuilder private func dateRow(_ id: String, _ label: String) -> some View {
+    let fields = item.fields["customFields"]?.array ?? []
+    let value = IdentityDocument.value(fields, id)
+    if value.isEmpty {
+      HStack {
+        Text(label)
+        Spacer()
+        Button(t("添加日期", "Add date")) { setDocument(id, IdentityDocument.string(Date())) }
+          .accessibilityLabel(t("添加", "Add") + label)
+      }
+    } else if IdentityDocument.date(value) != nil {
+      HStack {
+        DatePicker(label, selection: Binding(
+          get: { IdentityDocument.date(IdentityDocument.value(item.fields["customFields"]?.array ?? [], id)) ?? Date() },
+          set: { setDocument(id, IdentityDocument.string($0)) }), displayedComponents: .date)
+          .environment(\.timeZone, TimeZone(identifier: "UTC")!)
+        Button { setDocument(id, "") } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary) }
+          .buttonStyle(.borderless).accessibilityLabel(t("清除", "Clear") + label)
+      }
+    } else {
+      // A value written elsewhere that is not YYYY-MM-DD stays editable as text.
+      TextField(label, text: document(id))
+    }
+  }
+  private func document(_ id: String) -> Binding<String> {
+    Binding(get: { IdentityDocument.value(item.fields["customFields"]?.array ?? [], id) }, set: { setDocument(id, $0) })
+  }
+  private func setDocument(_ id: String, _ value: String) {
+    let fields = item.fields["customFields"]?.array ?? []
+    // A number typed into an empty field stays visible while it is being entered.
+    if id == "document.number" && IdentityDocument.value(fields, id).isEmpty { revealing.insert(id) }
+    let updated = IdentityDocument.setting(fields, id, value)
+    if updated != fields { item.fields["customFields"] = .array(updated) }
   }
   private func nested(_ group: String, _ key: String) -> Binding<String> {
     Binding(get: { item.fields[group]?.object[key]?.string ?? "" }, set: { value in

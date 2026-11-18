@@ -71,17 +71,40 @@ struct MobileEntryDetail: View {
             }
           }
           PasskeyRecordsView(item: item, perform: store.perform, refresh: { try? await store.refresh() }, t: store.t, editable: store.canEdit(item))
-          if ["creditCard", "identity"].contains(item.type) {
-            let group = item.type == "creditCard" ? "card" : "identity"
-            Section(store.t("结构化资料", "Structured details")) {
-              ForEach((item.fields[group]?.object ?? [:]).keys.sorted(), id: \.self) { key in
-                value(key, item.fields[group]?.object[key]?.string ?? "", key: "structured-\(key)", secret: ["number", "securityCode"].contains(key))
+          let customFields = item.fields["customFields"]?.array ?? []
+          if item.type == "identity" {
+            let documents = IdentityDocument.fields.filter { !IdentityDocument.value(customFields, $0.id).isEmpty }
+            let name = [item.fields["identity"]?.object["lastName"]?.string ?? "", item.fields["identity"]?.object["firstName"]?.string ?? ""]
+              .filter { !$0.isEmpty }.joined(separator: store.chinese ? "" : " ")
+            if !documents.isEmpty || !name.isEmpty {
+              Section(store.t("证件信息", "Document")) {
+                value(store.t("姓名", "Name"), name, key: "document.name")
+                ForEach(documents, id: \.id) { spec in
+                  value(store.t(spec.label, spec.english), IdentityDocument.value(customFields, spec.id), key: spec.id,
+                    secret: spec.kind == "concealed", copyAfterReveal: spec.kind == "concealed")
+                }
               }
             }
           }
-          if let fields = item.fields["customFields"]?.array, !fields.isEmpty {
+          if ["creditCard", "identity"].contains(item.type) {
+            let group = item.type == "creditCard" ? "card" : "identity"
+            let object = item.fields[group]?.object ?? [:]
+            let table = item.type == "creditCard" ? StructuredLabels.card : StructuredLabels.identity
+            // Known keys in their usual order, then any other stored keys.
+            let keys = table.map(\.0).filter { object[$0] != nil && !(item.type == "identity" && ["firstName", "lastName"].contains($0)) }
+              + object.keys.filter { key in !table.contains { $0.0 == key } }.sorted()
+            if keys.contains(where: { !(object[$0]?.string ?? "").isEmpty }) {
+              Section(item.type == "creditCard" ? store.t("银行卡", "Payment card") : store.t("身份资料", "Identity")) {
+                ForEach(keys, id: \.self) { key in
+                  value(StructuredLabels.label(key, type: item.type, t: store.t), object[key]?.string ?? "", key: "structured-\(key)", secret: ["number", "securityCode"].contains(key))
+                }
+              }
+            }
+          }
+          let others = Array(customFields.enumerated()).filter { item.type != "identity" || !IdentityDocument.isDocument($0.element) }
+          if !others.isEmpty {
             Section(store.t("自定义字段", "Custom fields")) {
-              ForEach(Array(fields.enumerated()), id: \.offset) { index, field in
+              ForEach(others, id: \.offset) { index, field in
                 value(field.object["label"]?.string ?? "", field.object["value"]?.string ?? "", key: "custom-\(index)", secret: field.object["kind"]?.string == "concealed")
               }
             }
@@ -200,7 +223,7 @@ struct MobileEntryDetail: View {
   }
   @ViewBuilder private func value(
     _ label: String, _ value: String, key: String, secret: Bool = false,
-    confirm: Bool = false, copyable: Bool = true
+    confirm: Bool = false, copyable: Bool = true, copyAfterReveal: Bool = false
   ) -> some View {
     if !value.isEmpty {
       // Confirmed secrets stay hidden while the screen is recorded or mirrored.
@@ -225,7 +248,10 @@ struct MobileEntryDetail: View {
               else { revealing.insert(key) }
             }
           }
-          if copyable { Button(store.t("复制", "Copy")) { store.copy(value) } }
+          if copyable {
+            Button(store.t("复制", "Copy")) { store.copy(value) }
+              .disabled(copyAfterReveal && !revealing.contains(key))
+          }
         }.buttonStyle(.bordered).controlSize(.regular)
         if !copyable {
           Text(store.t("助记词不支持复制，请抄写在离线介质上。", "Recovery phrases can't be copied; write them down offline."))
