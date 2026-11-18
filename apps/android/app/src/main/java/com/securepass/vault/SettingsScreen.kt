@@ -273,13 +273,13 @@ fun SettingsScreen(
                         SettingsGroup {
                             SettingsDestination(
                                 if (relayState.managed) t("已加入「${relayState.groupName.ifBlank { relayState.group }}」", "Joined ${relayState.groupName.ifBlank { relayState.group }}")
-                                else if (relayState.joining) t("等待主库批准", "Awaiting primary approval")
+                                else if (relayState.joining) t("等待管理设备批准", "Awaiting approval from a managing device")
                                 else if (relayState.legacy) t("已有旧版中继接入", "Legacy relay configured")
                                 else t("未加入设备组", "No device group"),
                                 if (relayState.credentialsBlocked) t("凭据读取失败，请检查接入", "Could not read credentials; review connection")
                                 else if (relayState.managed || relayState.legacy) relayState.status +
                                     if (relayState.conflicts > 0) t(" · ${relayState.conflicts} 个冲突", " · ${relayState.conflicts} conflicts") else ""
-                                else t("扫描主库上的邀请二维码加入", "Scan an invitation from your primary vault"),
+                                else t("扫描其他设备上的邀请二维码加入", "Scan an invitation from one of your devices"),
                                 Icons.Default.Sync, highlighted = true, onClick = relay,
                             )
                         }
@@ -290,7 +290,7 @@ fun SettingsScreen(
                             SettingsRule()
                             SettingsDestination(t("自动填充与通行密钥", "Autofill & Passkeys"), t("系统自动填充服务、凭据管理器", "System Autofill service, credential manager"), Icons.Default.Key) { page = "autofill" }
                             SettingsRule()
-                            SettingsDestination(t("同步与设备", "Sync & devices"), t("设备组、密码库授权、同步冲突", "Device group, vault access, sync conflicts"), Icons.Default.Sync, onClick = relay)
+                            SettingsDestination(t("同步与设备", "Sync & devices"), t("设备组、成员与同步状态", "Device group, members and sync status"), Icons.Default.Sync, onClick = relay)
                             SettingsRule()
                             SettingsDestination(t("备份与导入", "Backups & import"), t("加密备份、CSV、WebDAV", "Encrypted backups, CSV, WebDAV"), Icons.Default.Archive) { page = "backup" }
                             SettingsRule()

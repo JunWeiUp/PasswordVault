@@ -113,7 +113,7 @@ internal fun RelayGroupPanel(vault: VaultRepository, state: RelayUi, t: (String,
                     }
                 }
             }
-            if (!state.mesh) Text(t("密码库同步权限由主库授权；移动端主库暂未开放。", "Vault sync access is granted by the primary vault. Mobile primary vaults are not available yet."), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (!state.mesh) Text(t("加入设备组后，组内设备会自动双向同步；同时修改时以最后修改为准，另一版本保留在版本历史。", "After joining, devices in the group sync both ways; when both change an item, the last change wins and the other version stays in version history."), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             if (manager) {
                 Row { Checkbox(automaticJoin, { automaticJoin = it }, enabled = ready && state.groupInvite.isEmpty()); Text(t("确认后免审批加入", "Join without approval after confirmation")) }
                 Button(onClick = { grantManager = false; relay.inviteToGroup(automaticJoin) }, enabled = ready) { Text(t("添加设备", "Add device")) }
@@ -143,8 +143,8 @@ internal fun RelayGroupPanel(vault: VaultRepository, state: RelayUi, t: (String,
             if (manager) TextButton(onClick = { confirmation = "disband" }, enabled = ready) { Text(t("解散设备组…", "Disband group…")) }
         }
         state.joining -> {
-            Text(t("等待主库批准", "Waiting for primary approval"), style = MaterialTheme.typography.headlineSmall)
-            Text(if (state.automaticJoin) t("自动加入尚未完成，请刷新状态以继续。", "Automatic joining is incomplete. Refresh the status to continue.") else t("请在 Mac 上核对下面的验证码，一致后再点“批准加入”。", "Compare this verification code on the Mac before approving the request."), color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(t("等待管理设备批准", "Waiting for a managing device to approve"), style = MaterialTheme.typography.headlineSmall)
+            Text(if (state.automaticJoin) t("自动加入尚未完成，请刷新状态以继续。", "Automatic joining is incomplete. Refresh the status to continue.") else t("请在邀请你的设备上核对下面的验证码，一致后再点“批准加入”。", "Compare this verification code on the Mac before approving the request."), color = MaterialTheme.colorScheme.onSurfaceVariant)
             SelectionContainer { Text(state.groupCode, style = MaterialTheme.typography.headlineSmall) }
             Button(onClick = relay::finishGroupJoin, enabled = ready) { Text(t("刷新审批状态", "Refresh approval status")) }
             TextButton(onClick = relay::retryGroupJoin, enabled = ready) { Text(t("重新发送申请", "Resend request")) }

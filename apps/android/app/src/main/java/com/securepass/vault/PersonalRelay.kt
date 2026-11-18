@@ -292,7 +292,7 @@ internal class PersonalRelay(private val directory: File, private val vault: Vau
                 connection.connect(c.getString("endpoint"), c.getString("token"), c.optString("password").ifEmpty { null })
                 withTimeout(45_000) { ready.await() }
                 val canSync = !c.optBoolean("paused", true) && c.getJSONObject("peers").length() > 0
-                val connected = if (c.getJSONObject("peers").length() == 0) "中继已连接，密码库尚未授权 / Relay connected; vault not authorized"
+                val connected = if (c.getJSONObject("peers").length() == 0) "中继已连接，等待组内其他设备 / Relay connected; waiting for other devices"
                     else if (!canSync) "中继已连接，密码库同步已暂停 / Relay connected; vault sync paused" else "已连接 / Connected"
                 mutable.value = mutable.value.copy(status = connected,
                     error = mutable.value.error.takeUnless { it == transportFailure })
@@ -450,7 +450,7 @@ internal class PersonalRelay(private val directory: File, private val vault: Vau
                         error is java.net.SocketTimeoutException || error is TimeoutCancellationException || error is java.util.concurrent.TimeoutException -> "同步连接或传输超时，本地改动已保留 / Sync timed out; local changes retained"
                         error is javax.net.ssl.SSLException -> "无法验证同步服务器的安全连接 / Cannot verify the sync server's secure connection"
                         error.message.orEmpty().contains("(401)") -> "同步服务拒绝凭据，请检查服务器密码 / Sync access rejected; check server password"
-                        else -> "同步未完成，本地改动已保留，请检查网络及主库状态 / Sync incomplete; local changes retained. Check network and primary device"
+                        else -> "同步未完成，本地改动已保留，请检查网络及其他设备状态 / Sync incomplete; local changes retained. Check the network and your other devices"
                     }
                     mutable.value = mutable.value.copy(status = "等待重连 / Waiting to reconnect", error = mutable.value.error ?: transportFailure,
                         sync = mutable.value.sync.copy(phase = RelaySyncPhase.FAILED, completed = 0, total = 0))
@@ -589,7 +589,7 @@ internal class PersonalRelay(private val directory: File, private val vault: Vau
         // Constructor validates the configured endpoint before any request.
         val sdk = RelayGroups(g.config, false, http)
         sdk.prepareCreate(name, deviceName); saveGroup(c, sdk); sdk.create(); applyGroup(c, sdk)
-        mutable.value = mutable.value.copy(status = "设备组已创建，等待密码库授权 / Group created; authorize vault sync")
+        mutable.value = mutable.value.copy(status = "设备组已创建，可邀请其他设备扫码加入 / Group created; invite your other devices")
     }
     fun joinGroup(text: String, deviceName: String, password: String) = groupAction { c, g ->
         check(!g.config.has("group_entry") && !g.config.has("pending_create") && c.optString("token").isEmpty())
@@ -608,7 +608,7 @@ internal class PersonalRelay(private val directory: File, private val vault: Vau
         sdk.prepareJoin(inv, deviceName); saveGroup(c, sdk); sdk.join(inv, deviceName); saveGroup(c, sdk)
         if (inv.optString("mode") == "auto") {
             check(sdk.finishJoin()); applyGroup(c, sdk)
-            mutable.value = mutable.value.copy(status = "已入组，密码库同步尚未授权 / Joined; vault sync needs authorization")
+            mutable.value = mutable.value.copy(status = "已入组，正在与组内设备同步 / Joined; syncing with the group")
         } else mutable.value = mutable.value.copy(status = "请核对两端配对码 / Compare codes on both devices")
     }
     // Updating server access never resets device identity, pinned keys, or vault authorization.
@@ -640,7 +640,7 @@ internal class PersonalRelay(private val directory: File, private val vault: Vau
     fun finishGroupJoin() = groupAction { c, g ->
         if (g.finishJoin()) {
             applyGroup(c, g)
-            mutable.value = mutable.value.copy(status = "已入组，密码库同步尚未授权 / Joined; vault sync needs authorization")
+            mutable.value = mutable.value.copy(status = "已入组，正在与组内设备同步 / Joined; syncing with the group")
         } else mutable.value = mutable.value.copy(status = "等待邀请方批准 / Waiting for approval")
     }
     fun refreshGroup() = groupAction { c, g -> val result = g.refresh(); applyGroup(c, g, result.getJSONArray("online")) }
