@@ -1,0 +1,35 @@
+diff --git a/tool/build_mobile_core.sh b/tool/build_mobile_core.sh
+index 71fefc5..8c69224 100644
+--- a/tool/build_mobile_core.sh
++++ b/tool/build_mobile_core.sh
+@@ -17,6 +17,14 @@ bundle_editor() {
+   npm --prefix apps/shared/note-editor run build
+   mobile_editor_built=true
+ }
++# The shared NSH mobile UI (apps/mobile) and the pinned embedding SDKs.
++mobile_ui_built=false
++mobile_ui() {
++  if [[ "$mobile_ui_built" == true ]]; then return; fi
++  bash experiments/mobile-nsh/tool/fetch-embed.sh >/dev/null
++  bash experiments/mobile-nsh/tool/build-bundle.sh >/dev/null
++  mobile_ui_built=true
++}
+ bindings() {
+   MACOSX_DEPLOYMENT_TARGET=13.0 cargo build -p vault-core --release --locked
+   MACOSX_DEPLOYMENT_TARGET=13.0 cargo run -p vault-core --features bindgen --bin uniffi-bindgen -- generate \
+@@ -34,6 +42,7 @@ ios() {
+     *) echo 'Invalid PASSWORDVAULT_IOS_SIM_ARCH; use universal, host, arm64 or x86_64.' >&2; return 2 ;;
+   esac
+   bundle_editor
++  mobile_ui
+   mkdir -p apps/ios/Generated/Headers
+   bindings swift apps/ios/Generated
+   cp apps/ios/Generated/VaultCoreFFI.h apps/ios/Generated/Headers/
+@@ -68,6 +77,7 @@ android() {
+   local bin="$ndk/toolchains/llvm/prebuilt/$ndk_host/bin"
+   test -x "$bin/aarch64-linux-android24-clang"
+   bundle_editor
++  mobile_ui
+   bindings kotlin apps/android/app/src/main/generated
+   for mobile_target in "${android_targets[@]}"; do
+     local triple abi target_env
