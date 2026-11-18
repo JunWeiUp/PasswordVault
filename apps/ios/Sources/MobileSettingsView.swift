@@ -278,24 +278,66 @@ struct MobileBackupView: View {
 
 struct MobileGeneratorView: View {
   @EnvironmentObject private var store: MobileVaultStore
-  @State private var length = 20
+  @State private var options = GeneratorOptions()
   @State private var password = ""
   var body: some View {
     Form {
-      Stepper("\(store.t("长度", "Length")): \(length)", value: $length, in: 12...128)
-      Text(password).font(.body.monospaced()).textSelection(.enabled)
-      Button(store.t("生成", "Generate")) { generate() }
-      Button(store.t("复制", "Copy")) { store.copy(password) }.disabled(password.isEmpty)
-    }.navigationTitle(store.t("密码生成器", "Password generator")).task { generate() }
+      Section {
+        Text(password.isEmpty ? " " : password).font(.title3.monospaced()).textSelection(.enabled)
+          .frame(maxWidth: .infinity, alignment: .leading).accessibilityIdentifier("generator.output")
+        HStack {
+          Button(store.t("重新生成", "Regenerate")) { generate() }
+          Spacer()
+          Button(store.t("复制", "Copy")) { store.copy(password) }.disabled(password.isEmpty)
+        }.buttonStyle(.borderless)
+      }
+      Section {
+        VStack(alignment: .leading) {
+          Text("\(store.t("长度", "Length")): \(options.length)")
+          Slider(value: Binding(get: { Double(options.length) }, set: { options.length = Int($0.rounded()) }),
+            in: Double(GeneratorOptions.lengths.lowerBound)...Double(GeneratorOptions.lengths.upperBound), step: 1)
+            .accessibilityLabel(store.t("密码长度", "Password length"))
+        }
+        Toggle(store.t("大写字母 A–Z", "Uppercase A–Z"), isOn: $options.upper)
+        Toggle(store.t("小写字母 a–z", "Lowercase a–z"), isOn: $options.lower)
+        Toggle(store.t("数字 0–9", "Digits 0–9"), isOn: $options.digits)
+        Toggle(store.t("符号 !@#…", "Symbols !@#…"), isOn: $options.symbols)
+      } header: {
+        Text(store.t("规则", "Rules"))
+      } footer: {
+        Text(options.valid
+          ? store.t("在本机生成，范围 4–64；规则由加密核心再次校验，不保存生成历史。单词组合暂未支持。", "Generated on this device, 4–64 characters; the core validates the rules again. No history is kept. Passphrases are not supported yet.")
+          : store.t("至少选择一种字符类型。", "Choose at least one character type."))
+      }
+    }
+    .navigationTitle(store.t("密码生成器", "Password generator"))
+    .task { generate() }
+    .onChange(of: options) { _ in generate() }
   }
   private func generate() {
+    guard options.valid else { password = ""; return }
+    let request = options.request
     Task {
       do {
-        password =
-          try await store.perform(["op": .string("generate"), "length": .number(Double(length))])
-          .object["password"]?.string ?? ""
+        let value = try await store.perform(request).object["password"]?.string ?? ""
+        if request == options.request { password = value }
       } catch { store.report(error) }
     }
+  }
+}
+
+/// Generator rules sent to the core `generate` op, which enforces 4–128 and at least one class.
+struct GeneratorOptions: Equatable {
+  static let lengths = 4...64
+  var length = 20 { didSet { length = min(max(length, Self.lengths.lowerBound), Self.lengths.upperBound) } }
+  var upper = true
+  var lower = true
+  var digits = true
+  var symbols = true
+  var valid: Bool { upper || lower || digits || symbols }
+  var request: [String: JSONValue] {
+    ["op": .string("generate"), "length": .number(Double(length)), "upper": .bool(upper),
+     "lower": .bool(lower), "digits": .bool(digits), "symbols": .bool(symbols)]
   }
 }
 
