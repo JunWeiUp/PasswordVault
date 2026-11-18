@@ -27,6 +27,8 @@ final class MobileVaultStore: ObservableObject {
   @Published var settings: [String: JSONValue] = [:]
   @Published var error: String?
   @Published var notice: String?
+  /// Entry just moved to Trash; the app shows an undo banner for it until it times out.
+  @Published var undoTrashID: String?
   @Published var language = UserDefaults.standard.string(forKey: "language") ?? "zh"
   lazy var relay = VaultRelay(directory: directory, role: "mobile", call: { [weak self] request in
     guard let self else { throw VaultError.Locked }
@@ -246,6 +248,7 @@ final class MobileVaultStore: ObservableObject {
     items = []
     settings = [:]
     notice = nil
+    undoTrashID = nil
     error = nil
     if clipboardChange == UIPasteboard.general.changeCount { UIPasteboard.general.items = [] }
     clipboardChange = nil
@@ -440,10 +443,41 @@ final class MobileVaultStore: ObservableObject {
     latest.isDeleted = !item.isDeleted
     latest.set("deletedAt", latest.isDeleted ? ISO8601DateFormatter().string(from: Date()) : "")
     if await save(latest) {
-      notice = latest.isDeleted ? t("已移到回收站", "Moved to Trash") : t("已恢复", "Restored")
+      if latest.isDeleted {
+        notice = nil
+        undoTrashID = latest.id
+      } else {
+        if undoTrashID == latest.id { undoTrashID = nil }
+        notice = t("已恢复", "Restored")
+      }
       return true
     }
     return false
+  }
+  /// Restores the entry from the undo banner, using the latest stored copy.
+  func undoTrash() async {
+    guard let id = undoTrashID else { return }
+    undoTrashID = nil
+    guard let latest = items.first(where: { $0.id == id }), latest.isDeleted else { return }
+    await trash(latest)
+  }
+  /// Permanently deletes every Trash entry this device may delete; shared-vault entries stay.
+  @discardableResult
+  func emptyTrash() async -> Int {
+    let removable = TrashPlan(items: items, canEdit: canEdit).removable
+    guard !busy, !removable.isEmpty else { return 0 }
+    busy = true
+    defer { busy = false }
+    var removed = 0
+    do {
+      for item in removable {
+        _ = try await perform(["op": .string("remove"), "id": .string(item.id)])
+        removed += 1
+      }
+    } catch { report(error) }
+    try? await refresh()
+    if removed > 0 { notice = t("已永久删除 \(removed) 项", "Deleted \(removed) items permanently") }
+    return removed
   }
   func remove(_ item: VaultItem) async {
     guard item.isDeleted else { return }
@@ -483,5 +517,17 @@ final class MobileVaultStore: ObservableObject {
     default:
       error = t("操作未完成，原有资料仍保留。请重试。", "The operation failed. Existing data is preserved; retry.")
     }
+  }
+}
+
+/// Which Trash entries "Empty Trash" may delete permanently: editable entries outside shared
+/// vaults. Shared-vault entries are kept and counted so the confirmation can say so.
+struct TrashPlan {
+  let removable: [VaultItem]
+  let kept: Int
+  init(items: [VaultItem], canEdit: (VaultItem) -> Bool) {
+    let deleted = items.filter(\.isDeleted)
+    removable = deleted.filter { canEdit($0) && $0.string("sharedVaultId").isEmpty }
+    kept = deleted.count - removable.count
   }
 }

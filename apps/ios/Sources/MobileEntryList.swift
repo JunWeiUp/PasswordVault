@@ -8,6 +8,7 @@ struct MobileEntryList: View {
   @State private var editor: VaultItem?
   @State private var deleting: VaultItem?
   @State private var walletKind = ""
+  @State private var emptyingTrash = false
   private var entries: [VaultItem] {
     store.items.filter {
       (destination == .trash ? $0.isDeleted : !$0.isDeleted && destination.listedTypes.contains($0.type))
@@ -42,13 +43,30 @@ struct MobileEntryList: View {
           ForEach(store.categories, id: \.self) { Text($0).tag($0) }
         }
       }
+      if destination == .trash {
+        Label {
+          Text(store.t(
+            "项目会一直保留在回收站，直到你永久删除或清空。恢复后回到原位置并保留全部字段与历史。",
+            "Items stay in Trash until you delete them permanently or empty Trash. Restored items return to their original place with all fields and history."))
+            .font(.footnote).foregroundStyle(.secondary)
+        } icon: { Image(systemName: "info.circle").foregroundStyle(.blue) }
+          .accessibilityIdentifier("trash.retention")
+        if store.items.contains(where: \.isDeleted) {
+          Button(store.t("清空回收站…", "Empty Trash…"), role: .destructive) { emptyingTrash = true }
+            .disabled(store.busy)
+        }
+      }
       if entries.isEmpty {
         VStack(alignment: .leading, spacing: 10) {
           Text(
-            search.isEmpty
-              ? store.t("这里还没有资料", "No entries yet") : store.t("没有匹配的资料", "No matching entries")
+            !search.isEmpty
+              ? store.t("没有匹配的资料", "No matching entries")
+              : destination == .trash ? store.t("回收站是空的", "Trash is empty")
+              : store.t("这里还没有资料", "No entries yet")
           ).font(.headline)
-          Text(store.t("点击右上角加号开始，或调整搜索条件。", "Use Add to get started, or adjust your search."))
+          Text(destination == .trash && search.isEmpty
+            ? store.t("移到回收站的项目会显示在这里。", "Items you move to Trash appear here.")
+            : store.t("点击右上角加号开始，或调整搜索条件。", "Use Add to get started, or adjust your search."))
             .foregroundStyle(.secondary)
         }.padding(.vertical, 24)
       }
@@ -129,6 +147,25 @@ struct MobileEntryList: View {
     }
     .sheet(item: $editor) { item in
       if item.type == "secureNote" { MobileRichNoteEditor(item: item) } else { MobileEntryEditor(item: item) }
+    }
+    .confirmationDialog(
+      store.t("清空回收站？", "Empty Trash?"), isPresented: $emptyingTrash, titleVisibility: .visible
+    ) {
+      let plan = TrashPlan(items: store.items, canEdit: store.canEdit)
+      if !plan.removable.isEmpty {
+        Button(store.t("永久删除 \(plan.removable.count) 项", "Delete \(plan.removable.count) items permanently"), role: .destructive) {
+          Task { await store.emptyTrash() }
+        }
+      }
+      Button(store.t("取消", "Cancel"), role: .cancel) {}
+    } message: {
+      let plan = TrashPlan(items: store.items, canEdit: store.canEdit)
+      Text(
+        (plan.removable.isEmpty
+          ? store.t("没有可以永久删除的项目。", "There is nothing this device can delete permanently.")
+          : store.t("将永久删除 \(plan.removable.count) 个项目，无法恢复。", "\(plan.removable.count) items will be deleted permanently. This cannot be undone."))
+        + (plan.kept > 0
+          ? store.t("共享资料库中的 \(plan.kept) 个项目会保留在回收站。", " \(plan.kept) shared items stay in Trash.") : ""))
     }
     .confirmationDialog(
       deleting?.isDeleted == true
