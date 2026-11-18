@@ -45,6 +45,16 @@ final class SettingsFlowTests: XCTestCase {
     XCTAssertTrue(app.staticTexts["Library fixture"].firstMatch.waitForExistence(timeout: 5))
     app.navigationBars.buttons.element(boundBy: 0).tap()
 
+    app.staticTexts["密码生成器"].firstMatch.tap()
+    let output = app.staticTexts["generator.output"]
+    XCTAssertTrue(output.waitForExistence(timeout: 5))
+    XCTAssertTrue(waitFor(output, "label MATCHES '.{20}'"), "Default 20-character password")
+    let symbols = app.switches["符号 !@#…"]
+    XCTAssertTrue(symbols.waitForExistence(timeout: 5))
+    symbols.switches.firstMatch.tap()
+    XCTAssertTrue(waitFor(output, "label MATCHES '[A-Za-z0-9]{20}'"), "No symbols after turning them off")
+    app.navigationBars.buttons.element(boundBy: 0).tap()
+
     app.staticTexts["自动填充与通行密钥"].firstMatch.tap()
     XCTAssertTrue(app.buttons["打开系统设置"].waitForExistence(timeout: 5))
     let suggestions = app.switches["在键盘上方显示账号建议"]
