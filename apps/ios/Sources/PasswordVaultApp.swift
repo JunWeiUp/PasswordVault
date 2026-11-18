@@ -19,9 +19,25 @@ struct PasswordVaultApp: App {
       )
       .privacySensitive()
       .overlay(alignment: .bottom) {
-        if let notice = store.notice, store.unlocked {
+        if store.unlocked, store.undoTrashID != nil {
+          HStack(spacing: 16) {
+            Label(store.t("已移到回收站", "Moved to Trash"), systemImage: "trash").font(.subheadline)
+            Button(store.t("撤销", "Undo")) { Task { await store.undoTrash() } }
+              .font(.subheadline.weight(.semibold)).accessibilityIdentifier("undo.trash")
+          }
+          .padding(.horizontal, 18).padding(.vertical, 12)
+          .background(.regularMaterial, in: Capsule())
+          .padding(.bottom, 85)
+          .transition(.move(edge: .bottom).combined(with: .opacity))
+        } else if let notice = store.notice, store.unlocked {
           Text(notice).font(.caption).padding(12).background(.regularMaterial, in: Capsule())
             .padding(.bottom, 85).allowsHitTesting(false)
+        }
+      }
+      .task(id: store.undoTrashID) {
+        if store.undoTrashID != nil {
+          try? await Task.sleep(nanoseconds: 6_000_000_000)
+          if !Task.isCancelled { store.undoTrashID = nil }
         }
       }
       .task(id: store.notice) {
