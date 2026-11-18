@@ -1287,3 +1287,7 @@ summary {
   padding: 8px 14px;
   border-top: 1px solid var(--line2);
 }
+fieldset {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
