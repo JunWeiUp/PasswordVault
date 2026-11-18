@@ -26,8 +26,11 @@ final class VaultFlowTests: XCTestCase {
     app.buttons["保存"].tap()
     XCTAssertTrue(app.staticTexts["UI test note"].waitForExistence(timeout: 5))
     app.staticTexts["UI test note"].firstMatch.tap()
+    // Opening a note shows the reading page; Move to Trash lives in its More menu.
+    XCTAssertTrue(app.staticTexts["note.reader.title"].waitForExistence(timeout: 5))
+    app.buttons["更多"].tap()
     app.buttons["移到回收站…"].tap()
-    app.buttons["删除"].tap()
+    app.buttons["移到回收站"].tap()
     // Deletion persists asynchronously and then dismisses the detail page.
     // Waiting for XCTest idleness alone does not wait for that Swift Task.
     let notesNavigation = app.navigationBars["全部笔记"]

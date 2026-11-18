@@ -91,6 +91,8 @@ struct MobileTabs: View {
         NavigationStack {
           if selected == .settings {
             MobileSettingsView()
+          } else if (selected ?? .notes) == .notes {
+            MobileNotesView()
           } else {
             MobileEntryList(destination: selected ?? .notes)
           }
@@ -99,7 +101,9 @@ struct MobileTabs: View {
     } else {
       TabView {
         ForEach([Destination.notes, .passwords, .codes, .wallets], id: \.self) { kind in
-          NavigationStack { MobileEntryList(destination: kind) }
+          NavigationStack {
+            if kind == .notes { MobileNotesView() } else { MobileEntryList(destination: kind) }
+          }
             .tabItem { Label(kind.title(chinese: store.chinese), systemImage: kind.symbol) }
         }
         NavigationStack { MobileSettingsView() }

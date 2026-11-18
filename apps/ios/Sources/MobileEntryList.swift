@@ -76,7 +76,7 @@ struct MobileEntryList: View {
           MobileCodeRow(item: item)
         } else {
         NavigationLink {
-          MobileEntryDetail(id: item.id)
+          if item.type == "secureNote" && !item.isDeleted { MobileNoteReader(id: item.id) } else { MobileEntryDetail(id: item.id) }
         } label: {
           VStack(alignment: .leading, spacing: 5) {
             HStack {
