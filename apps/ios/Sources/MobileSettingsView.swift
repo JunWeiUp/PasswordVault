@@ -15,7 +15,63 @@ struct EncryptedBackupDocument: FileDocument {
 
 struct MobileSettingsView: View {
   @EnvironmentObject private var store: MobileVaultStore
-  @State private var category = ""
+  var body: some View {
+    Form {
+      Section(store.t("资料", "Library")) {
+        NavigationLink(store.t("全部项目", "All items")) { MobileEntryList(destination: .all) }
+        NavigationLink(store.t("个人收藏", "Favorites")) { MobileEntryList(destination: .favorites) }
+        NavigationLink(store.t("回收站", "Trash")) { MobileEntryList(destination: .trash) }
+        NavigationLink(store.t("笔记分类", "Note categories")) { MobileCategorySettings() }
+      }
+      Section(store.t("设置", "Settings")) {
+        NavigationLink(store.t("通用", "General")) { MobileGeneralSettings() }
+        NavigationLink(store.t("安全", "Security")) { MobileSecuritySettings() }
+        NavigationLink(store.t("自动填充与通行密钥", "AutoFill & passkeys")) { MobileAutofillSettings() }
+        NavigationLink(store.t("同步与设备", "Sync & devices")) {
+          ScrollView { RelaySettingsView(relay: store.relay, t: store.t).padding() }
+            .navigationTitle(store.t("同步与设备", "Sync & devices"))
+        }
+        NavigationLink(store.t("备份与导入", "Backups & import")) { MobileBackupSettings() }
+      }
+      Section(store.t("工具", "Tools")) {
+        NavigationLink(store.t("密码生成器", "Password generator")) { MobileGeneratorView() }
+        NavigationLink(store.t("密码健康", "Password health")) { MobileAuditView() }
+        NavigationLink(store.t("安全中心", "Security center")) { MobileSecurityCenter() }
+      }
+      Section {
+        NavigationLink(store.t("关于", "About")) { MobileAboutView() }
+        Button(store.t("立即锁定", "Lock now"), action: store.lock)
+      }
+    }.navigationTitle(store.t("设置", "Settings"))
+  }
+}
+
+struct MobileGeneralSettings: View {
+  @EnvironmentObject private var store: MobileVaultStore
+  var body: some View {
+    Form {
+      Section(store.t("外观与语言", "Appearance & language")) {
+        Picker(
+          store.t("主题", "Theme"),
+          selection: Binding(
+            get: { store.settings["theme"]?.string ?? "system" },
+            set: { theme in Task { await store.saveSettings(["theme": .string(theme)]) } })
+        ) {
+          Text(store.t("跟随系统", "System")).tag("system")
+          Text(store.t("浅色", "Light")).tag("light")
+          Text(store.t("深色", "Dark")).tag("dark")
+        }
+        Picker("Language", selection: $store.language) {
+          Text("简体中文").tag("zh")
+          Text("English").tag("en")
+        }.onChange(of: store.language) { UserDefaults.standard.set($0, forKey: "language") }
+      }
+    }.navigationTitle(store.t("通用", "General"))
+  }
+}
+
+struct MobileSecuritySettings: View {
+  @EnvironmentObject private var store: MobileVaultStore
   @State private var currentPassword = ""
   @State private var newPassword = ""
   @State private var confirmPassword = ""
@@ -23,7 +79,6 @@ struct MobileSettingsView: View {
   var body: some View {
     Form {
       Section {
-        Button(store.t("立即锁定", "Lock now"), action: store.lock)
         Picker(
           store.t("空闲锁定", "Idle lock"),
           selection: Binding(
@@ -71,25 +126,25 @@ struct MobileSettingsView: View {
             changing || newPassword.isEmpty || newPassword != confirmPassword
               || currentPassword.isEmpty)
         }
-      } header: {
-        Text(store.t("安全", "Security"))
       } footer: {
         Text(
           store.t(
             "切到后台时立即锁定；解锁期间，磁盘中的资料仍然加密。",
             "Locks immediately in the background. Data on disk stays encrypted while unlocked."))
       }
-      Section(store.t("资料管理", "Your data")) {
-        NavigationLink(store.t("迁入 CSV / 1Password .1pux", "Import CSV / 1Password .1pux")) {
-          ImportReviewView(perform: { request in let result = try await store.perform(request); if request["op"]?.string == "import-commit" { try await store.refresh() }; return result }, t: store.t)
-        }
-        NavigationLink(store.t("安全中心", "Security center")) { MobileSecurityCenter() }
+      Section {
         NavigationLink(store.t("应急恢复", "Emergency recovery")) { MobileRecoveryView() }
-        NavigationLink(store.t("备份与导入", "Backups & import")) { MobileBackupView() }
-        NavigationLink(store.t("中继同步", "Relay sync")) { ScrollView { RelaySettingsView(relay: store.relay, t: store.t).padding() } }
-        NavigationLink("WebDAV") { MobileWebDAVView() }
-        NavigationLink(store.t("回收站", "Trash")) { MobileEntryList(destination: .trash) }
-        DisclosureGroup(store.t("笔记分类", "Note categories")) {
+      }
+    }.navigationTitle(store.t("安全", "Security"))
+  }
+}
+
+struct MobileCategorySettings: View {
+  @EnvironmentObject private var store: MobileVaultStore
+  @State private var category = ""
+  var body: some View {
+    Form {
+      Section(footer: Text(store.t("移除分类只会清空笔记的归类，不会删除笔记。", "Removing a category only clears it from notes; notes are kept."))) {
           ForEach(store.categories, id: \.self) { name in
             HStack {
               Text(name)
@@ -121,34 +176,23 @@ struct MobileSettingsView: View {
               } catch { store.report(error) }
             }
           }.disabled(category.trimmingCharacters(in: .whitespaces).isEmpty)
+      }
+    }.navigationTitle(store.t("笔记分类", "Note categories"))
+  }
+}
+
+struct MobileBackupSettings: View {
+  @EnvironmentObject private var store: MobileVaultStore
+  var body: some View {
+    Form {
+      Section {
+        NavigationLink(store.t("加密备份", "Encrypted backups")) { MobileBackupView() }
+        NavigationLink("WebDAV") { MobileWebDAVView() }
+        NavigationLink(store.t("迁入 CSV / 1Password .1pux", "Import CSV / 1Password .1pux")) {
+          ImportReviewView(perform: { request in let result = try await store.perform(request); if request["op"]?.string == "import-commit" { try await store.refresh() }; return result }, t: store.t)
         }
       }
-      Section(store.t("工具", "Tools")) {
-        NavigationLink(store.t("密码生成器", "Password generator")) { MobileGeneratorView() }
-        NavigationLink(store.t("密码健康", "Password health")) { MobileAuditView() }
-      }
-      Section(store.t("外观与语言", "Appearance & language")) {
-        Picker(
-          store.t("主题", "Theme"),
-          selection: Binding(
-            get: { store.settings["theme"]?.string ?? "system" },
-            set: { theme in Task { await store.saveSettings(["theme": .string(theme)]) } })
-        ) {
-          Text(store.t("跟随系统", "System")).tag("system")
-          Text(store.t("浅色", "Light")).tag("light")
-          Text(store.t("深色", "Dark")).tag("dark")
-        }
-        Picker("Language", selection: $store.language) {
-          Text("简体中文").tag("zh")
-          Text("English").tag("en")
-        }.onChange(of: store.language) { UserDefaults.standard.set($0, forKey: "language") }
-        LabeledContent(
-          store.t("版本", "Version"),
-          value:
-            "\(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "—") (\(Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "—"))"
-        )
-      }
-    }.navigationTitle(store.t("设置", "Settings"))
+    }.navigationTitle(store.t("备份与导入", "Backups & import"))
   }
 }
 

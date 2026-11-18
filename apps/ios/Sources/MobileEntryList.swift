@@ -12,6 +12,7 @@ struct MobileEntryList: View {
     store.items.filter {
       (destination == .trash ? $0.isDeleted : !$0.isDeleted && destination.listedTypes.contains($0.type))
         && (walletKind.isEmpty || $0.type == walletKind)
+        && (destination != .favorites || $0.isFavorite)
         && (category.isEmpty || $0.category == category)
         && (search.isEmpty
           || [$0.title, $0.username, $0.note, $0.category].joined(separator: " ")
