@@ -65,7 +65,7 @@ class RelaySyncScreenTest {
                     }
                 }
             } }
-            visible("等待主库确认"); visible("2 项本地更改等待主库确认"); shot("waiting")
+            visible("等待其他设备确认"); visible("2 项本地更改等待其他设备确认"); shot("waiting")
             device.findObject(By.text("立即同步")).click()
             visible("准备同步…"); visible("同步中…")
             assertEquals(1, requests)

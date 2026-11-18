@@ -29,7 +29,7 @@ internal fun RelaySyncCard(state: RelayUi, t: (String, String) -> String, syncNo
         RelaySyncPhase.CHECKING -> t("正在检查更改与回执…", "Checking changes and receipts…")
         RelaySyncPhase.SENDING -> t("正在发送加密更改…", "Sending encrypted changes…")
         RelaySyncPhase.RECEIVING -> t("正在接收并应用更改…", "Receiving and applying changes…")
-        RelaySyncPhase.WAITING_FOR_PRIMARY -> t("等待主库确认", "Waiting for primary confirmation")
+        RelaySyncPhase.WAITING_FOR_PRIMARY -> t("等待其他设备确认", "Waiting for other devices to confirm")
         RelaySyncPhase.WAITING_FOR_CAPABILITY -> t("等待安全格式协商", "Waiting for secure format negotiation")
         RelaySyncPhase.CHECKED -> if (state.mesh) t("已同步", "Up to date") else t("本轮同步检查完成", "Sync check completed")
         RelaySyncPhase.FAILED -> t("同步未完成", "Sync incomplete")
@@ -49,8 +49,8 @@ internal fun RelaySyncCard(state: RelayUi, t: (String, String) -> String, syncNo
             Column(Modifier.semantics { liveRegion = LiveRegionMode.Polite }, verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(title, style = MaterialTheme.typography.titleLarge, color = if (phase == RelaySyncPhase.FAILED) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface)
                 if (state.peerLibrary.isEmpty() && state.paired && !state.mesh) {
-                    Text(if (state.pending > 0) t("${state.pending} 项本地更改等待主库确认", "${state.pending} local changes await primary confirmation")
-                        else t("没有等待主库确认的本地更改", "No local changes await primary confirmation"), style = MaterialTheme.typography.bodyMedium)
+                    Text(if (state.pending > 0) t("${state.pending} 项本地更改等待其他设备确认", "${state.pending} local changes await confirmation from other devices")
+                        else t("没有等待确认的本地更改", "No local changes await confirmation"), style = MaterialTheme.typography.bodyMedium)
                 }
                 if (state.sync.running && phase !in setOf(RelaySyncPhase.PAUSED, RelaySyncPhase.BLOCKED)) {
                     val fraction = state.sync.fraction
@@ -67,10 +67,10 @@ internal fun RelaySyncCard(state: RelayUi, t: (String, String) -> String, syncNo
                 RelaySyncPhase.BLOCKED -> t("请先完成密码库授权，或修复已失效的设备接入。", "Complete vault authorization or repair invalid device access first.")
                 else -> if (state.mesh) t("同组设备会自动双向同步。多台设备同时修改同一条时以较新的修改为准，较旧版本可在条目历史中找回。", "Devices in the group sync both ways automatically. When the same entry changes on several devices, the newer edit wins; older versions stay in the entry history.")
                     else if (state.peerLibrary.isNotEmpty()) t("本地内容已经保存。加密更改会发送给已授权设备；本轮检查完成不代表所有设备都已接收并应用。", "Your changes are saved locally. Encrypted changes go to authorized devices; a completed check does not mean every device has received and applied them.")
-                    else t("本地内容已经保存。等待确认的记录可能包含条目或笔记分类；中继接收后，仍需主库处理并回传确认。", "Your changes are saved locally. Pending records may include entries or note categories. Relay receipt still requires processing and acknowledgement by the primary device.")
+                    else t("本地内容已经保存。等待确认的记录可能包含条目或笔记分类；中继接收后，仍需组内其他设备处理并回传确认。", "Your changes are saved locally. Pending records may include entries or note categories. Relay receipt still requires processing and acknowledgement by another device in the group.")
             }, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             state.error?.let { Text(localized(it), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error) }
-            if (phase == RelaySyncPhase.WAITING_FOR_PRIMARY) Text(t("请保持主库设备在线并解锁。重复点击不会代替主库确认。", "Keep the primary device online and unlocked. Retrying cannot replace its acknowledgement."), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+            if (phase == RelaySyncPhase.WAITING_FOR_PRIMARY) Text(t("请让组内至少一台其他设备在线并解锁。重复点击不会代替它的确认。", "Keep at least one other device in the group online and unlocked. Retrying cannot replace its acknowledgement."), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
             state.sync.lastSentAt?.let { Text(t("最近投递到中继 · ", "Last relay delivery · ") + time(it), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
             state.sync.lastCheckedAt?.let { Text(t("最近检查 · ", "Last check · ") + time(it), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
             state.lastReceived?.let { Text(t("最近接收并处理 · ", "Last received and processed · ") + time(it), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
