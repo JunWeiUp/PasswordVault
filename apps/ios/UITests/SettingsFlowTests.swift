@@ -53,6 +53,17 @@ final class SettingsFlowTests: XCTestCase {
     XCTAssertTrue(symbols.waitForExistence(timeout: 5))
     symbols.switches.firstMatch.tap()
     XCTAssertTrue(waitFor(output, "label MATCHES '[A-Za-z0-9]{20}'"), "No symbols after turning them off")
+    // Word mode: the core returns five list words joined by hyphens by default.
+    let words = app.segmentedControls["generator.mode"].buttons["单词"]
+    XCTAssertTrue(words.waitForExistence(timeout: 5))
+    words.tap()
+    XCTAssertTrue(waitFor(output, "label MATCHES '[a-z]+(-[a-z]+){4}'"), "Default passphrase")
+    XCTAssertFalse(app.switches["符号 !@#…"].exists)
+    let capitalize = app.switches["首字母大写"]
+    XCTAssertTrue(capitalize.waitForExistence(timeout: 5))
+    capitalize.switches.firstMatch.tap()
+    XCTAssertTrue(waitFor(output, "label MATCHES '[A-Z][a-z]+(-[A-Z][a-z]+){4}'"), "Capitalized passphrase")
+    XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS '2048 个英文单词'")).firstMatch.exists)
     app.navigationBars.buttons.element(boundBy: 0).tap()
 
     app.staticTexts["自动填充与通行密钥"].firstMatch.tap()

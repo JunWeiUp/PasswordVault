@@ -315,22 +315,44 @@ struct MobileGeneratorView: View {
         }.buttonStyle(.borderless)
       }
       Section {
-        VStack(alignment: .leading) {
-          Text("\(store.t("长度", "Length")): \(options.length)")
-          Slider(value: Binding(get: { Double(options.length) }, set: { options.length = Int($0.rounded()) }),
-            in: Double(GeneratorOptions.lengths.lowerBound)...Double(GeneratorOptions.lengths.upperBound), step: 1)
-            .accessibilityLabel(store.t("密码长度", "Password length"))
+        Picker(store.t("类型", "Type"), selection: $options.mode) {
+          Text(store.t("字符", "Characters")).tag(GeneratorOptions.Mode.characters)
+          Text(store.t("单词", "Words")).tag(GeneratorOptions.Mode.passphrase)
         }
-        Toggle(store.t("大写字母 A–Z", "Uppercase A–Z"), isOn: $options.upper)
-        Toggle(store.t("小写字母 a–z", "Lowercase a–z"), isOn: $options.lower)
-        Toggle(store.t("数字 0–9", "Digits 0–9"), isOn: $options.digits)
-        Toggle(store.t("符号 !@#…", "Symbols !@#…"), isOn: $options.symbols)
+        .pickerStyle(.segmented)
+        .accessibilityIdentifier("generator.mode")
+        if options.mode == .passphrase {
+          Stepper(value: $options.words, in: GeneratorOptions.wordCounts) {
+            Text("\(store.t("单词数", "Words")): \(options.words)")
+          }
+          .accessibilityIdentifier("generator.words")
+          Picker(store.t("分隔符", "Separator"), selection: $options.separator) {
+            ForEach(GeneratorOptions.separators, id: \.self) { separator in
+              Text(separator == " " ? store.t("空格", "Space") : separator).tag(separator)
+            }
+          }
+          Toggle(store.t("首字母大写", "Capitalize words"), isOn: $options.capitalize)
+          Toggle(store.t("加入一个数字", "Include a number"), isOn: $options.number)
+        } else {
+          VStack(alignment: .leading) {
+            Text("\(store.t("长度", "Length")): \(options.length)")
+            Slider(value: Binding(get: { Double(options.length) }, set: { options.length = Int($0.rounded()) }),
+              in: Double(GeneratorOptions.lengths.lowerBound)...Double(GeneratorOptions.lengths.upperBound), step: 1)
+              .accessibilityLabel(store.t("密码长度", "Password length"))
+          }
+          Toggle(store.t("大写字母 A–Z", "Uppercase A–Z"), isOn: $options.upper)
+          Toggle(store.t("小写字母 a–z", "Lowercase a–z"), isOn: $options.lower)
+          Toggle(store.t("数字 0–9", "Digits 0–9"), isOn: $options.digits)
+          Toggle(store.t("符号 !@#…", "Symbols !@#…"), isOn: $options.symbols)
+        }
       } header: {
         Text(store.t("规则", "Rules"))
       } footer: {
-        Text(options.valid
-          ? store.t("在本机生成，范围 4–64；规则由加密核心再次校验，不保存生成历史。单词组合暂未支持。", "Generated on this device, 4–64 characters; the core validates the rules again. No history is kept. Passphrases are not supported yet.")
-          : store.t("至少选择一种字符类型。", "Choose at least one character type."))
+        Text(!options.valid
+          ? store.t("至少选择一种字符类型。", "Choose at least one character type.")
+          : options.mode == .passphrase
+          ? store.t("在本机生成，从 2048 个英文单词中随机选取 3–10 个；规则由加密核心再次校验，不保存生成历史。", "Generated on this device from 3–10 random words of a 2,048-word English list; the core validates the rules again. No history is kept.")
+          : store.t("在本机生成，范围 4–64；规则由加密核心再次校验，不保存生成历史。", "Generated on this device, 4–64 characters; the core validates the rules again. No history is kept."))
       }
     }
     .navigationTitle(store.t("密码生成器", "Password generator"))
@@ -349,18 +371,38 @@ struct MobileGeneratorView: View {
   }
 }
 
-/// Generator rules sent to the core `generate` op, which enforces 4–128 and at least one class.
+/// Generator rules sent to the core `generate` op. Character mode enforces 4–128 and at least one
+/// class; passphrase mode enforces 3–10 words and the separators below.
 struct GeneratorOptions: Equatable {
+  enum Mode: Hashable { case characters, passphrase }
   static let lengths = 4...64
+  static let wordCounts = 3...10
+  static let separators = ["-", ".", "_", " "]
+  var mode = Mode.characters
   var length = 20 { didSet { length = min(max(length, Self.lengths.lowerBound), Self.lengths.upperBound) } }
   var upper = true
   var lower = true
   var digits = true
   var symbols = true
-  var valid: Bool { upper || lower || digits || symbols }
+  var words = 5 { didSet { words = min(max(words, Self.wordCounts.lowerBound), Self.wordCounts.upperBound) } }
+  var separator = "-"
+  var capitalize = false
+  var number = false
+  var valid: Bool {
+    switch mode {
+    case .characters: return upper || lower || digits || symbols
+    case .passphrase: return Self.separators.contains(separator)
+    }
+  }
   var request: [String: JSONValue] {
-    ["op": .string("generate"), "length": .number(Double(length)), "upper": .bool(upper),
-     "lower": .bool(lower), "digits": .bool(digits), "symbols": .bool(symbols)]
+    switch mode {
+    case .characters:
+      return ["op": .string("generate"), "length": .number(Double(length)), "upper": .bool(upper),
+              "lower": .bool(lower), "digits": .bool(digits), "symbols": .bool(symbols)]
+    case .passphrase:
+      return ["op": .string("generate"), "mode": .string("passphrase"), "words": .number(Double(words)),
+              "separator": .string(separator), "capitalize": .bool(capitalize), "number": .bool(number)]
+    }
   }
 }
 
