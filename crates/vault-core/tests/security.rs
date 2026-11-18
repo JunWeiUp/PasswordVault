@@ -279,7 +279,17 @@ fn rfc_totp_and_strict_origin_matching() {
     let uri = format!("otpauth://totp/Example:alex?secret={key}&issuer=Example&period=60");
     assert_eq!(parse_totp_uri(&uri).unwrap()["period"], 60);
     assert!(parse_totp_uri(&(uri.clone() + "&secret=again")).is_err());
-    assert!(parse_totp_uri(&(uri + "&algorithm=SHA256")).is_err());
+    assert!(parse_totp_uri(&(uri.clone() + "&algorithm=SHA256")).is_err());
+    // Upper-cased QR payloads: type and parameter names are case-insensitive.
+    let upper = uri.to_uppercase();
+    let parsed = parse_totp_uri(&upper).unwrap();
+    assert_eq!(parsed["period"], 60);
+    assert_eq!(parsed["username"], "ALEX");
+    assert_eq!(parsed["secret"], key);
+    let google = format!("OTPAUTH://TOTP/GOOGLE%3AUSER%40EXAMPLE.COM?SECRET={key}");
+    assert_eq!(parse_totp_uri(&google).unwrap()["title"], "GOOGLE");
+    assert!(parse_totp_uri(&(upper + "&secret=again")).is_err());
+    assert!(parse_totp_uri(&format!("otpauth://hotp/Example:alex?secret={key}")).is_err());
     let records = vec![
         json!({"id":"one","type":"password","title":"test","username":"test","url":"https://example.com"}),
     ];
@@ -291,6 +301,13 @@ fn rfc_totp_and_strict_origin_matching() {
             .len(),
         1
     );
+    let several = vec![
+        json!({"id":"many","type":"password","title":"many","username":"u","url":"https://a.example; https://b.example,c.example\nd.example"}),
+    ];
+    for site in ["https://a.example", "https://b.example", "https://c.example", "https://d.example"] {
+        assert_eq!(matching_accounts(&several, site).unwrap().as_array().unwrap().len(), 1, "{site}");
+    }
+    assert_eq!(matching_accounts(&several, "https://e.example").unwrap(), json!([]));
     assert_eq!(
         matching_accounts(&records, "https://example.com.attacker.test").unwrap(),
         json!([])

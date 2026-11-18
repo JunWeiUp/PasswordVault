@@ -48,8 +48,10 @@ pub fn parse_totp_uri(input: &str) -> Result<Value> {
         return Err(VaultError::InvalidData);
     }
     let url = Url::parse(input).map_err(|_| VaultError::InvalidData)?;
+    // QR codes often upper-case the whole URI (alphanumeric mode); the URL parser only
+    // lower-cases the scheme, so compare the type and parameter names case-insensitively.
     if url.scheme() != "otpauth"
-        || url.host_str() != Some("totp")
+        || !url.host_str().is_some_and(|host| host.eq_ignore_ascii_case("totp"))
         || url.fragment().is_some()
         || !url.username().is_empty()
         || url.password().is_some()
@@ -59,7 +61,7 @@ pub fn parse_totp_uri(input: &str) -> Result<Value> {
     }
     let mut params = std::collections::HashMap::new();
     for (key, value) in url.query_pairs() {
-        if params.insert(key.to_string(), value.to_string()).is_some() {
+        if params.insert(key.to_ascii_lowercase(), value.to_string()).is_some() {
             return Err(VaultError::InvalidData);
         }
     }
@@ -246,7 +248,8 @@ pub fn matching_accounts(items: &[Value], origin: &str) -> Result<Value> {
         .filter(|v| v["type"] == "password" && v["isDeleted"] != true)
         .filter(|v| {
             v["url"].as_str().is_some_and(|s| {
-                s.split(|c: char| c.is_whitespace() || c == ',')
+                // Same separators as the desktop and mobile site editors.
+                s.split(|c: char| c.is_whitespace() || c == ',' || c == ';')
                     .any(|entry| {
                         Url::parse(entry)
                             .or_else(|_| Url::parse(&format!("https://{entry}")))
