@@ -42,10 +42,9 @@ windowsTest("Windows unlock, platform settings, dialog reopening and explicit lo
   await app.press("text:浏览器");
   await app.waitFor("text:Windows 浏览器连接尚未开放");
   await app.back();
-  await app.press("label:设置");
-  await app.press("text:AI 访问");
-  await app.waitFor("text:Windows AI 访问尚未开放");
-  await app.back();
+  // AI access lives under Tools and explains that Windows does not offer it yet.
+  await app.press("label:AI 访问");
+  await app.waitFor("text:此平台暂未开放 AI 访问");
   await app.press("id:lock");
   await app.waitFor("text:PasswordVault 已锁定");
   expect(app.texts()).not.toContain("lin.dev@example.com");
