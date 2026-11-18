@@ -1,8 +1,10 @@
 ## Changes
 
-- Add extension parity to NSH Mac (`update-login`, `open-entry`, one-time-code and card/identity requests with per-request Mac confirmation), refresh extension-saved accounts in the open Mac window immediately, detect plaintext `type="text"` password fields, offer "Update account" and change-password account inference/selection in the save banner, and show the pending offline-sync count in the popup.
-- Preserve the browser "auto-unlock Mac at startup" option across certificate-signed Mac updates by binding Keychain grants to the signed designated requirement with CDHash fallback for ad-hoc builds.
-- Add optional titles for Devices & Services entries and script/document rows, display titles by default when set, include them in search, and expose non-secret script labels to AI projections.
+- Mac and Windows (NSH 0.6.0): AI access moves to Tools with clipboard delivery for secrets, 15-minute or until-lock approvals and first-request grants. Accounts show their two-factor code in the list and detail, link existing code entries after confirmation, and list several websites. Identity documents can be shown and edited. The sidebar, toolbar, settings, Touch ID and relay pages are reorganized.
+- iOS: codes from a scan, image, link or manual key; multi-select and context menus; read-only Devices & services; a passphrase generator; identity document fields; a step-by-step first run; and Sync & devices organized around the device group.
+- Android: account health and strength, save-failure recovery, setup QR codes, a card-face header, format-7 device entries, a passphrase generator, identity documents, fingerprint re-verification and an IME-safe input mode.
+- Browser extension: popup and full page follow the extension design, page language and theme, with refined account tiles, sync state and fill confirmation.
+- Core: upper-case `otpauth://` links import correctly, `;` separates account websites for matching, and passphrases can be generated.
 
 ## Downloads
 
