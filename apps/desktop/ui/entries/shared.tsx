@@ -37,10 +37,11 @@ export function EntryMeta(p: EntryProps) {
     <Field label="版本历史" value="加密版本记录" nocopy actions={<Btn label="打开版本历史" onPress={()=>openItemHistory(p.item)} />} />
     </Group></>;
 }
-export function CustomFields(p: EntryProps) {
+/** Lists custom fields; `skip` hides fields another section owns (they stay in the record). */
+export function CustomFields(p: EntryProps & { skip?: (field: any) => boolean }) {
   const update = (index: number,key:string,value:string) => edit(p.item.id,d=>{d.customFields[index]={...d.customFields[index],[key]:value};});
   return <><SectionHead title="自定义字段" right={<If when={p.editing}><Btn label="添加字段" disabled={(p.item.customFields?.length ?? 0)>=256} onPress={()=>edit(p.item.id,d=>{d.customFields=[...(d.customFields??[]),{id:newID(),label:"",kind:"concealed",value:""}];})} /></If>} />
-    <Each of={(p.item.customFields ?? []).map((_:any,i:number)=>i)}>{(index: () => number)=><Group>
+    <Each of={(p.item.customFields ?? []).map((_:any,i:number)=>i).filter((i:number)=>!p.skip?.(p.item.customFields[i]))}>{(index: () => number)=><Group>
       <Field label="字段名称" value={p.item.customFields[index()].label??""} editing={p.editing} onChange={v=>update(index(),"label",v)} />
       <Field label="分组" value={p.item.customFields[index()].group??""} editing={p.editing} onChange={v=>update(index(),"group",v)} />
       <Field label="类型" value={p.item.customFields[index()].kind??"text"} nocopy actions={<If when={p.editing}><Btn label="选择类型" onPress={()=>void Menu.popup(["text","concealed","url","email","date"].map(kind=>({label:kind,onSelect:()=>update(index(),"kind",kind)})))} /></If>} />

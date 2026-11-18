@@ -22,6 +22,9 @@ import { askExportNote } from "./notes/export";
 import { DeviceDetail, deviceTitle } from "./devices";
 import { AccountDetail } from "./entries/AccountDetail";
 import { CodeDetail } from "./entries/CodeDetail";
+import { CustomFields } from "./entries/shared";
+import { IdentityDocument } from "./entries/IdentityDocument";
+import { isDocumentField } from "./entries/documents";
 import { openSettings } from "./Settings";
 import { vaultInstance } from "./store";
 
@@ -200,6 +203,10 @@ function WalletDetail(props: { item: Item }) {
         <Group>{f("姓", "lastName")}{f("名", "firstName")}{f("邮箱", "email")}{f("电话", "phone")}{f("公司", "company")}</Group>
         <SectionHead title="地址" />
         <Group>{f("地址 1", "address1")}{f("地址 2", "address2")}{f("城市", "city")}{f("省/州", "region")}{f("邮编", "postalCode")}{f("国家/地区", "country")}</Group>
+        <IdentityDocument item={item()} editing={editing()} />
+        <If when={editing() || (item().customFields ?? []).some((x: any) => !isDocumentField(x))}>
+          <CustomFields item={item()} editing={editing()} skip={isDocumentField} />
+        </If>
         <NoteBlock item={item()} />
         <Meta item={item()} />
       </>
