@@ -494,6 +494,55 @@ final class MobileVaultStore: ObservableObject {
     }
     return false
   }
+  /// Applies one change to several selected entries and saves them, skipping entries this
+  /// device may not edit and entries already in Trash. Returns how many were saved; a failure
+  /// stops the batch and keeps what was saved before it.
+  @discardableResult
+  func update(_ ids: Set<String>, where include: (VaultItem) -> Bool = { _ in true }, _ change: (inout VaultItem) -> Void) async -> Int {
+    guard !busy, unlocked else { return 0 }
+    busy = true
+    defer { busy = false }
+    let time = ISO8601DateFormatter().string(from: Date())
+    var saved = 0
+    do {
+      for var item in items where ids.contains(item.id) && !item.isDeleted && canEdit(item) && include(item) {
+        change(&item)
+        item.set("updatedAt", time)
+        _ = try await perform(["op": .string("save"), "item": try .from(item)])
+        saved += 1
+      }
+    } catch { report(error) }
+    try? await refresh()
+    activity()
+    return saved
+  }
+  @discardableResult
+  func favorite(_ ids: Set<String>) async -> Int {
+    let count = await update(ids) { $0.isFavorite = true }
+    if count > 0 { notice = t("已收藏 \(count) 项", "Added \(count) to Favorites") }
+    return count
+  }
+  /// Moves notes to a category ("" clears it). Other entry types are left unchanged.
+  @discardableResult
+  func move(_ ids: Set<String>, to category: String) async -> Int {
+    let name = category.trimmingCharacters(in: .whitespacesAndNewlines)
+    let count = await update(ids, where: { $0.type == "secureNote" }) { $0.category = name }
+    if count > 0 {
+      notice = name.isEmpty ? t("已移出分类 \(count) 项", "Removed \(count) from category")
+        : t("已移动 \(count) 项到「\(name)」", "Moved \(count) to “\(name)”")
+    }
+    return count
+  }
+  @discardableResult
+  func trash(_ ids: Set<String>) async -> Int {
+    let time = ISO8601DateFormatter().string(from: Date())
+    let count = await update(ids) {
+      $0.isDeleted = true
+      $0.set("deletedAt", time)
+    }
+    if count > 0 { undoTrashID = nil; notice = t("已移到回收站 \(count) 项", "Moved \(count) to Trash") }
+    return count
+  }
   /// Restores the entry from the undo banner, using the latest stored copy.
   func undoTrash() async {
     guard let id = undoTrashID else { return }
