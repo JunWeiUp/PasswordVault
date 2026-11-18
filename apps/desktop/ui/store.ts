@@ -13,7 +13,7 @@ export type ItemType = "password" | "totp" | "crypto" | "secureNote" | "creditCa
 export type Item = { id: string; type: ItemType; title: string; [key: string]: any };
 export type Dest =
   | "all" | "accounts" | "codes" | "wallets" | "notes" | "devices"
-  | "favorites" | "trash" | "generator" | "health";
+  | "favorites" | "trash" | "generator" | "health" | "ai";
 export type Phase = "loading" | "onboard" | "locked" | "unlocked";
 
 export const DEST_TYPES: Partial<Record<Dest, ItemType[]>> = {
@@ -25,7 +25,7 @@ export const DEST_TYPES: Partial<Record<Dest, ItemType[]>> = {
 };
 export const DEST_NAME: Record<Dest, string> = {
   all: "全部项目", accounts: "账号", codes: "验证码", wallets: "钱包", notes: "笔记",
-  devices: "设备与服务", favorites: "个人收藏", trash: "回收站", generator: "密码生成器", health: "密码健康",
+  devices: "设备与服务", favorites: "收藏", trash: "回收站", generator: "密码生成器", health: "密码健康", ai: "AI 访问",
 };
 export const TYPE_NAME: Record<ItemType, string> = {
   password: "账号", totp: "验证码", crypto: "加密钱包", secureNote: "笔记", creditCard: "银行卡", identity: "身份信息", device: "设备",

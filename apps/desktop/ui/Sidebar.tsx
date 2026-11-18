@@ -13,7 +13,7 @@ import { openQuickAccess } from "./QuickAccess";
 import { openSettings } from "./Settings";
 import { appVersion } from "./version";
 import { SHORTCUT_LABEL, shortcut } from "./hotkey";
-import { syncStatus } from "./relay";
+import { syncStatus, syncTone } from "./relay";
 
 export function Logo(props: { size?: number }) {
   const s = () => props.size ?? 32;
@@ -24,13 +24,14 @@ export function Logo(props: { size?: number }) {
   );
 }
 
-function NavRow(props: { testID?: string; icon: IconName; label: string; active: boolean; count?: number | string; countTone?: string; onPress: () => void; indent?: boolean; hint?: string; onContextMenu?: (e: any) => void }) {
+function NavRow(props: { testID?: string; icon: IconName; label: string; active: boolean; count?: number | string; countTone?: string; dot?: string; tooltip?: string; onPress: () => void; indent?: boolean; hint?: string; onContextMenu?: (e: any) => void }) {
   return (
     <View
       role="button"
       testID={props.testID}
       accessibilityLabel={props.label}
       accessibilityState={{ selected: props.active }}
+      tooltip={props.tooltip}
       onPress={props.onPress}
       onContextMenu={props.onContextMenu}
       style={{
@@ -43,6 +44,7 @@ function NavRow(props: { testID?: string; icon: IconName; label: string; active:
       <Icon name={props.icon} size={props.indent ? 13 : 16} tint={props.active ? c().blue : c().ink2} />
       <T size={props.indent ? 12.5 : 13} weight={props.active ? "600" : "400"} color={props.active ? c().blue : c().ink2} style={{ flex: 1 }} lines={1}>{props.label}</T>
       {props.hint && <T size={10.5} color={c().faint}>{props.hint}</T>}
+      {props.dot && <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: props.dot }} />}
       {props.count !== undefined && props.count !== 0 && <T size={11.5} color={props.countTone ?? (props.active ? c().blue : c().faint)}>{String(props.count)}</T>}
     </View>
   );
@@ -76,7 +78,7 @@ export function Sidebar() {
         <Logo />
         <View>
           <T size={14} weight="600">PasswordVault</T>
-          <T size={10.5} color={c().muted}>{appVersion} · Native Shell 预览</T>
+          <T size={10.5} color={c().muted}>{appVersion}</T>
         </View>
       </View>
       {/* Destinations scroll when the window is short; the footer stays pinned. */}
@@ -106,18 +108,22 @@ export function Sidebar() {
           </>
         ))}
         <Label text="整理" />
-        <NavRow icon="star" label="个人收藏" active={dest() === "favorites"} count={countIn("favorites")} onPress={() => go("favorites")} />
+        <NavRow icon="star" label="收藏" active={dest() === "favorites"} count={countIn("favorites")} onPress={() => go("favorites")} />
         <NavRow icon="trash" label="回收站" active={dest() === "trash"} count={countIn("trash")} onPress={() => go("trash")} />
         <Label text="工具" />
         <NavRow icon="wand" label="密码生成器" active={dest() === "generator"} onPress={() => go("generator")} />
-        <NavRow icon="shield" label="密码健康" active={dest() === "health"} count={issues()} countTone={c().orange} onPress={() => go("health")} />
-        <NavRow icon="bolt" label="快速访问" active={false} hint={!desktopCapabilities.globalHotkeys || shortcut() === "disabled" ? undefined : SHORTCUT_LABEL[shortcut()]} onPress={openQuickAccess} />
+        {/* A dot, not a large count: the page explains and ranks the issues. */}
+        <NavRow icon="shield" label="密码健康" active={dest() === "health"} dot={issues() ? c().orange : undefined} tooltip={issues() ? `${issues()} 个账号需关注` : undefined} onPress={() => go("health")} />
+        <NavRow testID="nav-ai" icon="spark" label="AI 访问" active={dest() === "ai"} onPress={() => go("ai")} />
       </Scroll>
       <View style={{ flexShrink: 0, borderTopWidth: 1, borderTopColor: c().sideLine, paddingTop: 8, gap: 1, backgroundColor: c().side }}>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 10, height: 26 }}>
-          <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: c().faint }} />
+        <View role="button" accessibilityLabel={`同步状态：${syncStatus()}`} tooltip="打开同步设置" onPress={() => openSettings("relay")}
+          style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 10, height: 26, borderRadius: 7, cursor: "pointer" }} hoverStyle={{ backgroundColor: c().field }}>
+          <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: ({ ok: c().green, busy: c().orange, warn: c().red, off: c().faint })[syncTone()] }} />
           <T size={11.5} color={c().muted} lines={1}>{syncStatus()}</T>
         </View>
+        {/* Opens a floating panel rather than a page, so it lives with the other actions. */}
+        <NavRow icon="bolt" label="快速访问" active={false} hint={!desktopCapabilities.globalHotkeys || shortcut() === "disabled" ? undefined : SHORTCUT_LABEL[shortcut()]} onPress={openQuickAccess} />
         <NavRow icon="gear" label="设置" active={false} hint={isMac ? "⌘," : "Ctrl+,"} onPress={() => openSettings()} />
         <NavRow testID="lock" icon="lock" label="锁定" active={false} hint={isMac ? "⌘L" : "Ctrl+L"} onPress={() => void lock()} />
       </View>
