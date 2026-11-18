@@ -98,6 +98,11 @@ class CredentialLayoutTest {
         assertTrue("Expected $text", device.hasObject(By.text(text)))
     }
 
+    private fun findTextStart(text: String) {
+        repeat(12) { if (!device.hasObject(By.textStartsWith(text))) scroll() }
+        assertTrue("Expected $text…", device.hasObject(By.textStartsWith(text)))
+    }
+
     private fun findDesc(text: String) {
         repeat(12) { if (!device.hasObject(By.desc(text))) scroll() }
         assertTrue("Expected action $text", device.hasObject(By.desc(text)))
@@ -183,9 +188,8 @@ class CredentialLayoutTest {
         fixture.close()
         val scenario = start(id)
         try {
-            assertTrue(device.wait(Until.hasObject(By.text("解锁资料库")), 10000))
-            device.findObject(By.clazz("android.widget.EditText")).text = "1"
-            device.wait(Until.findObject(By.text("解锁").enabled(true)), 5000).click()
+            unlockFromLockScreen(device)
+            openDestination(device, "账号")
             if (!device.wait(Until.hasObject(By.text("账号 样例 00")), 10000)) {
                 shot("unlock-failed")
                 device.dumpWindowHierarchy(
@@ -226,10 +230,16 @@ class CredentialLayoutTest {
                         assertTrue(copied.matches(Regex("[0-9]{6}")))
                     }
                     fresh()
-                    device.findObject(By.text(title)).longClick()
-                    device.wait(Until.findObject(By.text("编辑")), 3000).click()
+                    // A code row copies on tap; its own trailing chevron opens the detail page.
+                    val rowY = device.findObject(By.text(title)).visibleBounds.centerY()
+                    device.findObjects(By.desc("详情"))
+                        .minBy { kotlin.math.abs(it.visibleBounds.centerY() - rowY) }
+                        .click()
                 } else row.click()
-                assertTrue(device.wait(Until.hasObject(By.text("编辑$label")), 5000))
+                // Details open read-only: the title with edit/more actions, not the editor.
+                assertTrue(device.wait(Until.hasObject(By.desc("更多操作")), 5000))
+                assertTrue(device.hasObject(By.text(title)))
+                assertFalse(device.hasObject(By.text("编辑$label")))
                 shot("$label-detail")
                 when (label) {
                     "账号" -> {
@@ -241,7 +251,7 @@ class CredentialLayoutTest {
                         findText("密码历史（1）")
                         device.findObject(By.text("密码历史（1）")).click()
                         assertFalse(device.hasObject(By.text("FICTIONAL-OLD-789")))
-                        findText("附加账号")
+                        findTextStart("附加账号")
                         shot("account-additional")
                     }
                     "验证码" -> {
@@ -252,8 +262,8 @@ class CredentialLayoutTest {
                         shot("code-settings")
                     }
                     "钱包" -> {
-                        findDesc("复制钱包地址")
-                        tapAction("复制钱包地址")
+                        findText("复制地址")
+                        device.findObject(By.text("复制地址")).click()
                         scenario.onActivity { activity ->
                             assertEquals(
                                 "0x1111111111111111111111111111111111111111",
@@ -269,9 +279,14 @@ class CredentialLayoutTest {
                         assertFalse(device.hasObject(By.text("1".repeat(64))))
                         tapAction("显示私钥")
                         findText("1".repeat(64))
-                        findText("显示助记词")
-                        device.findObject(By.text("显示助记词")).click()
-                        findText("abandon")
+                        findDesc("显示助记词")
+                        assertFalse(device.hasObject(By.textContains("abandon")))
+                        tapAction("显示助记词")
+                        // Revealing the phrase needs an explicit confirmation.
+                        assertTrue(device.wait(Until.hasObject(By.text("显示助记词？")), 3000))
+                        assertFalse(device.hasObject(By.textContains("abandon")))
+                        device.findObject(By.text("显示")).click()
+                        findTextStart("1  abandon")
                         shot("wallet-phrase")
                     }
                 }
@@ -286,6 +301,7 @@ class CredentialLayoutTest {
                 device.findObject(By.desc("清空搜索")).click()
             }
             device.findObject(By.desc("设置")).click()
+            device.wait(Until.findObject(By.text("安全")), 5000).click()
             assertTrue(device.wait(Until.hasObject(By.text("生物识别解锁")), 5000))
             shot("security")
             assertFalse(device.hasObject(By.text("启用 / 更新生物识别")))
@@ -329,7 +345,7 @@ class CredentialLayoutTest {
                 }
             }
             assertTrue(device.wait(Until.hasObject(By.text("未开启")), 5000))
-            assertFalse(device.hasObject(By.text("更新生物识别验证")))
+            assertFalse(device.hasObject(By.text("重新验证指纹")))
             device.findObject(By.desc("生物识别解锁")).click()
             inst.waitForIdleSync()
             assertEquals(true, toggle)
@@ -341,7 +357,7 @@ class CredentialLayoutTest {
                 enabled.value = true
             }
             assertTrue(device.wait(Until.hasObject(By.text("已开启")), 3000))
-            device.findObject(By.text("更新生物识别验证")).click()
+            device.findObject(By.text("重新验证指纹")).click()
             inst.waitForIdleSync()
             assertTrue(renew)
             shot("biometric-enabled")
@@ -385,11 +401,11 @@ class CredentialLayoutTest {
                 }
             }
             assertTrue(device.wait(Until.hasObject(By.text("已开启")), 5000))
-            assertTrue(device.hasObject(By.text("更新生物识别验证")))
+            assertTrue(device.hasObject(By.text("重新验证指纹")))
             // Password changes disable biometrics outside this component. Observe without a resume.
             scenario.onActivity { biometric!!.disable() }
             assertTrue(device.wait(Until.hasObject(By.text("未开启")), 3000))
-            assertFalse(device.hasObject(By.text("更新生物识别验证")))
+            assertFalse(device.hasObject(By.text("重新验证指纹")))
         } finally {
             scenario.close()
             val editor = prefs.edit().clear()

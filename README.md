@@ -14,9 +14,9 @@
 
 Native clients are in **developer preview**. [Platform availability](#choose-your-workspace) and the [security model](docs/security/SECURITY_MODEL.md) describe current limits; an independent security review is still pending.
 
-**Release 2.5.4:** [GitHub Release](https://github.com/JunWeiUp/PasswordVault/releases/tag/v2.5.4) · [Installation and limits](config/release/INSTALL.md). Includes NSH Mac, Windows x64, Android, extension, Web and iOS Simulator packages. Upcoming releases ship five packages: the standalone Web package is retired in favor of the browser extension.
+**Release 2.5.5:** [GitHub Release](https://github.com/JunWeiUp/PasswordVault/releases/tag/v2.5.5) · [Installation and limits](config/release/INSTALL.md). Five packages: NSH Mac, Windows x64, Android ARM64, Chromium extension and iOS Simulator.
 
-**Mac client status:** [`apps/desktop`](apps/desktop/README.md) is the only Mac client (NSH 0.5.1, macOS 14+ / Apple Silicon), shared with Windows. The legacy SwiftUI Mac client has been removed from the source tree; it remains available in Git history.
+**Mac client status:** [`apps/desktop`](apps/desktop/README.md) is the only Mac client (NSH 0.6.0, macOS 14+ / Apple Silicon), shared with Windows. The legacy SwiftUI Mac client has been removed from the source tree; it remains available in Git history.
 
 Mac development builds use a separate Rust background service. Closing the window saves drafts and exits the interface; authorized browser queries and lock management stay available. Reopen the app to edit, or choose Quit to stop both processes. See the [desktop guide](apps/desktop/README.md) for verification and limits.
 
@@ -90,7 +90,7 @@ Windows has a native x64 portable package in this release; Linux has no native d
 | **Windows desktop** | NSH x64 portable package; shared vault, notes and platform adapters | Windows 11 ARM VM: native-window account and rich-editor flows pass. Browser/AI IPC, terminal handoff and broader hardware acceptance remain open |
 | **Linux desktop** | No native desktop client | Not implemented |
 
-The coordinated release is **2.5.4**: NSH Mac build **39**, browser **2.5.4**, Android build **25004**, and iOS build **20**. This update expands NSH Mac browser extension parity (update-password, open-in-Mac, OTP and card/identity confirmation, instant window refresh, plaintext password field detection and offline pending-sync count), preserves startup auto-unlock across certificate-signed Mac updates, and adds optional device and document titles. Android requires 8.0+. Passing checks does not imply app-store availability or production security acceptance. See [installation](docs/releases/NATIVE-RELEASE-NOTES.md) and [relay setup](docs/architecture/PERSONAL-RELAY.md).
+The coordinated release is **2.5.5**: NSH Mac build **45** (NSH 0.6.0), browser **2.5.5**, Android build **25005**, and iOS build **21**. This update moves Mac/Windows AI access to Tools with clipboard delivery and time-limited approvals, shows two-factor codes on accounts with multiple websites, adds identity documents across desktop and mobile, and brings the iOS, Android and extension interfaces in line with the design hub. Android requires 8.0+. Passing checks does not imply app-store availability or production security acceptance. See [installation](config/release/INSTALL.md) and [release notes](config/release/NOTES.md).
 
 </details>
 
@@ -108,7 +108,7 @@ bash tool/check_native.sh macos
 bash tool/check_native.sh browser
 ```
 
-All Rust code uses one pinned toolchain (1.98.0). `check_native.sh macos` checks the Native Shell desktop client in `apps/desktop`, which uses NSH 0.5.1 and its official native `RichEditor`. Project Rust build scripts require [huacnlee/cargo](https://huacnlee.github.io/cargo/) with the pinned rustc. See [Mac build instructions](apps/desktop/README.md).
+All Rust code uses one pinned toolchain (1.98.0). `check_native.sh macos` checks the Native Shell desktop client in `apps/desktop`, which uses NSH 0.6.0 and its official native `RichEditor`. Project Rust build scripts require [huacnlee/cargo](https://huacnlee.github.io/cargo/) with the pinned rustc. See [Mac build instructions](apps/desktop/README.md).
 
 The unpacked extension is in `apps/browser/dist`. For evaluation, follow the native guide's **isolated synthetic vault** instructions.
 
@@ -182,4 +182,4 @@ Device documents on the Native Shell Mac client support importing UTF-8 scripts 
 
 [Application directory](apps/README.md) · [NSH Mac tools](tool/macos-nsh/README.md)
 
-[2.5.4 installation](config/release/INSTALL.md) · [Release notes](config/release/NOTES.md)
+[2.5.5 installation](config/release/INSTALL.md) · [Release notes](config/release/NOTES.md)

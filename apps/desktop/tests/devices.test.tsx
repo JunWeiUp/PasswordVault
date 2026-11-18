@@ -54,8 +54,12 @@ test("device import previews before creating and repeated import does not duplic
   await app.press("text:切换设备只读");
   expect(app.texts()).toContain("主力控制台");
   await app.press("text:切换设备编辑");
-  await app.press("text:AI 访问");
-  await app.waitFor("text:打开 AI 访问设置");
+  // AI access moved to Tools; the device detail keeps only device content.
+  expect(app.texts().includes("AI 工作台")).toBe(false);
+  await app.press("text:连接与服务");
+  await app.waitFor("text:服务入口");
+  await app.press("text:脚本与资料");
+  await app.waitFor("text:资料目录");
 
   await app.press("text:打开合成资料导入");
   await app.press("text:选择资料文件…");
@@ -104,11 +108,17 @@ test("document editor opens full Python text and preserves full filenames", asyn
   expect(app.texts()).toContain("示例设备-用于检查完整长标题显示的自动备份与健康检查脚本.py");
 
   await app.waitFor("label:资料正文");
-  await app.press("text:系统终端 ▾");
-  await app.waitFor("text:首选终端");
-  await app.press("text:系统终端 · 当前首选");
-  await app.press("text:点击运行");
-  expect(app.texts()).toContain("已请求终端运行");
+  // Terminal handoff is Mac-only; Windows shows no run controls.
+  const canRun = app.texts().includes("系统终端 ▾");
+  if (canRun) {
+    await app.press("text:系统终端 ▾");
+    await app.waitFor("text:首选终端");
+    await app.press("text:系统终端 · 当前首选");
+    await app.press("text:点击运行");
+    expect(app.texts()).toContain("已请求终端运行");
+  } else {
+    expect(app.texts().includes("点击运行")).toBe(false);
+  }
   expect(app.value("label:资料正文")).toBe("#!/usr/bin/env python3\n    print('SYNTHETIC_ONLY')\n");
   await app.clear("label:资料正文");
   await app.type("label:资料正文", "print('updated')");
@@ -123,7 +133,7 @@ test("document editor opens full Python text and preserves full filenames", asyn
   await app.type("label:资料标题", "自动备份与健康检查");
   expect(app.texts()).toContain("自动备份与健康检查");
   expect(app.value("label:完整文件名（含扩展名）")).toBe("示例设备-用于检查完整长标题显示的自动备份与健康检查脚本.py");
-  expect(app.texts()).toContain("点击运行");
+  expect(app.texts().includes("点击运行")).toBe(canRun);
   await app.press("text:新建资料");
   expect(app.value("label:资料正文")).toBe("");
   await app.setViewport(1100, 900);

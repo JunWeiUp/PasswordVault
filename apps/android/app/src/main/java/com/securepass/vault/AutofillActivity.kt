@@ -33,7 +33,7 @@ class AutofillActivity : FragmentActivity() {
         window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
         token = intent.getStringExtra("token") ?: return finish()
         val target = FillRequests.get(token) ?: return finish()
-        setContent {
+        setPrivateContent {
             val state by vault.state.collectAsStateWithLifecycle()
             val scope = rememberCoroutineScope()
             var confirm by remember { mutableStateOf<JSONObject?>(null) }

@@ -22,8 +22,8 @@ android {
         applicationId = "com.securepass.vault"
         minSdk = 26
         targetSdk = 36
-        versionCode = 25004
-        versionName = "2.5.4"
+        versionCode = 25005
+        versionName = "2.5.5"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         testProguardFile("test-proguard-rules.pro")
         ndk {
@@ -137,6 +137,9 @@ tasks.configureEach {
 // Reuse only the local editor bundle and its licenses; other Mac resources have Android equivalents.
 val bundleMobileNoteEditor by tasks.registering(Sync::class) {
     from("../../shared/note-editor/dist") { include("NoteEditor.html", "NoteEditor-LICENSES.txt") }
+    // License texts shown under Settings › About › Open-source licenses.
+    from("../../../LICENSE") { rename { "LICENSE.txt" } }
+    from("../../../config/release/THIRD_PARTY_NOTICES.md")
     into(layout.buildDirectory.dir("generated/note-editor-assets"))
 }
 tasks.named("preBuild") {

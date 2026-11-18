@@ -5,6 +5,9 @@ final class VaultFlowTests: XCTestCase {
     let app = XCUIApplication()
     app.launchArguments = ["--ui-test-vault", UUID().uuidString]
     app.launch()
+    // First run opens on the welcome step.
+    let start = app.buttons["onboarding.start"]
+    if start.waitForExistence(timeout: 10) { start.tap() }
     let password = app.secureTextFields["vault.password"]
     XCTAssertTrue(password.waitForExistence(timeout: 10))
     password.tap()
@@ -58,6 +61,9 @@ final class VaultFlowTests: XCTestCase {
     let app = XCUIApplication()
     app.launchArguments = ["--ui-test-vault", UUID().uuidString]
     app.launch()
+    // First run opens on the welcome step.
+    let start = app.buttons["onboarding.start"]
+    if start.waitForExistence(timeout: 10) { start.tap() }
     let password = app.secureTextFields["vault.password"]
     XCTAssertTrue(password.waitForExistence(timeout: 10))
     password.tap()
@@ -91,6 +97,65 @@ final class VaultFlowTests: XCTestCase {
     notes.tap()
     XCTAssertTrue(waitFor(notes, "selected == true"))
     XCTAssertTrue(app.staticTexts["Unfinished encrypted draft"].waitForExistence(timeout: 5))
+  }
+
+  /// First run as steps (welcome → master password → biometric offer), then an inline
+  /// wrong-password error on the lock screen.
+  func testOnboardingStepsAndInlineUnlockError() {
+    let app = XCUIApplication()
+    app.launchArguments = ["--ui-test-vault", UUID().uuidString, "--ui-test-biometric-offer"]
+    app.launch()
+    let start = app.buttons["onboarding.start"]
+    XCTAssertTrue(start.waitForExistence(timeout: 10))
+    XCTAssertTrue(app.staticTexts["欢迎使用 PasswordVault"].exists)
+    XCTAssertFalse(app.secureTextFields["vault.password"].exists, "The password step comes second")
+    attach(app, "onboarding-welcome")
+    start.tap()
+    let password = app.secureTextFields["vault.password"]
+    XCTAssertTrue(password.waitForExistence(timeout: 5))
+    XCTAssertTrue(app.buttons["返回"].exists)
+    password.tap()
+    password.typeText("1")
+    let confirm = app.secureTextFields.element(boundBy: 1)
+    confirm.tap()
+    confirm.typeText("2")
+    XCTAssertTrue(app.staticTexts["两次输入不一致"].waitForExistence(timeout: 5))
+    XCTAssertFalse(app.buttons["vault.unlock"].isEnabled)
+    confirm.typeText(XCUIKeyboardKey.delete.rawValue + "1")
+    XCTAssertTrue(app.staticTexts["✓ 一致"].waitForExistence(timeout: 5))
+    attach(app, "onboarding-password")
+    app.buttons["vault.unlock"].tap()
+
+    let skip = app.buttons["onboarding.biometric.skip"]
+    XCTAssertTrue(skip.waitForExistence(timeout: 10), "Biometric unlock is offered after creating")
+    XCTAssertTrue(app.buttons["onboarding.biometric.enable"].exists)
+    attach(app, "onboarding-biometric")
+    skip.tap()
+    XCTAssertTrue(app.tabBars.buttons["全部笔记"].waitForExistence(timeout: 10))
+
+    app.buttons["锁定"].firstMatch.tap()
+    XCTAssertTrue(password.waitForExistence(timeout: 5))
+    password.tap()
+    password.typeText("2")
+    app.buttons["vault.unlock"].tap()
+    let error = app.staticTexts.matching(identifier: "vault.password.error").firstMatch
+    XCTAssertTrue(error.waitForExistence(timeout: 10))
+    XCTAssertTrue(error.label.contains("主密码不正确"))
+    XCTAssertFalse(app.alerts.firstMatch.exists, "No global alert for a wrong password")
+    attach(app, "unlock-inline-error")
+    password.tap()
+    password.typeText(XCUIKeyboardKey.delete.rawValue + "1")
+    XCTAssertTrue(waitFor(error, "exists == false"), "Editing clears the error")
+    app.buttons["vault.unlock"].tap()
+    XCTAssertTrue(app.tabBars.buttons["全部笔记"].waitForExistence(timeout: 10))
+    XCTAssertFalse(skip.exists, "Unlocking never repeats the first-run offer")
+  }
+
+  private func attach(_ app: XCUIApplication, _ name: String) {
+    let shot = XCTAttachment(screenshot: app.screenshot())
+    shot.name = name
+    shot.lifetime = .keepAlways
+    add(shot)
   }
 
   private func waitFor(_ element: XCUIElement, _ predicate: String) -> Bool {

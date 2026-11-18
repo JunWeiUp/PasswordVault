@@ -14,9 +14,9 @@
 
 原生客户端目前为**开发预览版**。[平台状态](#选择你的工作空间)与[安全模型](docs/security/SECURITY_MODEL.md)记录当前限制，独立安全审查仍待完成。
 
-**下载原生版 2.5.4：** [GitHub Release](https://github.com/JunWeiUp/PasswordVault/releases/tag/v2.5.4) · [安装方式与签名限制](docs/releases/NATIVE-RELEASE-NOTES.md)。包含 Android、Mac、Windows x64、解压式插件、Web 和 iOS 模拟器包，各一个。后续版本改为发布五个包：独立 Web 包已停用，由浏览器插件替代。
+**下载原生版 2.5.5：** [GitHub Release](https://github.com/JunWeiUp/PasswordVault/releases/tag/v2.5.5) · [安装方式与限制](config/release/INSTALL.md)。共五个包：NSH Mac、Windows x64、Android ARM64、Chromium 插件和 iOS 模拟器。
 
-**Mac 客户端说明：** [`apps/desktop`](apps/desktop/README.md) 是唯一的 Mac 客户端（NSH 0.5.1，macOS 14+ / Apple Silicon），与 Windows 共用源码。旧版 SwiftUI Mac 客户端已从源码中移除，可在 Git 历史中找到。
+**Mac 客户端说明：** [`apps/desktop`](apps/desktop/README.md) 是唯一的 Mac 客户端（NSH 0.6.0，macOS 14+ / Apple Silicon），与 Windows 共用源码。旧版 SwiftUI Mac 客户端已从源码中移除，可在 Git 历史中找到。
 Mac 开发版本使用独立 Rust 后台服务。关闭窗口会先保存草稿并退出界面；已授权的浏览器查询和锁定管理继续运行。重新打开应用可编辑，选择“退出”则停止两个进程。验证方式和限制见[桌面指南](apps/desktop/README.md)。
 
 
@@ -92,7 +92,7 @@ Windows 已提供本次发行的原生 x64 便携包，Linux 暂无原生桌面�
 | **Windows 桌面** | NSH x64 便携包，共用密码库、笔记与平台适配层 | Windows 11 ARM 虚拟机的真实窗口账号及富文本流程通过；浏览器/AI 本机通信、终端运行及更多硬件验收仍待完成 |
 | **Linux 桌面** | 无原生桌面客户端 | 尚未实现 |
 
-本次统一版本为 **2.5.4**：NSH Mac build **39**、浏览器 **2.5.4**、Android build **25004**、iOS build **20**。本次更新补齐 NSH Mac 扩展能力（更新密码、在 Mac 打开、验证码与银行卡/身份确认、窗口即时刷新、明文密码框识别及离线待同步数量提示），保持证书签名 Mac 更新后的“启动自动解锁”授权，并为设备与脚本资料增加可选标题（设置后默认优先显示）。Android 需 8.0+。检查通过不代表已上架应用商店或通过生产安全验收，详见[安装说明](docs/releases/NATIVE-RELEASE-NOTES.md)及[中继配置](docs/architecture/PERSONAL-RELAY.md)。
+本次统一版本为 **2.5.5**：NSH Mac build **45**（NSH 0.6.0）、浏览器 **2.5.5**、Android build **25005**、iOS build **21**。本次更新把 Mac/Windows 的 AI 访问移到“工具”，敏感字段默认交付到剪贴板并支持限时免确认；账号可显示二次验证码并支持多个网站；桌面与移动端支持证件信息；iOS、Android 与插件界面按设计稿对齐。Android 需 8.0+。检查通过不代表已上架应用商店或通过生产安全验收，详见[安装说明](config/release/INSTALL.md)及[发行说明](config/release/NOTES.md)。
 
 </details>
 
@@ -110,7 +110,7 @@ bash tool/check_native.sh macos
 bash tool/check_native.sh browser
 ```
 
-全部 Rust 代码使用同一个固定工具链（1.98.0）。`check_native.sh macos` 检查 `apps/desktop` 中的 Native Shell 桌面客户端，它使用 NSH 0.5.1 和官方原生 `RichEditor`。项目 Rust 构建脚本要求使用 [huacnlee/cargo](https://huacnlee.github.io/cargo/)，并使用固定的 rustc。详见 [Mac 构建说明](apps/desktop/README.md)。
+全部 Rust 代码使用同一个固定工具链（1.98.0）。`check_native.sh macos` 检查 `apps/desktop` 中的 Native Shell 桌面客户端，它使用 NSH 0.6.0 和官方原生 `RichEditor`。项目 Rust 构建脚本要求使用 [huacnlee/cargo](https://huacnlee.github.io/cargo/)，并使用固定的 rustc。详见 [Mac 构建说明](apps/desktop/README.md)。
 
 解压扩展位于 `apps/browser/dist`。评估时请使用原生指南中的**隔离虚构资料库**流程。
 
@@ -184,6 +184,6 @@ Native Shell Mac 客户端的设备资料支持导入 Python、Shell、JavaScrip
 
 [应用目录](apps/README.md) · [NSH Mac 工具](tool/macos-nsh/README.md)
 
-[2.5.4 安装说明](config/release/INSTALL.md) · [发行说明](config/release/NOTES.md)
+[2.5.5 安装说明](config/release/INSTALL.md) · [发行说明](config/release/NOTES.md)
 
 CI 成本策略：普通 PR 仅做轻量仓库/密钥检查；原生构建仅手动或发布触发，测试默认关闭。主分支合并后不重复构建，详见 [CI 说明](docs/development/CI.md)。

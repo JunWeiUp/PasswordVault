@@ -36,6 +36,9 @@ final class VaultRelay: ObservableObject {
   @Published var groupMembers: [GroupMember] = []
   @Published var config: Config
   @Published var status = "未连接 / Disconnected"
+  /// True while the relay connection is open. UI state only; never used for sync decisions.
+  @Published private(set) var connected = false
+  @Published private(set) var connecting = false
   @Published var summary: [String: JSONValue] = [:]
   var peerLibraryRole: String {
     let device = summary["device"]?.string ?? ""
@@ -197,7 +200,7 @@ final class VaultRelay: ObservableObject {
     generation = UUID(); loop?.cancel(); loop = nil; reader?.cancel(); reader = nil
     let old = client; let oldFiles = files; client = nil; files = nil
     Task { await old?.close(); await oldFiles?.close() }
-    setGroupOnline([])
+    setGroupOnline([]); connected = false; connecting = false
     status = active ? "未连接 / Disconnected" : "已锁定 / Locked"
   }
   private func restart() {
@@ -323,10 +326,10 @@ final class VaultRelay: ObservableObject {
         guard let ws = URL(string: config.endpoint), var components = URLComponents(url: ws, resolvingAgainstBaseURL: false) else { throw RelayError.invalid("URL") }
         components.scheme = allowLocalGroupTest && ws.scheme == "ws" ? "http" : "https"; components.path = "/relay/v1/files"
         let fileClient = try RelayFiles(base: components.url!, token: config.token, password: config.serverPassword, allowLocalTest: allowLocalGroupTest); files = fileClient; ownedFiles = fileClient
-        status = "正在连接 / Connecting"
+        status = "正在连接 / Connecting"; connecting = true
         let events = try await connection.connect(url: ws, token: config.token, password: config.serverPassword, allowLocalTest: allowLocalGroupTest)
         guard generation == epoch, active else { await connection.close(); return }
-        status = connectedStatus
+        status = connectedStatus; connected = true; connecting = false
         if failure == transportFailure { failure = nil }; transportFailure = nil
         backoff = 1; sent.removeAll()
         reader = Task { [weak self] in
@@ -441,11 +444,11 @@ final class VaultRelay: ObservableObject {
           }
           try await Task.sleep(nanoseconds: 5_000_000_000)
         }
-        if generation == epoch { setGroupOnline([]) }
+        if generation == epoch { setGroupOnline([]); connected = false }
         reader?.cancel(); await connection.close(); await fileClient.close()
       } catch {
         if generation == epoch && active {
-          setGroupOnline([]); status = "等待重连 / Waiting to reconnect"
+          setGroupOnline([]); connected = false; connecting = false; status = "等待重连 / Waiting to reconnect"
           transportFailure = "同步尚未完成，改动保留在本机 / Sync incomplete; local changes retained"
           if failure == nil { failure = transportFailure }
         }
@@ -524,6 +527,9 @@ extension VaultRelay {
     let online: Bool
   }
   var hasManagedGroup: Bool { groupDictionary["group_entry"] != nil }
+  /// A personal device group is set up on this device but the relay is not reachable right
+  /// now, so changes stay encrypted on this device until it reconnects.
+  var offline: Bool { credentialsReady && hasManagedGroup && !connected && !connecting }
   /// Signed-roster members with pinned keys, excluding this device. Joining the group is
   /// the only admission step for symmetric sync; nil outside a personal group.
   var meshPeers: [String]? {

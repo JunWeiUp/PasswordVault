@@ -68,6 +68,15 @@ export function syncStatus(): string {
   if (count) return `${count} 项同步冲突`;
   return ({ connected: "设备组已连接", connecting: "正在连接设备组…", reconnecting: "等待重新连接…" } as Record<string,string>)[connection().transport] ?? "中继未连接";
 }
+/** Tone for the sidebar status dot, derived from the same state as `syncStatus`. */
+export function syncTone(): "ok" | "busy" | "warn" | "off" {
+  if (phase() !== "unlocked") return "off";
+  if (syncBlocked() || Object.keys(peerState().conflicts ?? {}).length) return "warn";
+  const transport = connection().transport;
+  if (transport === "connected") return "ok";
+  if (transport === "connecting" || transport === "reconnecting") return "busy";
+  return roster().state || meshSync() ? "warn" : "off";
+}
 export async function refreshRelay() {
   const epoch = ++generation;
   if (phase() !== "unlocked") { summary.set({}); roster.set({}); peerState.set({}); syncBlocked.set(false); return; }

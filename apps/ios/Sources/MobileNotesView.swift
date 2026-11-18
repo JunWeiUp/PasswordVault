@@ -56,6 +56,10 @@ struct MobileNotesView: View {
   @State private var category = ""
   @State private var editor: VaultItem?
   @State private var deleting: VaultItem?
+  @State private var selecting = false
+  @State private var selection = Set<String>()
+  @State private var history: VaultItem?
+  @State private var moving: VaultItem?
 
   private var sort: NoteSort { NoteSort(rawValue: sortValue) ?? .modified }
   private var grid: Bool { layout != "list" }
@@ -70,9 +74,11 @@ struct MobileNotesView: View {
 
   var body: some View {
     Group {
-      if grid {
+      // Selecting always uses the list layout so rows can show selection marks.
+      if grid && !selecting {
         ScrollView {
           VStack(alignment: .leading, spacing: 12) {
+            RelayOfflineBanner(relay: store.relay, t: store.t).padding(.horizontal)
             header.padding(.horizontal)
             if notes.isEmpty { empty.padding(.horizontal) }
             LazyVGrid(
@@ -90,7 +96,8 @@ struct MobileNotesView: View {
         }
         .background(Color(uiColor: .systemGroupedBackground))
       } else {
-        List {
+        List(selection: $selection) {
+          RelayOfflineBanner(relay: store.relay, t: store.t)
           header
           if notes.isEmpty { empty }
           ForEach(notes) { note in
@@ -107,9 +114,16 @@ struct MobileNotesView: View {
     }
     .navigationTitle(Destination.notes.title(chinese: store.chinese))
     .searchable(text: $search, prompt: store.t("搜索", "Search"))
+    .modifier(EntrySelection(selecting: $selecting, selection: $selection, visible: notes))
     .toolbar {
+      if !selecting {
       ToolbarItem(placement: .navigationBarLeading) {
         Button(action: store.lock) { Image(systemName: "lock") }.accessibilityLabel(store.t("锁定", "Lock"))
+      }
+      ToolbarItem(placement: .navigationBarTrailing) {
+        Button(store.t("选择", "Select")) { selecting = true }
+          .disabled(notes.isEmpty || !store.canWriteLibrary)
+          .accessibilityIdentifier("selection.start")
       }
       ToolbarItem(placement: .navigationBarTrailing) {
         Menu {
@@ -130,8 +144,11 @@ struct MobileNotesView: View {
         } label: { Image(systemName: "plus") }
           .accessibilityLabel(store.t("新建", "Add")).disabled(!store.canWriteLibrary)
       }
+      }
     }
     .sheet(item: $editor) { MobileRichNoteEditor(item: $0) }
+    .sheet(item: $history) { EntryHistorySheet(id: $0.id) }
+    .sheet(item: $moving) { MoveToCategorySheet(ids: [$0.id]) }
     .confirmationDialog(
       store.t("移到回收站？", "Move to Trash?"),
       isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }),
@@ -216,17 +233,9 @@ struct MobileNotesView: View {
     }.padding(.vertical, 6)
   }
 
-  @ViewBuilder private func menu(_ note: VaultItem) -> some View {
-    if store.canEdit(note) {
-      Button(note.isPinned ? store.t("取消置顶", "Unpin") : store.t("置顶", "Pin")) {
-        Task { await store.toggle(note.id, field: "isPinned") }
-      }
-      Button(note.isFavorite ? store.t("取消收藏", "Unfavorite") : store.t("收藏", "Favorite")) {
-        Task { await store.toggle(note.id, field: "isFavorite") }
-      }
-      Button(store.t("编辑", "Edit")) { editor = note }
-      Button(store.t("移到回收站…", "Move to Trash…"), role: .destructive) { deleting = note }
-    }
+  private func menu(_ note: VaultItem) -> some View {
+    EntryMenuItems(item: note, edit: { editor = note }, history: { history = note },
+      move: { moving = note }, trash: { deleting = note })
   }
 }
 

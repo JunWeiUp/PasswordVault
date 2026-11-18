@@ -1,11 +1,12 @@
 {
   "name": "PasswordVault",
   "id": "com.securepass.vault.nshpreview",
-  "version": "2.5.4",
-  "build": 39,
+  "version": "2.5.5",
+  "build": 45,
   "rust": ".",
   "appearance": "system",
   "capabilities": {
+    "application": true,
     "clipboard": true,
     "openUrl": {
       "schemes": [

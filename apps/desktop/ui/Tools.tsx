@@ -5,7 +5,7 @@ import { Icon } from "./icons";
 import {
   Btn, copySecret, Empty, Group, openSheet, Row, SheetFooter, SheetTitle, Strength, T, Toggle,
 } from "./kit";
-import { audit, createItem, edit, generatePassword, items, lock, onLock, refreshAudit, reveal, toast, type Item } from "./store";
+import { audit, createItem, edit, generatePassword, items, onLock, refreshAudit, reveal, toast, type Item } from "./store";
 import { breachProgress, breachResults, checkable, startBreachCheck, stopBreachCheck } from "./breach";
 import { Tile } from "./ItemList";
 import { c, layout, MONO } from "./theme";
@@ -50,7 +50,7 @@ function ColoredPassword(props: { value: string; size?: number }) {
   );
 }
 
-function ToolHeader(props: { title: string; right?: any }) {
+export function ToolHeader(props: { title: string; right?: any }) {
   return (
     <View desktop={{ windowDrag: true }} style={{ height: layout.toolbar, flexDirection: "row", alignItems: "center", paddingLeft: 26, paddingRight: 18, gap: 8, borderBottomWidth: 1, borderBottomColor: c().line }}>
       <Icon name="tools" size={12} tint={c().muted} />
@@ -59,7 +59,6 @@ function ToolHeader(props: { title: string; right?: any }) {
       <T size={12} weight="500" style={{ flex: 1 }}>{props.title}</T>
       <View desktop={{ windowDrag: false }} style={{ flexDirection: "row", gap: 6 }}>
         {props.right}
-        <Btn label="锁定" icon="lock" kind="ghost" onPress={() => void lock()} />
       </View>
     </View>
   );

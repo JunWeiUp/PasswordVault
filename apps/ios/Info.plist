@@ -24,9 +24,9 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>2.5.4</string>
+	<string>2.5.5</string>
 	<key>CFBundleVersion</key>
-	<string>20</string>
+	<string>21</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Scan an authenticator setup QR code you choose.</string>
 	<key>NSFaceIDUsageDescription</key>

@@ -534,9 +534,7 @@ impl BrowserVault {
             ),
             "parse-totp" => parse_totp_uri(text("uri")?),
             "wallet" => wallet(request),
-            "generate" => Ok(
-                json!({"password":generate_password(request["length"].as_u64().unwrap_or(20)as usize,request["upper"]!=false,request["lower"]!=false,request["digits"]!=false,request["symbols"]!=false)?}),
-            ),
+            "generate" => generate_secret(request),
             "audit" => Ok(audit(&self.document.items)),
             "matches" => matching_accounts(&self.document.items, text("origin")?),
             "fill" => fill_account(

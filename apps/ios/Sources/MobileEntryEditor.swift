@@ -235,6 +235,13 @@ struct MobileEntryEditor: View {
           return
         }
       }
+      if draft.type == "identity" {
+        let fields = draft.fields["customFields"]?.array ?? []
+        if IdentityDocument.fields.contains(where: { $0.kind == "date" && !IdentityDocument.validDate(IdentityDocument.value(fields, $0.id)) }) {
+          message = store.t("证件日期需为 YYYY-MM-DD 格式。", "Document dates must use YYYY-MM-DD.")
+          return
+        }
+      }
       draft.tags = tags.replacingOccurrences(of: "，", with: ",").split(separator: ",").map {
         $0.trimmingCharacters(in: .whitespaces)
       }.filter { !$0.isEmpty }

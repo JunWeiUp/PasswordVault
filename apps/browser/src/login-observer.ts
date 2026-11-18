@@ -1,6 +1,46 @@
 // Capture top-level and same-origin embedded login attempts. Only the top frame
 // owns banners, so removing a login iframe cannot remove the save reminder.
 (() => {
+  // In-page UI language. Content scripts cannot read the extension pages' localStorage, so
+  // the pages mirror the language to chrome.storage.local ("uiLanguage"); in-page UI stays light.
+  const OBSERVER_EN: Record<string, string> = {
+    "PasswordVault · 已保存": "PasswordVault · Saved",
+    "PasswordVault · 登录提醒": "PasswordVault · Sign-in reminder",
+    "保存": "Save",
+    "保存中…": "Saving…",
+    "保存未完成，请重试，或打开插件检查解锁及连接状态。": "Saving didn't finish. Retry, or open the extension to check the lock and connection state.",
+    "修改账号密码": "Change login",
+    "已加密保存在此浏览器，稍后自动同步到 Mac。": "Saved encrypted in this browser; it will sync to the Mac automatically.",
+    "已在 Mac 上取消或超时未确认，可重试。": "Cancelled on the Mac or timed out; you can retry.",
+    "暂不保存": "Not now",
+    "更新账号": "Update login",
+    "更新需要 Mac 应用已打开并解锁，请检查后重试。": "Updating needs the Mac app open and unlocked; check it and retry.",
+    "检测到填写的账号和密码。是否保存？请核对凭据，确认可用后再保存。": "A username and password were entered. Save them? Check that they work before saving.",
+    "检测到新密码，但无法确定对应的账号。请选择要更新的账号。": "A new password was detected, but its login is unclear. Choose the login to update.",
+    "此账号的密码与已保存的不同。是否更新已保存的账号？确认新密码可用后再更新。": "This password differs from the saved one. Update the saved login? Make sure the new password works first.",
+    "知道了": "Got it",
+    "离线暂存已满，请连接并解锁 Mac 完成同步后重试。": "Offline storage is full; connect and unlock the Mac to sync, then retry.",
+    "请先打开并解锁 PasswordVault，再提交登录以保存账号。": "Open and unlock PasswordVault first, then sign in again to save the login.",
+    "请在 Mac 上确认…": "Confirm on the Mac…",
+    "请点击浏览器工具栏的 PasswordVault 图标修改账号密码。": "Click the PasswordVault icon in the browser toolbar to change the login.",
+    "请点击浏览器工具栏的 PasswordVault 图标选择要更新的账号。": "Click the PasswordVault icon in the browser toolbar to choose the login to update.",
+    "账号密码已保存。": "Login saved.",
+    "账号密码已更新，旧密码保留在版本历史中。": "Login updated; the old password stays in version history.",
+    "这次填写已过期，请重新填写后保存。": "This entry expired; fill it in again, then save.",
+    "选择账号": "Choose account",
+    "重试保存": "Retry save",
+    "重试更新": "Retry update"
+  };
+  let observerLanguage: "zh" | "en" = "zh";
+  const observerText = (text: string): string => (observerLanguage === "en" ? OBSERVER_EN[text] ?? text : text);
+  try {
+    void chrome.storage.local.get("uiLanguage").then((value) => { observerLanguage = value.uiLanguage === "en" ? "en" : "zh"; }, () => {});
+    chrome.storage.onChanged.addListener((changes, area) => {
+      if (area === "local" && changes.uiLanguage) observerLanguage = changes.uiLanguage.newValue === "en" ? "en" : "zh";
+    });
+  } catch {
+    // Without storage access the in-page UI stays Chinese.
+  }
   const context = window as typeof window & {
     __passwordVaultLoginObserver?: boolean;
   };
@@ -85,11 +125,11 @@
     card.className = "card";
     card.setAttribute("role", "status");
     const title = document.createElement("strong");
-    title.textContent = saved ? "PasswordVault · 已保存" : "PasswordVault · 登录提醒";
+    title.textContent = saved ? observerText("PasswordVault · 已保存") : observerText("PasswordVault · 登录提醒");
     const description = document.createElement("p");
     description.textContent = message;
     const close = document.createElement("button");
-    close.textContent = dismiss ? "暂不保存" : "知道了";
+    close.textContent = dismiss ? observerText("暂不保存") : observerText("知道了");
     close.onclick = (event) => {
       if (!event.isTrusted) return;
       removeBanner();
@@ -100,7 +140,7 @@
       const review = document.createElement("button");
       const choose = !saved && notice?.choose === true;
       const update = !saved && notice?.update === true;
-      const label = saved ? "修改账号密码" : choose ? "选择账号" : update ? "更新账号" : "保存";
+      const label = saved ? observerText("修改账号密码") : choose ? observerText("选择账号") : update ? observerText("更新账号") : observerText("保存");
       review.textContent = label;
       review.style.marginRight = "8px";
       const currentBanner = banner;
@@ -110,37 +150,37 @@
         close.disabled = true;
         if (!saved && !choose) {
           savingNotice = notice.id;
-          review.textContent = update ? "请在 Mac 上确认…" : "保存中…";
+          review.textContent = update ? observerText("请在 Mac 上确认…") : observerText("保存中…");
         }
         // Without a known username the popup lets the user pick the account.
         const result = await send({ action: saved || choose ? "login-open" : "login-save", id: notice.id, saved });
         if (choose) {
           review.disabled = false;
           close.disabled = false;
-          if (!result?.ok) description.textContent = "请点击浏览器工具栏的 PasswordVault 图标选择要更新的账号。";
+          if (!result?.ok) description.textContent = observerText("请点击浏览器工具栏的 PasswordVault 图标选择要更新的账号。");
           return;
         }
         if (savingNotice === notice.id) savingNotice = undefined;
         if (banner !== currentBanner) return;
         if (result?.ok && !saved) {
-          showBanner(result.data?.updated ? "账号密码已更新，旧密码保留在版本历史中。" : result.data?.queued ? "已加密保存在此浏览器，稍后自动同步到 Mac。" : "账号密码已保存。", false,
+          showBanner(result.data?.updated ? observerText("账号密码已更新，旧密码保留在版本历史中。") : result.data?.queued ? observerText("已加密保存在此浏览器，稍后自动同步到 Mac。") : observerText("账号密码已保存。"), false,
             { ...notice, expires: Date.now() + 120_000 }, true);
           return;
         }
         review.disabled = false;
         close.disabled = false;
-        review.textContent = saved ? "修改账号密码" : update ? "重试更新" : "重试保存";
+        review.textContent = saved ? observerText("修改账号密码") : update ? observerText("重试更新") : observerText("重试保存");
         if (!result?.ok) description.textContent = saved
-          ? "请点击浏览器工具栏的 PasswordVault 图标修改账号密码。"
+          ? observerText("请点击浏览器工具栏的 PasswordVault 图标修改账号密码。")
           : result?.error === "expired"
-            ? "这次填写已过期，请重新填写后保存。"
+            ? observerText("这次填写已过期，请重新填写后保存。")
             : result?.error === "cancelled"
-              ? "已在 Mac 上取消或超时未确认，可重试。"
+              ? observerText("已在 Mac 上取消或超时未确认，可重试。")
               : result?.error === "offline-full"
-                ? "离线暂存已满，请连接并解锁 Mac 完成同步后重试。"
+                ? observerText("离线暂存已满，请连接并解锁 Mac 完成同步后重试。")
                 : update
-                  ? "更新需要 Mac 应用已打开并解锁，请检查后重试。"
-                  : "保存未完成，请重试，或打开插件检查解锁及连接状态。";
+                  ? observerText("更新需要 Mac 应用已打开并解锁，请检查后重试。")
+                  : observerText("保存未完成，请重试，或打开插件检查解锁及连接状态。");
       };
       card.append(review);
     }
@@ -162,10 +202,10 @@
     if (activeNotice?.id === notice.id && banner?.isConnected) return;
     showBanner(
       notice.choose
-        ? "检测到新密码，但无法确定对应的账号。请选择要更新的账号。"
+        ? observerText("检测到新密码，但无法确定对应的账号。请选择要更新的账号。")
         : notice.update
-          ? "此账号的密码与已保存的不同。是否更新已保存的账号？确认新密码可用后再更新。"
-          : "检测到填写的账号和密码。是否保存？请核对凭据，确认可用后再保存。",
+          ? observerText("此账号的密码与已保存的不同。是否更新已保存的账号？确认新密码可用后再更新。")
+          : observerText("检测到填写的账号和密码。是否保存？请核对凭据，确认可用后再保存。"),
       true,
       notice,
     );
@@ -188,7 +228,7 @@
       request.action === "reminder-unavailable" &&
       request.origin === location.origin
     )
-      showBanner("请先打开并解锁 PasswordVault，再提交登录以保存账号。", false);
+      showBanner(observerText("请先打开并解锁 PasswordVault，再提交登录以保存账号。"), false);
   });
   // Some sites render passwords in plain `type="text"` inputs (for example
   // name="password" placeholder="设置登录密码"). Recognize only explicit password
@@ -493,7 +533,7 @@
         )
       )
         showBanner(
-          "请先打开并解锁 PasswordVault，再提交登录以保存账号。",
+          observerText("请先打开并解锁 PasswordVault，再提交登录以保存账号。"),
           false,
         );
     } finally {

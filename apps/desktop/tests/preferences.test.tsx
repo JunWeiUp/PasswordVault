@@ -55,3 +55,14 @@ test("general settings offer clipboard duration and the menu bar icon; About cop
   expect(text).not.toContain("/Users/");
   expect(text).not.toContain("@");
 });
+
+test("general settings offer list density and closing Quick Access after copy", async () => {
+  const app = await unlocked();
+  await app.press("text:设置");
+  await app.waitFor("text:列表密度");
+  expect(app.texts()).toContain("复制后关闭快速访问");
+  await app.press("label:标准");
+  expect((app.menu() ?? []).map((entry) => entry.label)).toEqual(["标准", "紧凑"]);
+  await app.chooseMenuItem("紧凑");
+  await app.waitFor("text:紧凑");
+});

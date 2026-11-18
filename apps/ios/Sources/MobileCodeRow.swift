@@ -67,6 +67,14 @@ struct MobileCodeRow: View {
     }
   }
 
+  /// The time step after the current one: the request time for the next code and the whole
+  /// seconds until it applies.
+  static func nextWindow(now: Double, period: Double) -> (time: Double, remaining: Int) {
+    let step = max(period.rounded(.down), 1)
+    let start = (now / step).rounded(.down) * step
+    return (start + step, Int((start + step - now).rounded(.up)))
+  }
+
   /// "123456" → "123 456" for readability; other lengths are left as they are.
   static func grouped(_ code: String) -> String {
     guard !code.isEmpty else { return "——— ———" }

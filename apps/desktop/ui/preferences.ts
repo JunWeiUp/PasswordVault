@@ -12,6 +12,24 @@ export const sortMode = signal<SortMode>("updated");
 export const trayIcon = signal(false);
 /** Keep app windows out of screenshots, recordings and screen sharing. */
 export const hideFromCapture = signal(false);
+/** Item list row spacing. */
+export type ListDensity = "standard" | "compact";
+export const DENSITY_LABEL: Record<ListDensity, string> = { standard: "标准", compact: "紧凑" };
+export const listDensity = signal<ListDensity>("standard");
+/** Close Quick Access after copying from it (default on). */
+export const quickCloseAfterCopy = signal(true);
+/** Vertical padding of an item list row for a density. */
+export const rowPadding = (density: ListDensity) => (density === "compact" ? 5 : 10);
+
+export function setListDensity(value: ListDensity) {
+  if (!(value in DENSITY_LABEL)) return;
+  listDensity.set(value);
+  void Storage.setItem("listDensity", value);
+}
+export function setQuickCloseAfterCopy(on: boolean) {
+  quickCloseAfterCopy.set(on);
+  void Storage.setItem("quickCloseAfterCopy", on ? "1" : "0");
+}
 
 export function setClipboardSeconds(value: number) {
   if (!CLIPBOARD_CHOICES.some(([v]) => v === value)) return;
@@ -34,12 +52,15 @@ export function setHideFromCapture(on: boolean) {
 }
 
 export async function loadPreferences() {
-  const [seconds, sort, tray, capture] = await Promise.all([
+  const [seconds, sort, tray, capture, density, quickClose] = await Promise.all([
     Storage.getItem("clipboardSeconds"), Storage.getItem("sortMode"), Storage.getItem("trayIcon"), Storage.getItem("hideFromCapture"),
+    Storage.getItem("listDensity"), Storage.getItem("quickCloseAfterCopy"),
   ]);
   const n = Number(seconds);
   if (seconds !== null && CLIPBOARD_CHOICES.some(([v]) => v === n)) clipboardSeconds.set(n);
   if (sort && sort in SORT_LABEL) sortMode.set(sort as SortMode);
   trayIcon.set(tray === "1");
   hideFromCapture.set(capture === "1");
+  if (density && density in DENSITY_LABEL) listDensity.set(density as ListDensity);
+  quickCloseAfterCopy.set(quickClose !== "0");
 }

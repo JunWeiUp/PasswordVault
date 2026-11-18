@@ -23,9 +23,9 @@ if ! "$CARGO" --version | grep -q 'huacnlee/cargo'; then
   printf 'huacnlee/cargo is required: https://huacnlee.github.io/cargo/\n' >&2
   exit 2
 fi
-nsh_cmd="${NSH_BIN:-$HOME/.nsh-0.5.1/bin/nsh}"
-if [[ ! -x "$nsh_cmd" ]] || [[ "$("$nsh_cmd" --version)" != 'nsh 0.5.1 '* ]]; then
-  printf 'NSH 0.5.1 is required; set NSH_BIN to its executable.\n' >&2
+nsh_cmd="${NSH_BIN:-$HOME/.nsh-0.6.0/bin/nsh}"
+if [[ ! -x "$nsh_cmd" ]] || [[ "$("$nsh_cmd" --version)" != 'nsh 0.6.0 '* ]]; then
+  printf 'NSH 0.6.0 is required; set NSH_BIN to its executable.\n' >&2
   exit 2
 fi
 cd "$app"

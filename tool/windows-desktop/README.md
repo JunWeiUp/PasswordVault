@@ -5,14 +5,14 @@ on Windows 11 ARM these run through Windows' x64 emulation. The portable package
 Users also need the Microsoft Visual C++ v14 x64 runtime; see the bundled installation guide.
 
 Install Visual Studio 2022 C++ tools and the Windows SDK, Rust 1.98.0 for
-`x86_64-pc-windows-msvc`, NSH 0.5.1 x64, huacnlee/cargo and native Strawberry
+`x86_64-pc-windows-msvc`, NSH 0.6.0 x64, huacnlee/cargo and native Strawberry
 Perl. Git's MSYS Perl does not provide the complete OpenSSL build environment.
 Keep Visual Studio ahead of Git's `usr/bin` in PATH: Git also ships `link.exe`.
 When manually installing the Cargo fork, stage and rename its executable;
 copying over the rustup cargo symlink can overwrite rustup itself.
 
 ```powershell
-$env:NSH_BIN = '<NSH 0.5.1 directory>\bin\nsh.exe'
+$env:NSH_BIN = '<NSH 0.6.0 directory>\bin\nsh.exe'
 $env:PV_PERL_BIN = '<Strawberry Perl directory>\perl\bin'
 .\tool\nsh_windows.ps1 check
 .\tool\nsh_windows.ps1 -Command run -NshArguments @('App.tsx', '--target', 'windows')

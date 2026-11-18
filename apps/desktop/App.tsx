@@ -24,7 +24,8 @@ import { quickAccessOpen } from "./ui/QuickAccess";
 import { connectBrowser } from "./ui/browser";
 import { pollEvery } from "./ui/polling";
 import { WindowCtl } from "passwordvault/native";
-import { AiApprovalHost } from "./ui/ai";
+import { AiApprovalHost, AiWorkspacePage } from "./ui/ai";
+import { codeFor, copyAccountCode } from "./ui/entries/linkedCode";
 import { hideFromCapture, loadPreferences, trayIcon } from "./ui/preferences";
 
 // NSH 0.5 replaced the static window API with WindowRef; `Window.get` is reactive,
@@ -69,6 +70,7 @@ effect(() => {
         { role: "cut" }, { role: "copy" }, { role: "paste" }, { role: "selectAll" },
         { type: "separator" },
         { label: "复制密码", shortcut: "mod+shift+c", disabled: !on || selected()?.type !== "password", onSelect: () => selected() && copySecret(selected()!.password, "密码") },
+        { label: "复制验证码", shortcut: "mod+alt+c", disabled: !on || !selected() || !codeFor(selected()!), onSelect: () => selected() && void copyAccountCode(selected()!) },
         { label: "查找", shortcut: "mod+k", disabled: !on, onSelect: () => searchFocus.update((n) => n + 1) },
       ],
     },
@@ -91,6 +93,7 @@ effect(() => {
         { label: "快速访问", shortcut: "mod+shift+space", disabled: !on, onSelect: openQuickAccess },
         { label: "密码生成器", shortcut: "mod+alt+g", disabled: !on, onSelect: () => go("generator") },
         { label: "密码健康", shortcut: "mod+alt+h", disabled: !on, onSelect: () => go("health") },
+        { label: "AI 访问", shortcut: "mod+alt+a", disabled: !on, onSelect: () => go("ai") },
         { type: "separator" },
         { label: selected()?.isFavorite ? "取消收藏" : "收藏", shortcut: "mod+d", disabled: !on || !selected() || !!selected()?.isDeleted, onSelect: () => selected() && toggleFavorite(selected()!) },
         { label: "移到回收站…", shortcut: "mod+backspace", disabled: !on || !selected() || !!selected()?.isDeleted, onSelect: () => selected() && askTrash(selected()!) },
@@ -171,12 +174,14 @@ void startShortcut(() => {
 });
 
 function Workspace() {
-  const tool = () => dest() === "generator" || dest() === "health";
+  const tool = () => dest() === "generator" || dest() === "health" || dest() === "ai";
   return (
     <View style={{ flex: 1, flexDirection: "row" }}>
       <Sidebar />
       <If when={tool()} else={<><ItemList /><Detail /></>}>
-        <If when={dest() === "generator"} else={<Health />}><Generator /></If>
+        <If when={dest() === "generator"}><Generator /></If>
+        <If when={dest() === "health"}><Health /></If>
+        <If when={dest() === "ai"}><AiWorkspacePage /></If>
       </If>
     </View>
   );

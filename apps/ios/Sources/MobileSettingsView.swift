@@ -20,6 +20,7 @@ struct MobileSettingsView: View {
       Section(store.t("资料", "Library")) {
         NavigationLink(store.t("全部项目", "All items")) { MobileEntryList(destination: .all) }
         NavigationLink(store.t("个人收藏", "Favorites")) { MobileEntryList(destination: .favorites) }
+        NavigationLink(store.t("设备与服务", "Devices & services")) { MobileDeviceList() }
         NavigationLink(store.t("回收站", "Trash")) { MobileEntryList(destination: .trash) }
         NavigationLink(store.t("笔记分类", "Note categories")) { MobileCategorySettings() }
       }
@@ -27,10 +28,7 @@ struct MobileSettingsView: View {
         NavigationLink(store.t("通用", "General")) { MobileGeneralSettings() }
         NavigationLink(store.t("安全", "Security")) { MobileSecuritySettings() }
         NavigationLink(store.t("自动填充与通行密钥", "AutoFill & passkeys")) { MobileAutofillSettings() }
-        NavigationLink(store.t("同步与设备", "Sync & devices")) {
-          ScrollView { RelaySettingsView(relay: store.relay, t: store.t).padding() }
-            .navigationTitle(store.t("同步与设备", "Sync & devices"))
-        }
+        NavigationLink(store.t("同步与设备", "Sync & devices")) { MobileSyncDevicesView(relay: store.relay) }
         NavigationLink(store.t("备份与导入", "Backups & import")) { MobileBackupSettings() }
       }
       Section(store.t("工具", "Tools")) {
@@ -48,6 +46,8 @@ struct MobileSettingsView: View {
 
 struct MobileGeneralSettings: View {
   @EnvironmentObject private var store: MobileVaultStore
+  @AppStorage(StartTab.key) private var startTab = Destination.notes.rawValue
+  @AppStorage(ClipboardClear.key) private var clipboardSeconds = 30
   var body: some View {
     Form {
       Section(store.t("外观与语言", "Appearance & language")) {
@@ -65,6 +65,26 @@ struct MobileGeneralSettings: View {
           Text("简体中文").tag("zh")
           Text("English").tag("en")
         }.onChange(of: store.language) { UserDefaults.standard.set($0, forKey: "language") }
+      }
+      Section {
+        Picker(store.t("打开时显示", "Open to"), selection: $startTab) {
+          ForEach(StartTab.options) { Text($0.title(chinese: store.chinese)).tag($0.rawValue) }
+        }
+      } header: {
+        Text(store.t("启动", "Startup"))
+      } footer: {
+        Text(store.t("解锁后先显示这个页面。仅保存在本机。", "Shown first after unlocking. Saved on this device only."))
+      }
+      Section {
+        Picker(store.t("自动清除剪贴板", "Clear clipboard"), selection: $clipboardSeconds) {
+          ForEach(ClipboardClear.options, id: \.self) { Text(ClipboardClear.label($0, t: store.t)).tag($0) }
+        }
+      } header: {
+        Text(store.t("剪贴板", "Clipboard"))
+      } footer: {
+        Text(store.t(
+          "复制的内容只留在本机，不会通过“通用剪贴板”同步到其他设备。锁定时，如剪贴板未被替换也会清除。",
+          "Copies stay on this device and are not shared through Universal Clipboard. Locking also clears the clipboard if it was not replaced."))
       }
     }.navigationTitle(store.t("通用", "General"))
   }
@@ -292,22 +312,44 @@ struct MobileGeneratorView: View {
         }.buttonStyle(.borderless)
       }
       Section {
-        VStack(alignment: .leading) {
-          Text("\(store.t("长度", "Length")): \(options.length)")
-          Slider(value: Binding(get: { Double(options.length) }, set: { options.length = Int($0.rounded()) }),
-            in: Double(GeneratorOptions.lengths.lowerBound)...Double(GeneratorOptions.lengths.upperBound), step: 1)
-            .accessibilityLabel(store.t("密码长度", "Password length"))
+        Picker(store.t("类型", "Type"), selection: $options.mode) {
+          Text(store.t("字符", "Characters")).tag(GeneratorOptions.Mode.characters)
+          Text(store.t("单词", "Words")).tag(GeneratorOptions.Mode.passphrase)
         }
-        Toggle(store.t("大写字母 A–Z", "Uppercase A–Z"), isOn: $options.upper)
-        Toggle(store.t("小写字母 a–z", "Lowercase a–z"), isOn: $options.lower)
-        Toggle(store.t("数字 0–9", "Digits 0–9"), isOn: $options.digits)
-        Toggle(store.t("符号 !@#…", "Symbols !@#…"), isOn: $options.symbols)
+        .pickerStyle(.segmented)
+        .accessibilityIdentifier("generator.mode")
+        if options.mode == .passphrase {
+          Stepper(value: $options.words, in: GeneratorOptions.wordCounts) {
+            Text("\(store.t("单词数", "Words")): \(options.words)")
+          }
+          .accessibilityIdentifier("generator.words")
+          Picker(store.t("分隔符", "Separator"), selection: $options.separator) {
+            ForEach(GeneratorOptions.separators, id: \.self) { separator in
+              Text(separator == " " ? store.t("空格", "Space") : separator).tag(separator)
+            }
+          }
+          Toggle(store.t("首字母大写", "Capitalize words"), isOn: $options.capitalize)
+          Toggle(store.t("加入一个数字", "Include a number"), isOn: $options.number)
+        } else {
+          VStack(alignment: .leading) {
+            Text("\(store.t("长度", "Length")): \(options.length)")
+            Slider(value: Binding(get: { Double(options.length) }, set: { options.length = Int($0.rounded()) }),
+              in: Double(GeneratorOptions.lengths.lowerBound)...Double(GeneratorOptions.lengths.upperBound), step: 1)
+              .accessibilityLabel(store.t("密码长度", "Password length"))
+          }
+          Toggle(store.t("大写字母 A–Z", "Uppercase A–Z"), isOn: $options.upper)
+          Toggle(store.t("小写字母 a–z", "Lowercase a–z"), isOn: $options.lower)
+          Toggle(store.t("数字 0–9", "Digits 0–9"), isOn: $options.digits)
+          Toggle(store.t("符号 !@#…", "Symbols !@#…"), isOn: $options.symbols)
+        }
       } header: {
         Text(store.t("规则", "Rules"))
       } footer: {
-        Text(options.valid
-          ? store.t("在本机生成，范围 4–64；规则由加密核心再次校验，不保存生成历史。单词组合暂未支持。", "Generated on this device, 4–64 characters; the core validates the rules again. No history is kept. Passphrases are not supported yet.")
-          : store.t("至少选择一种字符类型。", "Choose at least one character type."))
+        Text(!options.valid
+          ? store.t("至少选择一种字符类型。", "Choose at least one character type.")
+          : options.mode == .passphrase
+          ? store.t("在本机生成，从 2048 个英文单词中随机选取 3–10 个；规则由加密核心再次校验，不保存生成历史。", "Generated on this device from 3–10 random words of a 2,048-word English list; the core validates the rules again. No history is kept.")
+          : store.t("在本机生成，范围 4–64；规则由加密核心再次校验，不保存生成历史。", "Generated on this device, 4–64 characters; the core validates the rules again. No history is kept."))
       }
     }
     .navigationTitle(store.t("密码生成器", "Password generator"))
@@ -326,46 +368,128 @@ struct MobileGeneratorView: View {
   }
 }
 
-/// Generator rules sent to the core `generate` op, which enforces 4–128 and at least one class.
+/// Generator rules sent to the core `generate` op. Character mode enforces 4–128 and at least one
+/// class; passphrase mode enforces 3–10 words and the separators below.
 struct GeneratorOptions: Equatable {
+  enum Mode: Hashable { case characters, passphrase }
   static let lengths = 4...64
+  static let wordCounts = 3...10
+  static let separators = ["-", ".", "_", " "]
+  var mode = Mode.characters
   var length = 20 { didSet { length = min(max(length, Self.lengths.lowerBound), Self.lengths.upperBound) } }
   var upper = true
   var lower = true
   var digits = true
   var symbols = true
-  var valid: Bool { upper || lower || digits || symbols }
+  var words = 5 { didSet { words = min(max(words, Self.wordCounts.lowerBound), Self.wordCounts.upperBound) } }
+  var separator = "-"
+  var capitalize = false
+  var number = false
+  var valid: Bool {
+    switch mode {
+    case .characters: return upper || lower || digits || symbols
+    case .passphrase: return Self.separators.contains(separator)
+    }
+  }
   var request: [String: JSONValue] {
-    ["op": .string("generate"), "length": .number(Double(length)), "upper": .bool(upper),
-     "lower": .bool(lower), "digits": .bool(digits), "symbols": .bool(symbols)]
+    switch mode {
+    case .characters:
+      return ["op": .string("generate"), "length": .number(Double(length)), "upper": .bool(upper),
+              "lower": .bool(lower), "digits": .bool(digits), "symbols": .bool(symbols)]
+    case .passphrase:
+      return ["op": .string("generate"), "mode": .string("passphrase"), "words": .number(Double(words)),
+              "separator": .string(separator), "capitalize": .bool(capitalize), "number": .bool(number)]
+    }
+  }
+}
+
+/// Password health filters over the core `audit` results (weak, reused, expired).
+enum AuditFilter: String, CaseIterable, Identifiable {
+  case weak, reused, expired
+  var id: String { rawValue }
+  func matches(_ result: JSONValue) -> Bool { result.object[rawValue]?.bool == true }
+  func label(_ t: (String, String) -> String) -> String {
+    switch self {
+    case .weak: return t("弱密码", "Weak")
+    case .reused: return t("重复使用", "Reused")
+    case .expired: return t("需要更换", "Due for change")
+    }
+  }
+  static func filtered(_ results: [JSONValue], by filter: AuditFilter?) -> [JSONValue] {
+    guard let filter else { return results }
+    return results.filter(filter.matches)
   }
 }
 
 struct MobileAuditView: View {
   @EnvironmentObject private var store: MobileVaultStore
   @State private var results: [JSONValue] = []
+  @State private var filter: AuditFilter?
+  @State private var breachCheck = false
+  @State private var selected: VaultItem?
   var body: some View {
     List {
-      ForEach(Array(results.enumerated()), id: \.offset) { _, value in
-        VStack(alignment: .leading) {
-          Text(value.object["title"]?.string ?? "").font(.headline)
-          Text(
-            [
-              value.object["weak"]?.bool == true ? store.t("密码较弱", "Weak password") : "",
-              value.object["reused"]?.bool == true ? store.t("密码重复", "Reused password") : "",
-              value.object["expired"]?.bool == true ? store.t("密码过期", "Expired password") : "",
-            ].filter { !$0.isEmpty }.joined(separator: " · ")
-          ).foregroundStyle(.secondary)
+      Section {
+        LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
+          ForEach(AuditFilter.allCases) { kind in
+            Button { filter = filter == kind ? nil : kind } label: {
+              card(kind.label(store.t), "\(results.filter(kind.matches).count)", selected: filter == kind)
+            }
+            .buttonStyle(.borderless)
+            .accessibilityIdentifier("health.\(kind.rawValue)")
+            .accessibilityAddTraits(filter == kind ? .isSelected : [])
+          }
+          Button { breachCheck = true } label: {
+            card(store.t("已知泄露", "Known breaches"), store.t("检查", "Check"), selected: false)
+          }
+          .buttonStyle(.borderless)
+          .accessibilityIdentifier("health.breach")
+          .accessibilityHint(store.t("在安全中心联网检查；不会自动联网。", "Checks online in the Security center; never automatic."))
         }
+        .listRowInsets(EdgeInsets(top: 8, leading: 0, bottom: 8, trailing: 0))
+        .listRowBackground(Color.clear)
+      } footer: {
+        Text(store.t(
+          "检查弱密码、重复使用和到期需要更换的密码。这不是对应用本身的安全审计。",
+          "Checks weak, reused and expired passwords. This is not a security audit of the app itself."))
       }
-      if results.isEmpty { Text(store.t("未发现风险条目", "No issues found")) }
-    }.navigationTitle(store.t("密码健康", "Password health")).task {
+      Section(filter.map { $0.label(store.t) } ?? store.t("需要处理", "Needs attention")) {
+        let shown = AuditFilter.filtered(results, by: filter)
+        ForEach(Array(shown.enumerated()), id: \.offset) { _, value in
+          Button { selected = store.items.first { $0.id == value.object["id"]?.string } } label: {
+            VStack(alignment: .leading) {
+              Text(value.object["title"]?.string ?? "").font(.headline).foregroundStyle(Color(uiColor: .label))
+              Text(
+                AuditFilter.allCases.filter { $0.matches(value) }.map { $0.label(store.t) }
+                  .joined(separator: " · ")
+              ).foregroundStyle(Color(uiColor: .secondaryLabel))
+            }
+          }
+        }
+        if shown.isEmpty { Text(store.t("未发现风险条目", "No issues found")) }
+      }
+    }
+    .navigationTitle(store.t("密码健康", "Password health"))
+    .navigationDestination(isPresented: $breachCheck) { MobileSecurityCenter() }
+    .sheet(item: $selected) { item in NavigationStack { MobileEntryDetail(id: item.id) } }
+    .task(id: store.items) {
       do { results = try await store.perform(["op": .string("audit")]).array } catch {
         store.report(error)
       }
     }
   }
-
+  private func card(_ title: String, _ value: String, selected: Bool) -> some View {
+    VStack(alignment: .leading, spacing: 4) {
+      Text(value).font(.title2.bold()).foregroundStyle(selected ? Color.accentColor : Color(uiColor: .label))
+      Text(title).font(.subheadline).foregroundStyle(Color(uiColor: .secondaryLabel))
+    }
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .padding(14)
+    .background(
+      selected ? Color.accentColor.opacity(0.15) : Color(uiColor: .secondarySystemGroupedBackground),
+      in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+    .accessibilityElement(children: .combine)
+  }
 }
 
 private struct MobileSecurityCenter: View {

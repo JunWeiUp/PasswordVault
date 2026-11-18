@@ -206,11 +206,11 @@ export function Pill(props: { children: any; tone?: "blue" | "green" | "orange" 
   );
 }
 
-export function Banner(props: { tone: "warn" | "info" | "ok" | "err"; icon?: IconName; title: string; children?: any; actions?: JSX.Element }) {
+export function Banner(props: { tone: "warn" | "info" | "ok" | "err"; icon?: IconName; title: string; children?: any; actions?: JSX.Element; style?: any }) {
   const fg = () => ({ warn: c().orange, info: c().blue, ok: c().green, err: c().red })[props.tone];
   const bg = () => ({ warn: c().orangeSoft, info: c().blueSoft, ok: c().greenSoft, err: c().redSoft })[props.tone];
   return (
-    <View role={props.tone === "err" ? "alert" : undefined} style={{ flexDirection: "row", gap: 10, alignItems: "flex-start", padding: 12, borderRadius: radius.row, backgroundColor: bg(), marginBottom: 16 }}>
+    <View role={props.tone === "err" ? "alert" : undefined} style={{ flexDirection: "row", gap: 10, alignItems: "flex-start", padding: 12, borderRadius: radius.row, backgroundColor: bg(), marginBottom: 16, ...props.style }}>
       <Icon name={props.icon ?? (props.tone === "info" ? "info" : props.tone === "ok" ? "check" : "alert")} size={16} tint={fg()} />
       <View style={{ flex: 1, gap: 2 }}>
         <T size={12.5} weight="600" color={fg()}>{props.title}</T>
@@ -371,3 +371,40 @@ export function Empty(props: { icon: IconName; title: string; text?: string; act
     </View>
   );
 }
+
+// Workspace building blocks shared by the devices, AI and tool pages.
+export function Card(props: { title?: string; note?: string; right?: JSX.Element; children?: any; style?: any }) {
+  return <View style={{ borderWidth: 1, borderColor: c().line, borderRadius: 12, padding: 16, gap: 10, backgroundColor: c().surface, ...props.style }}>
+    <If when={props.title}><Row gap={8}><T size={13} weight="600" style={{ flex: 1 }}>{props.title}</T>{props.right}</Row></If>
+    <If when={props.note}><T size={11.5} color={c().muted}>{props.note}</T></If>
+    {props.children}
+  </View>;
+}
+export function IconTile(props: { name: IconName; size?: number; solid?: boolean }) {
+  const size = props.size ?? 30;
+  return <View style={{ width: size, height: size, borderRadius: size * 0.3, backgroundColor: props.solid ? c().blue : c().soft, alignItems: "center", justifyContent: "center", flexShrink: 0 }}><Icon name={props.name} size={size * 0.52} tint={props.solid ? c().onBlue : c().blue} /></View>;
+}
+export function ListRow(props: { icon: IconName; title: string; note: string; disabled?: boolean; busy?: boolean; onPress: () => void }) {
+  const off = () => props.disabled || props.busy;
+  return <View role="button" accessibilityLabel={props.title} accessibilityState={{ disabled: !!off() }} onPress={off() ? undefined : props.onPress}
+    style={{ flexDirection: "row", alignItems: "center", gap: 10, padding: 10, borderRadius: 9, borderWidth: 1, borderColor: c().line, backgroundColor: c().surface, opacity: props.disabled ? 0.45 : 1, cursor: off() ? "default" : "pointer" }}
+    hoverStyle={off() ? undefined : { backgroundColor: c().blueSoft, borderColor: c().blueLine }}>
+    <IconTile name={props.icon} />
+    <View style={{ flex: 1, minWidth: 0, gap: 2 }}><T size={12.5} weight="600" lines={1}>{props.title}</T><T size={11} color={c().muted} lines={1}>{props.busy ? "等待审批…" : props.note}</T></View>
+    <Icon name="chev" size={14} tint={c().faint} />
+  </View>;
+}
+export function Segmented(props: { tabs: [string, string, IconName?][]; value: string; onChange: (key: string) => void; label: string }) {
+  return <View role="tablist" accessibilityLabel={props.label} style={{ flexDirection: "row", alignSelf: "flex-start", gap: 4, padding: 3, borderRadius: 9, borderWidth: 1, borderColor: c().line, backgroundColor: c().soft2 }}>
+    {props.tabs.map(([key, label, icon]) => {
+      const on = () => props.value === key;
+      return <View role="tab" accessibilityLabel={label} accessibilityState={{ selected: on() }} onPress={() => props.onChange(key)}
+        style={{ flexDirection: "row", alignItems: "center", gap: 6, height: fs(28), paddingHorizontal: 12, borderRadius: 7, backgroundColor: on() ? c().surface : "transparent", cursor: "pointer" }}
+        hoverStyle={on() ? undefined : { backgroundColor: c().soft }}>
+        <If when={icon}><Icon name={icon!} size={14} tint={on() ? c().blue : c().muted} /></If>
+        <T size={12} weight={on() ? "600" : "400"} color={on() ? c().blue : c().ink2}>{label}</T>
+      </View>;
+    })}
+  </View>;
+}
+

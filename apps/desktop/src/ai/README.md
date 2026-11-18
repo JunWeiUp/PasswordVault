@@ -71,16 +71,40 @@ known read parameters and never exposes its control plane through the socket.
 | `get_entry` | `id: string` | Whitelisted ordinary fields, never complete records |
 | `list_files` | `id: string` | Only ordinary, client-authorized file ID summaries |
 | `read_file` | `id, fileId: string`, `offset?: integer`, `limit?: integer` | UTF-8 text, Unicode-scalar offsets, `nextOffset`, `eof`, `dataOnly`; default 4096, maximum 16384 scalars |
-| `get_secret` | `id: string`, `field: password\|token\|privateKey\|nodeLink\|notes` | One string field after a fresh app approval; accounts support `password`, devices read the nested field |
+| `get_secret` | `id: string`, `field: password\|token\|privateKey\|nodeLink\|notes\|phone\|address1\|address2\|postalCode\|number\|securityCode\|custom:<id>`, `delivery?: clipboard\|reveal`, `purpose?: string` | One field after approval or an active lease; delivered to the clipboard by default, returned only for `reveal` |
 
-No wallets, identity documents, cards, crypto records or TOTP secrets are exposed.
-Device projection follows `docs/architecture/DEVICE-ITEMS.md`: host/port/username/authMethod,
+Wallets, crypto records and TOTP secrets remain unavailable. Identity documents and cards
+are available only through the `profiles` scope and their ordinary projections. Device
+projection follows `docs/architecture/DEVICE-ITEMS.md`: host/port/username/authMethod,
 aliases, service identity/kind/ports, and only commands explicitly marked
 `secret:false`. Device notes, service paths, unclassified commands and files are
 excluded. Commands are returned only as data. Service-path and individual private
 command retrieval are not currently supported by `get_secret`; they fail closed.
-Account details expose title, website and username; authorized notes expose their
-body/document. Core still checks attachment ownership and encrypted integrity.
+Account details expose title, website and username. Authorized identity records expose
+ordinary name, email, company and coarse address fields. Authorized card records expose
+cardholder, brand and expiry metadata. Phone, address lines, postal codes, card numbers
+and security codes are individual sensitive fields and require the same fresh approval as
+passwords. Authorized notes expose their body/document. Core still checks attachment
+ownership and encrypted integrity.
+
+### Delivery, leases and first-request grants
+
+- `get_secret` accepts `delivery: "clipboard"` (default) or `"reveal"`. Clipboard delivery
+  writes the value to the general pasteboard marked `org.nspasteboard.ConcealedType` and
+  `TransientType`, clears it after 30 seconds if nothing else was copied, and returns only
+  `{delivered, clearsAfterSeconds, approval}` so the secret never enters the AI context.
+  `reveal` returns `{value}`; the approval sheet warns that the client will see plaintext.
+- The approver may allow once or start a lease for that client/entry/field: 15 minutes for
+  any field, or until lock for phone/address/postal-code fields only. A reveal lease also
+  covers clipboard requests, not the reverse. Leases live only in memory, are listed by
+  `status` (`leases`), ended with control op `end_leases` (all, or `entryId`/`field`), and
+  are cleared on lock, `configure`, `grant` and `revoke`. Lease reads are audited as
+  `AllowedByLease`.
+- `get_entry`, `get_secret` and `list_files` on an existing, non-deleted entry whose category
+  scope is enabled but which the client has not been granted open an approval sheet;
+  approving adds the entry to that client's encrypted grant map. Disabled scopes, unknown
+  or deleted entries, wallets and `read_file` still fail closed without asking.
+- `purpose` is untrusted client text, truncated to 120 characters before display.
 
 Approval expires after 60 seconds. Closing the sheet denies it. Any scope/grant
 change cancels pending approvals. The app rechecks live lock state, client token,
@@ -90,7 +114,7 @@ requires a new request. Consumed approvals cannot be replayed.
 ## Encrypted persistence and audit
 
 Only the core `settings` operation writes configuration:
-`aiAccessEnabled`, `aiAccessScopes`, `aiAccessClients` (token SHA-256 digest,
+`aiAccessEnabled`, `aiAccessScopes` (including the `profiles` scope), `aiAccessClients` (token SHA-256 digest,
 per-client entry/file maps), `aiAccessAliases`, `aiAccessOrdinaryFiles`,
 `aiAccessAudit`. Missing settings mean OFF/deny. No plaintext settings file exists.
 The UI strips token digests from its status response.

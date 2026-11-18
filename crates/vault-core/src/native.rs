@@ -716,9 +716,7 @@ impl DiskVault {
             }
             "generate" => {
                 self.open()?;
-                Ok(
-                    json!({"password":generate_password(request["length"].as_u64().unwrap_or(20)as usize,request["upper"]!=false,request["lower"]!=false,request["digits"]!=false,request["symbols"]!=false)?}),
-                )
+                generate_secret(request)
             }
             "audit" => Ok(audit(&self.open()?.document.items)),
             "matches" => matching_accounts(&self.open()?.document.items, string("origin")?),

@@ -11,6 +11,9 @@ final class PasskeySystemTests: XCTestCase {
     #endif
     let app = XCUIApplication()
     app.launch()
+    // First run opens on the welcome step.
+    let start = app.buttons["onboarding.start"]
+    if start.waitForExistence(timeout: 10) { start.tap() }
     let secret = "Passkey QA synthetic only!"
     let input = app.secureTextFields["vault.password"]
     XCTAssertTrue(input.waitForExistence(timeout: 15))

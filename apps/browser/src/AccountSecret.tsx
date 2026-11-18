@@ -1,3 +1,4 @@
+import { t, fmt } from "./i18n";
 import { useEffect, useRef, useState } from "preact/hooks";
 import { errorText, message } from "./client";
 
@@ -29,14 +30,14 @@ export function AccountSecret({ account, origin, tabId, disabled }: {
     try{
       value=await message({action:"reveal-account",tabId,origin,id:account.id,accountId:account.accountId});
       if(epoch===generation.current && !document.hidden)setSecret(value?.password??"");
-    }catch(e){if(epoch===generation.current)setError(errorText(e));}
+    }catch(e){if(epoch===generation.current)setError(t(errorText(e)));}
     finally{if(value)value.password="";if(epoch===generation.current)setBusy(false);}
   }
   return <div class="account-secret">
-    <code aria-label="密码">{secret??"••••••••"}</code>
+    <code aria-label={t("密码")}>{secret??"••••••••"}</code>
     <button type="button" class="text-button" disabled={disabled||busy}
-      aria-label={`${secret===undefined?"显示":"隐藏"}密码：${account.title} ${account.username}`}
-      onClick={()=>void reveal()}>{busy?"读取中…":secret===undefined?"显示密码":"隐藏密码"}</button>
+      aria-label={fmt(secret===undefined?t("显示密码：{title} {username}"):t("隐藏密码：{title} {username}"),{title:account.title,username:account.username})}
+      onClick={()=>void reveal()}>{busy?t("读取中…"):secret===undefined?t("显示密码"):t("隐藏密码")}</button>
     {error&&<small role="alert">{error}</small>}
   </div>;
 }

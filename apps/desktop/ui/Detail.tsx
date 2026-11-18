@@ -22,6 +22,9 @@ import { askExportNote } from "./notes/export";
 import { DeviceDetail, deviceTitle } from "./devices";
 import { AccountDetail } from "./entries/AccountDetail";
 import { CodeDetail } from "./entries/CodeDetail";
+import { CustomFields } from "./entries/shared";
+import { IdentityDocument } from "./entries/IdentityDocument";
+import { isDocumentField } from "./entries/documents";
 import { openSettings } from "./Settings";
 import { vaultInstance } from "./store";
 
@@ -39,6 +42,8 @@ function Toolbar(props: { item: Item; extra?: JSX.Element }) {
         </If>
         <Icon name="chev" size={11} tint={c().faint} />
         <T size={12} weight="500" lines={1} style={{ flexShrink: 1 }}>{item().type === "device" ? deviceTitle(item()) : item().title || "未命名"}</T>
+        <View style={{ width: 12 }} />
+        <SaveStatus item={item()} />
       </Row>
       <View desktop={{ windowDrag: false }} style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
         <If when={item().isDeleted} else={
@@ -51,8 +56,6 @@ function Toolbar(props: { item: Item; extra?: JSX.Element }) {
           <Btn testID="restore" label="恢复" icon="history" onPress={() => void restore(item())} />
           <Btn label="永久删除…" kind="danger" onPress={() => askDeleteForever(item())} />
         </If>
-        <View style={{ width: 1, height: 20, backgroundColor: c().line, marginHorizontal: 4 }} />
-        <Btn label="锁定" icon="lock" kind="ghost" tooltip={shortcutLabel("⌘L")}  onPress={() => void lock()} />
       </View>
     </View>
   );
@@ -76,7 +79,7 @@ function moreMenu(item: Item) {
 
 function SaveStatus(props: { item: Item }) {
   return (
-    <Row gap={6} style={{ justifyContent: "flex-end", minHeight: 22, marginBottom: 4 }}>
+    <Row gap={6} style={{ flexShrink: 0 }}>
       <If when={!props.item.isDeleted} else={<T size={11.5} color={c().muted}>只读 · 已移到回收站</T>}>
         <If when={saveState() === "failed"} else={
           <>
@@ -85,12 +88,16 @@ function SaveStatus(props: { item: Item }) {
           </>
         }>
           <Icon name="alert" size={12} tint={c().red} />
-          <T size={11.5} color={c().red}>保存失败：{saveError()}修改仍保留在窗口中。</T>
-          <Btn label="重试" onPress={() => void flush()} />
+          <T size={11.5} color={c().red}>保存失败</T>
         </If>
       </If>
     </Row>
   );
+}
+
+/** The toolbar shows the compact state; a failed save also needs its reason and retry in view. */
+function SaveFailure() {
+  return <If when={saveState() === "failed"}><Banner tone="err" title="保存失败，修改仍保留在窗口中" actions={<Btn label="重试" onPress={() => void flush()} />}>{saveError()}</Banner></If>;
 }
 
 function EditButton() {
@@ -200,6 +207,10 @@ function WalletDetail(props: { item: Item }) {
         <Group>{f("姓", "lastName")}{f("名", "firstName")}{f("邮箱", "email")}{f("电话", "phone")}{f("公司", "company")}</Group>
         <SectionHead title="地址" />
         <Group>{f("地址 1", "address1")}{f("地址 2", "address2")}{f("城市", "city")}{f("省/州", "region")}{f("邮编", "postalCode")}{f("国家/地区", "country")}</Group>
+        <IdentityDocument item={item()} editing={editing()} />
+        <If when={editing() || (item().customFields ?? []).some((x: any) => !isDocumentField(x))}>
+          <CustomFields item={item()} editing={editing()} skip={isDocumentField} />
+        </If>
         <NoteBlock item={item()} />
         <Meta item={item()} />
       </>
@@ -258,9 +269,9 @@ function NoteDetail(props: { item: Item }) {
   return (
     <>
       <Toolbar item={item()} extra={extra} />
-      <Scroll style={{ flex: 1 }} contentStyle={{ paddingHorizontal: 40, paddingTop: 18, paddingBottom: 40 }}>
+      <Scroll style={{ flex: 1 }} contentStyle={{ paddingHorizontal: 40, paddingTop: 26, paddingBottom: 40 }}>
         <View style={{ maxWidth: 760 }}>
-          <SaveStatus item={item()} />
+          <SaveFailure />
           <If when={item().isDeleted}>
             <Banner tone="info" title="已移到回收站" actions={<Btn label="恢复" onPress={() => void restore(item())} />}>
               恢复后回到原分类{item().category ? `「${item().category}」` : ""}。
@@ -303,14 +314,14 @@ function ItemView(props: { item: Item }) {
   const body =
     props.item.type === "password" ? <AccountDetail item={props.item} editing={editing() && !props.item.isDeleted} />
     : props.item.type === "totp" ? <CodeDetail item={props.item} editing={editing() && !props.item.isDeleted} />
-    : props.item.type === "device" ? <DeviceDetail item={props.item} editable={editing() && !props.item.isDeleted} onOpenSettings={() => openSettings("ai")} />
+    : props.item.type === "device" ? <DeviceDetail item={props.item} editable={editing() && !props.item.isDeleted} />
     : <WalletDetail item={props.item} />;
   return (
     <>
       <Toolbar item={props.item} extra={<If when={!props.item.isDeleted}><EditButton /></If>} />
-      <Scroll style={{ flex: 1 }} contentStyle={{ paddingHorizontal: 40, paddingTop: 18, paddingBottom: 40 }}>
-        <View style={{ maxWidth: props.item.type === "device" ? undefined : 860 }}>
-          <SaveStatus item={props.item} />
+      <Scroll style={{ flex: 1 }} contentStyle={{ paddingHorizontal: 40, paddingTop: 26, paddingBottom: 40 }}>
+        <View style={{ maxWidth: props.item.type === "device" ? 1080 : 860 }}>
+          <SaveFailure />
           <If when={props.item.isDeleted}>
             <Banner tone="info" title="已移到回收站" actions={<Btn label="恢复" onPress={() => void restore(props.item)} />}>恢复后回到原来的位置并保留全部字段。</Banner>
           </If>

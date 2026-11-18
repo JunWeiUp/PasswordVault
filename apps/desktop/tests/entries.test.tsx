@@ -32,3 +32,27 @@ test("account editing, import and next-code preview work against a synthetic vau
  await app.press("text:验证并保存");await app.waitFor("text:无法导入");expect(app.texts()).toContain(before);
  await app.press("text:取消");
 });
+
+test("accounts show a linked code only after confirming a suggestion, and list several websites",async()=>{
+ const app=await open("../ui/entries/TestHarness.tsx",{width:1200,height:2000,platform:"macos"});
+ await app.press("text:准备测试库");await app.waitFor("text:登录信息");
+ await app.press("text:准备关联场景");
+ await app.waitFor("text:找到可能匹配的验证码「Example · qa」");
+ expect(app.texts().some(t=>t.startsWith("复制验证码"))).toBe(false);
+ // Several sites: one row per host, hero summarizes.
+ expect(app.texts()).toContain("login.example.test");
+ expect(app.texts()).toContain("accounts.example.test");
+ expect(app.texts().some(t=>t.includes("login.example.test 等 2 个网站"))).toBe(true);
+ await app.press("text:关联");
+ await app.waitFor("text:来自验证码「Example」");
+ expect(app.texts().some(t=>/^复制验证码 \d{3} \d{3}$/.test(t))).toBe(true);
+ const copyCode=app.texts().find(t=>t.startsWith("复制验证码 "))!;
+ await app.press(`text:${copyCode}`);
+ expect(/^\d{6}$/.test(app.clipboard()??"")).toBe(true);
+ // Unlinking keeps the code entry and brings the suggestion back; ignoring hides it.
+ await app.press("text:切换编辑");await app.press("text:取消关联");
+ await app.waitFor("text:找到可能匹配的验证码「Example · qa」");
+ await app.press("text:忽略");await app.wait(300);
+ expect(app.texts().some(t=>t.startsWith("找到可能匹配的验证码"))).toBe(false);
+ await app.waitFor("text:关联已有验证码…");
+});

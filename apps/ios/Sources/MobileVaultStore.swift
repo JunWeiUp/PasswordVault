@@ -26,6 +26,10 @@ final class MobileVaultStore: ObservableObject {
   @Published var sharedMembers: [JSONValue] = []
   @Published var settings: [String: JSONValue] = [:]
   @Published var error: String?
+  /// Wrong master password on the lock screen, shown under the field instead of an alert.
+  @Published var unlockError: String?
+  /// After creating a vault: offer biometric unlock once (only when the device supports it).
+  @Published var offerBiometrics = false
   @Published var notice: String?
   /// Entry just moved to Trash; the app shows an undo banner for it until it times out.
   @Published var undoTrashID: String?
@@ -126,6 +130,7 @@ final class MobileVaultStore: ObservableObject {
     }
     busy = true
     error = nil
+    unlockError = nil
     let generation = epoch
     defer { busy = false }
     do {
@@ -159,11 +164,17 @@ final class MobileVaultStore: ObservableObject {
       sharedMembers = document.sharedMembers
       exists = true
       legacyAvailable = false
+      offerBiometrics = create && Self.biometricsOfferable
       unlocked = true
       activity()
       await recoverDraft(core)
+      #if DEBUG
+        if create { await installUITestDeviceFixture(password: password) }
+      #endif
     } catch {
-      if create && legacyAvailable {
+      if !create, case VaultError.Authentication = error {
+        unlockError = t("主密码不正确。请注意大小写和输入法。", "Incorrect master password. Check Caps Lock and the keyboard language.")
+      } else if create && legacyAvailable {
         self.error = t(
           "旧库未完成迁移。请检查旧密码；若缺少迁移密钥或包含旧版共享资料，请从旧版导出加密备份再导入。原文件保留。",
           "Legacy migration did not complete. Check the old password; if keys are missing or legacy sharing is present, export an encrypted backup from the old app and import it. Source files are retained."
@@ -239,6 +250,38 @@ final class MobileVaultStore: ObservableObject {
     }
   }
 
+  #if DEBUG
+    /// UI tests only: upgrades a fresh synthetic UI-test vault to the device format and adds one
+    /// fictional device, so the read-only device pages can be exercised. Never touches other vaults.
+    private func installUITestDeviceFixture(password: String) async {
+      guard ProcessInfo.processInfo.arguments.contains("--ui-test-device-fixture"),
+        directory.lastPathComponent.hasPrefix("UI-Test-")
+      else { return }
+      do {
+        _ = try await perform([
+          "op": .string("devices-enable"), "confirm": .bool(true), "currentPassword": .string(password),
+        ])
+        var item = VaultItem.blank(type: "device", title: "Fixture server")
+        item.fields["device"] = .object([
+          "version": .number(1), "host": .string("server.example.test"), "port": .number(2222),
+          "username": .string("deploy"), "authMethod": .string("password"),
+          "password": .string("SYNTHETIC-PASSWORD-CANARY"), "privateKey": .string(""),
+          "aliases": .array([]), "notes": .string("Rack 2"), "files": .array([]),
+          "services": .array([.object([
+            "id": .string("web"), "name": .string("Web console"), "kind": .string("browser"),
+            "remotePort": .number(443), "localPort": .number(8443), "path": .string("/admin"),
+          ])]),
+          "commands": .array([.object([
+            "id": .string("restart"), "title": .string("Restart service"),
+            "text": .string("systemctl restart web"), "secret": .bool(false),
+          ])]),
+        ])
+        item.set("updatedAt", ISO8601DateFormatter().string(from: Date()))
+        _ = try await perform(["op": .string("save"), "item": try .from(item)])
+        try await refresh()
+      } catch { report(error) }
+    }
+  #endif
   func lock() {
     let capturedRichDraft = captureRichDraft?()
     captureRichDraft = nil
@@ -250,6 +293,7 @@ final class MobileVaultStore: ObservableObject {
     notice = nil
     undoTrashID = nil
     error = nil
+    offerBiometrics = false
     if clipboardChange == UIPasteboard.general.changeCount { UIPasteboard.general.items = [] }
     clipboardChange = nil
     let previous = core
@@ -280,6 +324,13 @@ final class MobileVaultStore: ObservableObject {
       await previous?.close()
       if background != .invalid { UIApplication.shared.endBackgroundTask(background) }
     }
+  }
+  /// Biometric unlock can be offered after creating a vault.
+  static var biometricsOfferable: Bool {
+    #if DEBUG
+      if ProcessInfo.processInfo.arguments.contains("--ui-test-biometric-offer") { return true }
+    #endif
+    return MobileBiometrics.available && !UserDefaults.standard.bool(forKey: "biometricEnabled")
   }
   func enrollBiometrics() async {
     guard let core, unlocked else { return }
@@ -459,6 +510,55 @@ final class MobileVaultStore: ObservableObject {
     }
     return false
   }
+  /// Applies one change to several selected entries and saves them, skipping entries this
+  /// device may not edit and entries already in Trash. Returns how many were saved; a failure
+  /// stops the batch and keeps what was saved before it.
+  @discardableResult
+  func update(_ ids: Set<String>, where include: (VaultItem) -> Bool = { _ in true }, _ change: (inout VaultItem) -> Void) async -> Int {
+    guard !busy, unlocked else { return 0 }
+    busy = true
+    defer { busy = false }
+    let time = ISO8601DateFormatter().string(from: Date())
+    var saved = 0
+    do {
+      for var item in items where ids.contains(item.id) && !item.isDeleted && canEdit(item) && include(item) {
+        change(&item)
+        item.set("updatedAt", time)
+        _ = try await perform(["op": .string("save"), "item": try .from(item)])
+        saved += 1
+      }
+    } catch { report(error) }
+    try? await refresh()
+    activity()
+    return saved
+  }
+  @discardableResult
+  func favorite(_ ids: Set<String>) async -> Int {
+    let count = await update(ids) { $0.isFavorite = true }
+    if count > 0 { notice = t("已收藏 \(count) 项", "Added \(count) to Favorites") }
+    return count
+  }
+  /// Moves notes to a category ("" clears it). Other entry types are left unchanged.
+  @discardableResult
+  func move(_ ids: Set<String>, to category: String) async -> Int {
+    let name = category.trimmingCharacters(in: .whitespacesAndNewlines)
+    let count = await update(ids, where: { $0.type == "secureNote" }) { $0.category = name }
+    if count > 0 {
+      notice = name.isEmpty ? t("已移出分类 \(count) 项", "Removed \(count) from category")
+        : t("已移动 \(count) 项到「\(name)」", "Moved \(count) to “\(name)”")
+    }
+    return count
+  }
+  @discardableResult
+  func trash(_ ids: Set<String>) async -> Int {
+    let time = ISO8601DateFormatter().string(from: Date())
+    let count = await update(ids) {
+      $0.isDeleted = true
+      $0.set("deletedAt", time)
+    }
+    if count > 0 { undoTrashID = nil; notice = t("已移到回收站 \(count) 项", "Moved \(count) to Trash") }
+    return count
+  }
   /// Restores the entry from the undo banner, using the latest stored copy.
   func undoTrash() async {
     guard let id = undoTrashID else { return }
@@ -498,11 +598,12 @@ final class MobileVaultStore: ObservableObject {
     } catch { report(error) }
   }
   func copy(_ text: String) {
-    UIPasteboard.general.setItems(
-      [[UTType.utf8PlainText.identifier: text]],
-      options: [.localOnly: true, .expirationDate: Date().addingTimeInterval(30)])
+    let seconds = ClipboardClear.seconds()
+    var options: [UIPasteboard.OptionsKey: Any] = [.localOnly: true]
+    if seconds > 0 { options[.expirationDate] = Date().addingTimeInterval(TimeInterval(seconds)) }
+    UIPasteboard.general.setItems([[UTType.utf8PlainText.identifier: text]], options: options)
     clipboardChange = UIPasteboard.general.changeCount
-    notice = t("已复制，30 秒后清除", "Copied; clears after 30 seconds")
+    notice = ClipboardClear.notice(seconds, t: t)
     activity()
   }
   func report(_ failure: Error) {
@@ -535,4 +636,39 @@ struct TrashPlan {
     removable = deleted.filter { canEdit($0) && $0.string("sharedVaultId").isEmpty }
     kept = deleted.count - removable.count
   }
+}
+
+/// Per-device clipboard auto-clear duration. Copies stay local-only (no Handoff); 0 means no
+/// timed expiry, but locking still clears an unchanged clipboard.
+enum ClipboardClear {
+  static let key = "clipboardClearSeconds"
+  static let options = [15, 30, 60, 120, 0]
+  static func seconds(_ defaults: UserDefaults = .standard) -> Int {
+    let value = defaults.object(forKey: key) as? Int ?? 30
+    return options.contains(value) ? value : 30
+  }
+  static func label(_ seconds: Int, t: (String, String) -> String) -> String {
+    switch seconds {
+    case 0: return t("从不", "Never")
+    case 60: return t("1 分钟", "1 minute")
+    case 120: return t("2 分钟", "2 minutes")
+    default: return t("\(seconds) 秒", "\(seconds) seconds")
+    }
+  }
+  static func notice(_ seconds: Int, t: (String, String) -> String) -> String {
+    seconds > 0
+      ? t("已复制，\(label(seconds, t: t))后清除", "Copied; clears after \(label(seconds, t: t))")
+      : t("已复制，锁定时清除", "Copied; clears when the vault locks")
+  }
+}
+
+/// Tab shown after unlocking, stored per device as a `Destination` raw value.
+enum StartTab {
+  static let key = "startTab"
+  static let options: [Destination] = [.notes, .passwords, .codes, .wallets]
+  static func resolve(_ raw: String?) -> Destination {
+    guard let value = Destination(rawValue: raw ?? ""), options.contains(value) else { return .notes }
+    return value
+  }
+  static var current: Destination { resolve(UserDefaults.standard.string(forKey: key)) }
 }

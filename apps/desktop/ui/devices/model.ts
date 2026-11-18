@@ -28,7 +28,15 @@ export function importedDevice(documents: DeviceDocument[]): DeviceData {
 export const blankDevice = (): DeviceData => ({ version: 1, host: "", port: 22, username: "", authMethod: "password", password: "", privateKey: "", aliases: [], notes: "", services: [], commands: [], files: [] });
 export const deviceTitle = (item: Item): string => item.title?.trim() || item.device?.host?.trim() || "未命名设备";
 export const commandTitle = (row?: Partial<DeviceCommand>): string => row?.label?.trim() || row?.title?.trim() || "未命名资料";
-export const deviceSubtitle = (item: Item): string => `${item.device?.username ? `${item.device.username}@` : ""}${item.device?.host || `${item.device?.commands?.length ?? 0} 条资料`}${item.device?.host && item.device?.port ? `:${item.device.port}` : ""}`;
+/** Host when there is one; otherwise what the device holds, e.g. "Shell、Python · 3 份资料". */
+export function deviceSubtitle(item: Item): string {
+  const d = item.device;
+  if (d?.host) return `${d.username ? `${d.username}@` : ""}${d.host}${d.port && d.port !== 22 ? `:${d.port}` : ""}`;
+  const commands: DeviceCommand[] = d?.commands ?? [];
+  if (!commands.length) return d?.services?.length ? `${d.services.length} 个服务入口` : "尚未填写主机";
+  const kinds = [...new Set(commands.map(row => documentKind(row.title)))].slice(0, 2).join("、");
+  return `${kinds} · ${commands.length} 份资料`;
+}
 export const deviceSearchText = (item: Item): string => [item.title, item.device?.host, item.device?.username, ...(item.device?.aliases ?? []), ...(item.tags ?? []), ...(item.device?.services ?? []).map((s: DeviceService) => s.name)].filter(Boolean).join(" ").toLowerCase();
 const quote = (value: string) => `'${value.replace(/'/g, `'"'"'`)}'`;
 // Display/copy only; never pass this string to an execution API. Secrets are excluded.
