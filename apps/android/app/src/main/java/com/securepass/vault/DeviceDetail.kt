@@ -108,6 +108,20 @@ internal fun DeviceDetailContent(item: JSONObject, vault: VaultRepository, t: (S
         val aliases = device.optJSONArray("aliases")
         if (aliases != null && aliases.length() > 0) DetailField(t("别名", "Aliases"), (0 until aliases.length()).joinToString("\n") { aliases.optString(it) }, vault, t)
     }
+    DeviceCommand.ssh(device)?.let { command ->
+        val context = LocalContext.current
+        DetailSection(t("外部终端", "External terminal")) {
+            DetailField(t("连接命令", "Connection command"), command, vault, t, monospace = true)
+            OutlinedButton(onClick = {
+                val send = android.content.Intent(android.content.Intent.ACTION_SEND)
+                    .setType("text/plain").putExtra(android.content.Intent.EXTRA_TEXT, command)
+                context.startActivity(android.content.Intent.createChooser(send, t("用终端应用打开", "Open in a terminal app")))
+            }) { Text(t("发送到终端应用…", "Send to a terminal app…")) }
+            Text(t("命令只包含用户名、主机和端口，不含密码或私钥；在 Termux、JuiceSSH 等终端中由你确认执行，本机不会执行。",
+                "The command holds only the user, host and port, never a password or key. You run it in a terminal app such as Termux or JuiceSSH; this phone does not run it."),
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
     device.optJSONArray("services")?.objects()?.forEachIndexed { index, service ->
         key(service.optString("id"), index) {
             DetailSection(service.optString("name").ifBlank { t("服务 ${index + 1}", "Service ${index + 1}") }) {
