@@ -12,7 +12,11 @@ const listeners=new Set<()=>void>();
 const media=matchMedia("(prefers-color-scheme: dark)");
 function apply(){document.documentElement.lang=language==="en"?"en":"zh-CN";document.documentElement.dataset.theme=theme==="system"?(media.matches?"dark":"light"):theme;}
 media.addEventListener("change",apply);apply();
+// The popup and the full page share this origin's storage; follow changes made in the other view.
+addEventListener("storage",(event:StorageEvent)=>{if(event.key==="pv-language")language=event.newValue==="en"?"en":"zh";else if(event.key==="pv-theme")theme=event.newValue==="dark"||event.newValue==="light"?event.newValue:"system";else return;apply();for(const listener of listeners)listener();});
 export function setLocale(next:Language){language=next;savePreference("pv-language",next);apply();for(const listener of listeners)listener();}
 export function setTheme(next:Theme){theme=next;savePreference("pv-theme",next);apply();for(const listener of listeners)listener();}
 export function t(text:string):string {return language==="en"?(translations[text]??text):(chineseLabels[text]??text);}
+/** Fills `{name}` placeholders after translation. */
+export function fmt(text:string,values:Record<string,unknown>):string {return text.replace(/\{(\w+)\}/g,(m,k)=>k in values?String(values[k]):m);}
 export function useLocale(){const[,refresh]=useState(0);useEffect(()=>{const notify=()=>refresh(n=>n+1);listeners.add(notify);return()=>{listeners.delete(notify);};},[]);return {language,theme,setLocale,setTheme};}

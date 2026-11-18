@@ -1,3 +1,4 @@
+import { t, fmt, useLocale } from "./i18n";
 import {StructuredFill} from "./StructuredFill";
 import {PasskeyApproval} from "./PasskeyApproval";
 import { render } from "preact";
@@ -10,6 +11,7 @@ import { MAC_DOWNLOAD_URL } from "./native-connection";
 import "./style.css";
 import { version } from "../package.json";
 function Popup() {
+  useLocale();
   const tabParameter = new URL(location.href).searchParams.get("sourceTabId");
   const sourceTabId =
     tabParameter && /^\d+$/.test(tabParameter)
@@ -61,7 +63,7 @@ function Popup() {
           setCaptured(undefined);
           if (e instanceof Error && e.message === "unpaired")
             setState({ ...s, paired: false });
-          else setMatchesError(errorText(e));
+          else setMatchesError(t(errorText(e)));
         }
       } else {
         setMatches(undefined);
@@ -82,7 +84,7 @@ function Popup() {
       await work();
       await refresh();
     } catch (e) {
-      setError(errorText(e));
+      setError(t(errorText(e)));
       await refresh().catch(() => {});
     } finally {
       busyRef.current = false;
@@ -93,7 +95,7 @@ function Popup() {
     void run(async () => {});
     const timer = setInterval(() => {
       if (!busyRef.current && !refreshing.current)
-        void refresh().catch((e) => setError(errorText(e)));
+        void refresh().catch((e) => setError(t(errorText(e))));
     }, 2000);
     return () => {
       revision.current++;
@@ -127,8 +129,8 @@ function Popup() {
           <img src="./brand.png" alt="" width="30" height="30" />
         </span>
         <strong>PasswordVault</strong>
-        <span class="brand-version" aria-label={`插件版本 ${version}`}>v{version}</span>
-        <button class="icon-button mac-launch" title="打开 Mac 应用" aria-label="打开 Mac 应用" disabled={busy} onClick={openMac}>
+        <span class="brand-version" aria-label={fmt(t("插件版本 {version}"),{"version":version})}>v{version}</span>
+        <button class="icon-button mac-launch" title={t("打开 Mac 应用")} aria-label={t("打开 Mac 应用")} disabled={busy} onClick={openMac}>
           <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <rect x="3" y="3" width="18" height="13" rx="2" />
             <path d="M9 21h6M12 16v5M8 12l8-6M11 6h5v5" />
@@ -137,9 +139,9 @@ function Popup() {
       </header>
       {macOpenFailed && (
         <aside class="mac-download-notice" role="status">
-          <p>未能打开 Mac 应用。尚未安装？请前往 GitHub 下载；已安装请在「设置 → 浏览器」重新登记连接。</p>
-          <a href={MAC_DOWNLOAD_URL} target="_blank" rel="noopener noreferrer">前往 GitHub 下载 ↗</a>
-          <button class="text-button" onClick={() => setMacOpenFailed(false)} aria-label="关闭下载提示">关闭</button>
+          <p>{t("未能打开 Mac 应用。尚未安装？请前往 GitHub 下载；已安装请在「设置 → 浏览器」重新登记连接。")}</p>
+          <a href={MAC_DOWNLOAD_URL} target="_blank" rel="noopener noreferrer">{t("前往 GitHub 下载 ↗")}</a>
+          <button class="text-button" onClick={() => setMacOpenFailed(false)} aria-label={t("关闭下载提示")}>{t("关闭")}</button>
         </aside>
       )}
       {sourceTabId !== undefined && (
@@ -150,16 +152,16 @@ function Popup() {
             window.close();
           }}
         >
-          返回登录页面
+          {t("返回登录页面")}
         </button>
       )}
-      <div class="mode-switch" aria-label="资料库模式">
+      <div class="mode-switch" aria-label={t("资料库模式")}>
         <button
           disabled={busy}
           aria-pressed={state?.mode === "native"}
           onClick={() => run(() => message({ action: "mode", mode: "native" }))}
         >
-          连接 Mac
+          {t("连接 Mac")}
         </button>
         <button
           disabled={busy}
@@ -168,7 +170,7 @@ function Popup() {
             run(() => message({ action: "mode", mode: "independent" }))
           }
         >
-          独立资料库
+          {t("独立资料库")}
         </button>
       </div>
       {error && !captured && (
@@ -178,10 +180,10 @@ function Popup() {
       )}
       {!state ? (
         <section class="popup-empty">
-          <p class="muted">{error ? "暂时无法读取连接状态" : "正在连接…"}</p>
+          <p class="muted">{error ? t("暂时无法读取连接状态") : t("正在连接…")}</p>
           {error && !captured && (
             <button disabled={busy} onClick={() => run(async () => {})}>
-              重新检测
+              {t("重新检测")}
             </button>
           )}
         </section>
@@ -196,11 +198,11 @@ function Popup() {
         >
           <section class="popup-empty">
             <span class="lock-symbol">⌑</span>
-            <h2>{state.exists ? "解锁资料库" : "创建独立资料库"}</h2>
+            <h2>{state.exists ? t("解锁资料库") : t("创建独立资料库")}</h2>
             <p>
               {state.exists
-                ? "使用主密码继续。"
-                : "数据加密保存在此浏览器。请记住主密码。"}
+                ? t("使用主密码继续。")
+                : t("数据加密保存在此浏览器。请记住主密码。")}
             </p>
             <input
               autoFocus
@@ -209,13 +211,13 @@ function Popup() {
               minLength={state.exists ? 1 : 10}
               required
               placeholder={
-                state.exists ? "主密码" : "设置主密码（至少 10 字符）"
+                state.exists ? t("主密码") : t("设置主密码（至少 10 字符）")
               }
               value={password}
               onInput={(e) => setPassword(e.currentTarget.value)}
             />
             <button class="primary" disabled={busy}>
-              {busy ? "请稍候…" : state.exists ? "解锁" : "创建资料库"}
+              {busy ? t("请稍候…") : state.exists ? t("解锁") : t("创建资料库")}
             </button>
           </section>
         </form>
@@ -240,7 +242,7 @@ function Popup() {
           )}
           {state.mode === "native" && state.syncSupported && !captured && (!state.unlocked || !state.paired) && (
             <details>
-              <summary>读取和填充已有账号</summary>
+              <summary>{t("读取和填充已有账号")}</summary>
               <NativeConnectionPanel state={state} busy={busy}
                 onOpen={openMac}
                 onPair={() => run(() => message({ action: "pair" }))}
@@ -251,28 +253,28 @@ function Popup() {
             <div class={`sync-count ${state.queued ? "pending" : "done"}`} role="status" aria-live="polite">
               <span>
                 {state.queued
-                  ? `${state.queued} 个账号待同步到 Mac 客户端`
+                  ? fmt(t("{queued} 个账号待同步到 Mac 客户端"),{"queued":state.queued})
                   : state.available === false
-                    ? "Mac 客户端未连接 · 没有待同步的账号"
-                    : "已全部同步到 Mac 客户端"}
+                    ? t("Mac 客户端未连接 · 没有待同步的账号")
+                    : t("已全部同步到 Mac 客户端")}
               </span>
               {!!state.queued && (
                 <button class="text-button" type="button" disabled={busy} onClick={() => run(async () => {})}>
-                  立即同步
+                  {t("立即同步")}
                 </button>
               )}
             </div>
           )}
           {state.mode === "native" && (
             <p class="muted" role="status">
-              {captured ? (state.queued ? `已暂存 ${state.queued} 个账号，确认后加入同步队列。` : state.syncReady ? "后台保存已开启。" : "支持离线保存，账号会加密暂存。") : state.queued
-                ? `已在此浏览器暂存 ${state.queued} 个账号，${state.syncReady ? "将自动同步到 Mac。" : "配置后台保存或连接并解锁 Mac 后自动同步。"}`
-                : state.readReady ? "可直接查看和填充本站账号。" : state.syncReady ? "后台保存已就绪，Mac 应用退出后仍可同步。" : "支持离线保存，配置后台保存或连接并解锁 Mac 后自动同步。"}
-              {state.syncError && "同步未完成，将自动重试。"}
+              {captured ? (state.queued ? fmt(t("已暂存 {queued} 个账号，确认后加入同步队列。"),{"queued":state.queued}) : state.syncReady ? t("后台保存已开启。") : t("支持离线保存，账号会加密暂存。")) : state.queued
+                ? fmt(state.syncReady ? t("已在此浏览器暂存 {queued} 个账号，将自动同步到 Mac。") : t("已在此浏览器暂存 {queued} 个账号，配置后台保存或连接并解锁 Mac 后自动同步。"),{queued:state.queued})
+                : state.readReady ? t("可直接查看和填充本站账号。") : state.syncReady ? t("后台保存已就绪，Mac 应用退出后仍可同步。") : t("支持离线保存，配置后台保存或连接并解锁 Mac 后自动同步。")}
+              {state.syncError && t("同步未完成，将自动重试。")}
             </p>
           )}
           <div class="section-title">
-            <span>当前网站</span>
+            <span>{t("当前网站")}</span>
             <button
               class="text-button"
               onClick={() =>
@@ -282,10 +284,10 @@ function Popup() {
                 })
               }
             >
-              锁定
+              {t("锁定")}
             </button>
           </div>
-          <p class="origin">{matches?.origin ?? "请打开一个网站"}</p>
+          <p class="origin">{matches?.origin ?? t("请打开一个网站")}</p>
           {!captured && (
             <button
               class="primary wide"
@@ -302,7 +304,7 @@ function Popup() {
                 });
               }}
             >
-              添加账号密码
+              {t("添加账号密码")}
             </button>
           )}
           {captured && (
@@ -322,8 +324,8 @@ function Popup() {
                   setCaptured(undefined);
                   setNotice(
                     result.queued
-                      ? "已加密暂存在此浏览器，后台保存可用时自动重试。"
-                      : "账号已保存。",
+                      ? t("已加密暂存在此浏览器，后台保存可用时自动重试。")
+                      : t("账号已保存。"),
                   );
                 })
               }
@@ -337,7 +339,7 @@ function Popup() {
                       id: captured.id,
                     });
                   setCaptured(undefined);
-                  setNotice("已取消保存。");
+                  setNotice(t("已取消保存。"));
                 })
               }
             />
@@ -354,7 +356,7 @@ function Popup() {
             open={!captured}
             key={captured ? "pending-accounts" : "accounts"}
           >
-            <summary>已保存账号（{matches?.accounts?.length ?? 0}）</summary>
+            <summary>{fmt(t("已保存账号（{count}）"),{count:matches?.accounts?.length ?? 0})}</summary>
             <div class="match-list">
               {matches?.accounts?.length
                 ? matches.accounts.map((account: any) => (
@@ -366,9 +368,9 @@ function Popup() {
                         class="match"
                         disabled={busy}
                         title={
-                          state.mode === "native" && !state.readReady ? "在 Mac 中编辑" : "填充账号"
+                          state.mode === "native" && !state.readReady ? t("在 Mac 中编辑") : t("填充账号")
                         }
-                        aria-label={`${state.mode === "native" && !state.readReady ? "在 Mac 中编辑" : "填充账号"}：${account.title} ${account.username || ""}`}
+                        aria-label={fmt(state.mode === "native" && !state.readReady ? t("在 Mac 中编辑：{title} {username}") : t("填充账号：{title} {username}"),{title:account.title,username:account.username || ""})}
                         onClick={() =>
                           run(async () => {
                             if (state.mode === "native" && !state.readReady) {
@@ -379,7 +381,7 @@ function Popup() {
                                 id: account.id,
                                 accountId: account.accountId,
                               });
-                              setNotice("已在 Mac 中打开该账号，可继续编辑。");
+                              setNotice(t("已在 Mac 中打开该账号，可继续编辑。"));
                             } else {
                               await message({
                                 action: "fill",
@@ -400,9 +402,9 @@ function Popup() {
                         <span class="record-symbol">⌘</span>
                         <span>
                           <strong>{account.title}</strong>
-                          <small>{account.username || "未填写账号"}</small>
+                          <small>{account.username || t("未填写账号")}</small>
                           {state.mode === "native" && !state.readReady && (
-                            <small class="edit-in-mac">在 Mac 中编辑 ↗</small>
+                            <small class="edit-in-mac">{t("在 Mac 中编辑 ↗")}</small>
                           )}
                         </span>
                       </button>
@@ -410,7 +412,7 @@ function Popup() {
                         <button
                           class="match-fill"
                           disabled={busy}
-                          aria-label={`填充账号：${account.title} ${account.username || ""}`}
+                          aria-label={fmt(t("填充账号：{title} {username}"),{title:account.title,username:account.username || ""})}
                           onClick={() =>
                             run(async () => {
                               await message({
@@ -428,7 +430,7 @@ function Popup() {
                             })
                           }
                         >
-                          填充
+                          {t("填充")}
                         </button>
                       )}
                       <AccountSecret account={account} origin={matches.origin} tabId={matches.id} disabled={busy} />
@@ -437,11 +439,11 @@ function Popup() {
                           const value = await message({action:"reveal-account",tabId:matches.id,origin:matches.origin,id:account.id,accountId:account.accountId});
                           setCaptured({tabId:matches.id,origin:matches.origin,mode:state.mode,username:value.username,password:value.password,updateId:account.id,updateAccountId:account.accountId});
                           value.password = "";
-                        })}>修改账号密码</button>
+                        })}>{t("修改账号密码")}</button>
                     </div>
                   ))
                 : !matchesError && (
-                    <p class="empty-small">此网站还没有保存的账号</p>
+                    <p class="empty-small">{t("此网站还没有保存的账号")}</p>
                   )}
             </div>
           </details>
@@ -460,18 +462,18 @@ function Popup() {
                     });
                     setNotice(
                       matches.reminders
-                        ? "已关闭此网站的登录提醒。"
-                        : "已开启。下次提交登录后会提示保存。",
+                        ? t("已关闭此网站的登录提醒。")
+                        : t("已开启。下次提交登录后会提示保存。"),
                     );
                   });
                 }}
               >
                 {matches.reminders
-                  ? "关闭此网站的登录提醒"
-                  : "启用此网站的登录提醒"}
+                  ? t("关闭此网站的登录提醒")
+                  : t("启用此网站的登录提醒")}
               </button>
               <small class="muted">
-                默认在所有网站提醒，可单独关闭本站；保存前仍需确认。
+                {t("默认在所有网站提醒，可单独关闭本站；保存前仍需确认。")}
               </small>
             </div>
           )}
@@ -487,31 +489,31 @@ function Popup() {
                 )
               }
             >
-              保存网页中的账号
+              {t("保存网页中的账号")}
             </button>
           )}
         </>
       )}
       {state && (<details class="authorization-settings">
-            <summary>自动锁定{state.autoLockEnabled ? ` · ${state.autoLockMinutes / 60} 小时` : " · 未开启"}</summary>
+            <summary>{t("自动锁定")}{state.autoLockEnabled ? fmt(t(" · {hours} 小时"),{hours:state.autoLockMinutes / 60}) : t(" · 未开启")}</summary>
             <label class="authorization-option">
               <input id="browser-auto-lock" type="checkbox" checked={state.autoLockEnabled === true} disabled={busy}
                 onChange={(event) => { const enabled = event.currentTarget.checked; void run(() => message({action:"configure-auto-lock", enabled, minutes:state.autoLockMinutes ?? 60})); }} />
-              空闲后需要重新输入主密码
+              {t("空闲后需要重新输入主密码")}
             </label>
-            {state.autoLockEnabled && <label>空闲时长
+            {state.autoLockEnabled && <label>{t("空闲时长")}
               <select id="browser-auto-lock-minutes" value={state.autoLockMinutes ?? 60} disabled={busy}
                 onChange={(event) => { const minutes = Number(event.currentTarget.value); void run(() => message({action:"configure-auto-lock", enabled:true, minutes})); }}>
-                <option value={60}>1 小时</option>
-                <option value={120}>2 小时</option>
+                <option value={60}>{t("1 小时")}</option>
+                <option value={120}>{t("2 小时")}</option>
               </select>
             </label>}
-            <p class="muted">默认保持授权，不因空闲或电脑锁屏要求重新输入。开启后，达到所选空闲时长或电脑锁屏时锁定插件。手动锁定、撤销授权或修改主密码后仍需验证。</p>
+            <p class="muted">{t("默认保持授权，不因空闲或电脑锁屏要求重新输入。开启后，达到所选空闲时长或电脑锁屏时锁定插件。手动锁定、撤销授权或修改主密码后仍需验证。")}</p>
           </details>)}
       <footer class="popup-footer">
-        <span>{state?.autoLockEnabled ? `空闲 ${state.autoLockMinutes / 60} 小时后锁定` : "自动锁定未开启"}</span>
+        <span>{state?.autoLockEnabled ? fmt(t("空闲 {hours} 小时后锁定"),{hours:state.autoLockMinutes / 60}) : t("自动锁定未开启")}</span>
         <button class="text-button" onClick={manage}>
-          管理资料库 ↗
+          {t("管理资料库 ↗")}
         </button>
       </footer>
     </main>
@@ -551,27 +553,27 @@ function CaptureConfirmation({
     <form
       ref={form}
       class="capture"
-      aria-label={captured.updateId ? "修改账号密码" : captured.manual ? "添加账号密码" : "确认保存账号"}
+      aria-label={captured.updateId ? t("修改账号密码") : captured.manual ? t("添加账号密码") : t("确认保存账号")}
       onSubmit={(event) => {
         event.preventDefault();
         setRevealed(false);
         onSave();
       }}
     >
-      <h3>{captured.updateId ? "修改账号密码" : captured.manual ? "添加账号密码" : "确认保存账号"}</h3>
+      <h3>{captured.updateId ? t("修改账号密码") : captured.manual ? t("添加账号密码") : t("确认保存账号")}</h3>
       <p class="muted capture-hint">
-        {captured.manual ? "为当前网站填写账号和密码。" : "可修改后保存。"}
-        离线暂存使用此浏览器的设备密钥加密。
-        {captured.expires ? "待保存信息将在两分钟后清除。" : "确认后加密保存。"}
+        {captured.manual ? t("为当前网站填写账号和密码。") : t("可修改后保存。")}
+        {t("离线暂存使用此浏览器的设备密钥加密。")}
+        {captured.expires ? t("待保存信息将在两分钟后清除。") : t("确认后加密保存。")}
       </p>
-      <label>保存方式<select disabled={busy} value={captured.updateId ? JSON.stringify([captured.updateId,captured.updateAccountId ?? null]) : ""} onChange={event=>{
+      <label>{t("保存方式")}<select disabled={busy} value={captured.updateId ? JSON.stringify([captured.updateId,captured.updateAccountId ?? null]) : ""} onChange={event=>{
         const value=event.currentTarget.value;
         const [updateId,updateAccountId]=value ? JSON.parse(value) : [undefined,undefined];
         const account=accounts.find(a=>a.id===updateId && (a.accountId??null)===(updateAccountId??null));
         onChange({...captured,updateId,updateAccountId:updateAccountId??undefined,username:account?.username??captured.username});
-      }}><option value="">另存为新账号</option>{accounts.map(account=><option value={JSON.stringify([account.id,account.accountId??null])}>更新：{account.title} · {account.username}</option>)}</select></label>
-      {captured.updateId && <p class="muted">更新所选账号并保留旧密码历史；需要资料库在线解锁。</p>}
-      <label htmlFor="capture-username">账号</label>
+      }}><option value="">{t("另存为新账号")}</option>{accounts.map(account=><option value={JSON.stringify([account.id,account.accountId??null])}>{fmt(t("更新：{title} · {username}"),{title:account.title,username:account.username})}</option>)}</select></label>
+      {captured.updateId && <p class="muted">{t("更新所选账号并保留旧密码历史；需要资料库在线解锁。")}</p>}
+      <label htmlFor="capture-username">{t("账号")}</label>
       <input
         id="capture-username"
         required
@@ -585,7 +587,7 @@ function CaptureConfirmation({
           onChange({ ...captured, username: event.currentTarget.value })
         }
       />
-      <label htmlFor="capture-password">密码</label>
+      <label htmlFor="capture-password">{t("密码")}</label>
       <div class="capture-secret">
         <input
           id="capture-password"
@@ -605,8 +607,8 @@ function CaptureConfirmation({
           type="button"
           class="secret-toggle"
           disabled={busy}
-          aria-label={revealed ? "隐藏密码" : "显示密码"}
-          title={revealed ? "隐藏密码" : "显示密码"}
+          aria-label={revealed ? t("隐藏密码") : t("显示密码")}
+          title={revealed ? t("隐藏密码") : t("显示密码")}
           aria-pressed={revealed}
           aria-controls="capture-password"
           onClick={() => setRevealed((value) => !value)}
@@ -642,10 +644,10 @@ function CaptureConfirmation({
             onCancel();
           }}
         >
-          取消保存
+          {t("取消保存")}
         </button>
         <button class="primary" disabled={busy}>
-          {busy ? "请稍候…" : "保存"}
+          {busy ? t("请稍候…") : t("保存")}
         </button>
       </div>
     </form>
