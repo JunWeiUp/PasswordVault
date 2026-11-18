@@ -1,13 +1,14 @@
 import { openScriptRun } from "./ScriptRun";
 import { DocumentLibrary } from "./DocumentLibrary";
-import { cleanup, signal, Scroll, View } from "nsh";
+import { cleanup, openUrl, signal, Scroll, View, type JSX } from "nsh";
 import { Attachments, Files } from "passwordvault/native";
-import { Banner, Btn, Field, Group, openSheet, Row, SheetFooter, SheetTitle, T, TextBox, Toggle, copySecret } from "../kit";
+import { Banner, Btn, Card, Field, Group, IconTile, openSheet, Row, Segmented, SheetFooter, SheetTitle, T, TextBox, Toggle, confirm, copySecret } from "../kit";
 import { Icon } from "../icons";
+import { desktopCapabilities } from "../native";
 import { call, createItem, dest, edit, errorText, editing, flush, items, load, now, onLock, phase, toast, vaultInstance, type Item, type ItemType } from "../store";
-import { openSettings } from "../Settings";
+import { cfg as aiCfg, change as aiChange } from "../ai";
 import { c } from "../theme";
-import { blankDevice, connectionCommand, deviceSubtitle, deviceTitle, importedDevice, planDeviceImport, type DeviceDocument, type DeviceImportGroup, type DeviceData, type DeviceFile } from "./model";
+import { blankDevice, connectionCommand, deviceSubtitle, deviceTitle, importedDevice, planDeviceImport, type DeviceDocument, type DeviceImportGroup, type DeviceData, type DeviceFile, type DeviceService } from "./model";
 export { deviceTitle, deviceSubtitle, deviceSearchText, connectionCommand } from "./model";
 
 export const devicesWarning = "启用后升级为格式 7，并先保留加密快照。旧版客户端无法打开此库，需更新客户端。中继同步将暂停；即使全部升级，也需后续版本完成能力协商后才能恢复同步。";
@@ -122,13 +123,77 @@ export function DeviceImport(props: { close: () => void; pick: () => Promise<Dev
   </View>;
 }
 
-export function DeviceDetail(props: { item: Item; editable?: boolean; onOpenSettings?: () => void }) {
-  const tab = signal("commands"), busy = signal(false), error = signal("");
+const SERVICE_KINDS: [DeviceService["kind"], string][] = [["ssh", "SSH"], ["vnc", "VNC"], ["browser", "网页"], ["custom", "自定义"]];
+const DEFAULT_PORT: Record<DeviceService["kind"], string> = { ssh: "22", vnc: "5900", browser: "80", custom: "" };
+const validPort = (value: string) => /^\d+$/.test(value.trim()) && Number(value) >= 1 && Number(value) <= 65535;
+function ServiceEditor(props: { close: () => void; onSave: (service: DeviceService) => void }) {
+  const name = signal(""), kind = signal<DeviceService["kind"]>("ssh"), remotePort = signal("22"), localPort = signal("22"), path = signal("");
+  cleanup(onLock(props.close));
+  const pick = (value: string) => { const next = value as DeviceService["kind"]; if (remotePort() === DEFAULT_PORT[kind()]) remotePort.set(DEFAULT_PORT[next]); if (localPort() === DEFAULT_PORT[kind()]) localPort.set(DEFAULT_PORT[next]); kind.set(next); };
+  const ready = () => !!name().trim() && validPort(remotePort()) && validPort(localPort());
+  const labeled = (label: string, child: JSX.Element) => <View style={{ flex: 1, minWidth: 0, gap: 6 }}><T size={11.5} color={c().muted}>{label}</T>{child}</View>;
+  return <View style={{ gap: 14 }}><SheetTitle title="添加服务入口" text="保存服务名称、端口和路径。PasswordVault 不会自动启动服务。" />
+    {labeled("类型", <Segmented label="服务类型" tabs={SERVICE_KINDS} value={kind()} onChange={pick} />)}
+    {labeled("服务名称", <TextBox label="服务名称" placeholder="例如 管理后台" value={name()} onChange={value => name.set(value)} />)}
+    <Row gap={12} style={{ alignItems: "flex-start" }}>{labeled("远程端口", <TextBox label="远程端口" value={remotePort()} onChange={value => remotePort.set(value)} />)}{labeled("本地端口", <TextBox label="本地端口" value={localPort()} onChange={value => localPort.set(value)} />)}</Row>
+    <If when={(remotePort() && !validPort(remotePort())) || (localPort() && !validPort(localPort()))}><T size={11} color={c().red}>端口需为 1–65535 的整数。</T></If>
+    {labeled("路径（可选）", <TextBox label="路径（可选）" placeholder="/admin" value={path()} onChange={value => path.set(value)} />)}
+    <SheetFooter><Btn label="取消" onPress={props.close} /><Btn label="保存服务" kind="primary" disabled={!ready()} onPress={() => { const raw = path().trim(); props.onSave({ id: crypto.randomUUID(), name: name().trim(), kind: kind(), remotePort: Number(remotePort()), localPort: Number(localPort()), path: raw && !raw.startsWith("/") ? `/${raw}` : raw }); props.close(); }} /></SheetFooter>
+  </View>;
+}
+
+const serviceAddress = (d: DeviceData, s: DeviceService) => `${d.host}:${s.remotePort}${s.path || ""}`;
+// The app may only open https URLs (nsh.json capabilities), so web services always open over https.
+const serviceUrl = (d: DeviceData, s: DeviceService) => `https://${d.host}${s.remotePort === 443 ? "" : `:${s.remotePort}`}${s.path || ""}`;
+const runInTerminal = (title: string, text: string) => void openScriptRun({ id: crypto.randomUUID(), title, text, secret: false });
+
+function ConnectionCell(props: { label: string; value: string; editing: boolean; mono?: boolean; onChange: (value: string) => void }) {
+  return <View style={{ flex: 1, minWidth: 150, borderWidth: 1, borderColor: c().line, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, gap: 4, backgroundColor: c().surface }}>
+    <T size={11} color={c().muted}>{props.label}</T>
+    <If when={props.editing} else={<Row gap={6}><T size={13} weight="500" mono={props.mono} selectable color={props.value ? c().ink : c().faint} style={{ flex: 1, minWidth: 0 }} lines={1}>{props.value || "未填写"}</T><If when={props.value}><View role="button" accessibilityLabel={`复制${props.label}`} tooltip={`复制${props.label}`} onPress={() => void copySecret(props.value, props.label)} style={{ padding: 3, borderRadius: 5, cursor: "pointer" }} hoverStyle={{ backgroundColor: c().blueSoft }}><Icon name="copy" size={13} tint={c().muted} /></View></If></Row>}>
+      <TextBox label={props.label} value={props.value} mono={props.mono} onChange={props.onChange} />
+    </If>
+  </View>;
+}
+
+function DeviceConnectionView(props: { data: DeviceData; editing: boolean; writable: boolean; set: (key: keyof DeviceData, value: unknown) => void; onAdd: () => void; onRemove: (service: DeviceService) => void }) {
+  const d = () => props.data;
+  const canRun = () => desktopCapabilities.terminal && !!d().host.trim();
+  return <View style={{ gap: 16 }}>
+    <Row gap={10} wrap style={{ alignItems: "stretch" }}>
+      <ConnectionCell label="主机" mono value={d().host} editing={props.editing} onChange={value => props.set("host", value.trim())} />
+      <ConnectionCell label="用户名" value={d().username} editing={props.editing} onChange={value => props.set("username", value.trim())} />
+      <ConnectionCell label="端口" mono value={String(d().port || "")} editing={props.editing} onChange={value => { if (value === "" || validPort(value)) props.set("port", value === "" ? 22 : Number(value)); }} />
+    </Row>
+    <Banner tone="info" icon="tools" title="连接交给外部终端" style={{ marginBottom: 0, alignItems: "center" }} actions={<><Btn label="复制命令" icon="copy" disabled={!d().host} onPress={() => void copySecret(connectionCommand(d()), "连接命令")} /><Btn label="打开外部终端" disabled={!canRun()} tooltip={!desktopCapabilities.terminal ? "此平台暂未开放终端运行" : !d().host ? "请先填写主机" : undefined} onPress={() => runInTerminal("connect.sh", connectionCommand(d()))} /></>}>PasswordVault 只生成命令并交给首选终端，不在应用内执行，也不会把密码拼进命令。</Banner>
+    <Row gap={8}><T size={15} weight="600" style={{ flex: 1 }}>服务入口</T><Btn label="添加服务" icon="plus" kind="ghost" disabled={!props.writable} onPress={props.onAdd} /></Row>
+    <If when={d().services.length > 0} else={<Card><T size={12} color={c().muted}>还没有服务入口。添加 SSH、VNC、网页或自定义服务后，可以一键复制入口或交给外部应用打开。</T></Card>}>
+      <Row gap={12} wrap style={{ alignItems: "stretch" }}>{d().services.map(service => <Card style={{ flex: 1, minWidth: 260, flexBasis: 260 }}>
+        <Row gap={10}><IconTile name={service.kind === "browser" ? "browser" : service.kind === "ssh" ? "tools" : "link"} size={34} /><View style={{ flex: 1, minWidth: 0, gap: 2 }}><T size={13} weight="600" lines={1}>{service.name}</T><T size={11} color={c().muted}>{SERVICE_KINDS.find(([k]) => k === service.kind)?.[1] ?? service.kind} · 远程 {service.remotePort} → 本地 {service.localPort}</T></View></Row>
+        <View style={{ backgroundColor: c().soft2, borderRadius: 7, paddingHorizontal: 10, paddingVertical: 7 }}><T mono size={11.5} selectable lines={1}>{d().host ? serviceAddress(d(), service) : `未填写主机:${service.remotePort}${service.path || ""}`}</T></View>
+        <Row gap={8} wrap>
+          <Btn label="复制入口" icon="copy" disabled={!d().host} onPress={() => void copySecret(serviceAddress(d(), service), "服务入口")} />
+          <If when={service.kind === "browser"}><Btn label="在浏览器打开" tooltip="以 https 打开" disabled={!d().host} onPress={() => void openUrl(serviceUrl(d(), service)).catch(() => toast("无法交给外部应用打开"))} /></If>
+          <If when={service.kind !== "browser"}><Btn label="复制隧道命令" disabled={!d().host} onPress={() => void copySecret(connectionCommand(d(), service), "隧道命令")} /></If>
+          <View style={{ flex: 1 }} />
+          <Btn label="移除" kind="danger" disabled={!props.writable} onPress={() => props.onRemove(service)} />
+        </Row>
+      </Card>)}</Row>
+    </If>
+    <T size={11.5} color={c().muted}>服务名称、端口和路径可作为普通字段被 AI 查询；密码、私钥和脚本原文始终单独处理，服务不会因被 AI 找到而自动启动。</T>
+  </View>;
+}
+
+const deviceTab = signal("");
+export function DeviceDetail(props: { item: Item; editable?: boolean }) {
+  const busy = signal(false), error = signal("");
   let alive = true; const owner = props.item.id;
   cleanup(() => { alive = false; });
   const data = (): DeviceData => props.item.device;
   const writable = () => !props.item.isDeleted && phase() === "unlocked";
   const set = (key: keyof DeviceData, value: unknown) => { if (writable()) edit(owner, i => { i.device = { ...i.device, [key]: value }; }); };
+  const addService = () => openSheet({ width: 520, render: close => <ServiceEditor close={close} onSave={service => { set("services", [...data().services, service]); void flush().then(ok => ok && toast("服务入口已保存")); }} /> });
+  const removeService = (service: DeviceService) => confirm({ title: `移除“${service.name}”？`, text: "只移除这个服务入口，不影响主机上的服务。", ok: "移除", danger: true, onConfirm: () => { set("services", data().services.filter(row => row.id !== service.id)); void flush(); } });
   const importDocuments = async () => {
     if (!writable() || busy()) return;
     busy.set(true); error.set("");
@@ -160,32 +225,50 @@ export function DeviceDetail(props: { item: Item; editable?: boolean; onOpenSett
     } catch (e) { if (alive) error.set(errorText(e)); }
     finally { if (alive) busy.set(false); }
   };
-  return <View>
-    <Row gap={16} style={{ marginBottom: 14 }}>
+  const sub = () => deviceTab() || (data().host || data().services.length ? "overview" : "commands");
+  // Explicit per-file classification for AI reads, never inferred from extension or MIME type.
+  const aiOrdinary = (file: DeviceFile) => aiCfg().aiAccessOrdinaryFiles?.[owner]?.[file.attachmentId] === true;
+  const toggleAiOrdinary = (file: DeviceFile) => {
+    const next = !aiOrdinary(file);
+    const apply = () => void aiChange({ op: "configure", aiAccessOrdinaryFiles: { ...aiCfg().aiAccessOrdinaryFiles, [owner]: { ...aiCfg().aiAccessOrdinaryFiles?.[owner], [file.attachmentId]: next } } });
+    if (!next) return apply();
+    confirm({ title: `允许 AI 读取“${file.name}”？`, text: "已授权此设备的 AI 客户端可以读取全文，内容会进入 AI 对话。请确认文件不含密码、令牌、节点链接或私钥。", ok: "标记为普通资料", onConfirm: apply });
+  };
+  const files = <Card title="附件" note="文件加密保存，脚本不会执行。文本预览上限 256 KiB，二进制文件只显示资料信息。" right={<Btn label="添加文件…" icon="plus" kind="ghost" disabled={!writable() || busy()} onPress={() => void importFile()} />}>
+    <If when={data().files.length > 0} else={<T size={12} color={c().faint}>暂无附件。</T>}>
+      <View>{data().files.map((file, index) => <Row gap={10} style={{ paddingVertical: 8, borderBottomWidth: index === data().files.length - 1 ? 0 : 1, borderBottomColor: c().line2 }}>
+        <IconTile name="paper" />
+        <View style={{ flex: 1, minWidth: 0, gap: 2 }}><T size={12.5} weight="500" lines={1}>{file.name}</T><T size={11} color={c().muted}>{formatSize(file.size)} · {file.mime || "未知类型"}</T></View>
+        <Btn label="查看文本…" onPress={() => openDeviceFile(owner, file)} />
+        <If when={desktopCapabilities.ai}><Btn label={aiOrdinary(file) ? "AI 可读" : "AI 不可读"} kind="ghost" tooltip="标记为普通资料后，已授权的 AI 客户端可以读取此附件；请确认文件不含密码、令牌或私钥" onPress={() => toggleAiOrdinary(file)} /></If>
+        <Btn label="移除引用" kind="danger" disabled={!writable()} onPress={() => confirm({ title: `移除“${file.name}”？`, text: "只移除设备中的附件引用。", ok: "移除", danger: true, onConfirm: () => { set("files", data().files.filter(f => f.attachmentId !== file.attachmentId)); void flush(); } })} />
+      </Row>)}</View>
+    </If>
+  </Card>;
+  return <View style={{ gap: 18 }}>
+    <Row gap={16}>
       <View style={{ width: 60, height: 60, borderRadius: 60 * 0.24, borderWidth: 1, borderColor: c().line, backgroundColor: c().surface, alignItems: "center", justifyContent: "center" }}>
         <Icon name="server" size={30} tint="#617795" />
       </View>
       <View style={{ flex: 1, minWidth: 0, gap: 4 }}>
         <If when={!!props.editable && writable()} else={<T size={26} weight="600" lines={2} selectable>{deviceTitle(props.item)}</T>}>
-          <T size={11.5} color={c().muted}>标题</T>
-          <TextBox label="设备标题" placeholder="可选，设置后默认显示为标题内容" value={props.item.title ?? ""} onChange={value => { if (writable()) edit(owner, i => { i.title = value; }); }} />
+          <TextBox label="设备标题" placeholder="设备标题（可选，留空时显示主机）" value={props.item.title ?? ""} onChange={value => { if (writable()) edit(owner, i => { i.title = value; }); }} />
         </If>
-        <T size={12} color={c().muted} lines={1}>{deviceSubtitle(props.item)}</T>
+        <T size={12} color={c().muted} lines={1}>{deviceSubtitle(props.item)}{data().commands.length && data().host ? ` · ${data().commands.length} 条资料` : ""}</T>
       </View>
     </Row>
-    <Row gap={8} style={{ paddingVertical: 8 }}>{[["commands", "脚本与资料"], ["ai", "AI 访问"]].map(([key, label]) => <Btn label={label} kind={tab() === key ? "primary" : "ghost"} onPress={() => tab.set(key)} />)}</Row>
-    <View style={{ paddingVertical: 16, gap: 16 }}>
-      <If when={error()}><Banner tone="err" title={error()} /></If>
-      <If when={tab() === "commands"}><DocumentLibrary commands={data().commands} editable={!!props.editable && writable()} canManage={writable()} onEdit={() => editing.set(!editing())} onRun={row => void openScriptRun(row)} busy={busy()} onChange={rows => set("commands", rows)} onImport={() => void importDocuments()} /></If>
-      <If when={tab() === "commands" && data().files.length > 0}><Banner tone="info" title="文件加密保存，脚本不会执行">文本预览上限为 256 KiB，二进制文件只显示资料信息。附件内容默认视为敏感。</Banner>
-        <If when={!data().files.length}><T>暂无附件。</T></If>
-        {data().files.map(file => <Group><T weight="600">{file.name}</T><T>{file.size} bytes · {file.mime}</T><Row gap={8}>
-          <Btn label="查看文本…" onPress={() => openDeviceFile(owner, file)} /><Btn label="移除引用" disabled={!writable()} onPress={() => set("files", data().files.filter(f => f.attachmentId !== file.attachmentId))} />
-        </Row></Group>)}<Btn label="添加文件…" disabled={!writable() || busy()} onPress={() => void importFile()} />
+    <If when={error()}><Banner tone="err" title={error()} style={{ marginBottom: 0 }} /></If>
+    <>
+      <Segmented label="设备资料视图" tabs={[["overview", "连接与服务"], ["commands", "脚本与资料"]]} value={sub()} onChange={value => deviceTab.set(value)} />
+      <If when={sub() === "overview"}><DeviceConnectionView data={data()} editing={!!props.editable && writable()} writable={writable()} set={set} onAdd={addService} onRemove={removeService} /></If>
+      <If when={sub() === "commands"}>
+        <DocumentLibrary commands={data().commands} editable={!!props.editable && writable()} canManage={writable()} onEdit={() => editing.set(!editing())} onRun={row => void openScriptRun(row)} busy={busy()} onChange={rows => set("commands", rows)} onImport={() => void importDocuments()} />
+        {files}
       </If>
-      <If when={tab() === "ai"}><Group><T size={18} weight="600">由你控制 AI 访问</T><T>在设置中管理客户端及授权。主机配置、敏感字段与附件应分别授权；锁定后停止读取。</T><Btn label="打开 AI 访问设置" onPress={() => props.onOpenSettings ? props.onOpenSettings() : openSettings("ai")} /></Group></If>
-    </View></View>;
+    </>
+  </View>;
 }
+const formatSize = (size: number) => size < 1024 ? `${size} B` : size < 1048576 ? `${(size / 1024).toFixed(1)} KiB` : `${(size / 1048576).toFixed(1)} MiB`;
 function openDeviceFile(id: string, file: DeviceFile) {
   openSheet({ width: 680, render: close => <FilePreview id={id} file={file} close={close} /> });
 }
