@@ -48,7 +48,7 @@ class PasskeyProviderActivity : FragmentActivity() {
             val body=JSONObject(creation?.requestJson ?: assertion?.requestJson ?: "{}")
             if(creation!=null) body.getJSONObject("rp").getString("id") + " · " + body.getJSONObject("user").getString("name") else body.optString("rpId")
         }.getOrDefault("")
-        setContent {
+        setPrivateContent {
             var secret by remember { mutableStateOf("") }
             var busy by remember { mutableStateOf(false) }
             var error by remember { mutableStateOf<String?>(null) }

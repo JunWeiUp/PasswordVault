@@ -91,6 +91,8 @@ internal fun EntryCollection(
     var categoryToRemove by remember { mutableStateOf<String?>(null) }
     var emptyingTrash by remember { mutableStateOf(false) }
     var audit by remember { mutableStateOf(emptyList<JSONObject>()) }
+    val relayState by vault.relay.state.collectAsState()
+    val offline = relayOffline(relayState)
     DisposableEffect(page) { onDispose { ui.selectedIds.value = emptySet(); ui.selecting.value = false } }
     LaunchedEffect(ui.selecting.value) { if (ui.selecting.value) toolsSheet = false }
     LaunchedEffect(state.entries) {
@@ -194,6 +196,7 @@ internal fun EntryCollection(
                     }
                 }
             }
+            if (offline && page != "trash") OfflineBanner(t, Modifier.fillMaxWidth().padding(start = 10.dp, end = 10.dp, bottom = 12.dp))
             if (page == "totp") Text(t("点按复制当前验证码 · 时间以手机系统时钟为准", "Tap to copy the current code · Uses your device clock"),
                 Modifier.padding(start = 16.dp, end = 16.dp, bottom = 12.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             if (page == "password" && audit.isNotEmpty() && search.isBlank() && !favorites && kind.isEmpty()) Surface(
@@ -431,7 +434,7 @@ internal fun EntryMenu(expanded: Boolean, dismiss: () -> Unit, item: JSONObject,
                 ListItem(headlineContent = { Text(label, color = if (danger) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface) }, leadingContent = { Icon(icon, null, tint = if (danger) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant) }, modifier = Modifier.clickable(enabled = enabled, onClick = click), colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface))
             }
             if (!item.optBoolean("isDeleted")) {
-                if (editable && item.optString("type") != "device") action(t("编辑", "Edit"), Icons.Outlined.Edit) { dismiss(); edit() }
+                if (editable && (item.optString("type") != "device" || DevicePayload.editable(item, true))) action(t("编辑", "Edit"), Icons.Outlined.Edit) { dismiss(); edit() }
                 listOf("isPinned" to (if (item.optBoolean("isPinned")) t("取消置顶", "Unpin") else t("置顶", "Pin")), "isFavorite" to (if (item.optBoolean("isFavorite")) t("取消收藏", "Unfavorite") else t("收藏", "Favorite"))).forEach { (field, label) ->
                     action(label, if (field == "isPinned") Icons.Outlined.PushPin else Icons.Outlined.StarOutline, editable) { dismiss(); scope.launch { vault.save(JSONObject(item.toString()).put(field, !item.optBoolean(field))) } }
                 }

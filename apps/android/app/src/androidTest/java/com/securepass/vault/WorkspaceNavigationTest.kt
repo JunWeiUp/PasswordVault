@@ -169,7 +169,8 @@ class WorkspaceNavigationTest {
             deviceEntry.click()
             assertTrue(device.wait(Until.hasObject(By.text("fixture.example.test")), 5_000))
             assertFalse(device.hasObject(By.text("DEVICE_DISPLAY_CANARY")))
-            assertFalse(device.hasObject(By.desc("编辑")))
+            // Personal format-7 devices can be edited on the phone (the core validates the save).
+            assertTrue(device.hasObject(By.desc("编辑")))
             // The connection section may be below the fold on small displays.
             var attempts = 0
             while (!device.hasObject(By.desc("显示密码")) && attempts++ < 4) {

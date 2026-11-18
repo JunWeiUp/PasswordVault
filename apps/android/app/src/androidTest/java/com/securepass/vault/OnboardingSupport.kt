@@ -86,3 +86,28 @@ internal fun backToNavigation(device: UiDevice) {
     }
     assertTrue("Bottom navigation", device.hasObject(By.desc("笔记")))
 }
+
+/** Unlocks the current lock screen ("PasswordVault 已锁定") with the master password. */
+internal fun unlockFromLockScreen(device: UiDevice, password: String = "1") {
+    assertTrue("Lock screen", device.wait(Until.hasObject(By.text("PasswordVault 已锁定")), 10_000))
+    device.findObject(By.clazz("android.widget.EditText")).text = password
+    // The submit action is the field's trailing icon button, enabled once a password is typed.
+    val submit = device.wait(Until.findObject(By.desc("解锁").enabled(true)), 5_000)
+    assertTrue("Unlock action enabled", submit != null)
+    submit.click()
+}
+
+/** Selects a bottom-navigation destination, retrying taps dropped during the unlock transition. */
+internal fun openDestination(device: UiDevice, label: String) {
+    // The selected destination shows its name as the page heading above the list.
+    fun shown() = device.findObjects(By.text(label)).any { it.visibleBounds.bottom < device.displayHeight / 2 }
+    repeat(5) {
+        device.wait(Until.findObject(By.desc(label)), 5_000)?.click()
+        val deadline = System.currentTimeMillis() + 2_000
+        while (System.currentTimeMillis() < deadline) {
+            if (shown()) return
+            android.os.SystemClock.sleep(200)
+        }
+    }
+    assertTrue("Page heading $label", shown())
+}

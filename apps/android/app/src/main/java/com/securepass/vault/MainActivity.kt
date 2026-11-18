@@ -58,7 +58,7 @@ class MainActivity : FragmentActivity() {
             !(BuildConfig.DEBUG && testId != null && intent.getBooleanExtra("qaScreenshots", false))
         )
             window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
-        setContent { VaultApp(vault) }
+        setPrivateContent { VaultApp(vault) }
     }
 
     override fun onStart() {

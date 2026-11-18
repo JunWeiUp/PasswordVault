@@ -77,7 +77,8 @@ class VaultAutofillService : AutofillService() {
         target.structuredFields.values.forEach { locked.setValue(it, null as android.view.autofill.AutofillValue?) }
         target.userId?.let { locked.setValue(it, null as android.view.autofill.AutofillValue?) }
         val responseBuilder = FillResponse.Builder().addDataset(locked.build())
-        target.passwordId?.let { id ->
+        // "Offer to save new logins" only gates the save prompt; filling and unlocking are unchanged.
+        if (AppPreferences.autofillSavePrompt(this)) target.passwordId?.let { id ->
             responseBuilder.setSaveInfo(SaveInfo.Builder(SaveInfo.SAVE_DATA_TYPE_PASSWORD, arrayOf(id)).apply { target.userId?.let { setOptionalIds(arrayOf(it)) } }.build())
         }
         val response = responseBuilder.build()

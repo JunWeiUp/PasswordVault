@@ -13,6 +13,8 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -53,6 +55,12 @@ fun SettingsScreen(
     val scope = rememberCoroutineScope()
     val relayState by vault.relay.state.collectAsStateWithLifecycle()
     var page by remember { mutableStateOf(initialPage) }
+    val uiPrefs = remember(context) { context.getSharedPreferences(AppPreferences.FILE, 0) }
+    var clipboardSeconds by remember { mutableIntStateOf(AppPreferences.clipboardSeconds(context)) }
+    var startChoice by remember { mutableStateOf(uiPrefs.getString(AppPreferences.START_PAGE, null)?.takeIf { it in AppPreferences.START_CHOICES } ?: AppPreferences.DEFAULT_START) }
+    var licenses by remember { mutableStateOf(false) }
+    var savePrompt by remember { mutableStateOf(AppPreferences.autofillSavePrompt(context)) }
+    if (licenses) LicensesDialog(t) { licenses = false }
     val notifySubpageChanged by rememberUpdatedState(onSubpageChanged)
     LaunchedEffect(page) { notifySubpageChanged(page != "home") }
     DisposableEffect(Unit) {
@@ -329,9 +337,23 @@ fun SettingsScreen(
                                 TextButton(onClick = language) { Text("简体中文 / English", fontSize = 12.sp) }
                             }
                         }
+                        SettingsLabel(t("启动", "Startup"))
+                        SettingsGroup {
+                            SettingsOption(t("打开时显示", "Show on open")) {
+                                SettingsChoice(AppPreferences.startLabel(startChoice, t), AppPreferences.START_CHOICES.map { AppPreferences.startLabel(it, t) }) { label ->
+                                    startChoice = AppPreferences.START_CHOICES.first { AppPreferences.startLabel(it, t) == label }
+                                    uiPrefs.edit().putString(AppPreferences.START_PAGE, startChoice).apply()
+                                }
+                            }
+                        }
                         SettingsLabel(t("剪贴板", "Clipboard"))
                         SettingsGroup {
-                            SettingsOption(t("自动清除剪贴板", "Clear clipboard"), t("30 秒 · 仅清除未被替换的内容", "30 seconds · only if unchanged"))
+                            SettingsOption(t("自动清除剪贴板", "Clear clipboard"), t("仅清除未被替换的内容；锁定时总会清除", "Only if unchanged; always cleared on lock")) {
+                                SettingsChoice(AppPreferences.clipboardLabel(clipboardSeconds, t), AppPreferences.CLIPBOARD_CHOICES.map { AppPreferences.clipboardLabel(it, t) }) { label ->
+                                    clipboardSeconds = AppPreferences.CLIPBOARD_CHOICES.first { AppPreferences.clipboardLabel(it, t) == label }
+                                    uiPrefs.edit().putInt(AppPreferences.CLIPBOARD_SECONDS, clipboardSeconds).apply()
+                                }
+                            }
                             SettingsRule()
                             SettingsOption(t("标记为敏感内容", "Mark as sensitive"), t("Android 13+ 隐藏秘密预览", "Hide secret previews on Android 13+"))
                         }
@@ -377,6 +399,10 @@ fun SettingsScreen(
                         SettingsLabel(t("隐私", "Privacy"))
                         SettingsGroup {
                             SettingsOption(t("阻止截屏与最近任务预览", "Block screenshots and recent previews"), t("始终开启 · FLAG_SECURE", "Always on · FLAG_SECURE"))
+                            SettingsRule()
+                            SettingsOption(t("隐藏在键盘个性化学习之外", "Keep out of keyboard learning"), t("始终开启 · 输入框请求输入法不记录（noPersonalizedLearning）", "Always on · fields ask the keyboard not to learn (noPersonalizedLearning)")) {
+                                Switch(checked = true, onCheckedChange = null, enabled = false, modifier = Modifier.semantics { contentDescription = t("隐藏在键盘个性化学习之外", "Keep out of keyboard learning") })
+                            }
                             SettingsRule()
                             SettingsOption(t("本地数据", "Local data"), t("应用私有目录 · 加密保存", "App-private storage · encrypted on disk"))
                         }
@@ -515,9 +541,17 @@ fun SettingsScreen(
                         AutofillServiceStatus(t)
                         SettingsLabel(t("自动填充", "Autofill"))
                         SettingsGroup {
+                            SettingsOption(t("键盘内联建议", "Inline keyboard suggestions"), t("暂不支持：此版本只在输入框下方的下拉菜单中显示建议", "Not available yet: suggestions appear in the dropdown below the field")) {
+                                Switch(checked = false, onCheckedChange = null, enabled = false, modifier = Modifier.semantics { contentDescription = t("键盘内联建议", "Inline keyboard suggestions") })
+                            }
+                            SettingsRule()
                             SettingsOption(t("填充前要求解锁", "Unlock before filling"), t("库已锁定时需要验证；不会绕过手动锁定", "A locked vault requires verification; manual lock is respected"))
                             SettingsRule()
                             SettingsOption(t("匹配规则", "Matching rules"), t("精确主机名匹配，子域隔离，阻止 HTTPS 降级", "Exact hostnames; isolated subdomains; HTTPS downgrade blocked"))
+                            SettingsRule()
+                            SettingsOption(t("提示保存新账号", "Offer to save new logins"), t("提交登录后询问；不会自动保存", "Asks after you sign in; never saves automatically")) {
+                                Switch(checked = savePrompt, onCheckedChange = { savePrompt = it; uiPrefs.edit().putBoolean(AppPreferences.AUTOFILL_SAVE_PROMPT, it).apply() }, modifier = Modifier.semantics { contentDescription = t("提示保存新账号", "Offer to save new logins") })
+                            }
                         }
                         SettingsLabel(t("通行密钥", "Passkeys"))
                         SettingsDetail {
@@ -551,7 +585,15 @@ fun SettingsScreen(
                         Text("${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE}) · Android")
                         Text(t("原生 Compose 界面 · vault-core 共享核心", "Native Compose interface · shared vault-core"), fontSize = 13.sp)
                         }
-                        SettingsGroup { SettingsOption(t("安全模型", "Security model"), t("当前文档仍列有未解决项，不声称生产级安全", "Unresolved items remain; no production-security claim")) }
+                        SettingsGroup {
+                            SettingsDestination(t("更新日志", "Release notes"), t("在浏览器中打开 GitHub 发布页", "Opens the GitHub releases page in your browser"), Icons.Default.Description) {
+                                try { context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(AppPreferences.RELEASES_URL))) } catch (_: android.content.ActivityNotFoundException) { }
+                            }
+                            SettingsRule()
+                            SettingsDestination(t("开源许可", "Open-source licenses"), t("随应用附带的许可文本", "License texts bundled with the app"), Icons.Default.Info) { licenses = true }
+                            SettingsRule()
+                            SettingsOption(t("安全模型", "Security model"), t("当前文档仍列有未解决项，不声称生产级安全", "Unresolved items remain; no production-security claim"))
+                        }
                         Text(t("安全模型仍有待解决项；当前版本不代表生产安全验收已完成。", "The security model has unresolved items; this version does not represent completed production security acceptance."), style = MaterialTheme.typography.bodyMedium)
                     }
                 }

@@ -65,11 +65,12 @@ class LegacyEditingTest {
     private fun locate(
         selector: androidx.test.uiautomator.BySelector
     ): androidx.test.uiautomator.UiObject2 {
-        repeat(22) {
+        // Search forward first, then back: a restored form may already be scrolled down.
+        repeat(34) { attempt ->
             fresh()
             val node = device.wait(Until.findObject(selector), 800)
             if (node != null && node.visibleBounds.height() > 20) return node
-            scroll()
+            scroll(up = attempt < 12)
         }
         error("Control missing: $selector")
     }
@@ -87,6 +88,23 @@ class LegacyEditingTest {
         device.click(b.centerX(), b.centerY())
         android.os.SystemClock.sleep(250)
         fresh()
+    }
+
+    /** Opens a record's editor from the list or from its already open detail page. */
+    private fun openEditor(title: String, editorTitle: String) {
+        if (!device.hasObject(By.desc("编辑"))) click(title)
+        device.wait(Until.findObject(By.desc("编辑")), 5000).click()
+        assertTrue(device.wait(Until.hasObject(By.text(editorTitle)), 5000))
+    }
+
+    /** Collection tools sheet, then its overflow menu, which offers the multi-code import. */
+    private fun openBulkCodeImport() {
+        device.wait(Until.findObject(By.desc("资料工具")), 5000).click()
+        assertTrue(device.wait(Until.hasObject(By.text("排序")), 5000))
+        // The sheet repeats the "资料工具" action for its overflow menu; use the lowest one.
+        device.findObjects(By.desc("资料工具")).maxBy { it.visibleBounds.top }.click()
+        device.wait(Until.findObject(By.text("批量导入验证码")), 5000).click()
+        assertTrue(device.wait(Until.hasObject(By.text("导入")), 5000))
     }
 
     private fun shot(name: String) {
@@ -138,12 +156,12 @@ class LegacyEditingTest {
                     .putExtra("qaScreenshots", true)
             )
         try {
-            assertTrue(device.wait(Until.hasObject(By.text("解锁资料库")), 10000))
-            device.findObject(By.clazz("android.widget.EditText")).text = "1"
-            device.wait(Until.findObject(By.text("解锁").enabled(true)), 5000).click()
-            device.wait(Until.findObject(By.desc("验证码")), 10000).click()
-            device.wait(Until.findObject(By.text("迁移验证码")), 5000).longClick()
-            click("编辑")
+            unlockFromLockScreen(device)
+            openDestination(device, "验证码")
+            // Tapping a code row copies it; the trailing chevron opens the detail page.
+            assertTrue(device.wait(Until.hasObject(By.text("迁移验证码")), 5000))
+            device.findObject(By.desc("详情")).click()
+            device.wait(Until.findObject(By.desc("编辑")), 5000).click()
             assertTrue(device.wait(Until.hasObject(By.text("编辑验证码")), 5000))
             set("密码", "new-main")
             set("密码 2", "new-extra")
@@ -166,8 +184,8 @@ class LegacyEditingTest {
                 extra.getJSONArray("passwordHistory").getJSONObject(0).getString("password"),
             )
             assertEquals("JBSWY3DPEHPK3PXP", saved.getString("secret"))
-            device.findObject(By.desc("资料工具")).click()
-            click("批量导入验证码")
+            backToNavigation(device)
+            openBulkCodeImport()
             val first = "otpauth://totp/BatchA:fixture?secret=JBSWY3DPEHPK3PXP&issuer=BatchA"
             val second = "otpauth://totp/BatchB:fixture?secret=JBSWY3DPEHPK3PXP&issuer=BatchB"
             device.findObject(By.clazz("android.widget.EditText")).text = first + "\ninvalid"
@@ -176,6 +194,7 @@ class LegacyEditingTest {
             assertEquals(1, repo.state.value.entries.size)
             device.findObject(By.clazz("android.widget.EditText")).text = first + "\n" + second
             device.findObject(By.text("导入")).click()
+            // A complete import closes the dialog and reports the result in the tools sheet.
             assertTrue(device.wait(Until.hasObject(By.text("已导入 2 / 2 项")), 10000))
             assertEquals(3, repo.state.value.entries.size)
         } catch (failure: Throwable) {
@@ -222,43 +241,44 @@ class LegacyEditingTest {
                     .putExtra("qaScreenshots", true)
             )
         try {
-            assertTrue(device.wait(Until.hasObject(By.text("解锁资料库")), 10000))
-            device.findObject(By.clazz("android.widget.EditText")).text = "1"
-            device.wait(Until.findObject(By.text("解锁").enabled(true)), 5000).click()
+            unlockFromLockScreen(device)
+            openDestination(device, "账号")
             assertTrue(device.wait(Until.hasObject(By.textStartsWith("滚动账号")), 10000))
             assertFalse(device.hasObject(By.text("全部资料库")))
             assertFalse(device.hasObject(By.text("空共享库")))
-            val sort = device.findObject(By.desc("排序")).visibleBounds
-            device.click(sort.centerX(), sort.centerY())
-            click("按标题")
-            click("选择")
-            assertFalse(device.hasObject(By.desc("新建")))
-            click("滚动账号00")
+            device.findObject(By.desc("资料工具")).click()
+            click("排序")
+            click("标题升序")
+            assertTrue(device.wait(Until.gone(By.text("最早修改")), 5000))
+            // Long press enters selection with that record selected; taps then toggle records.
+            locate(By.text("滚动账号00")).longClick()
+            assertTrue(device.wait(Until.hasObject(By.desc("取消选择")), 5000))
+            assertFalse(device.hasObject(By.text("新建")))
             click("滚动账号20")
-            repeat(26) { if (!device.hasObject(By.text("已选 2 项"))) scroll(false) }
-            assertTrue(device.hasObject(By.text("已选 2 项")))
+            repeat(26) { if (!device.hasObject(By.text("已选择 2 项"))) scroll(false) }
+            assertTrue(device.hasObject(By.text("已选择 2 项")))
             shot("long-selection")
-            click("添加标签")
-            device.findObject(By.clazz("android.widget.EditText")).text = "批量保留"
-            device.findObject(By.text("确认")).click()
-            assertTrue(device.wait(Until.hasObject(By.text("已完成 2 / 2 项")), 10000))
+            device.findObject(By.desc("收藏所选")).click()
+            device.wait(Until.findObject(By.text("确认")), 5000).click()
+            assertTrue(device.wait(Until.hasObject(By.text("已选择 0 项")), 10000))
             repo = live(scenario)
             assertEquals("空共享库", repo.state.value.sharedVaults.single().getString("name"))
-            val changed = repo.state.value.entries.filter { "批量保留" in entryTags(it) }
+            val changed = repo.state.value.entries.filter { it.optBoolean("isFavorite") }
             assertEquals(setOf("滚动账号00", "滚动账号20"), changed.map { it.getString("title") }.toSet())
             assertEquals(
                 "titleAsc",
                 repo.state.value.settings.getJSONObject("collectionSort").getString("password"),
             )
-            // A changed search must not retain invisible selected records.
-            click("滚动账号00")
-            repeat(8) { if (!device.hasObject(By.text("已选 1 项"))) scroll(false) }
-            val search = device.findObject(By.clazz("android.widget.EditText"))
-            search.text = "email12@example.test"
-            assertTrue(device.wait(Until.hasObject(By.text("滚动账号12")), 5000))
-            assertFalse(device.hasObject(By.text("滚动账号00")))
-            assertTrue(device.hasObject(By.text("已选 0 项")))
-            click("完成选择")
+            // A changed filter must not retain invisible selected records.
+            click("滚动账号05")
+            repeat(8) { if (!device.hasObject(By.text("已选择 1 项"))) scroll(false) }
+            assertTrue(device.hasObject(By.text("已选择 1 项")))
+            click("收藏")
+            assertTrue(device.wait(Until.gone(By.text("滚动账号05")), 5000))
+            assertTrue(device.hasObject(By.text("滚动账号20")))
+            assertTrue(device.hasObject(By.text("已选择 0 项")))
+            device.findObject(By.desc("取消选择")).click()
+            assertTrue(device.wait(Until.gone(By.desc("取消选择")), 5000))
         } catch (failure: Throwable) {
             shot("collection-failure")
             device.dumpWindowHierarchy(
@@ -341,14 +361,12 @@ class LegacyEditingTest {
                     .putExtra("qaScreenshots", true)
             )
         try {
-            assertTrue(device.wait(Until.hasObject(By.text("解锁资料库")), 10000))
-            device.findObject(By.clazz("android.widget.EditText")).text = "1"
-            device.wait(Until.findObject(By.text("解锁").enabled(true)), 5000).click()
+            unlockFromLockScreen(device)
+            openDestination(device, "账号")
             assertTrue(device.wait(Until.hasObject(By.text("迁移完整账号")), 10000))
-            click("迁移完整账号")
-            assertTrue(device.wait(Until.hasObject(By.text("编辑账号")), 5000))
+            openEditor("迁移完整账号", "编辑账号")
             assertFalse(device.hasObject(By.desc("编辑")))
-            set("账号名称", "迁移修改完成")
+            set("标题 *", "迁移修改完成")
             set("密码", "changed-primary")
             shot("direct-editor")
             set("用途 2", "修改后的工作用途")
@@ -371,10 +389,9 @@ class LegacyEditingTest {
             assertTrue(device.wait(Until.hasObject(By.text("编辑账号")), 5000))
             device.findObject(By.text("保存")).click()
             assertTrue(device.wait(Until.hasObject(By.text("迁移修改完成")), 7000))
-            click("迁移修改完成")
-            assertTrue(device.wait(Until.hasObject(By.text("编辑账号")), 5000))
-            set("账号名称", "不应落盘的取消编辑")
-            device.findObject(By.desc("返回")).click()
+            openEditor("迁移修改完成", "编辑账号")
+            set("标题 *", "不应落盘的取消编辑")
+            device.findObject(By.desc("关闭")).click()
             assertTrue(device.wait(Until.hasObject(By.text("保存这次修改？")), 3000))
             device.findObject(By.text("放弃修改")).click()
             assertTrue(device.wait(Until.hasObject(By.text("迁移修改完成")), 5000))
@@ -478,12 +495,9 @@ class LegacyEditingTest {
                     .putExtra("qaScreenshots", true)
             )
         try {
-            assertTrue(device.wait(Until.hasObject(By.text("解锁资料库")), 10000))
-            device.findObject(By.clazz("android.widget.EditText")).text = "1"
-            device.wait(Until.findObject(By.text("解锁").enabled(true)), 5000).click()
-            device.wait(Until.findObject(By.desc("钱包")), 10000).click()
-            click("二十四词迁移钱包")
-            assertTrue(device.wait(Until.hasObject(By.text("编辑钱包")), 5000))
+            unlockFromLockScreen(device)
+            openDestination(device, "钱包")
+            openEditor("二十四词迁移钱包", "编辑钱包")
             set("私钥", "2".repeat(64))
             scenario.recreate() // Recovery retains which credential was being edited.
             assertTrue(device.wait(Until.hasObject(By.text("编辑钱包")), 5000))
@@ -495,8 +509,8 @@ class LegacyEditingTest {
             assertEquals(expected, saved.getString("address"))
             assertEquals(phrase, saved.getString("mnemonic"))
             assertFalse(saved.has("_walletEditSource"))
-            click("二十四词迁移钱包")
-            set("钱包名称", "不能保存的草稿名称")
+            openEditor("二十四词迁移钱包", "编辑钱包")
+            set("标题 *", "不能保存的草稿名称")
             scenario.recreate()
             assertTrue(device.wait(Until.hasObject(By.text("编辑钱包")), 5000))
             click("移到回收站…")

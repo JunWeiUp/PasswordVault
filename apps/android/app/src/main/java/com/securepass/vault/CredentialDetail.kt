@@ -11,6 +11,8 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
@@ -24,9 +26,11 @@ internal fun EntryDetail(
     t: (String, String) -> String,
     onDelete: () -> Unit,
     restore: () -> Unit,
+    generatePassword: (() -> Unit)? = null,
+    openHealth: (() -> Unit)? = null,
 ) {
     DetailPrivacy(vault, item.optString("id")) {
-        EntryDetailContent(item, vault, t, onDelete, restore)
+        EntryDetailContent(item, vault, t, onDelete, restore, generatePassword, openHealth)
     }
 }
 
@@ -38,6 +42,8 @@ private fun EntryDetailContent(
     t: (String, String) -> String,
     onDelete: () -> Unit,
     restore: () -> Unit,
+    generatePassword: (() -> Unit)?,
+    openHealth: (() -> Unit)?,
 ) {
     val state by vault.state.collectAsState()
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -51,6 +57,14 @@ private fun EntryDetailContent(
     var nextCode by remember(item.optString("id"), item.optString("secret"), item.optInt("period", 30)) { mutableStateOf("") }
     var remaining by remember(item.optString("id")) { mutableIntStateOf(0) }
     val period = item.optInt("period", 30).coerceAtLeast(1)
+    // Same core audit the list's "Needs attention" chip uses; re-run when the entry changes.
+    var healthFinding by remember(item.optString("id")) { mutableStateOf<JSONObject?>(null) }
+    LaunchedEffect(item.toString()) {
+        healthFinding =
+            if (type == "password" && !deleted)
+                runCatching { vault.audit().objects().firstOrNull { it.optString("id") == item.optString("id") } }.getOrNull()
+            else null
+    }
     LaunchedEffect(item.toString()) {
         if (type == "totp" || (type == "password" && item.optString("secret").isNotBlank()))
             while (true) {
@@ -93,6 +107,9 @@ private fun EntryDetailContent(
         when (type) {
             "device" -> DeviceDetailContent(item, vault, t)
             "password" -> {
+                if (!deleted) healthIssue(healthFinding)?.let { issue ->
+                    AccountHealthBanner(issue, t, generatePassword?.takeIf { writable }, openHealth)
+                }
                 if (!deleted) FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Button(onClick = { copy(item.optString("password")) }, enabled = item.optString("password").isNotEmpty(), contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)) {
                         Icon(Icons.Outlined.ContentCopy, null, Modifier.size(16.dp)); Spacer(Modifier.width(6.dp)); Text(t("复制密码", "Copy password"))
@@ -109,6 +126,7 @@ private fun EntryDetailContent(
                 DetailSection(t("登录信息", "Login information")) {
                     DetailField(t("用户名", "Username"), item.optString("username"), vault, t)
                     DetailField(t("密码", "Password"), item.optString("password"), vault, t, secret = true)
+                    PasswordStrengthBar(item.optString("password"), t, Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 10.dp))
                     if (item.optString("url").isNotBlank()) DetailField(t("网站", "Website"), item.optString("url"), vault, t)
                     if (item.optString("secret").isNotBlank()) DetailCodeRow(code, remaining, period, copy, t, compact = true)
                     if (item.optInt("passwordDuration") > 0) DetailValue(t("密码有效期", "Password validity"), t("${item.optInt("passwordDuration")} 天", "${item.optInt("passwordDuration")} days"))
@@ -132,6 +150,7 @@ private fun EntryDetailContent(
                     DetailField(t("设置密钥", "Setup key"), item.optString("secret"), vault, t, secret = true, monospace = true)
                     DetailValue(t("更新间隔", "Refresh interval"), t("$period 秒", "$period seconds"))
                 }
+                if (!deleted && item.optString("secret").isNotBlank()) TotpSetupQrSection(item, t)
             }
             "crypto" -> {
                 if (!deleted) Button(onClick = { copy(item.optString("address")) }, enabled = item.optString("address").isNotBlank()) {
@@ -150,33 +169,45 @@ private fun EntryDetailContent(
                     Text(t("助记词只在此页面显示，不提供复制。请避免旁观或屏幕共享。", "The recovery phrase is shown only on this page and cannot be copied. Avoid onlookers and screen sharing."), Modifier.padding(horizontal = 5.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
-            "creditCard", "identity" -> {
-                val card = type == "creditCard"
-                val group = item.optJSONObject(if (card) "card" else "identity") ?: JSONObject()
-                if (card) {
-                    PaymentCardPreview(group, t)
-                    if (!deleted) FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(onClick = { copy(group.optString("number")) }, enabled = group.optString("number").isNotBlank()) { Text(t("复制卡号", "Copy card number")) }
-                        OutlinedButton(onClick = { copy(group.optString("securityCode")) }, enabled = group.optString("securityCode").isNotBlank()) { Text(t("复制安全码", "Copy security code")) }
+            "creditCard" -> {
+                val group = item.optJSONObject("card") ?: JSONObject()
+                PaymentCardPreview(item, t)
+                if (!deleted) FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(onClick = { copy(group.optString("number")) }, enabled = group.optString("number").isNotBlank()) { Text(t("复制卡号", "Copy card number")) }
+                    OutlinedButton(onClick = { copy(group.optString("securityCode")) }, enabled = group.optString("securityCode").isNotBlank()) { Text(t("复制安全码", "Copy security code")) }
+                }
+                DetailSection(t("银行卡信息", "Card information")) {
+                    val preferred = listOf("cardholder", "number", "expiryDate", "securityCode", "pin")
+                    val combined = setOf("bank", "brand", "expiryMonth", "expiryYear")
+                    val fields = preferred.filter { group.has(it) || (it == "expiryDate" && (group.has("expiryMonth") || group.has("expiryYear"))) }
+                    (fields + group.keys().asSequence().toList().filter { it !in preferred && it !in combined }.sorted()).forEach { field ->
+                        val value = if (field == "expiryDate") group.optString(field).ifBlank { listOf(group.optString("expiryMonth"), group.optString("expiryYear").takeLast(2)).filter { it.isNotBlank() }.joinToString("/") } else group.optString(field)
+                        DetailField(if (field == "expiryDate") t("有效期", "Expiry") else structuredFieldLabel(field, t), value, vault, t, secret = field in listOf("number", "securityCode", "pin"), monospace = field in listOf("number", "securityCode", "pin"))
                     }
                 }
-                DetailSection(if (card) t("银行卡信息", "Card information") else t("证件信息", "Identity information")) {
-                    val preferred = if (card) listOf("cardholder", "number", "expiryDate", "securityCode", "pin") else listOf("fullName", "documentType", "documentNumber", "idNumber", "passportNumber", "issuingAuthority", "expiryDate")
-                    val combined = if (card) setOf("bank", "brand", "expiryMonth", "expiryYear") else setOf("firstName", "lastName")
-                    val fields = preferred.filter { group.has(it) || (it == "expiryDate" && card && (group.has("expiryMonth") || group.has("expiryYear"))) || (it == "fullName" && !card && (group.has("firstName") || group.has("lastName"))) }
-                    (fields + group.keys().asSequence().toList().filter { it !in preferred && it !in combined }.sorted()).forEach { field ->
-                        val value = when {
-                            card && field == "expiryDate" -> group.optString(field).ifBlank { listOf(group.optString("expiryMonth"), group.optString("expiryYear").takeLast(2)).filter { it.isNotBlank() }.joinToString("/") }
-                            !card && field == "fullName" -> group.optString(field).ifBlank { if (t("zh", "en") == "zh") group.optString("lastName") + group.optString("firstName") else listOf(group.optString("firstName"), group.optString("lastName")).filter { it.isNotBlank() }.joinToString(" ") }
-                            else -> group.optString(field)
-                        }
-                        DetailField(if (field == "fullName") t("姓名", "Name") else if (card && field == "expiryDate") t("有效期", "Expiry") else structuredFieldLabel(field, t), value, vault, t, secret = field in listOf("number", "securityCode", "pin", "documentNumber", "idNumber", "passportNumber"), monospace = field in listOf("number", "securityCode", "pin"))
+            }
+            "identity" -> {
+                val group = item.optJSONObject("identity") ?: JSONObject()
+                DetailSection(t("证件信息", "Identity document")) {
+                    val name = IdentityDocument.holderName(group, t("zh", "en") == "zh")
+                    if (name.isNotBlank()) DetailField(t("姓名", "Name"), name, vault, t)
+                    IdentityDocument.FIELDS.forEach { spec ->
+                        val value = IdentityDocument.value(item, spec.id)
+                        if (value.isNotBlank()) DetailField(IdentityDocument.label(spec.id, t), value, vault, t, secret = spec.kind == "concealed", monospace = spec.kind == "concealed")
                     }
+                    // Legacy/imported identity keys stay visible (read-only) and are never rewritten.
+                    IdentityDocument.legacyIdentityKeys(group).filter { it !in setOf("fullName", "name") || name.isBlank() }.forEach { field ->
+                        DetailField(structuredFieldLabel(field, t), group.optString(field), vault, t, secret = field in listOf("documentNumber", "idNumber", "passportNumber"))
+                    }
+                }
+                val contact = IdentityDocument.CORE_IDENTITY_FIELDS.filter { it !in setOf("firstName", "lastName") && group.optString(it).isNotBlank() }
+                if (contact.isNotEmpty()) DetailSection(t("联系信息", "Contact details")) {
+                    contact.forEach { field -> DetailField(structuredFieldLabel(field, t), group.optString(field), vault, t) }
                 }
             }
         }
         PasskeyRecordsPanel(item, vault, t)
-        val custom = item.optJSONArray("customFields")?.objects().orEmpty()
+        val custom = item.optJSONArray("customFields")?.objects().orEmpty().filter { type != "identity" || !IdentityDocument.isDocumentField(it) }
         custom.groupBy { it.optString("group").ifBlank { t("自定义字段", "Custom fields") } }.forEach { (name, fields) ->
             DetailSection(name) { fields.forEach { DetailField(it.optString("label"), it.optString("value"), vault, t, secret = it.optString("kind") == "concealed") } }
         }
@@ -225,7 +256,7 @@ internal fun DetailHero(item: JSONObject, t: (String, String) -> String) {
         }
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
             Text(item.optString("title"), style = MaterialTheme.typography.titleLarge)
-            val subtitle = when (type) { "totp" -> item.optString("username"); "crypto" -> item.optString("network"); "device" -> item.optJSONObject("device")?.optString("host").orEmpty(); "creditCard" -> item.optJSONObject("card")?.optString("brand").orEmpty(); "identity" -> t("身份证件", "Identity"); else -> listOf(item.optString("url"), item.optString("category")).filter { it.isNotBlank() }.joinToString(" · ") }
+            val subtitle = when (type) { "totp" -> item.optString("username"); "crypto" -> item.optString("network"); "device" -> item.optJSONObject("device")?.optString("host").orEmpty(); "creditCard" -> paymentCardFace(item).let { listOf(it.bank, it.brand) }.filter { it.isNotBlank() }.joinToString(" · "); "identity" -> listOf(IdentityDocument.value(item, "document.type").ifBlank { t("身份证件", "Identity") }, IdentityDocument.holderName(item.optJSONObject("identity"), t("zh", "en") == "zh")).filter { it.isNotBlank() }.joinToString(" · "); else -> listOf(item.optString("url"), item.optString("category")).filter { it.isNotBlank() }.joinToString(" · ") }
             if (subtitle.isNotBlank()) Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
@@ -265,13 +296,63 @@ private fun DetailCodeRow(code: String, remaining: Int, period: Int, copy: (Stri
 }
 
 @Composable
-private fun PaymentCardPreview(card: JSONObject, t: (String, String) -> String) {
+private fun PaymentCardPreview(item: JSONObject, t: (String, String) -> String) {
+    val face = paymentCardFace(item)
     Surface(modifier = Modifier.padding(horizontal = 3.dp), shape = RoundedCornerShape(17.dp), color = androidx.compose.ui.graphics.Color(0xFF78142D), contentColor = androidx.compose.ui.graphics.Color.White) {
         Column(Modifier.fillMaxWidth().background(androidx.compose.ui.graphics.Brush.linearGradient(listOf(androidx.compose.ui.graphics.Color(0xFFB3122D), androidx.compose.ui.graphics.Color(0xFF5D0C22)))).aspectRatio(1.6f).padding(18.dp), verticalArrangement = Arrangement.SpaceBetween) {
-            Row(Modifier.fillMaxWidth()) { Text(card.optString("bank").ifBlank { t("银行卡", "Payment card") }, Modifier.weight(1f)); Text(card.optString("brand")) }
-            Text("•••• •••• •••• " + card.optString("number").filter { it.isDigit() }.takeLast(4), fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.titleLarge)
-            Row(Modifier.fillMaxWidth()) { Text(card.optString("cardholder"), Modifier.weight(1f)); Text(card.optString("expiryDate").ifBlank { listOf(card.optString("expiryMonth"), card.optString("expiryYear")).filter { it.isNotBlank() }.joinToString("/") }) }
+            Row(Modifier.fillMaxWidth()) { Text(face.bank.ifBlank { t("银行卡", "Payment card") }, Modifier.weight(1f), style = MaterialTheme.typography.titleMedium); Text(face.brand) }
+            Text(face.masked.ifBlank { "•••• •••• •••• ••••" }, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.titleLarge)
+            Row(Modifier.fillMaxWidth()) {
+                Text(face.holder, Modifier.weight(1f))
+                if (face.expiry.isNotBlank()) Text(t("有效期 ", "Expires ") + face.expiry)
+            }
         }
+    }
+}
+
+/** The setup QR contains the full secret, so it is shown only after an explicit confirmation. */
+@Composable
+private fun TotpSetupQrSection(item: JSONObject, t: (String, String) -> String) {
+    var confirming by remember { mutableStateOf(false) }
+    var showing by remember { mutableStateOf(false) }
+    DetailSection(t("迁移", "Transfer")) {
+        Surface(onClick = { confirming = true }, color = MaterialTheme.colorScheme.surface) {
+            Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Icon(Icons.Outlined.QrCode, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                Column(Modifier.weight(1f)) {
+                    Text(t("显示设置二维码", "Show setup QR code"), style = MaterialTheme.typography.bodyMedium)
+                    Text(t("二维码包含完整密钥，显示前需要确认", "The QR code contains the full secret; confirm before showing"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
+    }
+    if (confirming) AlertDialog(
+        onDismissRequest = { confirming = false },
+        title = { Text(t("显示设置二维码？", "Show setup QR code?")) },
+        text = { Text(t("任何看到二维码的人都能生成你的验证码。截屏与最近任务预览会被系统遮挡。", "Anyone who sees this QR code can generate your codes. Screenshots and recent-task previews are blocked.")) },
+        confirmButton = { TextButton(onClick = { confirming = false; showing = true }) { Text(t("显示", "Show")) } },
+        dismissButton = { TextButton(onClick = { confirming = false }) { Text(t("取消", "Cancel")) } },
+    )
+    if (showing) {
+        val matrix = remember(item.optString("secret"), item.optString("title"), item.optString("username"), item.optInt("period", 30)) {
+            runCatching { com.google.zxing.qrcode.QRCodeWriter().encode(totpSetupUri(item), com.google.zxing.BarcodeFormat.QR_CODE, 0, 0, mapOf(com.google.zxing.EncodeHintType.MARGIN to 2)) }.getOrNull()
+        }
+        AlertDialog(
+            onDismissRequest = { showing = false },
+            title = { Text(t("设置二维码", "Setup QR code")) },
+            text = {
+                Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    if (matrix == null) Text(t("无法生成二维码", "Could not generate the QR code"), color = MaterialTheme.colorScheme.error)
+                    else androidx.compose.foundation.Canvas(Modifier.size(240.dp).background(androidx.compose.ui.graphics.Color.White).semantics { contentDescription = t("设置二维码", "Setup QR code") }) {
+                        val cell = size.minDimension / matrix.width
+                        for (x in 0 until matrix.width) for (y in 0 until matrix.height) if (matrix.get(x, y))
+                            drawRect(androidx.compose.ui.graphics.Color.Black, androidx.compose.ui.geometry.Offset(x * cell, y * cell), androidx.compose.ui.geometry.Size(cell + 0.5f, cell + 0.5f))
+                    }
+                    Text(t("用另一台设备的验证器扫描。关闭后二维码不再显示。", "Scan with an authenticator on another device. Closing hides it."), style = MaterialTheme.typography.bodySmall)
+                }
+            },
+            confirmButton = { TextButton(onClick = { showing = false }) { Text(t("完成", "Done")) } },
+        )
     }
 }
 

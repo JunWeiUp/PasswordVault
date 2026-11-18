@@ -25,6 +25,7 @@ internal fun BiometricSettings(
     var available by remember { mutableStateOf(biometric.available) }
     var busy by remember { mutableStateOf(false) }
     var confirmDisable by remember { mutableStateOf(false) }
+    var reverify by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
     val lifecycle = LocalLifecycleOwner.current.lifecycle
@@ -86,8 +87,15 @@ internal fun BiometricSettings(
         message,
         t,
         onToggle = { checked -> if (checked) enroll() else confirmDisable = true },
-        onRenew = ::enroll,
+        onRenew = { reverify = true },
     )
+    if (reverify)
+        MasterPasswordReverifyDialog(
+            t,
+            verify = vault::verifyMasterPassword,
+            onVerified = { reverify = false; enroll() },
+            onDismiss = { reverify = false },
+        )
     if (confirmDisable)
         AlertDialog(
             onDismissRequest = { confirmDisable = false },
@@ -174,8 +182,14 @@ internal fun BiometricControls(
                 style = MaterialTheme.typography.bodyMedium,
             )
         if (enabled)
+            Text(
+                t("签名或密钥库变化后使用；需要先输入主密码。", "Use after signing or keystore changes; your master password is required first."),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodySmall,
+            )
+        if (enabled)
             OutlinedButton(onClick = onRenew, enabled = available && !busy) {
-                Text(t("更新生物识别验证", "Renew biometric verification"))
+                Text(t("重新验证指纹", "Re-verify fingerprint"))
             }
         message?.let {
             Text(
@@ -185,4 +199,51 @@ internal fun BiometricControls(
             )
         }
     }
+}
+
+/** Asks for the master password before biometric re-enrollment; a wrong password changes nothing. */
+@Composable
+internal fun MasterPasswordReverifyDialog(
+    t: (String, String) -> String,
+    verify: suspend (String) -> Boolean,
+    onVerified: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var password by remember { mutableStateOf("") }
+    var checking by remember { mutableStateOf(false) }
+    var failed by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    AlertDialog(
+        onDismissRequest = { if (!checking) { password = ""; onDismiss() } },
+        title = { Text(t("重新验证指纹", "Re-verify fingerprint")) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(t("输入主密码后，系统会重新登记指纹解锁。", "Enter your master password, then confirm your fingerprint to re-enroll."))
+                Input(t("主密码", "Master password"), password, { password = it; failed = false }, secret = true)
+                if (failed)
+                    Text(
+                        t("主密码不正确，指纹设置未改变。", "Incorrect master password; fingerprint setup is unchanged."),
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = !checking && password.isNotEmpty(),
+                onClick = {
+                    checking = true
+                    scope.launch {
+                        val ok = try { verify(password) } catch (_: Exception) { false }
+                        checking = false
+                        password = ""
+                        if (ok) onVerified() else failed = true
+                    }
+                },
+            ) { Text(if (checking) t("验证中…", "Verifying…") else t("继续", "Continue")) }
+        },
+        dismissButton = {
+            TextButton(enabled = !checking, onClick = { password = ""; onDismiss() }) { Text(t("取消", "Cancel")) }
+        },
+    )
 }

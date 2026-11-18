@@ -31,10 +31,14 @@ internal fun VaultWorkspace(
     language: () -> Unit,
 ) {
     val wide = LocalConfiguration.current.screenWidthDp >= 600
+    val context = androidx.compose.ui.platform.LocalContext.current
+    // Settings › General › Show on open picks the first bottom destination after unlocking.
+    val startPage = remember { AppPreferences.startPage(context) }
     var page by rememberSaveable {
-        mutableStateOf(vault.pendingDraft?.let { workspaceDestination(JSONObject(it).optString("type")) } ?: "secureNote")
+        mutableStateOf(vault.pendingDraft?.let { workspaceDestination(JSONObject(it).optString("type")) } ?: startPage)
     }
-    var root by rememberSaveable { mutableStateOf("secureNote") }
+    var root by rememberSaveable { mutableStateOf(startPage) }
+    LaunchedEffect(root) { AppPreferences.rememberLastPage(context, root) }
     val drawer = rememberDrawerState(DrawerValue.Closed)
     var detailMenu by remember { mutableStateOf(false) }
     var selected by rememberSaveable {
@@ -46,6 +50,7 @@ internal fun VaultWorkspace(
     }
     var editing by remember { mutableStateOf(vault.pendingDraft?.let(::JSONObject)) }
     var editingRestored by remember { mutableStateOf(vault.pendingDraft != null) }
+    var editingGenerator by remember { mutableStateOf(false) }
     var deleting by remember { mutableStateOf<JSONObject?>(null) }
     var createChooser by remember { mutableStateOf(false) }
     var codeChooser by remember { mutableStateOf(false) }
@@ -179,7 +184,7 @@ internal fun VaultWorkspace(
                             IconButton(onClick = { scope.launch { vault.save(JSONObject(current.toString()).put("isFavorite", !current.optBoolean("isFavorite"))) } }) {
                                 Icon(if (current.optBoolean("isFavorite")) Icons.Outlined.Star else Icons.Outlined.StarOutline, t("收藏", "Favorite"), tint = if (current.optBoolean("isFavorite")) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
                             }
-                            if (current.optString("type") !in setOf("device", "secureNote")) IconButton(onClick = { editingRestored = false; editing = JSONObject(current.toString()) }) { Icon(Icons.Outlined.Edit, t("编辑", "Edit")) }
+                            if (current.optString("type") != "secureNote" && (current.optString("type") != "device" || DevicePayload.editable(current, true))) IconButton(onClick = { editingRestored = false; editing = JSONObject(current.toString()) }) { Icon(Icons.Outlined.Edit, t("编辑", "Edit")) }
                         }
                         IconButton(onClick = { detailMenu = true }) { Icon(Icons.Outlined.MoreHoriz, t("更多操作", "More actions")) }
                     }
@@ -218,6 +223,13 @@ internal fun VaultWorkspace(
                 contentColor = MaterialTheme.colorScheme.primary,
                 shape = RoundedCornerShape(16.dp),
             ) { Icon(Icons.Outlined.Edit, null); Spacer(Modifier.width(8.dp)); Text(t("编辑", "Edit")) }
+            if (page == "device" && current == null && DevicePayload.canCreate(state.settings, vault.canWriteLibrary()))
+                ExtendedFloatingActionButton(
+                    onClick = { editingRestored = false; editing = DevicePayload.blank() },
+                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                    shape = RoundedCornerShape(18.dp),
+                ) { Icon(Icons.Outlined.Add, null); Spacer(Modifier.width(8.dp)); Text(t("新建", "New")) }
             if (
                 vault.canWriteLibrary() && (page in destinations || page == "all") &&
                     page != "settings" &&
@@ -304,6 +316,12 @@ internal fun VaultWorkspace(
                                 t,
                                 { deleting = current },
                                 { scope.launch { if (vault.trash(current)) selected = null } },
+                                generatePassword = {
+                                    editingRestored = false
+                                    editingGenerator = true
+                                    editing = JSONObject(current.toString())
+                                },
+                                openHealth = { selected = null; settingsStart = "health"; page = "settings" },
                             )
                         }
                     page == "settings" ->
@@ -354,9 +372,10 @@ internal fun VaultWorkspace(
     }
     current?.let { item -> EntryMenu(detailMenu, { detailMenu = false }, item, vault, t, { editingRestored = false; editing = JSONObject(item.toString()) }, { deleting = item }) }
     editing?.let {
-        EntryEditor(it, vault, t, restoredDraft = editingRestored) {
+        EntryEditor(it, vault, t, restoredDraft = editingRestored, openGenerator = editingGenerator) {
             editing = null
             editingRestored = false
+            editingGenerator = false
         }
     }
     if (generator) QuickGenerator(vault, t) { generator = false }
