@@ -157,12 +157,15 @@ struct VaultDocument: Codable {
 
 enum Destination: String, CaseIterable, Identifiable {
   case notes, passwords, codes, wallets, generator, audit, backups, sharing, trash, settings
+  /// Every live entry, and the favorites across types (mobile baseline design's library views).
+  case all, favorites
   var id: String { rawValue }
   /// Entry types listed under this destination. Wallets group cards, identities and crypto
   /// wallets; stored `type` values are unchanged.
   var listedTypes: Set<String> {
     switch self {
     case .wallets: return ["crypto", "creditCard", "identity"]
+    case .all, .favorites: return ["secureNote", "password", "totp", "crypto", "creditCard", "identity"]
     default: return itemType.map { [$0] } ?? []
     }
   }
@@ -189,6 +192,8 @@ enum Destination: String, CaseIterable, Identifiable {
     case .sharing: return "person.2"
     case .trash: return "trash"
     case .settings: return "gearshape"
+    case .all: return "square.grid.2x2"
+    case .favorites: return "star"
     }
   }
   func title(chinese: Bool) -> String {
@@ -198,6 +203,7 @@ enum Destination: String, CaseIterable, Identifiable {
       .generator: ("密码生成器", "Password generator"),
       .audit: ("密码健康", "Password health"), .backups: ("备份与导入", "Backups & import"),
       .sharing: ("共享资料库", "Shared vaults"), .trash: ("回收站", "Trash"), .settings: ("设置", "Settings"),
+      .all: ("全部项目", "All items"), .favorites: ("个人收藏", "Favorites"),
     ]
     let pair = labels[self]!
     return chinese ? pair.0 : pair.1
