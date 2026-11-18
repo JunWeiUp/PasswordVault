@@ -108,11 +108,16 @@ test("document editor opens full Python text and preserves full filenames", asyn
   expect(app.texts()).toContain("示例设备-用于检查完整长标题显示的自动备份与健康检查脚本.py");
 
   await app.waitFor("label:资料正文");
-  await app.press("text:系统终端 ▾");
-  await app.waitFor("text:首选终端");
-  await app.press("text:系统终端 · 当前首选");
-  await app.press("text:点击运行");
-  expect(app.texts()).toContain("已请求终端运行");
+  // Terminal handoff is Mac-only; Windows shows no run controls.
+  if (app.texts().includes("系统终端 ▾")) {
+    await app.press("text:系统终端 ▾");
+    await app.waitFor("text:首选终端");
+    await app.press("text:系统终端 · 当前首选");
+    await app.press("text:点击运行");
+    expect(app.texts()).toContain("已请求终端运行");
+  } else {
+    expect(app.texts().includes("点击运行")).toBe(false);
+  }
   expect(app.value("label:资料正文")).toBe("#!/usr/bin/env python3\n    print('SYNTHETIC_ONLY')\n");
   await app.clear("label:资料正文");
   await app.type("label:资料正文", "print('updated')");

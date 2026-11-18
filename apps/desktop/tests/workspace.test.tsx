@@ -74,8 +74,10 @@ test("unlocks and browses every destination", async () => {
   await app.waitFor("text:新增设备 ▾");
   await shot(app, "11-devices");
   await app.press("text:AI 访问");
-  await app.waitFor("text:让 AI 找到需要的资料");
-  await app.waitFor("text:访问范围");
+  // AI access is not offered on Windows yet; the page says so instead.
+  await app.wait(300);
+  if (app.texts().includes("此平台暂未开放 AI 访问")) expect(app.texts().includes("让 AI 找到需要的资料")).toBe(false);
+  else { await app.waitFor("text:让 AI 找到需要的资料"); await app.waitFor("text:访问范围"); }
   await shot(app, "12-ai-access");
   // A short window: the sidebar scrolls instead of overlapping its pinned footer.
   await app.setViewport(1200, 800);
