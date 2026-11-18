@@ -54,6 +54,7 @@ internal fun VaultWorkspace(
     var settingsSubpage by remember { mutableStateOf(false) }
     var settingsStart by remember { mutableStateOf("home") }
     val scope = rememberCoroutineScope()
+    val snackbar = remember { SnackbarHostState() }
     if (createChooser && vault.canWriteLibrary()) VaultActionSheet(t("新建钱包项目", "New wallet item"), "", { createChooser = false }) {
         for ((kind, label) in listOf("creditCard" to t("银行卡", "Payment card"), "identity" to t("身份证件", "Identity"), "crypto" to t("加密货币钱包", "Crypto wallet"))) {
             ListItem(headlineContent = { Text(label) }, leadingContent = { Icon(when (kind) { "creditCard" -> Icons.Outlined.CreditCard; "identity" -> Icons.Outlined.Badge; else -> Icons.Outlined.CurrencyBitcoin }, null) }, modifier = Modifier.clickable { createChooser = false; editingRestored = false; editing = VaultRepository.blank(kind) })
@@ -162,6 +163,7 @@ internal fun VaultWorkspace(
     ) {
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
+        snackbarHost = { SnackbarHost(snackbar) },
         topBar = {
             if (current != null || page in setOf("relay", "webdav")) TopAppBar(
                 expandedHeight = 55.dp,
@@ -373,12 +375,24 @@ internal fun VaultWorkspace(
                     enabled = !state.busy,
                     onClick = {
                         scope.launch {
-                            val ok =
-                                if (target.optBoolean("isDeleted")) vault.remove(target)
-                                else vault.trash(target)
+                            val permanent = target.optBoolean("isDeleted")
+                            val ok = if (permanent) vault.remove(target) else vault.trash(target)
                             if (ok) {
                                 deleting = null
                                 if (selected == target.optString("id")) selected = null
+                                // Moving to Trash can be undone right away; permanent deletion cannot.
+                                if (!permanent) {
+                                    val result = snackbar.showSnackbar(
+                                        message = t("已移到回收站", "Moved to Trash"),
+                                        actionLabel = t("撤销", "Undo"),
+                                        duration = SnackbarDuration.Short,
+                                    )
+                                    if (result == SnackbarResult.ActionPerformed) {
+                                        val id = target.optString("id")
+                                        vault.state.value.entries.firstOrNull { it.optString("id") == id && it.optBoolean("isDeleted") }
+                                            ?.let { if (!vault.trash(it)) snackbar.showSnackbar(t("无法恢复，请在回收站中操作", "Could not restore; use Trash")) }
+                                    }
+                                }
                             }
                         }
                     },

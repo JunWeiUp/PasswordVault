@@ -65,14 +65,16 @@ fun LegacyVaultTheme(dark: Boolean, content: @Composable () -> Unit) {
                 titleLarge = base.titleLarge.copy(fontSize = 20.sp, fontWeight = FontWeight.Medium),
                 titleMedium =
                     base.titleMedium.copy(fontSize = 14.sp, fontWeight = FontWeight.Medium),
-                bodyLarge = base.bodyLarge.copy(fontSize = 14.sp, lineHeight = 21.sp),
+                // Mobile baseline design: 16sp body text; secondary text stays 14sp.
+                bodyLarge = base.bodyLarge.copy(fontSize = 16.sp, lineHeight = 24.sp),
                 bodyMedium = base.bodyMedium.copy(fontSize = 14.sp, lineHeight = 21.sp),
             ),
         shapes =
             Shapes(
                 small = RoundedCornerShape(12.dp),
-                medium = RoundedCornerShape(14.dp),
-                large = RoundedCornerShape(18.dp),
+                // Cards 16dp; bottom sheets and dialogs 28dp, as in the mobile baseline design.
+                medium = RoundedCornerShape(16.dp),
+                large = RoundedCornerShape(28.dp),
             ),
         content = content,
     )
