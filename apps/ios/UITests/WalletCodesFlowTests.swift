@@ -22,13 +22,12 @@ final class WalletCodesFlowTests: XCTestCase {
     // A code imported from a fictional setup link shows its live value in the list.
     app.tabBars.buttons["验证码"].tap()
     app.buttons["新建"].tap()
-    app.buttons["新建条目"].tap()
+    XCTAssertTrue(app.navigationBars["添加验证码"].waitForExistence(timeout: 5))
     let link = app.textFields["otpauth://…"]
     XCTAssertTrue(link.waitForExistence(timeout: 5))
     link.tap()
     link.typeText("otpauth://totp/Example:alex@example.test?secret=JBSWY3DPEHPK3PXP&issuer=Example")
-    app.buttons["导入设置链接"].tap()
-    app.buttons["保存"].tap()
+    app.buttons["导入"].tap()
     let code = app.descendants(matching: .any)["code.row"].firstMatch
     XCTAssertTrue(code.waitForExistence(timeout: 10))
     XCTAssertTrue(waitFor(code, "value MATCHES '[0-9]{6}'"), "The list shows the current six-digit code")
@@ -130,6 +129,60 @@ final class WalletCodesFlowTests: XCTestCase {
     typeEdit.typeText(" card")
     app.buttons["保存"].tap()
     XCTAssertTrue(app.staticTexts["Passport card"].waitForExistence(timeout: 10))
+  }
+
+  /// Add code sheet: manual key entry with period, a rejected key, then the saved code.
+  func testAddCodeManuallyWithPeriod() {
+    let app = XCUIApplication()
+    app.launchArguments = ["--ui-test-vault", UUID().uuidString]
+    app.launch()
+    let password = app.secureTextFields["vault.password"]
+    XCTAssertTrue(password.waitForExistence(timeout: 10))
+    password.tap()
+    password.typeText("1")
+    let confirm = app.secureTextFields.element(boundBy: 1)
+    confirm.tap()
+    confirm.typeText("1")
+    app.buttons["vault.unlock"].tap()
+
+    XCTAssertTrue(app.tabBars.buttons["验证码"].waitForExistence(timeout: 10))
+    app.tabBars.buttons["验证码"].tap()
+    app.buttons["新建"].tap()
+    XCTAssertTrue(app.navigationBars["添加验证码"].waitForExistence(timeout: 5))
+    XCTAssertTrue(app.buttons["从图片识别二维码"].exists)
+    attach(app, "add-code-sheet")
+    app.buttons["code.manual"].tap()
+    let issuer = app.textFields["code.issuer"]
+    XCTAssertTrue(issuer.waitForExistence(timeout: 5))
+    issuer.tap()
+    issuer.typeText("GitLab")
+    let secret = app.textFields["code.secret"]
+    secret.tap()
+    secret.typeText("not base32!")
+    let period = app.textFields["code.period"]
+    // The field is right-aligned; tapping its trailing edge puts the cursor after "30".
+    period.coordinate(withNormalizedOffset: CGVector(dx: 0.97, dy: 0.5)).tap()
+    period.typeText(XCUIKeyboardKey.delete.rawValue + XCUIKeyboardKey.delete.rawValue + "60")
+    XCTAssertEqual(period.value as? String, "60")
+    XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS '6 位 · SHA1'")).firstMatch.exists
+      || app.staticTexts["位数 · 算法, 6 位 · SHA1"].exists, "Digits are fixed by the core")
+    app.buttons["code.add"].tap()
+    XCTAssertTrue(app.staticTexts["设置密钥无效，请检查后重试。"].waitForExistence(timeout: 10))
+    secret.tap()
+    for _ in 0..<12 { secret.typeText(XCUIKeyboardKey.delete.rawValue) }
+    secret.typeText("JBSW Y3DP EHPK 3PXP")
+    app.buttons["code.add"].tap()
+
+    let code = app.descendants(matching: .any)["code.row"].firstMatch
+    XCTAssertTrue(code.waitForExistence(timeout: 10))
+    XCTAssertEqual(code.label, "GitLab")
+    app.buttons["查看详情"].firstMatch.tap()
+    let config = app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'SHA1 · 6 位 · 60 秒'")).firstMatch
+    XCTAssertTrue(config.waitForExistence(timeout: 5))
+    let none = app.staticTexts["code.linked.none"]
+    for _ in 0..<4 where !none.isHittable { app.swipeUp() }
+    XCTAssertTrue(none.exists, "No account shares this key")
+    attach(app, "code-detail-linked")
   }
 
   private func waitFor(_ element: XCUIElement, _ predicate: String) -> Bool {

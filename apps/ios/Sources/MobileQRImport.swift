@@ -7,6 +7,10 @@ struct MobileQRImport: View {
   @Environment(\.dismiss) private var dismiss
   let apply: ([String: JSONValue]) -> Void
   var payloadHandler: ((String) -> Void)? = nil
+  /// Saves the parsed code before closing; returns an error message to show instead.
+  var save: (([String: JSONValue]) async -> String?)? = nil
+  /// "Add code" layout: scan first, then image, link and manual key entry.
+  var manual = false
   @State private var selection: PhotosPickerItem?
   @State private var camera = false
   @State private var busy = false
@@ -17,15 +21,27 @@ struct MobileQRImport: View {
     NavigationStack {
       Form {
         Section {
-          PhotosPicker(selection: $selection, matching: .images) {
-            Label(photoLabel, systemImage: "photo")
-          }
           if UIImagePickerController.isSourceTypeAvailable(.camera) {
             Button {
               camera = true
             } label: {
-              Label(store.t("拍摄二维码", "Capture QR code"), systemImage: "camera")
+              Label(manual ? store.t("扫描二维码", "Scan QR code") : store.t("拍摄二维码", "Capture QR code"), systemImage: "camera")
             }
+          }
+          PhotosPicker(selection: $selection, matching: .images) {
+            Label(photoLabel, systemImage: "photo")
+          }
+          if manual, let save {
+            NavigationLink {
+              ManualCodeForm(save: save, done: { dismiss() })
+            } label: {
+              Label(store.t("手动输入密钥", "Enter setup key"), systemImage: "keyboard")
+            }.accessibilityIdentifier("code.manual")
+          }
+        } footer: {
+          if manual {
+            Text(store.t("扫描网站提供的二维码，或手动输入密钥。相机画面只在本机处理；拒绝相机权限时仍可手动输入。",
+              "Scan the QR code the website shows, or enter the key. The camera image stays on this device; without camera access you can still type the key."))
           }
         }
         Section(store.t("也可粘贴设置链接", "Or paste a setup link")) {
@@ -35,7 +51,8 @@ struct MobileQRImport: View {
         }
         if busy { ProgressView() }
         if let message { Text(message).foregroundStyle(.red) }
-      }.disabled(busy).navigationTitle(store.t("导入验证码", "Import authenticator"))
+      }.disabled(busy).navigationTitle(manual ? store.t("添加验证码", "Add code") : store.t("导入验证码", "Import authenticator"))
+        .navigationBarTitleDisplayMode(.inline)
         .toolbar {
           ToolbarItem(placement: .cancellationAction) {
             Button(store.t("取消", "Cancel")) { dismiss() }
@@ -94,7 +111,11 @@ struct MobileQRImport: View {
       defer { busy = false }
       do {
         let result = try await store.perform(["op": .string("parse-totp"), "uri": .string(text)])
-        apply(result.object)
+        if let save {
+          if let failure = await save(result.object) { message = failure; return }
+        } else {
+          apply(result.object)
+        }
         dismiss()
       } catch {
         message = store.t(

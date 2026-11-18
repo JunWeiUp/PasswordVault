@@ -13,6 +13,7 @@ struct MobileEntryList: View {
   @State private var selection = Set<String>()
   @State private var history: VaultItem?
   @State private var moving: VaultItem?
+  @State private var addingCode = false
   private var entries: [VaultItem] {
     store.items.filter {
       (destination == .trash ? $0.isDeleted : !$0.isDeleted && destination.listedTypes.contains($0.type))
@@ -148,7 +149,12 @@ struct MobileEntryList: View {
             .accessibilityIdentifier("selection.start")
         }
       }
-      if let kind = destination.itemType {
+      if destination == .codes {
+        ToolbarItem(placement: .navigationBarTrailing) {
+          Button { addingCode = true } label: { Image(systemName: "plus") }
+            .accessibilityLabel(store.t("新建", "Add")).disabled(!store.canWriteLibrary)
+        }
+      } else if let kind = destination.itemType {
         ToolbarItem(placement: .navigationBarTrailing) {
           Menu {
             if destination == .wallets {
@@ -167,6 +173,7 @@ struct MobileEntryList: View {
       if item.type == "secureNote" { MobileRichNoteEditor(item: item) } else { MobileEntryEditor(item: item) }
     }
     .sheet(item: $history) { EntryHistorySheet(id: $0.id) }
+    .sheet(isPresented: $addingCode) { AddCodeSheet() }
     .sheet(item: $moving) { MoveToCategorySheet(ids: [$0.id]) }
     .confirmationDialog(
       store.t("清空回收站？", "Empty Trash?"), isPresented: $emptyingTrash, titleVisibility: .visible

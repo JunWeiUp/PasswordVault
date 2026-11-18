@@ -41,14 +41,12 @@ final class ListsCodesFlowTests: XCTestCase {
 
     app.tabBars.buttons["验证码"].tap()
     app.buttons["新建"].tap()
-    app.buttons["新建条目"].tap()
+    XCTAssertTrue(app.navigationBars["添加验证码"].waitForExistence(timeout: 5))
     let link = app.textFields["otpauth://…"]
     XCTAssertTrue(link.waitForExistence(timeout: 5))
     link.tap()
     link.typeText("otpauth://totp/Example:alex@example.test?secret=JBSWY3DPEHPK3PXP&issuer=Example")
-    app.buttons["导入设置链接"].tap()
-    XCTAssertTrue(waitFor(app.buttons["保存"], "isEnabled == true"))
-    app.buttons["保存"].tap()
+    app.buttons["导入"].tap()
     let details = app.buttons["查看详情"].firstMatch
     XCTAssertTrue(details.waitForExistence(timeout: 10))
     details.tap()

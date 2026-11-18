@@ -56,6 +56,27 @@ struct MobileEntryDetail: View {
               Button(store.t("复制验证码", "Copy code")) { store.copy(code) }.disabled(code.isEmpty)
               value(
                 store.t("设置密钥", "Setup key"), item.string("secret"), key: "secret", secret: true)
+              LabeledContent(store.t("算法 · 位数 · 周期", "Algorithm · digits · period"),
+                value: store.t("SHA1 · 6 位 · \(Int(max(item.number("period", fallback: 30), 1))) 秒", "SHA1 · 6 · \(Int(max(item.number("period", fallback: 30), 1))) s"))
+            }
+            // Accounts that store the same setup key, as on the desktop. Linking needs no
+            // extra field; there is no separate link record in the vault format.
+            Section {
+              let linked = CodeSetup.linkedAccounts(item, in: store.items)
+              if linked.isEmpty {
+                Text(store.t("未找到使用相同密钥的账号。", "No account uses the same setup key."))
+                  .foregroundStyle(.secondary).accessibilityIdentifier("code.linked.none")
+              }
+              ForEach(linked) { account in
+                NavigationLink { MobileEntryDetail(id: account.id) } label: {
+                  VStack(alignment: .leading) {
+                    Text(account.title.isEmpty ? store.t("未命名", "Untitled") : account.title)
+                    if !account.username.isEmpty { Text(account.username).font(.caption).foregroundStyle(.secondary) }
+                  }
+                }
+              }
+            } header: {
+              Text(store.t("关联账号", "Linked accounts"))
             }
           } else if item.type == "crypto" {
             Section(store.t("钱包", "Wallet")) {
