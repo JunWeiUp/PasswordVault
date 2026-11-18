@@ -498,6 +498,23 @@ class VaultRepository(
         item.optBoolean("isDeleted") &&
             mutate("remove", JSONObject().put("id", item.getString("id")))
 
+    /**
+     * Re-checks the master password against the on-disk header without unlocking, writing or
+     * changing session state. The derived grant is wiped immediately.
+     */
+    suspend fun verifyMasterPassword(password: String): Boolean {
+        if (password.isEmpty()) return false
+        return withContext(Dispatchers.IO) {
+            try {
+                val grant = com.securepass.vault.core.createBackgroundGrant(directory.absolutePath, password)
+                grant.fill(0)
+                true
+            } catch (_: Exception) {
+                false
+            }
+        }
+    }
+
     suspend fun biometricKey(): ByteArray =
         mutex.withLock {
             check(mutable.value.unlocked)

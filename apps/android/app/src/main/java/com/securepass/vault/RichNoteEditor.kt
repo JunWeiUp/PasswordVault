@@ -156,7 +156,7 @@ internal class AndroidNoteSession(
     private val cancelled = mutableSetOf<String>()
     private data class Upload(val name: String, val mime: String, val size: Int, val bytes: java.io.ByteArrayOutputStream = java.io.ByteArrayOutputStream())
     private val uploads = mutableMapOf<String, Upload>()
-    val view = WebView(context)
+    val view: WebView = PrivateInputWebView(context)
     init {
         val dark = when (vault.state.value.settings.optString("theme")) {
             "dark" -> true

@@ -345,7 +345,7 @@ class CredentialLayoutTest {
                 }
             }
             assertTrue(device.wait(Until.hasObject(By.text("未开启")), 5000))
-            assertFalse(device.hasObject(By.text("更新生物识别验证")))
+            assertFalse(device.hasObject(By.text("重新验证指纹")))
             device.findObject(By.desc("生物识别解锁")).click()
             inst.waitForIdleSync()
             assertEquals(true, toggle)
@@ -357,7 +357,7 @@ class CredentialLayoutTest {
                 enabled.value = true
             }
             assertTrue(device.wait(Until.hasObject(By.text("已开启")), 3000))
-            device.findObject(By.text("更新生物识别验证")).click()
+            device.findObject(By.text("重新验证指纹")).click()
             inst.waitForIdleSync()
             assertTrue(renew)
             shot("biometric-enabled")
@@ -401,11 +401,11 @@ class CredentialLayoutTest {
                 }
             }
             assertTrue(device.wait(Until.hasObject(By.text("已开启")), 5000))
-            assertTrue(device.hasObject(By.text("更新生物识别验证")))
+            assertTrue(device.hasObject(By.text("重新验证指纹")))
             // Password changes disable biometrics outside this component. Observe without a resume.
             scenario.onActivity { biometric!!.disable() }
             assertTrue(device.wait(Until.hasObject(By.text("未开启")), 3000))
-            assertFalse(device.hasObject(By.text("更新生物识别验证")))
+            assertFalse(device.hasObject(By.text("重新验证指纹")))
         } finally {
             scenario.close()
             val editor = prefs.edit().clear()

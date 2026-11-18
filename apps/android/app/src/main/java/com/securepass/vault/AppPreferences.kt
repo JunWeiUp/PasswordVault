@@ -26,6 +26,8 @@ internal object AppPreferences {
     const val CLIPBOARD_SECONDS = "clipboardSeconds"
     const val START_PAGE = "startPage"
     const val LAST_PAGE = "lastPage"
+    /** Whether the Autofill service asks the system to offer saving new logins (default on). */
+    const val AUTOFILL_SAVE_PROMPT = "autofillSavePrompt"
     const val DEFAULT_CLIPBOARD_SECONDS = 30
     /** 0 means "never clear automatically" (the clipboard is still cleared on lock). */
     val CLIPBOARD_CHOICES = listOf(15, 30, 60, 120, 0)
@@ -41,6 +43,8 @@ internal object AppPreferences {
         if (selected != "last") return selected
         return last?.takeIf { it in START_CHOICES && it != "last" } ?: DEFAULT_START
     }
+
+    fun autofillSavePrompt(context: Context): Boolean = context.getSharedPreferences(FILE, 0).getBoolean(AUTOFILL_SAVE_PROMPT, true)
 
     fun clipboardSeconds(context: Context): Int =
         normalizeClipboardSeconds(context.getSharedPreferences(FILE, 0).getInt(CLIPBOARD_SECONDS, DEFAULT_CLIPBOARD_SECONDS))

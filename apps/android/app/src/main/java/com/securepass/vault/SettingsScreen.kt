@@ -13,6 +13,8 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -57,6 +59,7 @@ fun SettingsScreen(
     var clipboardSeconds by remember { mutableIntStateOf(AppPreferences.clipboardSeconds(context)) }
     var startChoice by remember { mutableStateOf(uiPrefs.getString(AppPreferences.START_PAGE, null)?.takeIf { it in AppPreferences.START_CHOICES } ?: AppPreferences.DEFAULT_START) }
     var licenses by remember { mutableStateOf(false) }
+    var savePrompt by remember { mutableStateOf(AppPreferences.autofillSavePrompt(context)) }
     if (licenses) LicensesDialog(t) { licenses = false }
     val notifySubpageChanged by rememberUpdatedState(onSubpageChanged)
     LaunchedEffect(page) { notifySubpageChanged(page != "home") }
@@ -397,6 +400,10 @@ fun SettingsScreen(
                         SettingsGroup {
                             SettingsOption(t("阻止截屏与最近任务预览", "Block screenshots and recent previews"), t("始终开启 · FLAG_SECURE", "Always on · FLAG_SECURE"))
                             SettingsRule()
+                            SettingsOption(t("隐藏在键盘个性化学习之外", "Keep out of keyboard learning"), t("始终开启 · 输入框请求输入法不记录（noPersonalizedLearning）", "Always on · fields ask the keyboard not to learn (noPersonalizedLearning)")) {
+                                Switch(checked = true, onCheckedChange = null, enabled = false, modifier = Modifier.semantics { contentDescription = t("隐藏在键盘个性化学习之外", "Keep out of keyboard learning") })
+                            }
+                            SettingsRule()
                             SettingsOption(t("本地数据", "Local data"), t("应用私有目录 · 加密保存", "App-private storage · encrypted on disk"))
                         }
                     }
@@ -534,9 +541,17 @@ fun SettingsScreen(
                         AutofillServiceStatus(t)
                         SettingsLabel(t("自动填充", "Autofill"))
                         SettingsGroup {
+                            SettingsOption(t("键盘内联建议", "Inline keyboard suggestions"), t("暂不支持：此版本只在输入框下方的下拉菜单中显示建议", "Not available yet: suggestions appear in the dropdown below the field")) {
+                                Switch(checked = false, onCheckedChange = null, enabled = false, modifier = Modifier.semantics { contentDescription = t("键盘内联建议", "Inline keyboard suggestions") })
+                            }
+                            SettingsRule()
                             SettingsOption(t("填充前要求解锁", "Unlock before filling"), t("库已锁定时需要验证；不会绕过手动锁定", "A locked vault requires verification; manual lock is respected"))
                             SettingsRule()
                             SettingsOption(t("匹配规则", "Matching rules"), t("精确主机名匹配，子域隔离，阻止 HTTPS 降级", "Exact hostnames; isolated subdomains; HTTPS downgrade blocked"))
+                            SettingsRule()
+                            SettingsOption(t("提示保存新账号", "Offer to save new logins"), t("提交登录后询问；不会自动保存", "Asks after you sign in; never saves automatically")) {
+                                Switch(checked = savePrompt, onCheckedChange = { savePrompt = it; uiPrefs.edit().putBoolean(AppPreferences.AUTOFILL_SAVE_PROMPT, it).apply() }, modifier = Modifier.semantics { contentDescription = t("提示保存新账号", "Offer to save new logins") })
+                            }
                         }
                         SettingsLabel(t("通行密钥", "Passkeys"))
                         SettingsDetail {
