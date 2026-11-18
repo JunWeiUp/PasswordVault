@@ -36,7 +36,11 @@ final class NotesFlowTests: XCTestCase {
     let bravo = app.staticTexts["Bravo note"].firstMatch
     XCTAssertTrue(alpha.waitForExistence(timeout: 10))
     XCTAssertTrue(bravo.waitForExistence(timeout: 10))
-    // Default grid, newest first: Alpha (left) then Bravo (right) on one row.
+    // The layout is a per-device preference that survives between test runs; start from grid.
+    app.buttons["显示选项"].tap()
+    app.buttons["网格"].tap()
+    XCTAssertTrue(waitFor(alpha, "exists == true"))
+    // Grid, newest first: Alpha (left) then Bravo (right) on one row.
     XCTAssertLessThan(alpha.frame.minX, bravo.frame.minX)
     XCTAssertEqual(alpha.frame.minY, bravo.frame.minY, accuracy: 4)
 
