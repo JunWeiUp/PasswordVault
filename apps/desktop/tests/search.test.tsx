@@ -41,3 +41,19 @@ test("Quick Access searches wallet details and note attachments and opens a matc
   expect(app.texts()).toContain("全部笔记");
   expect(app.texts()).not.toContain("回收账号");
 });
+
+test("Quick Access stays open after copying when the preference is off", async () => {
+  const app = await open("./search-harness.tsx", { width: 1100, height: 850, platform: "macos" });
+  await app.press("id:toggle-quick-close");
+  await app.press("id:open-quick");
+  await app.waitFor("id:quick-access");
+  expect(app.texts()).toContain("锁定时自动关闭");
+  await app.type("id:quick-access", "其他账号");
+  await app.submit("id:quick-access");
+  await app.waitUntil(() => app.clipboard() === "fixture-pass");
+  expect(app.value("id:quick-access")).toBe("其他账号");
+  await app.press("id:toggle-quick-close");
+  await app.waitFor("text:复制后关闭 · 锁定时关闭");
+  await app.submit("id:quick-access");
+  await app.waitUntil(() => !app.texts().includes("复制后关闭 · 锁定时关闭"));
+});

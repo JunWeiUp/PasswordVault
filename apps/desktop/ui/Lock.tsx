@@ -7,6 +7,8 @@ import { isMac, biometricAvailability, biometricEnabled, biometricError, unlockW
 import { c } from "./theme";
 import { askRecoveryReset, askEmergencyRestore } from "./recovery";
 import { importBackup } from "./backup";
+import { offerBiometricsAfterCreate } from "./Settings";
+import { shouldOfferBiometrics } from "./biometric-offer";
 import { Logo } from "./Sidebar";
 
 function Centered(props: { children: any; width?: number }) {
@@ -97,9 +99,13 @@ export function OnboardingScreen() {
     if (!ready()) return;
     busy.set(true);
     try {
-      await create(first());
+      const password = first();
+      await create(password);
       first.set("");
       second.set("");
+      let offer = false;
+      try { offer = shouldOfferBiometrics({ mac: isMac, available: biometricAvailability(), enabled: biometricEnabled(), restoring: restoreAfterCreate() }); } catch { /* Settings still offers it. */ }
+      if (offer) offerBiometricsAfterCreate(password);
       if (restoreAfterCreate()) {
         restoreAfterCreate.set(false);
         void importBackup();

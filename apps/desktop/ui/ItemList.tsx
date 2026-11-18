@@ -13,7 +13,7 @@ import { c, layout, MONO, fs } from "./theme";
 import { secondsLeft, TotpText } from "./totp";
 import { deviceSubtitle, deviceTitle, importDeviceDocuments, newDevice } from "./devices";
 import { askAddCode } from "./entries/CodeDetail";
-import { SORT_LABEL, setSortMode, sortMode, type SortMode } from "./preferences";
+import { listDensity, rowPadding, SORT_LABEL, setSortMode, sortMode, type SortMode } from "./preferences";
 
 export const searchFocus = signal(0);
 const itemTitle = (item: Item) => (item.type === "device" ? deviceTitle(item) : item.title || "未命名");
@@ -108,7 +108,7 @@ function ItemRow(props: { item: Item }) {
       onPress={() => select(item().id)}
       onContextMenu={(e) => void Menu.popup(rowMenu(item()), e.pagePosition)}
       style={{
-        flexDirection: "row", gap: 11, padding: 10, borderRadius: 9, borderWidth: 1, marginVertical: 1,
+        flexDirection: "row", gap: 11, paddingHorizontal: 10, paddingVertical: rowPadding(listDensity()), borderRadius: 9, borderWidth: 1, marginVertical: 1,
         borderColor: on() ? c().blueLine : "transparent", backgroundColor: on() ? c().blueSoft : "transparent",
         alignItems: item().type === "secureNote" ? "flex-start" : "center", cursor: "pointer",
       }}

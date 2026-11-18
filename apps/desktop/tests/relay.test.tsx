@@ -1,4 +1,5 @@
 import { expect, open, test } from "nsh/test";
+import { keyFingerprint } from "../ui/relay/fingerprint";
 test("relay local status never claims connection and clears on lock", async () => {
   const app = await open("../ui/relay/TestHarness.tsx", { width: 1000, height: 1200, platform: "macos" });
   await app.press("text:准备中继测试库");
@@ -101,4 +102,29 @@ test("symmetric sync invites by scan alone, without primary, grants or code chec
   await app.press("text:显示同步设备");
   expect(app.texts()).not.toContain("邀请设备");
   expect(app.texts()).toContain("请在管理设备“Mac”上邀请新设备。");
+});
+
+test("personal groups can invite with code approval and members show their pinned key fingerprint", async () => {
+  const app = await open("../ui/relay/GroupHarness.tsx", { width: 1000, height: 1600, platform: "macos" });
+  await app.waitFor("text:加入方式");
+  await app.press("id:join-mode-manual");
+  await app.waitFor("text:新设备扫描后提交申请，你在这里核对双方配对码一致后再批准加入。邀请 10 分钟内有效，只能使用一次。");
+  await app.press("text:邀请设备");
+  await app.waitFor("text:ACTION:invite:manual");
+  await app.press("text:显示个人组申请");
+  await app.waitFor("text:检查加入申请");
+  expect(app.texts()).not.toContain("加入方式");
+  await app.type("label:输入对方显示的配对码", "ABCD-1234-EF56");
+  await app.press("text:批准加入设备组");
+  await app.waitFor("text:ACTION:approve:ABCD-1234-EF56");
+  await app.press("text:查看公钥指纹");
+  await app.waitFor("text:Phone 的公钥指纹");
+  expect(app.texts()).toContain("0123 4567 89AB CDEF 0123 4567 89AB CDEF");
+  await app.press("text:完成");
+});
+test("key fingerprints format only well-formed hex keys", () => {
+  expect(keyFingerprint("abcdef0123456789")).toBe("ABCD EF01 2345 6789");
+  expect(keyFingerprint("xyz")).toBe("");
+  expect(keyFingerprint(undefined)).toBe("");
+  expect(keyFingerprint("abc")).toBe("");
 });
