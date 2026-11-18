@@ -44,7 +44,7 @@ export function CodeSettings(p:EntryProps & { preview?: boolean }) {
   return <><SectionHead title="二次验证" /><If when={p.preview && p.item.secret}><View style={{marginBottom:10}}><CodePreview item={p.item} /></View></If><Group>
     <Field label="设置密钥" value={p.item.secret??""} secret editing={p.editing} onChange={v=>change(p.item,"secret")(normalizeSecret(v))} />
     <Field label="周期（秒）" value={String(p.item.period??30)} editing={p.editing} nocopy onChange={v=>{if(validPeriod(v))edit(p.item.id,d=>{d.period=Number(v);});}} />
-    <If when={p.editing}><Field label="设置链接" value={uri()} secret editing onChange={v=>uri.set(v)} nocopy /><Row gap={8}><Btn label="导入链接" onPress={async()=>{try{apply(await parseCode(uri()));uri.set("");}catch(e){toast(errorText(e));}}} /><Btn label="图片导入…" onPress={()=>askAddCode(apply)} /><Btn label="清除验证码" kind="danger" onPress={()=>confirm({title:"清除二次验证设置？",text:"请先确认仍有其他登录方式。",ok:"确认清除",danger:true,onConfirm:()=>edit(p.item.id,d=>{d.secret="";d.period=30;})})} /></Row></If>
+    <If when={p.editing}><Field label="设置链接" value={uri()} secret editing onChange={v=>uri.set(v)} nocopy /><Row gap={8}><Btn label="导入链接" disabled={!uri().trim()} onPress={async()=>{try{await apply(await parseCode(uri()));uri.set("");toast("已导入验证码设置");}catch(e){toast(`无法导入这个设置链接：${errorText(e)}只支持 otpauth://totp 的 6 位 SHA1 验证码。`);}}} /><Btn label="图片导入…" onPress={()=>askAddCode(apply)} /><Btn label="清除验证码" kind="danger" onPress={()=>confirm({title:"清除二次验证设置？",text:"请先确认仍有其他登录方式。",ok:"确认清除",danger:true,onConfirm:()=>edit(p.item.id,d=>{d.secret="";d.period=30;})})} /></Row></If>
     <Row style={{paddingVertical:10}}><Btn label="复制设置链接" icon="link" disabled={!p.item.secret} onPress={()=>void copySecret(setupLink(p.item),"设置链接")} /></Row>
   </Group></>;
 }
@@ -55,9 +55,10 @@ function showQR(item:Item) {
   }});
 }
 export function CodeDetail(p:EntryProps) {
-  const linked=()=>items().filter(i=>i.type==="password"&&!i.isDeleted&&p.item.secret&&normalizeSecret(i.secret??"")===normalizeSecret(p.item.secret));
+  // Explicit links (linkedTotpId) and accounts that embed the same secret.
+  const linked=()=>items().filter(i=>i.type==="password"&&!i.isDeleted&&(i.linkedTotpId===p.item.id||(p.item.secret&&normalizeSecret(i.secret??"")===normalizeSecret(p.item.secret))));
   return <><EntryHero item={p.item} editing={p.editing&&!p.item.isDeleted} /><CodePreview item={p.item} large /><T color={c().muted}>最后 5 秒显示橙色。时间以本机时钟为准。</T>
     <SectionHead title="配置信息" /><Group><Field label="发行方" value={p.item.issuer??""} editing={p.editing} onChange={change(p.item,"issuer")} /><Field label="账号" value={p.item.username??""} editing={p.editing} onChange={change(p.item,"username")} /><Field label="算法" value="SHA1" nocopy /><Field label="位数" value="6 位" nocopy /></Group>
-    <CodeSettings item={p.item} editing={p.editing&&!p.item.isDeleted} /><SectionHead title="关联账号" /><Each of={linked()}>{item=><Field label={item().title} value={item().username??""} actions={<Btn label="打开账号" onPress={()=>{dest.set("accounts");select(item().id);}} />}/>}</Each><If when={!linked().length}><T>未找到使用相同密钥的账号。</T></If>
+    <CodeSettings item={p.item} editing={p.editing&&!p.item.isDeleted} /><SectionHead title="关联账号" /><Each of={linked()}>{item=><Field label={item().title} value={item().username??""} actions={<Btn label="打开账号" onPress={()=>{dest.set("accounts");select(item().id);}} />}/>}</Each><If when={!linked().length}><T color={c().muted}>还没有账号关联这个验证码。在账号详情的“验证码”一行可以关联。</T></If>
     <SectionHead title="迁移" /><Row gap={8}><Btn label="显示设置二维码…" icon="qr" disabled={!p.item.secret} onPress={()=>showQR(p.item)} /><Btn label="重新导入…" icon="qr" disabled={!p.editing} onPress={()=>askAddCode((fields:any)=>edit(p.item.id,d=>{for(const k of ["secret","period"])if(fields[k]!==undefined)d[k]=fields[k];}))} /></Row><EntryMeta item={p.item} editing={p.editing&&!p.item.isDeleted} /></>;
 }

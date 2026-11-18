@@ -3,15 +3,22 @@ import { Menu } from "nsh/desktop";
 import { Btn, Field, Group, Row, SectionHead, T, TextBox, openSheet, SheetTitle, SheetFooter } from "../kit";
 import { edit, call, load, flush, errorText, type Item } from "../store";
 import { openItemHistory } from "../history";
-import { colors, newID, websites } from "./model";
+import { colors, hostOf, newID, websites } from "./model";
 import { Tile } from "../ItemList";
 export type EntryProps = { item: Item; editing: boolean };
 export const change = (item: Item, key: string) => (value: string) => edit(item.id, d => { d[key] = value; });
+/** "accounts.google.com 等 2 个网站" rather than a long first URL. */
+function siteSummary(url: string) {
+  const list = websites(url);
+  if (!list.length) return "";
+  const first = hostOf(list[0]) || list[0];
+  return list.length > 1 ? `${first} 等 ${list.length} 个网站` : first;
+}
 export function EntryHero(p: EntryProps) {
   const sub = () =>
     p.item.type === "totp"
       ? [p.item.issuer, p.item.username].filter(Boolean).join(" · ")
-      : [websites(p.item.url ?? "")[0], p.item.category, ...(p.item.tags ?? []).map((t: string) => `#${t}`)].filter(Boolean).join(" · ");
+      : [siteSummary(p.item.url ?? ""), p.item.category, ...(p.item.tags ?? []).map((t: string) => `#${t}`)].filter(Boolean).join(" · ");
   return (
     <Row gap={16} style={{ marginBottom: 18 }}>
       <Tile item={p.item} size={60} />
