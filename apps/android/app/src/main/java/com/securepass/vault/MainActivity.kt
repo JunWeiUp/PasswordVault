@@ -203,7 +203,7 @@ fun UnlockScreen(
                     Spacer(Modifier.height(20.dp))
                     listOf(
                         Triple(Icons.Outlined.Lock, t("只有你能打开", "Only you can open it"), t("主密码不会离开这台手机", "Your master password stays on this phone")),
-                        Triple(Icons.Outlined.Sync, t("与其他设备同步", "Sync with your devices"), t("中继只转发密文，入组后由主库授权", "The relay carries ciphertext; your primary vault grants access")),
+                        Triple(Icons.Outlined.Sync, t("与其他设备同步", "Sync with your devices"), t("中继只转发密文，扫码入组后自动双向同步", "The relay carries ciphertext; devices sync both ways after joining")),
                         Triple(Icons.Outlined.Key, t("在其他应用中填充", "Fill in other apps"), t("系统自动填充与通行密钥", "System Autofill and Passkeys")),
                     ).forEach { (icon, title, subtitle) ->
                         Row(Modifier.fillMaxWidth().padding(bottom = 13.dp), horizontalArrangement = Arrangement.spacedBy(11.dp)) {

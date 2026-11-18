@@ -89,6 +89,7 @@ internal fun EntryCollection(
     var addingCategory by remember { mutableStateOf(false) }
     var categoryBusy by remember { mutableStateOf(false) }
     var categoryToRemove by remember { mutableStateOf<String?>(null) }
+    var emptyingTrash by remember { mutableStateOf(false) }
     var audit by remember { mutableStateOf(emptyList<JSONObject>()) }
     DisposableEffect(page) { onDispose { ui.selectedIds.value = emptySet(); ui.selecting.value = false } }
     LaunchedEffect(ui.selecting.value) { if (ui.selecting.value) toolsSheet = false }
@@ -206,6 +207,9 @@ internal fun EntryCollection(
                 Row(Modifier.padding(14.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) { Icon(Icons.Outlined.Info, null, tint = MaterialTheme.colorScheme.primary); Column {
                     Text(t("已删除的项目", "Deleted items"), style = MaterialTheme.typography.titleMedium)
                     Text(t("恢复后回到原位置并保留全部字段与历史。", "Restore to the original location with all fields and history."), style = MaterialTheme.typography.bodySmall)
+                    TextButton(onClick = { emptyingTrash = true }, enabled = !state.busy, contentPadding = PaddingValues(0.dp)) {
+                        Text(t("清空回收站…", "Empty Trash…"), color = MaterialTheme.colorScheme.error)
+                    }
                 } }
             }
         }
@@ -300,6 +304,23 @@ internal fun EntryCollection(
             }
             Spacer(Modifier.height(24.dp))
         }
+    }
+    if (emptyingTrash) {
+        // Items in a shared vault cannot be deleted permanently from here; they stay in Trash.
+        val removable = state.entries.filter { it.optBoolean("isDeleted") && vault.canEdit(it) && it.optString("sharedVaultId").isEmpty() }
+        val kept = state.entries.count { it.optBoolean("isDeleted") } - removable.size
+        AlertDialog(
+            onDismissRequest = { if (!state.busy) emptyingTrash = false },
+            title = { Text(t("清空回收站？", "Empty Trash?")) },
+            text = { Text(t("将永久删除 ${removable.size} 个项目，无法恢复。", "Permanently delete ${removable.size} items. This cannot be undone.") +
+                if (kept > 0) t("共享资料库中的 $kept 个项目会保留在回收站。", " $kept shared items stay in Trash.") else "") },
+            confirmButton = {
+                TextButton(enabled = !state.busy && removable.isNotEmpty(), onClick = {
+                    operationScope.launch { for (item in removable) vault.remove(item); emptyingTrash = false }
+                }) { Text(t("永久删除", "Delete permanently"), color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = { TextButton(enabled = !state.busy, onClick = { emptyingTrash = false }) { Text(t("取消", "Cancel")) } },
+        )
     }
     categoryToRemove?.let { name -> AlertDialog(onDismissRequest = { if (!categoryBusy) categoryToRemove = null }, title = { Text(t("删除分类“$name”？", "Remove “$name”?")) }, text = { Text(t("笔记会保留，只清空归类。", "Notes are kept; only their category is cleared.")) },
         confirmButton = { TextButton(enabled = !categoryBusy, onClick = { scope.launch { categoryBusy = true; if (vault.mutate("category-remove", JSONObject().put("name", name).put("time", Instant.now().toString()))) { if (category == name) category = ""; categoryToRemove = null }; categoryBusy = false } }) { Text(t("删除分类", "Remove category")) } }, dismissButton = { TextButton(enabled = !categoryBusy, onClick = { categoryToRemove = null }) { Text(t("取消", "Cancel")) } }) }
