@@ -47,6 +47,9 @@ final class SettingsFlowTests: XCTestCase {
 
     app.staticTexts["自动填充与通行密钥"].firstMatch.tap()
     XCTAssertTrue(app.buttons["打开系统设置"].waitForExistence(timeout: 5))
+    let suggestions = app.switches["在键盘上方显示账号建议"]
+    XCTAssertTrue(suggestions.waitForExistence(timeout: 5))
+    XCTAssertEqual(suggestions.value as? String, "1", "Suggestions default to on")
     app.navigationBars.buttons.element(boundBy: 0).tap()
 
     for _ in 0..<4 where !app.staticTexts["关于"].firstMatch.isHittable { app.swipeUp() }

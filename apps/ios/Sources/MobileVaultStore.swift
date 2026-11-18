@@ -21,6 +21,8 @@ final class MobileVaultStore: ObservableObject {
   @Published var ready = false
   @Published var busy = false
   @Published var items: [VaultItem] = []
+  private var lastPasskeyIndex: [JSONValue] = []
+  private var credentialSync: Task<Void, Never>?
   @Published var sharedMembers: [JSONValue] = []
   @Published var settings: [String: JSONValue] = [:]
   @Published var error: String?
@@ -358,43 +360,57 @@ final class MobileVaultStore: ObservableObject {
     items = document.items
     settings = document.settings
     sharedMembers = document.sharedMembers
+    var passkeys: [JSONValue] = []
     if #available(iOS 17.0, *) {
       let index = try await core.call(["op": .string("passkey-index")])
       guard generation == epoch, unlocked else { throw VaultError.Locked }
-      await refreshCredentialIndex(index.object["passkeys"]?.array ?? [])
+      passkeys = index.object["passkeys"]?.array ?? []
+    }
+    lastPasskeyIndex = passkeys
+    syncCredentialIndex()
+  }
+  /// Re-syncs the system identity store after the QuickType setting changes.
+  func refreshCredentialSuggestions() async {
+    syncCredentialIndex()
+  }
+  /// Syncs the system identity store in the background so refresh, unlock and save never wait
+  /// on it; syncs run one after another so the latest state wins.
+  private func syncCredentialIndex() {
+    let previous = credentialSync
+    let passkeys = lastPasskeyIndex
+    credentialSync = Task { [weak self] in
+      await previous?.value
+      await self?.refreshCredentialIndex(passkeys: passkeys)
     }
   }
-  @available(iOS 17.0, *)
-  private func refreshCredentialIndex(_ values: [JSONValue]) async {
-    func decoded(_ value: String) -> Data? {
-      var raw = value.replacingOccurrences(of: "-", with: "+").replacingOccurrences(of: "_", with: "/")
-      raw += String(repeating: "=", count: (4 - raw.count % 4) % 4)
-      return Data(base64Encoded: raw)
-    }
-    func identity(_ value: JSONValue) -> ASPasskeyCredentialIdentity? {
-      let fields = value.object
-      guard let rp = fields["rpId"]?.string, let user = fields["userName"]?.string,
-        let id = decoded(fields["id"]?.string ?? ""), !id.isEmpty,
-        let handle = decoded(fields["userHandle"]?.string ?? ""), !handle.isEmpty else { return nil }
-      return ASPasskeyCredentialIdentity(relyingPartyIdentifier: rp, userName: user, credentialID: id, userHandle: handle, recordIdentifier: fields["id"]?.string)
-    }
-    let preferences = UserDefaults(suiteName: Bundle.main.object(forInfoDictionaryKey: "VaultAppGroup") as? String)
-    let previous = preferences?.data(forKey: "passkey-identity-index").flatMap { try? JSONDecoder().decode([JSONValue].self, from: $0) } ?? []
-    let currentIDs = Set(values.map { ($0.object["rpId"]?.string ?? "") + ":" + ($0.object["id"]?.string ?? "") })
-    let removed = previous.filter { !currentIDs.contains(($0.object["rpId"]?.string ?? "") + ":" + ($0.object["id"]?.string ?? "")) }.compactMap(identity)
-    if !removed.isEmpty {
-      // The system store may never call back when its service is unreachable; give up after
-      // a bounded wait so refresh, unlock and save never hang. A later refresh retries.
-      let success = await boundedCompletion(timeout: 5, fallback: false) { done in
-        ASCredentialIdentityStore.shared.removeCredentialIdentities(removed) { success, _ in done(success) }
+  /// Replaces the system identity store with the current passkeys and, unless turned off,
+  /// account suggestions (site, username, entry ID; never passwords). Replacing removes
+  /// identities of deleted entries. The system may never call back, so waits are bounded;
+  /// a failed sync is retried on the next refresh.
+  private func refreshCredentialIndex(passkeys values: [JSONValue]) async {
+    let passwords = CredentialSuggestions.enabled ? CredentialSuggestions.identities(items) : []
+    if #available(iOS 17.0, *) {
+      func decoded(_ value: String) -> Data? {
+        var raw = value.replacingOccurrences(of: "-", with: "+").replacingOccurrences(of: "_", with: "/")
+        raw += String(repeating: "=", count: (4 - raw.count % 4) % 4)
+        return Data(base64Encoded: raw)
       }
-      if !success { return }
+      func identity(_ value: JSONValue) -> ASPasskeyCredentialIdentity? {
+        let fields = value.object
+        guard let rp = fields["rpId"]?.string, let user = fields["userName"]?.string,
+          let id = decoded(fields["id"]?.string ?? ""), !id.isEmpty,
+          let handle = decoded(fields["userHandle"]?.string ?? ""), !handle.isEmpty else { return nil }
+        return ASPasskeyCredentialIdentity(relyingPartyIdentifier: rp, userName: user, credentialID: id, userHandle: handle, recordIdentifier: fields["id"]?.string)
+      }
+      let identities: [any ASCredentialIdentity] = values.compactMap(identity) + passwords
+      _ = await boundedCompletion(timeout: 5, fallback: false) { done in
+        ASCredentialIdentityStore.shared.replaceCredentialIdentities(identities) { success, _ in done(success) }
+      }
+    } else {
+      _ = await boundedCompletion(timeout: 5, fallback: false) { done in
+        ASCredentialIdentityStore.shared.replaceCredentialIdentities(with: passwords) { success, _ in done(success) }
+      }
     }
-    let identities = values.compactMap(identity)
-    let success = await boundedCompletion(timeout: 5, fallback: false) { done in
-      ASCredentialIdentityStore.shared.saveCredentialIdentities(identities) { success, _ in done(success) }
-    }
-    if success, let encoded = try? JSONEncoder().encode(values) { preferences?.set(encoded, forKey: "passkey-identity-index") }
   }
   @discardableResult
   func save(_ item: VaultItem) async -> Bool {

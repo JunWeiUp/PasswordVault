@@ -6,6 +6,7 @@ import SwiftUI
 struct MobileAutofillSettings: View {
   @EnvironmentObject private var store: MobileVaultStore
   @State private var enabled: Bool?
+  @AppStorage(CredentialSuggestions.defaultsKey) private var suggestions = true
 
   var body: some View {
     Form {
@@ -15,10 +16,12 @@ struct MobileAutofillSettings: View {
             .foregroundStyle(enabled == true ? .green : .secondary)
         }
         Button(store.t("打开系统设置", "Open system settings")) { openSettings() }
+        Toggle(store.t("在键盘上方显示账号建议", "Suggest accounts above the keyboard"), isOn: $suggestions)
+          .onChange(of: suggestions) { _ in Task { await store.refreshCredentialSuggestions() } }
       } footer: {
         Text(store.t(
-          "在系统设置的“通用 › 自动填充与密码”中选择 PasswordVault。填充前需要解锁；新账号的保存提示由系统显示。",
-          "Choose PasswordVault in Settings › General › AutoFill & Passwords. Filling requires unlocking; iOS shows the prompt to save new accounts."))
+          "在系统设置的“通用 › 自动填充与密码”中选择 PasswordVault。账号建议只向系统提供网站和用户名，不包含密码；填充前需要解锁。新账号的保存提示由系统显示。",
+          "Choose PasswordVault in Settings › General › AutoFill & Passwords. Suggestions give iOS only the site and username, never the password; filling requires unlocking. iOS shows the prompt to save new accounts."))
       }
     }
     .navigationTitle(store.t("自动填充与通行密钥", "AutoFill & passkeys"))
