@@ -144,18 +144,17 @@ class MigrationUtilityTest {
             assertFalse(device.hasObject(By.textContains("相机暂不可用")))
             device.takeScreenshot(File(context.getExternalFilesDir(null), "legacy-live-camera.png"))
             device.findObject(By.text("关闭")).click()
-            assertTrue(device.wait(Until.hasObject(By.desc("大写字母")), 5000))
-            for (label in listOf("大写字母", "小写字母", "数字", "符号")) device
-                .findObject(By.desc(label))
-                .click()
-            assertTrue(device.wait(Until.hasObject(By.text("请至少选择一种字符类型")), 5000))
+            val switches = listOf("大写字母 A–Z", "小写字母 a–z", "数字 0–9", "符号 !@#…")
+            assertTrue(device.wait(Until.hasObject(By.desc(switches.first())), 5000))
+            for (label in switches) device.findObject(By.desc(label)).click()
+            assertTrue(device.wait(Until.hasObject(By.text("至少选择一种字符类型")), 5000))
             assertFalse(device.findObject(By.text("重新生成")).parent.isEnabled)
             assertFalse(device.findObject(By.text("复制")).parent.isEnabled)
             device.takeScreenshot(
                 File(context.getExternalFilesDir(null), "legacy-generator-disabled.png")
             )
-            device.findObject(By.desc("数字")).click()
-            assertTrue(device.wait(Until.gone(By.text("请至少选择一种字符类型")), 5000))
+            device.findObject(By.desc("数字 0–9")).click()
+            assertTrue(device.wait(Until.gone(By.text("至少选择一种字符类型")), 5000))
         } catch (failure: Throwable) {
             device.takeScreenshot(
                 File(context.getExternalFilesDir(null), "legacy-utility-failure.png")
