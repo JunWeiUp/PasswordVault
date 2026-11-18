@@ -1,4 +1,5 @@
-import { t, useLocale, setLocale, setTheme } from "./i18n";
+import { t, fmt, dateLocale, useLocale, setLocale, setTheme } from "./i18n";
+import { tileFor } from "./tiles";
 import { render } from "preact";
 import { useEffect, useLayoutEffect, useState, useRef } from "preact/hooks";
 import {
@@ -79,6 +80,7 @@ function App() {
   const pendingDraft = useRef<Item>();
   const draftTimer = useRef<ReturnType<typeof setTimeout>>();
   const draftWrite = useRef<Promise<unknown>>(Promise.resolve());
+  const [draftStatus, setDraftStatus] = useState<"idle" | "saving" | "saved" | "failed">("idle");
   async function persistDraft() {
     clearTimeout(draftTimer.current);
     const value = pendingDraft.current;
@@ -86,11 +88,13 @@ function App() {
     draftWrite.current = draftWrite.current
       .catch(() => {})
       .then(() => command({ op: "draft-save", item: value }));
-    await draftWrite.current;
+    try { await draftWrite.current; } catch (e) { setDraftStatus("failed"); throw e; }
+    if (pendingDraft.current === value) setDraftStatus("saved");
     if (pendingDraft.current?.id === value.id && pendingDraft.current?._draftLibrary === value._draftLibrary) setRecoveredDraft(value);
   }
   function changedDraft(value: Item) {
     pendingDraft.current = { ...value, _draftLibrary: doc?.settings.activePeerLibrary ?? "" };
+    setDraftStatus("saving");
     clearTimeout(draftTimer.current);
     draftTimer.current = setTimeout(() => {
       void persistDraft().catch((e) => setError(t(errorText(e))));
@@ -661,12 +665,16 @@ function App() {
             <div class="records">
               {visible.map((record) => (
                 <button
-                  class={"record " + (item?.id === record.id ? "active" : "")}
+                  class={"record " + (record.type === "secureNote" ? "" : "with-tile ") + (item?.id === record.id ? "active" : "")}
                   onClick={() => leaveEditor(() => {
                     setSelected(record.id);
                     setEditing(undefined);
                   })}
                 >
+                  {record.type !== "secureNote" && (
+                    <span class={`tile tone-${tileFor(record.title).tone}`} aria-hidden="true">{tileFor(record.title).initial}</span>
+                  )}
+                  <span class="record-body">
                   <strong>
                     {record.title || t("未命名")}
                     {record.isFavorite && <span class="favorite">★</span>}
@@ -680,12 +688,13 @@ function App() {
                   </small>
                   <time>
                     {record.updatedAt
-                      ? new Date(record.updatedAt).toLocaleDateString("zh-CN", {
+                      ? new Date(record.updatedAt).toLocaleDateString(dateLocale(), {
                           month: "short",
                           day: "numeric",
                         })
                       : ""}
                   </time>
+                  </span>
                 </button>
               ))}
             </div>
@@ -702,6 +711,7 @@ function App() {
                   });
                 }}
                 onDraft={changedDraft}
+                draftStatus={draftStatus}
                 onSave={(value) => run(() => save(value, true))}
                 busy={busy || !canEditItem(editing)}
               />
@@ -774,7 +784,7 @@ function App() {
                   <h1>{item.title}</h1>
                   <p class="metadata">
                     {item.updatedAt
-                      ? new Date(item.updatedAt).toLocaleString("zh-CN")
+                      ? new Date(item.updatedAt).toLocaleString(dateLocale())
                       : ""}
                   </p>
                   {item.type === "password" && (
@@ -876,9 +886,7 @@ function App() {
                 </article>
                 <footer class="detail-status">
                   <span>{t("已保存到本地")}</span>
-                  <span>
-                    {(item.note ?? "").length} {t("字")}
-                  </span>
+                  <span>{fmt(t("{count} 字"), { count: [...(item.note ?? "")].length })}</span>
                 </footer>
               </>
             ) : (
@@ -998,12 +1006,14 @@ function Editor({
   onSave,
   onDraft,
   busy,
+  draftStatus = "idle",
 }: {
   item: Item;
   onCancel: () => void;
   onSave: (item: Item) => void;
   onDraft: (item: Item) => void;
   busy: boolean;
+  draftStatus?: "idle" | "saving" | "saved" | "failed";
 }) {
   useLocale();
   const [draft, setDraft] = useState<Item>(item);
@@ -1182,6 +1192,10 @@ function Editor({
           />
         )}
       </div>
+      <footer class="detail-status editor-status" role="status">
+        <span>{draft === item ? t("尚未修改") : draftStatus === "saved" ? t("草稿已加密保存") : draftStatus === "failed" ? t("草稿未能保存") : t("正在加密保存草稿…")}</span>
+        <span>{fmt(t("{count} 字"), { count: [...(draft.note ?? "")].length })}</span>
+      </footer>
     </form>
   );
 }
@@ -1225,9 +1239,11 @@ function Tools({ section, doc, refresh, run, setToast, copy, openItem, readOnly 
       </h1>
       {section === "backup" ? (
         <>
-          <WebDAVPanel settings={doc.settings} onComplete={refresh} />
-          {readOnly ? <p>{t("当前资料库为只读，无法修改条目。")}</p> : <ImportReviewPanel onComplete={refresh} />}
+          <section class="panel"><WebDAVPanel settings={doc.settings} onComplete={refresh} /></section>
+          <section class="panel">{readOnly ? <p>{t("当前资料库为只读，无法修改条目。")}</p> : <ImportReviewPanel onComplete={refresh} />}</section>
           <RecoveryPanel onComplete={refresh} copy={copy} />
+          <section class="panel">
+          <h2>{t("加密备份")}</h2>
           <p class="muted">
             {t(
               "将资料保存为加密备份，或导入旧版 PasswordVault / 常见密码管理器的导出文件。",
@@ -1258,7 +1274,8 @@ function Tools({ section, doc, refresh, run, setToast, copy, openItem, readOnly 
           >
             {t("导出加密备份")}
           </button>
-          <hr />
+          </section>
+          <section class="panel">
           <h2>{t("导入资料")}</h2>
           <input
             type="file"
@@ -1290,8 +1307,8 @@ function Tools({ section, doc, refresh, run, setToast, copy, openItem, readOnly 
           >
             {t("导入所选文件")}
           </button>
-          <hr />
-          <details>
+          </section>
+          <details class="panel">
             <summary>{t("其他导出方式")}</summary>
             <label class="checkbox">
               <input

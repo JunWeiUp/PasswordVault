@@ -1,3 +1,4 @@
+import { t } from "./i18n";
 import { MAC_DOWNLOAD_URL, connectionPresentation, type NativeState } from "./native-connection";
 
 export function NativeConnectionPanel({
@@ -16,14 +17,14 @@ export function NativeConnectionPanel({
   const view = connectionPresentation(state);
   return (
     <section class="connection-panel" aria-busy={busy}>
-      <h2>{view.title}</h2>
-      <p>{view.message}</p>
+      <h2>{t(view.title)}</h2>
+      <p>{t(view.message)}</p>
       {state.available === false && state.connectionError !== "native-host-forbidden" && (
-        <p><a href={MAC_DOWNLOAD_URL} target="_blank" rel="noopener noreferrer">前往 GitHub 下载 Mac 应用 ↗</a></p>
+        <p><a href={MAC_DOWNLOAD_URL} target="_blank" rel="noopener noreferrer">{t("前往 GitHub 下载 Mac 应用 ↗")}</a></p>
       )}
       {view.canPair && (
         <button class="primary wide" disabled={busy} onClick={onPair}>
-          {busy ? "请在 Mac 上确认…" : "发起连接"}
+          {busy ? t("请在 Mac 上确认…") : t("发起连接")}
         </button>
       )}
       {view.canOpen && (
@@ -32,22 +33,21 @@ export function NativeConnectionPanel({
           disabled={busy}
           onClick={onOpen}
         >
-          打开 Mac 应用
+          {t("打开 Mac 应用")}
         </button>
       )}
       <button class="text-button" disabled={busy} onClick={onRefresh}>
-        重新检测连接
+        {t("重新检测连接")}
       </button>
       <details>
-        <summary>首次连接步骤</summary>
+        <summary>{t("首次连接步骤")}</summary>
         <ol>
-          <li>打开 Mac 应用并解锁资料库。</li>
-          <li>进入「设置 → 浏览器」，点击「登记 Chrome / Edge 连接」。</li>
-          <li>在插件中发起连接，再在 Mac 弹窗允许。</li>
+          <li>{t("打开 Mac 应用并解锁资料库。")}</li>
+          <li>{t("进入「设置 → 浏览器」，点击「登记 Chrome / Edge 连接」。")}</li>
+          <li>{t("在插件中发起连接，再在 Mac 弹窗允许。")}</li>
         </ol>
         <p>
-          移动或更新 Mac 应用后，如果连接失败，请重新登记。独立资料库与 Mac
-          资料库分别保存，不会自动合并。
+          {t("移动或更新 Mac 应用后，如果连接失败，请重新登记。独立资料库与 Mac 资料库分别保存，不会自动合并。")}
         </p>
       </details>
     </section>
