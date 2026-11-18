@@ -184,7 +184,7 @@ internal fun VaultWorkspace(
                             IconButton(onClick = { scope.launch { vault.save(JSONObject(current.toString()).put("isFavorite", !current.optBoolean("isFavorite"))) } }) {
                                 Icon(if (current.optBoolean("isFavorite")) Icons.Outlined.Star else Icons.Outlined.StarOutline, t("收藏", "Favorite"), tint = if (current.optBoolean("isFavorite")) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
                             }
-                            if (current.optString("type") !in setOf("device", "secureNote")) IconButton(onClick = { editingRestored = false; editing = JSONObject(current.toString()) }) { Icon(Icons.Outlined.Edit, t("编辑", "Edit")) }
+                            if (current.optString("type") != "secureNote" && (current.optString("type") != "device" || DevicePayload.editable(current, true))) IconButton(onClick = { editingRestored = false; editing = JSONObject(current.toString()) }) { Icon(Icons.Outlined.Edit, t("编辑", "Edit")) }
                         }
                         IconButton(onClick = { detailMenu = true }) { Icon(Icons.Outlined.MoreHoriz, t("更多操作", "More actions")) }
                     }
@@ -223,6 +223,13 @@ internal fun VaultWorkspace(
                 contentColor = MaterialTheme.colorScheme.primary,
                 shape = RoundedCornerShape(16.dp),
             ) { Icon(Icons.Outlined.Edit, null); Spacer(Modifier.width(8.dp)); Text(t("编辑", "Edit")) }
+            if (page == "device" && current == null && DevicePayload.canCreate(state.settings, vault.canWriteLibrary()))
+                ExtendedFloatingActionButton(
+                    onClick = { editingRestored = false; editing = DevicePayload.blank() },
+                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                    shape = RoundedCornerShape(18.dp),
+                ) { Icon(Icons.Outlined.Add, null); Spacer(Modifier.width(8.dp)); Text(t("新建", "New")) }
             if (
                 vault.canWriteLibrary() && (page in destinations || page == "all") &&
                     page != "settings" &&

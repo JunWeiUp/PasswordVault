@@ -434,7 +434,7 @@ internal fun EntryMenu(expanded: Boolean, dismiss: () -> Unit, item: JSONObject,
                 ListItem(headlineContent = { Text(label, color = if (danger) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface) }, leadingContent = { Icon(icon, null, tint = if (danger) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant) }, modifier = Modifier.clickable(enabled = enabled, onClick = click), colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface))
             }
             if (!item.optBoolean("isDeleted")) {
-                if (editable && item.optString("type") != "device") action(t("编辑", "Edit"), Icons.Outlined.Edit) { dismiss(); edit() }
+                if (editable && (item.optString("type") != "device" || DevicePayload.editable(item, true))) action(t("编辑", "Edit"), Icons.Outlined.Edit) { dismiss(); edit() }
                 listOf("isPinned" to (if (item.optBoolean("isPinned")) t("取消置顶", "Unpin") else t("置顶", "Pin")), "isFavorite" to (if (item.optBoolean("isFavorite")) t("取消收藏", "Unfavorite") else t("收藏", "Favorite"))).forEach { (field, label) ->
                     action(label, if (field == "isPinned") Icons.Outlined.PushPin else Icons.Outlined.StarOutline, editable) { dismiss(); scope.launch { vault.save(JSONObject(item.toString()).put(field, !item.optBoolean(field))) } }
                 }

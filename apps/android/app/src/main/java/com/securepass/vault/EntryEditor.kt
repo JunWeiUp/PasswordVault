@@ -36,6 +36,10 @@ fun EntryEditor(
         else NoteEditor(original, vault, t, restoredDraft, close)
         return
     }
+    if (original.optString("type") == "device") {
+        DeviceEditor(original, vault, t, restoredDraft, close)
+        return
+    }
     var draftText by remember { mutableStateOf(original.toString()) }
     val draft = JSONObject(draftText)
     val type = draft.optString("type")

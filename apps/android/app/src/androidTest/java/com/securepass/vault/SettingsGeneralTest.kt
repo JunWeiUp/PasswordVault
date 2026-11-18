@@ -50,6 +50,16 @@ class SettingsGeneralTest {
         assertTrue(device.wait(Until.hasObject(By.desc("设置")), 10_000))
     }
 
+    private fun goAccounts() {
+        repeat(5) {
+            if (device.hasObject(By.text("Prefs fixture"))) return
+            if (!device.hasObject(By.desc("账号"))) device.pressBack()
+            runCatching { device.findObject(By.desc("账号"))?.click() }
+            device.wait(Until.hasObject(By.text("Prefs fixture")), 2_000)
+        }
+        waitText("Prefs fixture")
+    }
+
     private fun choose(current: String, option: String) {
         waitText(current).click()
         waitText(option).click()
@@ -82,8 +92,7 @@ class SettingsGeneralTest {
             launchAndUnlock(id)
             // Default start page is Notes; the failed relay shows the offline banner on lists.
             waitText("离线 · 修改先加密保存在本机", 30_000)
-            device.findObject(By.desc("账号")).click()
-            waitText("Prefs fixture")
+            goAccounts()
             assertTrue("Banner on the accounts list too", device.hasObject(By.text("离线 · 修改先加密保存在本机")))
 
             device.findObject(By.desc("设置")).click()
@@ -112,8 +121,7 @@ class SettingsGeneralTest {
             device.pressBack()
 
             // Copying uses the chosen 15-second duration and clears afterwards.
-            device.findObject(By.desc("账号")).click()
-            waitText("Prefs fixture").click()
+            goAccounts(); waitText("Prefs fixture").click()
             waitText("复制密码").click()
             assertTrue(device.wait(Until.hasObject(By.textContains("15 秒后清除")), 5_000))
             fun clip(): String { var text = ""; instrumentation.runOnMainSync { text = context.getSystemService(ClipboardManager::class.java).primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.text?.toString().orEmpty() }; return text }
@@ -128,19 +136,26 @@ class SettingsGeneralTest {
             repeat(5) {
                 if (device.hasObject(By.text("立即锁定"))) return@repeat
                 device.wait(Until.hasObject(By.desc("打开导航")), 3_000)
-                device.findObject(By.desc("打开导航"))?.click()
+                runCatching { device.findObject(By.desc("打开导航"))?.click() } // may go stale mid-animation
                 device.wait(Until.hasObject(By.text("立即锁定")), 2_000)
             }
             repeat(5) {
                 if (device.hasObject(By.text("PasswordVault 已锁定"))) return@repeat
                 android.os.SystemClock.sleep(400)
-                device.findObject(By.text("立即锁定"))?.click()
+                runCatching { device.findObject(By.text("立即锁定"))?.click() }
                 device.wait(Until.hasObject(By.text("PasswordVault 已锁定")), 2_000)
             }
             waitText("PasswordVault 已锁定")
-            device.findObject(By.clazz("android.widget.EditText")).text = "1"
-            device.findObject(By.desc("解锁")).click()
-            waitText("Prefs fixture", 10_000)
+            // An unlock tapped while the previous session is still closing can be ignored; retry.
+            repeat(4) {
+                if (device.hasObject(By.text("Prefs fixture"))) return@repeat
+                runCatching {
+                    device.findObject(By.clazz("android.widget.EditText")).text = "1"
+                    device.findObject(By.desc("解锁")).click()
+                }
+                device.wait(Until.hasObject(By.text("Prefs fixture")), 5_000)
+            }
+            waitText("Prefs fixture", 5_000)
             assertTrue("Accounts selected", device.findObject(By.desc("账号")).isSelected || device.hasObject(By.text("需要处理")))
         } finally {
             prefs.edit().remove(AppPreferences.CLIPBOARD_SECONDS).remove(AppPreferences.START_PAGE).remove(AppPreferences.LAST_PAGE).commit()
