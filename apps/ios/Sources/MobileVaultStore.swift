@@ -162,6 +162,9 @@ final class MobileVaultStore: ObservableObject {
       unlocked = true
       activity()
       await recoverDraft(core)
+      #if DEBUG
+        if create { await installUITestDeviceFixture(password: password) }
+      #endif
     } catch {
       if create && legacyAvailable {
         self.error = t(
@@ -239,6 +242,38 @@ final class MobileVaultStore: ObservableObject {
     }
   }
 
+  #if DEBUG
+    /// UI tests only: upgrades a fresh synthetic UI-test vault to the device format and adds one
+    /// fictional device, so the read-only device pages can be exercised. Never touches other vaults.
+    private func installUITestDeviceFixture(password: String) async {
+      guard ProcessInfo.processInfo.arguments.contains("--ui-test-device-fixture"),
+        directory.lastPathComponent.hasPrefix("UI-Test-")
+      else { return }
+      do {
+        _ = try await perform([
+          "op": .string("devices-enable"), "confirm": .bool(true), "currentPassword": .string(password),
+        ])
+        var item = VaultItem.blank(type: "device", title: "Fixture server")
+        item.fields["device"] = .object([
+          "version": .number(1), "host": .string("server.example.test"), "port": .number(2222),
+          "username": .string("deploy"), "authMethod": .string("password"),
+          "password": .string("SYNTHETIC-PASSWORD-CANARY"), "privateKey": .string(""),
+          "aliases": .array([]), "notes": .string("Rack 2"), "files": .array([]),
+          "services": .array([.object([
+            "id": .string("web"), "name": .string("Web console"), "kind": .string("browser"),
+            "remotePort": .number(443), "localPort": .number(8443), "path": .string("/admin"),
+          ])]),
+          "commands": .array([.object([
+            "id": .string("restart"), "title": .string("Restart service"),
+            "text": .string("systemctl restart web"), "secret": .bool(false),
+          ])]),
+        ])
+        item.set("updatedAt", ISO8601DateFormatter().string(from: Date()))
+        _ = try await perform(["op": .string("save"), "item": try .from(item)])
+        try await refresh()
+      } catch { report(error) }
+    }
+  #endif
   func lock() {
     let capturedRichDraft = captureRichDraft?()
     captureRichDraft = nil

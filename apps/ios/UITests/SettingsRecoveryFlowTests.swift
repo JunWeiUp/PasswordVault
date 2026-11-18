@@ -92,7 +92,9 @@ final class SettingsRecoveryFlowTests: XCTestCase {
     }
 
     app.tabBars.buttons["设置"].tap()
-    app.staticTexts["密码健康"].firstMatch.tap()
+    let health = app.staticTexts["密码健康"].firstMatch
+    for _ in 0..<4 where !health.exists || !health.isHittable { app.swipeUp() }
+    health.tap()
     let weak = app.buttons["health.weak"]
     XCTAssertTrue(weak.waitForExistence(timeout: 5))
     XCTAssertTrue(waitFor(weak, "label CONTAINS '2'"), weak.label)
@@ -106,7 +108,9 @@ final class SettingsRecoveryFlowTests: XCTestCase {
     attach(app, "password-health")
     app.navigationBars.buttons.element(boundBy: 0).tap()
 
-    app.staticTexts["安全"].firstMatch.tap()
+    let security = app.staticTexts["安全"].firstMatch
+    for _ in 0..<4 where !security.exists || !security.isHittable { app.swipeDown() }
+    security.tap()
     app.staticTexts["应急恢复"].firstMatch.tap()
     let current = app.secureTextFields["当前主密码"]
     XCTAssertTrue(current.waitForExistence(timeout: 5))

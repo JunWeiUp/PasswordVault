@@ -20,6 +20,7 @@ struct MobileSettingsView: View {
       Section(store.t("资料", "Library")) {
         NavigationLink(store.t("全部项目", "All items")) { MobileEntryList(destination: .all) }
         NavigationLink(store.t("个人收藏", "Favorites")) { MobileEntryList(destination: .favorites) }
+        NavigationLink(store.t("设备与服务", "Devices & services")) { MobileDeviceList() }
         NavigationLink(store.t("回收站", "Trash")) { MobileEntryList(destination: .trash) }
         NavigationLink(store.t("笔记分类", "Note categories")) { MobileCategorySettings() }
       }
