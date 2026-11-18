@@ -75,6 +75,7 @@ struct MobileEntryList: View {
         if destination == .codes {
           MobileCodeRow(item: item)
         } else {
+        HStack(spacing: 8) {
         NavigationLink {
           if item.type == "secureNote" && !item.isDeleted { MobileNoteReader(id: item.id) } else { MobileEntryDetail(id: item.id) }
         } label: {
@@ -94,6 +95,18 @@ struct MobileEntryList: View {
                 ? item.note.components(separatedBy: "\n").first ?? "" : item.username
             ).lineLimit(2).foregroundStyle(.secondary)
           }.padding(.vertical, 6)
+        }
+        if item.type == "password" && !item.isDeleted {
+          // One-tap copy of the main password; the row itself never shows the secret.
+          Button { store.copy(item.password) } label: {
+            Image(systemName: "doc.on.doc").frame(width: 44, height: 44)
+          }
+          .buttonStyle(.borderless)
+          .disabled(item.password.isEmpty)
+          .accessibilityLabel(store.t("复制密码", "Copy password"))
+          .accessibilityValue(item.title)
+          .accessibilityIdentifier("row.copyPassword")
+        }
         }
         }
         }

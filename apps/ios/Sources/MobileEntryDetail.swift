@@ -8,6 +8,8 @@ struct MobileEntryDetail: View {
   @State private var revealing = Set<String>()
   @State private var deleting = false
   @State private var code = ""
+  @State private var nextCode = ""
+  @State private var nextIn = 0
   /// Field key waiting for the user's confirmation before a wallet secret is shown.
   @State private var confirmingReveal: String?
   @State private var screenCaptured = UIScreen.main.isCaptured
@@ -42,8 +44,15 @@ struct MobileEntryDetail: View {
             }
           } else if item.type == "totp" {
             Section(store.t("验证码", "Verification code")) {
-              Text(code.isEmpty ? "—— ——" : code).font(
+              Text(MobileCodeRow.grouped(code)).font(
                 .system(size: 36, weight: .medium, design: .monospaced))
+                .foregroundStyle(!code.isEmpty && nextIn <= 5 ? Color.orange : Color.primary)
+                .accessibilityIdentifier("code.current")
+              if !nextCode.isEmpty {
+                Text(store.t("下一个 \(MobileCodeRow.grouped(nextCode)) · \(nextIn) 秒后生效", "Next \(MobileCodeRow.grouped(nextCode)) · in \(nextIn) s"))
+                  .font(.subheadline.monospacedDigit()).foregroundStyle(.secondary)
+                  .accessibilityIdentifier("code.next")
+              }
               Button(store.t("复制验证码", "Copy code")) { store.copy(code) }.disabled(code.isEmpty)
               value(
                 store.t("设置密钥", "Setup key"), item.string("secret"), key: "secret", secret: true)
@@ -172,13 +181,19 @@ struct MobileEntryDetail: View {
     .onDisappear { revealing.removeAll() }
     .task(id: item) {
       guard let item, item.type == "totp" else { return }
+      let period = max(item.number("period", fallback: 30), 1)
+      func totp(_ time: Double) async -> String {
+        (try? await store.perform([
+          "op": .string("totp"), "secret": .string(item.string("secret")),
+          "period": .number(period), "time": .number(time.rounded(.down)),
+        ]).object["code"]?.string) ?? ""
+      }
       while !Task.isCancelled {
-        code =
-          (try? await store.perform([
-            "op": .string("totp"), "secret": .string(item.string("secret")),
-            "period": .number(item.number("period", fallback: 30)),
-            "time": .number(Date().timeIntervalSince1970.rounded(.down)),
-          ]).object["code"]?.string) ?? ""
+        let now = Date().timeIntervalSince1970
+        let next = MobileCodeRow.nextWindow(now: now, period: period)
+        code = await totp(now)
+        nextCode = code.isEmpty ? "" : await totp(next.time)
+        nextIn = next.remaining
         do { try await Task.sleep(nanoseconds: 1_000_000_000) } catch { break }
       }
     }
