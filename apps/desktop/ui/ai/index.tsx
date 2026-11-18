@@ -1,29 +1,25 @@
 import { pollEvery } from "../polling";
 import { desktopCapabilities } from "../native";
 import { cleanup, effect, signal, View } from "nsh";
+export { AiWorkspacePage } from "./Workspace";
 import { Dialog } from "nsh/base";
 import { Ai } from "passwordvault/native";
-import { Banner, Btn, Group, Row, T, TextBox, Toggle, copySecret } from "../kit";
-import { aiSetupInstructions } from "./setup";
-import { items, phase, toast, vaultInstance } from "../store";
+import { Banner, Btn, Row, T, Toggle } from "../kit";
+import { phase, toast, vaultInstance } from "../store";
 import { c } from "../theme";
-const status = signal<any>({ settings: {}, pending: [] });
-const code = signal("");
-const trial = signal("");
-async function preview(clientId: string, id: string, op: string) {
-  try { const out = await Ai.preview(vaultInstance, clientId, JSON.stringify({ op, id, field: "password" })); trial.set(op === "get_secret" ? "本次敏感字段读取已获单次授权。" : out); } catch (e) { trial.set(String(e)); }
-}
-async function control(r: any) { return JSON.parse(await Ai.control(vaultInstance, JSON.stringify(r))); }
-async function refresh(isActive: () => boolean = () => true) {
+export const status = signal<any>({ settings: {}, pending: [] });
+export const code = signal("");
+export async function control(r: any) { return JSON.parse(await Ai.control(vaultInstance, JSON.stringify(r))); }
+export async function refresh(isActive: () => boolean = () => true) {
   try { const next = await control({ op: "status" }); if (!isActive()) return; status.set(phase() === "unlocked" ? next : { settings: {}, pending: [] }); } catch { if (isActive()) status.set({ settings: {}, pending: [] }); }
 }
-async function change(r: any) { try { await control(r); await refresh(); } catch (e) { toast(String(e)); } }
-const cfg = () => status().settings;
+export async function change(r: any) { try { await control(r); await refresh(); } catch (e) { toast(String(e)); } }
+export const cfg = () => status().settings;
 /** Mount exactly once beside the app's other overlay hosts. */
 export function AiApprovalHost() {
   if (!desktopCapabilities.ai) return null;
   effect(() => {
-    if (phase() !== "unlocked") { Ai.cancelPending(); trial.set(""); status.set({ settings: {}, pending: [] }); code.set(""); return; }
+    if (phase() !== "unlocked") { Ai.cancelPending(); status.set({ settings: {}, pending: [] }); code.set(""); return; }
     void Ai.start(vaultInstance).then(() => refresh(), (e) => {
       // Another preview instance already serves the fixed AI socket: stay quiet here;
       // the AI settings page reports the service as not running.
@@ -32,74 +28,36 @@ export function AiApprovalHost() {
     cleanup(pollEvery(500, refresh));
   });
   const p = () => phase() === "unlocked" ? status().pending[0] : undefined;
-  return <If when={p()}><Dialog open onOpenChange={({ open: visible }) => { if (!visible && p()) void change({ op: "approve", requestId: p().requestId, allow: false }); }} backdropStyle={{ backgroundColor: c().backdrop }} style={{ alignSelf: "center", marginTop: 130, width: 470, padding: 24, gap: 14, backgroundColor: c().surface, borderRadius: 14 }}>
-    <T size={18} weight="600">允许 AI 读取敏感字段？</T>
-    <T>客户端：{p()?.client}</T><T>条目：{p()?.item}</T><T>字段：{p()?.field}</T>
-    <T size={11}>请求：{p()?.requestId}</T>
-    <Banner tone="warn" title="仅允许当前请求">秘密会进入 AI 客户端上下文，撤销权限无法收回已返回内容。60 秒未确认将自动拒绝。</Banner>
-    <Row><Btn label="拒绝" onPress={() => void change({ op: "approve", requestId: p().requestId, allow: false })} /><Btn label="允许一次" kind="primary" onPress={() => void change({ op: "approve", requestId: p().requestId, allow: true })} /></Row>
+  const answer = (allow: boolean, leaseSeconds?: number) => void change({ op: "approve", requestId: p().requestId, allow, ...(leaseSeconds === undefined ? {} : { leaseSeconds }) });
+  const secret = () => p()?.kind === "secret";
+  const reveal = () => p()?.delivery === "reveal";
+  const title = () => !secret() ? "允许 AI 访问这个条目？" : p()?.grant ? `允许 AI 访问此条目并读取${aiFieldLabel(p()?.field)}？` : `允许 AI 读取${aiFieldLabel(p()?.field)}？`;
+  const line = (label: string, value: any, color?: string) => <Row gap={12} style={{ alignItems: "flex-start" }}><T size={12} color={c().muted} style={{ width: 56 }}>{label}</T><T size={12.5} color={color ?? c().ink} style={{ flex: 1, minWidth: 0 }}>{value}</T></Row>;
+  return <If when={p()}><Dialog open onOpenChange={({ open: visible }) => { if (!visible && p()) answer(false); }} backdropStyle={{ backgroundColor: c().backdrop }} style={{ alignSelf: "center", marginTop: 130, width: 520, padding: 24, gap: 14, backgroundColor: c().surface, borderRadius: 14 }}>
+    <T size={18} weight="600">{title()}</T>
+    <View style={{ gap: 8 }}>
+      {line("客户端", p()?.client)}{line("条目", p()?.item)}
+      <If when={p()?.purpose}>{line("用途", p()?.purpose)}</If>
+      <If when={secret()}>{line("交付", reveal() ? "把明文返回给 AI" : `放到剪贴板，${30} 秒后清除 · AI 看不到内容`, reveal() ? c().orange : c().green)}</If>
+      <If when={p()?.grant}>{line("授权", "同时把此条目加入该客户端的可访问列表", c().muted)}</If>
+    </View>
+    <If when={secret()} else={<Banner tone="info" title="只开放普通字段" style={{ marginBottom: 0 }}>加入后 AI 可以读取此条目的标题、用户名等普通字段；密码等敏感字段仍需逐次确认。</Banner>}>
+      <If when={reveal()} else={<Banner tone="ok" title="秘密不会进入 AI 对话" style={{ marginBottom: 0 }}>AI 只会收到“已放到剪贴板”。由你或 AI 粘贴到需要的地方。</Banner>}>
+        <Banner tone="warn" title="AI 将看到明文" style={{ marginBottom: 0 }}>内容会进入 AI 客户端上下文，之后撤销权限也无法收回。</Banner>
+      </If>
+    </If>
+    <Row gap={8} wrap>
+      <Btn label="拒绝" onPress={() => answer(false)} />
+      <View style={{ flex: 1 }} />
+      <If when={secret() && p()?.leaseUntilLock}><Btn label="锁定前免确认" tooltip="此客户端在锁定前再次读取该字段无需确认" onPress={() => answer(true, 0)} /></If>
+      <If when={secret()}><Btn label={`${p()?.leaseMinutes ?? 15} 分钟内免确认`} tooltip="此客户端在这段时间内再次读取该字段无需确认，可随时结束" onPress={() => answer(true, (p()?.leaseMinutes ?? 15) * 60)} /></If>
+      <Btn label={secret() ? "允许一次" : "允许访问"} kind="primary" onPress={() => answer(true)} />
+    </Row>
+    <T size={10.5} color={c().faint}>请求 {p()?.requestId} · 60 秒未确认将自动拒绝</T>
   </Dialog></If>;
 }
-export function AiPage() {
-  if (!desktopCapabilities.ai) return <Banner tone="info" title="Windows AI 访问尚未开放">此预览版暂不支持 AI 客户端访问密码库。</Banner>;
-  const name = signal("本机 AI 客户端"), copying = signal(false), advanced = signal(false);
-  let alive = true;
-  cleanup(() => { alive = false; });
-  const copySetup = async () => {
-    if (copying() || !cfg().aiAccessEnabled) return;
-    copying.set(true);
-    try {
-      const current = await control({ op: "status" });
-      if (!alive || phase() !== "unlocked") return;
-      if (!current.helper || !current.socket) throw new Error("AI 配置尚未准备好，请稍后重试");
-      const pair = await control({ op: "pair", name: name() });
-      if (!alive || phase() !== "unlocked") return;
-      code.set(pair.code);
-      await copySecret(aiSetupInstructions(current.helper, current.socket, pair.code), "AI 配置说明");
-    } catch (e) { if (alive) toast(String(e)); }
-    finally { if (alive) copying.set(false); }
-  };
-  void refresh();
-  return <View style={{ gap: 14 }}>
-    <T size={19} weight="600">AI 访问</T>
-    <T>通过本机 MCP 查询明确允许的内容，默认关闭。锁定后拒绝全部读取。</T>
-    <Group><Toggle title="启用本地 AI 接口" checked={cfg().aiAccessEnabled === true} onChange={v => void change({ op: "configure", aiAccessEnabled: v })} />
-      {([["devices", "设备与服务"], ["accounts", "账号摘要（不含密码）"], ["notes", "笔记"]] as const).map(([key, label]) => <Toggle title={label} checked={cfg().aiAccessScopes?.[key] === true} onChange={v => void change({ op: "configure", aiAccessScopes: { ...cfg().aiAccessScopes, [key]: v } })} />)}
-      <Toggle title="钱包（始终不可查询）" checked={false} disabled onChange={() => {}} />
-    </Group>
-    <Banner tone="info" title="只读访问">密码、令牌、私钥每次单独确认，只允许一次。执行命令与修改资料始终拒绝；脚本和文档只作为数据。</Banner>
-    <T weight="600">配对客户端</T><TextBox value={name()} onChange={v => name.set(v)} placeholder="客户端名称" />
-    <Btn label={copying() ? "正在准备…" : "复制给 AI 配置"} kind="primary" disabled={!cfg().aiAccessEnabled || copying() || !name().trim()} onPress={() => void copySetup()} />
-    <T size={12}>点击后生成一次性配对码，并复制本机配置步骤。直接粘贴给这台 Mac 上的 AI 客户端即可，无需手动替换令牌。</T>
-    <If when={code()}><T size={11}>配置说明已生成，请在 120 秒内交给 AI；剪贴板会在 30 秒后自动清除。过期后重新点击即可。</T></If>
-    <T size={11}>配对后仍由你选择可访问的条目，敏感字段保持单次确认。</T>
-    <Btn label={advanced() ? "收起手动配置" : "查看手动配置"} kind="ghost" onPress={() => advanced.set(!advanced())} />
-    <If when={advanced()}><Group>
-      <If when={code()}><T>确认码（120 秒内有效，使用一次）：{code()}</T></If>
-      <T size={11}>Socket：{status().socket ?? "等待解锁"}</T>
-      <T size={10}>{JSON.stringify({ mcpServers: { passwordvault: { command: status().helper ?? "等待解锁", env: { PV_AI_SOCKET: status().socket ?? "等待解锁", PV_AI_TOKEN: "<配对返回的令牌>" } } } }, null, 2)}</T>
-    </Group></If>
-    <Each of={cfg().aiAccessClients ?? []}>{(client: any) => <Group>
-      <Row><T weight="600">{client().name}</T><Btn label="撤销客户端" kind="danger" onPress={() => void change({ op: "revoke", clientId: client().id })} /></Row>
-      <Each of={items().filter(i => ["device", "password", "secureNote"].includes(i.type) && !i.isDeleted)}>{(item: any) => <View>
-        <Toggle title={item().title} note={item().id} checked={client().entries?.[item().id] === true} onChange={v => void change({ op: "grant", clientId: client().id, entries: { ...client().entries, [item().id]: v }, files: client().files })} />
-        <Row><Btn label="试查配置" onPress={() => void preview(client().id, item().id, "get_entry")} /><Btn label="试读密码" onPress={() => void preview(client().id, item().id, "get_secret")} /><Btn label="测试拒绝执行" onPress={() => void preview(client().id, item().id, "execute")} /></Row>
-        <Toggle title="允许普通附件" checked={client().files?.[item().id] === true} onChange={v => void change({ op: "grant", clientId: client().id, entries: client().entries, files: { ...client().files, [item().id]: v } })} />
-      </View>}</Each>
-    </Group>}</Each>
-    <If when={trial()}><T size={12}>{trial()}</T></If>
-    <T weight="600">访问记录（最近 200 条）</T>
-    <Each of={cfg().aiAccessAudit ?? []}>{(a: any) => <View style={{ gap: 3 }}><T size={12}>{a().operation} · {a().result}</T><T size={10}>{a().client} · {a().item} · {a().requestId}</T></View>}</Each>
-  </View>;
-}
-/** Optional device detail tab; the settings page owns per-client grants. */
-export function AiEntryPage(props: { id: string }) {
-  return <View style={{ gap: 12 }}><T>稳定 ID：{props.id}</T>
-    <TextBox value={cfg().aiAccessAliases?.[props.id] ?? ""} placeholder="别名" onChange={v => void change({ op: "configure", aiAccessAliases: { ...cfg().aiAccessAliases, [props.id]: v } })} />
-    <Each of={items().find(i => i.id === props.id)?.device?.files ?? []}>{(f: any) => <AiFileAccess entryId={props.id} fileId={f().attachmentId} name={f().name} />}</Each>
-    <Banner tone="info" title="按客户端授权">在设置 → AI 访问中允许此条目与普通附件。未分类文件始终拒绝。</Banner>
-  </View>;
-}
+const FIELD_LABELS: Record<string, string> = { password: "密码", token: "令牌", privateKey: "私钥", nodeLink: "节点链接", notes: "备注", phone: "手机", address1: "地址", address2: "地址第二行", postalCode: "邮编", number: "卡号", securityCode: "安全码" };
+export const aiFieldLabel = (field?: string) => !field ? "敏感字段" : field.startsWith("custom:") ? "自定义敏感字段" : FIELD_LABELS[field] ?? field;
 /** Explicit classification, never inferred from extensions. Mount beside file metadata. */
 export function AiFileAccess(props: { entryId: string; fileId: string; name: string }) {
   return <Toggle title={`标记为普通资料：${props.name}`} note="允许读取后，内容可能进入 AI 上下文；请确认文件不含密码、令牌、节点链接或私钥。"

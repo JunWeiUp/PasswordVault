@@ -221,3 +221,17 @@ test("rich notes cannot be downgraded or imported without their encrypted attach
   assert.deepEqual(call(vault, { op: "list" }).items, []);
   vault.free();
 });
+test("WASM generate keeps character mode and supports validated passphrases", () => {
+  const { vault } = open();
+  const legacy = call(vault, { op: "generate", length: 16, symbols: false }).password;
+  assert.match(legacy, /^[A-Za-z0-9]{16}$/);
+  const phrase = call(vault, { op: "generate", mode: "passphrase", words: 4, separator: ".", capitalize: true, number: true }).password;
+  const parts = phrase.split(".");
+  assert.equal(parts.length, 4);
+  assert(parts.every((word) => /^[A-Z][a-z]+[0-9]?$/.test(word)));
+  assert.equal(phrase.replace(/[^0-9]/g, "").length, 1);
+  assert.equal(call(vault, { op: "generate", mode: "passphrase" }).password.split("-").length, 5);
+  assert.throws(() => call(vault, { op: "generate", mode: "passphrase", words: 11 }));
+  assert.throws(() => call(vault, { op: "generate", mode: "passphrase", separator: "/" }));
+  vault.free();
+});

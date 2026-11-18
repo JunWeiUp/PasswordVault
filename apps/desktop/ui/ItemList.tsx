@@ -12,6 +12,7 @@ import { askDeleteForever, askEmptyTrash, askTrash } from "./sheets";
 import { c, layout, MONO, fs } from "./theme";
 import { secondsLeft, TotpText } from "./totp";
 import { deviceSubtitle, deviceTitle, importDeviceDocuments, newDevice } from "./devices";
+import { RowCode } from "./entries/linkedCode";
 import { askAddCode } from "./entries/CodeDetail";
 import { SORT_LABEL, setSortMode, sortMode, type SortMode } from "./preferences";
 
@@ -117,7 +118,7 @@ function ItemRow(props: { item: Item }) {
       <If when={item().type !== "secureNote"}><Tile item={item()} /></If>
       <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
-          <T size={13} weight="600" lines={item().type === "device" ? undefined : 1} style={{ flexShrink: 1 }}>{itemTitle(item())}</T>
+          <T size={13} weight="600" lines={item().type === "device" ? 2 : 1} style={{ flexShrink: 1 }}>{itemTitle(item())}</T>
           <If when={item().isFavorite}><Icon name="star" size={11} tint="#e3a008" fill /></If>
           <If when={item().isPinned}><Icon name="pin" size={11} tint={c().faint} /></If>
         </View>
@@ -132,6 +133,7 @@ function ItemRow(props: { item: Item }) {
           </View>
         </If>
       </View>
+      <If when={item().type === "password"}><RowCode item={item()} /></If>
       <If when={item().type === "totp" && dest() !== "trash"}>
         <View style={{ alignItems: "flex-end", gap: 3 }}>
           <TotpText secret={item().secret} period={item().period ?? 30} style={{ fontFamily: MONO, fontSize: fs(12), fontWeight: "600", color: c().blue }} />
@@ -169,8 +171,16 @@ export function newItemMenu(): MenuItem[] {
   ];
 }
 
-export function newInCurrent(position?: { x: number; y: number }) {
-  if (dest() === "devices") return void newDevice();
+/** Destinations whose header button opens a menu rather than creating directly. */
+const MENU_DESTS = ["wallets", "all", "favorites", "devices"];
+export function newInCurrent(position?: { x: number; y: number }, fromButton = false) {
+  if (dest() === "devices") {
+    if (!fromButton) return void newDevice();
+    return void Menu.popup([
+      { label: "新增设备", shortcut: "mod+n", onSelect: () => void newDevice() },
+      { label: "导入设备资料…", onSelect: () => void importDeviceDocuments() },
+    ], position);
+  }
   if (dest() === "codes") return askAddCode();
   const direct: Partial<Record<string, ItemType>> = { notes: "secureNote", accounts: "password", codes: "totp" };
   const t = direct[dest()];
@@ -210,12 +220,11 @@ export function ItemList() {
         <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", marginBottom: 14, gap: 8 }}>
           <T size={20} weight="600" lines={dest() === "devices" ? undefined : 1} style={{ flexShrink: 1 }}>{title()}</T>
           <View desktop={{ windowDrag: false }} onLayout={(e) => (header = { x: e.bounds.origin.x, y: e.bounds.origin.y + 34 })}>
-            <If when={dest() === "trash"} else={<Btn testID="new-item" label={NEW_LABEL[dest()] ?? "新建"} icon="plus" kind="primary" onPress={() => newInCurrent(header)} />}>
+            <If when={dest() === "trash"} else={<Btn testID="new-item" label={`${NEW_LABEL[dest()] ?? "新建"}${MENU_DESTS.includes(dest()) ? " ▾" : ""}`} icon="plus" kind="primary" onPress={() => newInCurrent(header, true)} />}>
               <Btn label="清空" disabled={visible().length === 0} onPress={askEmptyTrash} />
             </If>
           </View>
         </View>
-        <If when={dest() === "devices"}><View desktop={{ windowDrag: false }} style={{ marginBottom: 10 }}><Btn label="导入设备资料…" testID="import-device-documents" onPress={() => void importDeviceDocuments()} /></View></If>
         <View desktop={{ windowDrag: false }} tooltip="搜索当前列表；多个关键词用空格分隔。在「全部项目」中可跨类型搜索。" style={{ flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: c().field, borderRadius: 7, paddingHorizontal: 9 }}>
           <Icon name="search" size={13} tint={c().faint} />
           <SearchInput ref={(r: any) => (input = r)} />
@@ -227,6 +236,7 @@ export function ItemList() {
           {/* Rebuilt per destination: a component body runs only once. */}
           <Each of={[dest()]} key={(d) => d}>{() => <Chips />}</Each>
           <View style={{ flex: 1 }} />
+          <T size={11} color={c().faint}>{visible().length} {query().trim() ? "个搜索结果" : "个项目"}</T>
           <View role="button" testID="sort-menu" accessibilityLabel={`排序：${SORT_LABEL[sortMode()]}`} tooltip="排序方式（置顶项目始终在前）"
             onPress={(e: any) => void Menu.popup((Object.keys(SORT_LABEL) as SortMode[]).map((m) => ({ label: SORT_LABEL[m], checked: sortMode() === m, onSelect: () => setSortMode(m) })), e?.pagePosition)}
             style={{ flexDirection: "row", alignItems: "center", gap: 3, paddingHorizontal: 6, paddingVertical: 4, borderRadius: 6, cursor: "pointer" }}
@@ -241,13 +251,6 @@ export function ItemList() {
           <Each of={visible()} key={(i) => i.id}>{(item) => <ItemRow item={item()} />}</Each>
         </If>
       </Scroll>
-      <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 16, paddingVertical: 9, borderTopWidth: 1, borderTopColor: c().line }}>
-        <T size={11} color={c().faint}>{visible().length} {query().trim() ? "个搜索结果" : "个项目"}</T>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-          <Icon name="lock" size={11} tint={c().faint} />
-          <T size={11} color={c().faint}>已加密</T>
-        </View>
-      </View>
     </View>
   );
 }

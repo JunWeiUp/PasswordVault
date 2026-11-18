@@ -37,6 +37,28 @@ struct MobileRelayEnrollment: View {
   @ObservedObject var relay: VaultRelay
   var t: (String, String) -> String
   @State private var joining = false
+  @State private var editing = false
+  var body: some View {
+    VStack(alignment: .leading, spacing: 12) {
+      Button(relay.creatingGroup ? t("继续创建", "Continue creation") : t("创建新设备组", "Create group")) {
+        joining = false; editing = true
+      }
+      if !relay.creatingGroup {
+        Button(t("扫码或手动加入", "Scan or enter an invitation")) { joining = true; editing = true }
+      }
+    }
+    .sheet(isPresented: $editing) { MobileRelayEnrollmentSheet(relay: relay, t: t, joining: joining) }
+  }
+}
+
+/// Create or join form for a personal device group, shown as a sheet.
+struct MobileRelayEnrollmentSheet: View {
+  @ObservedObject var relay: VaultRelay
+  var t: (String, String) -> String
+  @Environment(\.dismiss) private var dismiss
+  @State var joining: Bool
+  /// Opens the QR scanner first (the "Scan invitation" entry point).
+  var scanOnAppear = false
   @State private var endpoint = ""
   @State private var password = ""
   @State private var groupName = ""
@@ -47,38 +69,28 @@ struct MobileRelayEnrollment: View {
   @State private var scanning = false
   @State private var error: String?
 
-  @State private var editing = false
   @State private var initialized = false
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 12) {
-      Button(relay.creatingGroup ? t("继续创建", "Continue creation") : t("创建新设备组", "Create group")) {
-        joining = false; editing = true
+    NavigationStack {
+      ScrollView {
+        fields.padding(16)
+          .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12))
+          .padding(16)
       }
-      if !relay.creatingGroup {
-        Button(t("扫码或手动加入", "Scan or enter an invitation")) { joining = true; editing = true }
+      .background(Color(uiColor: .systemGroupedBackground))
+      .navigationTitle(joining ? t("加入设备组", "Join group") : t("创建设备组", "Create group"))
+      .navigationBarTitleDisplayMode(.inline)
+      .toolbar { ToolbarItem(placement: .cancellationAction) {
+        Button(t("返回", "Back")) { dismiss() }.disabled(relay.groupBusy)
+      } }
+      .safeAreaInset(edge: .bottom) {
+        confirmButton.padding(16).background(.regularMaterial)
       }
+      .interactiveDismissDisabled(relay.groupBusy)
+      .disabled(relay.groupBusy)
     }
-    .sheet(isPresented: $editing) {
-      NavigationStack {
-        ScrollView {
-          fields.padding(16)
-            .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12))
-            .padding(16)
-        }
-        .background(Color(uiColor: .systemGroupedBackground))
-        .navigationTitle(joining ? t("加入设备组", "Join group") : t("创建设备组", "Create group"))
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar { ToolbarItem(placement: .cancellationAction) {
-          Button(t("返回", "Back")) { editing = false }.disabled(relay.groupBusy)
-        } }
-        .safeAreaInset(edge: .bottom) {
-          confirmButton.padding(16).background(.regularMaterial)
-        }
-        .interactiveDismissDisabled(relay.groupBusy)
-        .disabled(relay.groupBusy)
-      }
-    }
+    .onChange(of: relay.hasManagedGroup) { joined in if joined { dismiss() } }
   }
   private var confirmButton: some View {
     Button { submit() } label: {
@@ -102,8 +114,13 @@ struct MobileRelayEnrollment: View {
           .onChange(of: invitation) { _ in inspected = ""; error = nil }
         Button(t("读取邀请", "Read invitation")) { inspect(invitation) }
         if !inspected.isEmpty {
-          Text(t("确认加入设备组", "Confirm group invitation")).font(.headline)
-          Text(endpoint).font(.callout).textSelection(.enabled)
+          Text(t("确认邀请", "Confirm invitation")).font(.headline)
+          VStack(alignment: .leading, spacing: 4) {
+            Text(t("中继地址", "Relay address")).font(.caption).foregroundStyle(.secondary)
+            Text(endpoint).font(.callout.monospaced()).textSelection(.enabled)
+              .accessibilityIdentifier("relay-invitation-endpoint")
+            Text(t("来自邀请，不可修改", "From the invitation; can't be changed")).font(.caption2).foregroundStyle(.secondary)
+          }
           Text(carriedPassword
                ? t("已从邀请链接读取服务器密码，可显示或修改。", "Server password read from the invitation. You can reveal or edit it.")
                : t("邀请未携带服务器密码，请向邀请人获取后填写。", "Ask the inviter for the server password and enter it below."))
@@ -115,7 +132,9 @@ struct MobileRelayEnrollment: View {
           .disabled(relay.creatingGroup)
       }
       MobileRelayPasswordField(value: $password, title: t("服务器密码（必填）", "Server password (required)"))
-      Text(t("服务器密码仅用于中继访问，不是主密码或端到端密钥。加入后仍需单独授权密码库。", "This password grants relay access only. Vault access requires separate authorization after joining."))
+      Text(joining
+        ? t("服务器密码仅用于中继访问，不是主密码或端到端密钥。加入后立即开始双向同步，无需再确认。", "This password grants relay access only; it is not your master password or an end-to-end key. Two-way sync starts right after joining.")
+        : t("服务器密码仅用于中继访问，不是主密码或端到端密钥。", "This password grants relay access only; it is not your master password or an end-to-end key."))
         .font(.caption).foregroundStyle(.secondary)
       if let error { Text(error).foregroundStyle(.red).accessibilityIdentifier("relay-enrollment-error") }
       if let failure = relay.failure { Text(failure).foregroundStyle(.red) }
@@ -126,6 +145,7 @@ struct MobileRelayEnrollment: View {
     }
     .onAppear {
       guard !initialized else { return }; initialized = true
+      if scanOnAppear && joining { scanning = true }
       deviceName = t("我的 iPhone", "My iPhone")
       if let draft = relay.pendingCreationNames { groupName = draft.group; deviceName = draft.device }
       endpoint = relay.config.endpoint

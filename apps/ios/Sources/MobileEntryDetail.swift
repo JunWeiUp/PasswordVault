@@ -8,6 +8,8 @@ struct MobileEntryDetail: View {
   @State private var revealing = Set<String>()
   @State private var deleting = false
   @State private var code = ""
+  @State private var nextCode = ""
+  @State private var nextIn = 0
   /// Field key waiting for the user's confirmation before a wallet secret is shown.
   @State private var confirmingReveal: String?
   @State private var screenCaptured = UIScreen.main.isCaptured
@@ -42,11 +44,39 @@ struct MobileEntryDetail: View {
             }
           } else if item.type == "totp" {
             Section(store.t("验证码", "Verification code")) {
-              Text(code.isEmpty ? "—— ——" : code).font(
+              Text(MobileCodeRow.grouped(code)).font(
                 .system(size: 36, weight: .medium, design: .monospaced))
+                .foregroundStyle(!code.isEmpty && nextIn <= 5 ? Color.orange : Color.primary)
+                .accessibilityIdentifier("code.current")
+              if !nextCode.isEmpty {
+                Text(store.t("下一个 \(MobileCodeRow.grouped(nextCode)) · \(nextIn) 秒后生效", "Next \(MobileCodeRow.grouped(nextCode)) · in \(nextIn) s"))
+                  .font(.subheadline.monospacedDigit()).foregroundStyle(.secondary)
+                  .accessibilityIdentifier("code.next")
+              }
               Button(store.t("复制验证码", "Copy code")) { store.copy(code) }.disabled(code.isEmpty)
               value(
                 store.t("设置密钥", "Setup key"), item.string("secret"), key: "secret", secret: true)
+              LabeledContent(store.t("算法 · 位数 · 周期", "Algorithm · digits · period"),
+                value: store.t("SHA1 · 6 位 · \(Int(max(item.number("period", fallback: 30), 1))) 秒", "SHA1 · 6 · \(Int(max(item.number("period", fallback: 30), 1))) s"))
+            }
+            // Accounts that store the same setup key, as on the desktop. Linking needs no
+            // extra field; there is no separate link record in the vault format.
+            Section {
+              let linked = CodeSetup.linkedAccounts(item, in: store.items)
+              if linked.isEmpty {
+                Text(store.t("未找到使用相同密钥的账号。", "No account uses the same setup key."))
+                  .foregroundStyle(.secondary).accessibilityIdentifier("code.linked.none")
+              }
+              ForEach(linked) { account in
+                NavigationLink { MobileEntryDetail(id: account.id) } label: {
+                  VStack(alignment: .leading) {
+                    Text(account.title.isEmpty ? store.t("未命名", "Untitled") : account.title)
+                    if !account.username.isEmpty { Text(account.username).font(.caption).foregroundStyle(.secondary) }
+                  }
+                }
+              }
+            } header: {
+              Text(store.t("关联账号", "Linked accounts"))
             }
           } else if item.type == "crypto" {
             Section(store.t("钱包", "Wallet")) {
@@ -62,17 +92,40 @@ struct MobileEntryDetail: View {
             }
           }
           PasskeyRecordsView(item: item, perform: store.perform, refresh: { try? await store.refresh() }, t: store.t, editable: store.canEdit(item))
-          if ["creditCard", "identity"].contains(item.type) {
-            let group = item.type == "creditCard" ? "card" : "identity"
-            Section(store.t("结构化资料", "Structured details")) {
-              ForEach((item.fields[group]?.object ?? [:]).keys.sorted(), id: \.self) { key in
-                value(key, item.fields[group]?.object[key]?.string ?? "", key: "structured-\(key)", secret: ["number", "securityCode"].contains(key))
+          let customFields = item.fields["customFields"]?.array ?? []
+          if item.type == "identity" {
+            let documents = IdentityDocument.fields.filter { !IdentityDocument.value(customFields, $0.id).isEmpty }
+            let name = [item.fields["identity"]?.object["lastName"]?.string ?? "", item.fields["identity"]?.object["firstName"]?.string ?? ""]
+              .filter { !$0.isEmpty }.joined(separator: store.chinese ? "" : " ")
+            if !documents.isEmpty || !name.isEmpty {
+              Section(store.t("证件信息", "Document")) {
+                value(store.t("姓名", "Name"), name, key: "document.name")
+                ForEach(documents, id: \.id) { spec in
+                  value(store.t(spec.label, spec.english), IdentityDocument.value(customFields, spec.id), key: spec.id,
+                    secret: spec.kind == "concealed", copyAfterReveal: spec.kind == "concealed")
+                }
               }
             }
           }
-          if let fields = item.fields["customFields"]?.array, !fields.isEmpty {
+          if ["creditCard", "identity"].contains(item.type) {
+            let group = item.type == "creditCard" ? "card" : "identity"
+            let object = item.fields[group]?.object ?? [:]
+            let table = item.type == "creditCard" ? StructuredLabels.card : StructuredLabels.identity
+            // Known keys in their usual order, then any other stored keys.
+            let keys = table.map(\.0).filter { object[$0] != nil && !(item.type == "identity" && ["firstName", "lastName"].contains($0)) }
+              + object.keys.filter { key in !table.contains { $0.0 == key } }.sorted()
+            if keys.contains(where: { !(object[$0]?.string ?? "").isEmpty }) {
+              Section(item.type == "creditCard" ? store.t("银行卡", "Payment card") : store.t("身份资料", "Identity")) {
+                ForEach(keys, id: \.self) { key in
+                  value(StructuredLabels.label(key, type: item.type, t: store.t), object[key]?.string ?? "", key: "structured-\(key)", secret: ["number", "securityCode"].contains(key))
+                }
+              }
+            }
+          }
+          let others = Array(customFields.enumerated()).filter { item.type != "identity" || !IdentityDocument.isDocument($0.element) }
+          if !others.isEmpty {
             Section(store.t("自定义字段", "Custom fields")) {
-              ForEach(Array(fields.enumerated()), id: \.offset) { index, field in
+              ForEach(others, id: \.offset) { index, field in
                 value(field.object["label"]?.string ?? "", field.object["value"]?.string ?? "", key: "custom-\(index)", secret: field.object["kind"]?.string == "concealed")
               }
             }
@@ -172,20 +225,26 @@ struct MobileEntryDetail: View {
     .onDisappear { revealing.removeAll() }
     .task(id: item) {
       guard let item, item.type == "totp" else { return }
+      let period = max(item.number("period", fallback: 30), 1)
+      func totp(_ time: Double) async -> String {
+        (try? await store.perform([
+          "op": .string("totp"), "secret": .string(item.string("secret")),
+          "period": .number(period), "time": .number(time.rounded(.down)),
+        ]).object["code"]?.string) ?? ""
+      }
       while !Task.isCancelled {
-        code =
-          (try? await store.perform([
-            "op": .string("totp"), "secret": .string(item.string("secret")),
-            "period": .number(item.number("period", fallback: 30)),
-            "time": .number(Date().timeIntervalSince1970.rounded(.down)),
-          ]).object["code"]?.string) ?? ""
+        let now = Date().timeIntervalSince1970
+        let next = MobileCodeRow.nextWindow(now: now, period: period)
+        code = await totp(now)
+        nextCode = code.isEmpty ? "" : await totp(next.time)
+        nextIn = next.remaining
         do { try await Task.sleep(nanoseconds: 1_000_000_000) } catch { break }
       }
     }
   }
   @ViewBuilder private func value(
     _ label: String, _ value: String, key: String, secret: Bool = false,
-    confirm: Bool = false, copyable: Bool = true
+    confirm: Bool = false, copyable: Bool = true, copyAfterReveal: Bool = false
   ) -> some View {
     if !value.isEmpty {
       // Confirmed secrets stay hidden while the screen is recorded or mirrored.
@@ -210,7 +269,10 @@ struct MobileEntryDetail: View {
               else { revealing.insert(key) }
             }
           }
-          if copyable { Button(store.t("复制", "Copy")) { store.copy(value) } }
+          if copyable {
+            Button(store.t("复制", "Copy")) { store.copy(value) }
+              .disabled(copyAfterReveal && !revealing.contains(key))
+          }
         }.buttonStyle(.bordered).controlSize(.regular)
         if !copyable {
           Text(store.t("助记词不支持复制，请抄写在离线介质上。", "Recovery phrases can't be copied; write them down offline."))

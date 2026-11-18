@@ -62,9 +62,21 @@ test("unlocks and browses every destination", async () => {
   await app.waitFor("text:旧论坛账号");
   await shot(app, "08-trash");
 
+  // Account rows show their code; pressing it copies without changing the selection.
+  await app.press("text:账号");
+  await app.press("text:Apple ID");
+  await app.waitFor("label:复制 GitHub 的验证码");
+  await app.press("label:复制 GitHub 的验证码");
+  expect(/^\d{6}$/.test(app.clipboard() ?? "")).toBe(true);
+  expect(app.texts()).toContain("appleid.apple.com");
+
   await app.press("text:设备与服务");
-  await app.waitFor("text:新增设备");
+  await app.waitFor("text:新增设备 ▾");
   await shot(app, "11-devices");
+  await app.press("text:AI 访问");
+  await app.waitFor("text:让 AI 找到需要的资料");
+  await app.waitFor("text:访问范围");
+  await shot(app, "12-ai-access");
   // A short window: the sidebar scrolls instead of overlapping its pinned footer.
   await app.setViewport(1200, 800);
   await app.press("text:笔记");
@@ -73,6 +85,7 @@ test("unlocks and browses every destination", async () => {
   await app.setViewport(1440, 960);
 
   await app.press("label:设置");
+  await app.waitFor("text:备份与导入");
   await app.press("text:备份与导入");
   await app.waitFor("text:本机加密备份");
   await shot(app, "10-settings-backup");

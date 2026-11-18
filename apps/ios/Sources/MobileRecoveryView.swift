@@ -4,7 +4,8 @@ import UniformTypeIdentifiers
 struct MobileRecoveryView: View {
   @EnvironmentObject private var store: MobileVaultStore
   @State private var key = ""
-  @State private var confirmation = ""
+  @State private var check = RecoverySpotCheck(key: "")
+  @State private var answers = ["", ""]
   @State private var password = ""
   @State private var newPassword = ""
   @State private var confirmPassword = ""
@@ -30,9 +31,22 @@ struct MobileRecoveryView: View {
         Section(store.t("恢复密钥", "Recovery key")) {
           Text(enabled ? store.t("已启用", "Enabled") : store.t("未启用", "Not enabled"))
           if generated {
-            Text(key).font(.body.monospaced()).textSelection(.enabled)
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 120), alignment: .leading)], alignment: .leading, spacing: 8) {
+              ForEach(Array(check.groups.enumerated()), id: \.offset) { index, group in
+                HStack(spacing: 6) {
+                  Text("\(index + 1)").font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+                  Text(group).font(.body.monospaced()).accessibilityIdentifier("recovery.group.\(index)")
+                }
+              }
+            }
             Button(store.t("复制密钥", "Copy key")) { store.copy(key) }
-            SecureField(store.t("再次输入完整密钥", "Confirm complete key"), text: $confirmation)
+            Text(store.t("抽查：输入密钥中的 2 组字符，确认已正确抄写。", "Spot check: enter 2 groups from the key to confirm you copied it correctly."))
+              .font(.footnote).foregroundStyle(.secondary)
+            ForEach(Array(check.indices.enumerated()), id: \.offset) { slot, index in
+              SecureField(store.t("第 \(index + 1) 组", "Group \(index + 1)"), text: $answers[slot])
+                .font(.body.monospaced()).textInputAutocapitalization(.never).autocorrectionDisabled()
+                .accessibilityIdentifier("recovery.check.\(slot)")
+            }
             Toggle(store.t("已在密码库之外保存密钥", "I saved the key outside the vault"), isOn: $saved)
           } else if enabled {
             SecureField(store.t("恢复密钥", "Recovery key"), text: $key)
@@ -45,7 +59,8 @@ struct MobileRecoveryView: View {
                 ?? ""
               generated = true
               saved = false
-              confirmation = ""
+              check = RecoverySpotCheck(key: key)
+              answers = ["", ""]
             }
           }.disabled(generated)
           if generated {
@@ -58,11 +73,11 @@ struct MobileRecoveryView: View {
                 enabled = true
                 generated = false
                 password = ""
-                confirmation = ""
+                answers = ["", ""]
                 message = store.t(
                   "已启用，请导出完整应急备份。", "Enabled. Export a complete emergency backup now.")
               }
-            }.disabled(!saved || normalized(key) != normalized(confirmation) || password.isEmpty)
+            }.disabled(!saved || !check.matches(answers) || password.isEmpty)
           } else if enabled {
             Button(store.t("导出应急备份", "Export emergency backup")) {
               run {
@@ -161,13 +176,11 @@ struct MobileRecoveryView: View {
         store.systemFileFlow = false
       }
   }
-  private func normalized(_ value: String) -> String {
-    value.lowercased().filter { !$0.isWhitespace && $0 != "-" }
-  }
   private func clear() {
     key = ""
     password = ""
-    confirmation = ""
+    answers = ["", ""]
+    check = RecoverySpotCheck(key: "")
     newPassword = ""
     confirmPassword = ""
     document = .init()
@@ -180,5 +193,30 @@ struct MobileRecoveryView: View {
       defer { working = false }
       do { try await action() } catch { store.report(error) }
     }
+  }
+}
+
+/// Spot check before enabling a recovery key: the user re-enters two randomly chosen groups
+/// of the generated key (groups are separated by "-"). Comparison ignores case and spaces.
+struct RecoverySpotCheck {
+  let groups: [String]
+  let indices: [Int]
+  init<G: RandomNumberGenerator>(key: String, using generator: inout G) {
+    groups = key.split(separator: "-").map(String.init)
+    indices = groups.count >= 2
+      ? Array(Array(groups.indices).shuffled(using: &generator).prefix(2)).sorted() : []
+  }
+  init(key: String) {
+    var generator = SystemRandomNumberGenerator()
+    self.init(key: key, using: &generator)
+  }
+  func matches(_ answers: [String]) -> Bool {
+    guard indices.count == 2, answers.count == indices.count else { return false }
+    return zip(indices, answers).allSatisfy { index, answer in
+      Self.normalized(groups[index]) == Self.normalized(answer)
+    }
+  }
+  static func normalized(_ value: String) -> String {
+    value.lowercased().filter { !$0.isWhitespace && $0 != "-" }
   }
 }

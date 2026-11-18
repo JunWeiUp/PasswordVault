@@ -14,6 +14,17 @@ enum MobileBiometrics {
     var error: NSError?
     return LAContext().canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &error)
   }
+  /// "Face ID" / "Touch ID" / "Optic ID" for the hardware this device has.
+  static func name(_ t: (String, String) -> String) -> String {
+    let context = LAContext()
+    var error: NSError?
+    _ = context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &error)
+    switch context.biometryType {
+    case .touchID: return t("触控 ID", "Touch ID")
+    case .opticID: return t("视控 ID", "Optic ID")
+    default: return t("面容 ID", "Face ID")
+    }
+  }
   static func enroll(_ key: Data) throws {
     guard available else { throw VaultError.InvalidData }
     var error: Unmanaged<CFError>?

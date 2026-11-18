@@ -17,16 +17,14 @@ import { BackupPage } from "./settings/BackupPage";
 import { RecoverySettings } from "./recovery";
 import { RelayPage } from "./relay";
 import { BrowserPage } from "./browser";
-import { AiPage } from "./ai";
 
-type Tab = "general" | "security" | "backup" | "relay" | "browser" | "ai" | "about";
+type Tab = "general" | "security" | "backup" | "relay" | "browser" | "about";
 const TABS: [Tab, string, IconName][] = [
   ["general", "通用", "gear"],
   ["security", "安全", "lock"],
   ["backup", "备份与导入", "archive"],
   ["relay", "同步与设备", "sync"],
   ["browser", "浏览器", "browser"],
-  ["ai", "AI 访问", "spark"],
   ["about", "关于", "info"],
 ];
 const open = signal(false);
@@ -274,7 +272,6 @@ const PAGES: Record<Tab, () => any> = {
   backup: () => <><BackupPage /><RecoverySettings /></>,
   relay: RelayPage,
   browser: BrowserPage,
-  ai: AiPage,
   about: About,
 };
 

@@ -9,6 +9,11 @@ struct MobileEntryList: View {
   @State private var deleting: VaultItem?
   @State private var walletKind = ""
   @State private var emptyingTrash = false
+  @State private var selecting = false
+  @State private var selection = Set<String>()
+  @State private var history: VaultItem?
+  @State private var moving: VaultItem?
+  @State private var addingCode = false
   private var entries: [VaultItem] {
     store.items.filter {
       (destination == .trash ? $0.isDeleted : !$0.isDeleted && destination.listedTypes.contains($0.type))
@@ -25,7 +30,8 @@ struct MobileEntryList: View {
     }
   }
   var body: some View {
-    List {
+    List(selection: $selection) {
+      RelayOfflineBanner(relay: store.relay, t: store.t)
       let family = !(store.settings["activePeerLibrary"]?.string ?? "").isEmpty
       Label(family ? store.t("家庭库：", "Family: ") + (store.settings["_peerLibraryName"]?.string ?? store.t("家庭资料库", "Family library")) : store.t("个人资料库", "Personal library"), systemImage: family ? "person.2" : "person.crop.circle")
         .font(.caption.weight(.medium)).foregroundStyle(.secondary).accessibilityIdentifier("current-library")
@@ -75,6 +81,7 @@ struct MobileEntryList: View {
         if destination == .codes {
           MobileCodeRow(item: item)
         } else {
+        HStack(spacing: 8) {
         NavigationLink {
           if item.type == "secureNote" && !item.isDeleted { MobileNoteReader(id: item.id) } else { MobileEntryDetail(id: item.id) }
         } label: {
@@ -95,6 +102,18 @@ struct MobileEntryList: View {
             ).lineLimit(2).foregroundStyle(.secondary)
           }.padding(.vertical, 6)
         }
+        if item.type == "password" && !item.isDeleted {
+          // One-tap copy of the main password; the row itself never shows the secret.
+          Button { store.copy(item.password) } label: {
+            Image(systemName: "doc.on.doc").frame(width: 44, height: 44)
+          }
+          .buttonStyle(.borderless)
+          .disabled(item.password.isEmpty)
+          .accessibilityLabel(store.t("复制密码", "Copy password"))
+          .accessibilityValue(item.title)
+          .accessibilityIdentifier("row.copyPassword")
+        }
+        }
         }
         }
         .swipeActions {
@@ -109,34 +128,38 @@ struct MobileEntryList: View {
           }
         }
         .contextMenu {
-          if !item.isDeleted && store.canEdit(item) {
-            Button(item.isFavorite ? store.t("取消收藏", "Unfavorite") : store.t("收藏", "Favorite")) {
-              Task { await store.toggle(item.id, field: "isFavorite") }
-            }
-            Button(item.isPinned ? store.t("取消置顶", "Unpin") : store.t("置顶", "Pin")) {
-              Task { await store.toggle(item.id, field: "isPinned") }
-            }
-          } else if item.isDeleted && store.canEdit(item) {
-            Button(store.t("恢复", "Restore")) { Task { await store.trash(item) } }
-          }
-          Button(store.t("删除…", "Delete…"), role: .destructive) { deleting = item }.disabled(
-            !store.canEdit(item))
+          EntryMenuItems(item: item, edit: { editor = item }, history: { history = item },
+            move: { moving = item }, trash: { deleting = item })
         }
       }
     }
     .navigationTitle(destination.title(chinese: store.chinese))
     .searchable(text: $search, prompt: store.t("搜索", "Search"))
+    .modifier(EntrySelection(selecting: $selecting, selection: $selection, visible: entries))
     .toolbar {
+      if !selecting {
       ToolbarItem(placement: .navigationBarLeading) {
         Button(action: store.lock) { Image(systemName: "lock") }.accessibilityLabel(
           store.t("锁定", "Lock"))
       }
-      if let kind = destination.itemType {
+      if destination != .trash {
+        ToolbarItem(placement: .navigationBarTrailing) {
+          Button(store.t("选择", "Select")) { selecting = true }
+            .disabled(entries.isEmpty || !store.canWriteLibrary)
+            .accessibilityIdentifier("selection.start")
+        }
+      }
+      if destination == .codes {
+        ToolbarItem(placement: .navigationBarTrailing) {
+          Button { addingCode = true } label: { Image(systemName: "plus") }
+            .accessibilityLabel(store.t("新建", "Add")).disabled(!store.canWriteLibrary)
+        }
+      } else if let kind = destination.itemType {
         ToolbarItem(placement: .navigationBarTrailing) {
           Menu {
             if destination == .wallets {
               Button(store.t("银行卡", "Payment card")) { editor = .blank(type: "creditCard", title: "") }
-              Button(store.t("证件", "Identity document")) { editor = .blank(type: "identity", title: "") }
+              Button(store.t("身份证件", "Identity document")) { editor = .blank(type: "identity", title: "") }
               Button(store.t("加密货币钱包", "Crypto wallet")) { editor = .blank(type: kind, title: "") }
             } else {
               Button(store.t("新建条目", "New entry")) { editor = .blank(type: kind, title: "") }
@@ -144,10 +167,14 @@ struct MobileEntryList: View {
           } label: { Image(systemName: "plus") }.accessibilityLabel(store.t("新建", "Add")).disabled(!store.canWriteLibrary)
         }
       }
+      }
     }
     .sheet(item: $editor) { item in
       if item.type == "secureNote" { MobileRichNoteEditor(item: item) } else { MobileEntryEditor(item: item) }
     }
+    .sheet(item: $history) { EntryHistorySheet(id: $0.id) }
+    .sheet(isPresented: $addingCode) { AddCodeSheet() }
+    .sheet(item: $moving) { MoveToCategorySheet(ids: [$0.id]) }
     .confirmationDialog(
       store.t("清空回收站？", "Empty Trash?"), isPresented: $emptyingTrash, titleVisibility: .visible
     ) {

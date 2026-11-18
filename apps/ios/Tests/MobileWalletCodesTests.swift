@@ -30,3 +30,15 @@ final class MobileWalletCodesTests: XCTestCase {
     XCTAssertEqual(MobileCodeRow.grouped(""), "——— ———")
   }
 }
+
+final class MobileNextCodeTests: XCTestCase {
+  func testNextWindowStartsAtTheFollowingStep() {
+    let window = MobileCodeRow.nextWindow(now: 1_000_000_010.4, period: 30)
+    XCTAssertEqual(window.time, 1_000_000_020)
+    XCTAssertEqual(window.remaining, 10)
+    let boundary = MobileCodeRow.nextWindow(now: 60, period: 30)
+    XCTAssertEqual(boundary.time, 90, "At a boundary the next code is a full period away")
+    XCTAssertEqual(boundary.remaining, 30)
+    XCTAssertEqual(MobileCodeRow.nextWindow(now: 5, period: 0).time, 6, "Invalid periods fall back to 1 s")
+  }
+}

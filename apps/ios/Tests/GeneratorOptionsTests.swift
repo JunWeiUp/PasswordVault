@@ -23,3 +23,40 @@ final class GeneratorOptionsTests: XCTestCase {
     XCTAssertFalse(options.valid)
   }
 }
+
+final class PassphraseOptionsTests: XCTestCase {
+  func testCharacterRequestHasNoMode() {
+    XCTAssertNil(GeneratorOptions().request["mode"])
+  }
+
+  func testPassphraseRequestCarriesWordOptions() {
+    var options = GeneratorOptions()
+    options.mode = .passphrase
+    XCTAssertEqual(options.request["mode"], .string("passphrase"))
+    XCTAssertEqual(options.request["words"], .number(5))
+    XCTAssertEqual(options.request["separator"], .string("-"))
+    XCTAssertEqual(options.request["capitalize"], .bool(false))
+    XCTAssertEqual(options.request["number"], .bool(false))
+    XCTAssertNil(options.request["length"])
+    options.words = 8; options.separator = " "; options.capitalize = true; options.number = true
+    XCTAssertEqual(options.request["words"], .number(8))
+    XCTAssertEqual(options.request["separator"], .string(" "))
+    XCTAssertEqual(options.request["capitalize"], .bool(true))
+    XCTAssertEqual(options.request["number"], .bool(true))
+    // Character classes do not apply to word mode.
+    options.upper = false; options.lower = false; options.digits = false; options.symbols = false
+    XCTAssertTrue(options.valid)
+  }
+
+  func testWordCountAndSeparatorFollowTheCoreLimits() {
+    var options = GeneratorOptions()
+    options.mode = .passphrase
+    options.words = 1
+    XCTAssertEqual(options.words, 3)
+    options.words = 99
+    XCTAssertEqual(options.words, 10)
+    XCTAssertEqual(GeneratorOptions.separators, ["-", ".", "_", " "])
+    options.separator = "/"
+    XCTAssertFalse(options.valid)
+  }
+}

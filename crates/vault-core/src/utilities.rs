@@ -48,8 +48,10 @@ pub fn parse_totp_uri(input: &str) -> Result<Value> {
         return Err(VaultError::InvalidData);
     }
     let url = Url::parse(input).map_err(|_| VaultError::InvalidData)?;
+    // QR codes often upper-case the whole URI (alphanumeric mode); the URL parser only
+    // lower-cases the scheme, so compare the type and parameter names case-insensitively.
     if url.scheme() != "otpauth"
-        || url.host_str() != Some("totp")
+        || !url.host_str().is_some_and(|host| host.eq_ignore_ascii_case("totp"))
         || url.fragment().is_some()
         || !url.username().is_empty()
         || url.password().is_some()
@@ -59,7 +61,7 @@ pub fn parse_totp_uri(input: &str) -> Result<Value> {
     }
     let mut params = std::collections::HashMap::new();
     for (key, value) in url.query_pairs() {
-        if params.insert(key.to_string(), value.to_string()).is_some() {
+        if params.insert(key.to_ascii_lowercase(), value.to_string()).is_some() {
             return Err(VaultError::InvalidData);
         }
     }
@@ -148,6 +150,93 @@ pub fn generate_password(
     String::from_utf8(result).map_err(|_| VaultError::InvalidData)
 }
 
+/// Separators accepted for generated passphrases.
+pub const PASSPHRASE_SEPARATORS: [&str; 4] = ["-", ".", "_", " "];
+/// Inclusive bounds and default for the number of passphrase words.
+pub const PASSPHRASE_MIN_WORDS: usize = 3;
+pub const PASSPHRASE_MAX_WORDS: usize = 10;
+pub const PASSPHRASE_DEFAULT_WORDS: usize = 5;
+
+/// The public BIP39 English list (2048 words, 11 bits each) already used for wallets.
+pub fn passphrase_word_list() -> &'static [&'static str; 2048] {
+    bip39::Language::English.word_list()
+}
+
+/// Joins uniformly chosen words with an allowed separator. `number` appends one random digit to
+/// one random word; `capitalize` uppercases the first letter of every word.
+pub fn generate_passphrase(
+    words: usize,
+    separator: &str,
+    capitalize: bool,
+    number: bool,
+) -> Result<String> {
+    if !(PASSPHRASE_MIN_WORDS..=PASSPHRASE_MAX_WORDS).contains(&words)
+        || !PASSPHRASE_SEPARATORS.contains(&separator)
+    {
+        return Err(VaultError::InvalidData);
+    }
+    let list = passphrase_word_list();
+    let mut rng = OsRng;
+    let mut chosen: Vec<String> = (0..words)
+        .map(|_| {
+            let word = list[rng.gen_range(0..list.len())];
+            if capitalize {
+                let mut letters = word.chars();
+                letters
+                    .next()
+                    .map(|first| first.to_ascii_uppercase().to_string() + letters.as_str())
+                    .unwrap_or_default()
+            } else {
+                word.to_owned()
+            }
+        })
+        .collect();
+    if number {
+        let index = rng.gen_range(0..chosen.len());
+        let digit = char::from(b'0' + rng.gen_range(0..10u8));
+        chosen[index].push(digit);
+    }
+    Ok(chosen.join(separator))
+}
+
+/// The `generate` operation shared by the native and browser command paths. Without `mode` (or
+/// with `"characters"`) it keeps the original character-password behaviour; `"passphrase"` uses
+/// `words`, `separator`, `capitalize` and `number`. The response key is always `password`.
+pub fn generate_secret(request: &Value) -> Result<Value> {
+    fn present(value: Option<&Value>) -> Option<&Value> {
+        value.filter(|v| !v.is_null())
+    }
+    let password = match present(request.get("mode")).map(Value::as_str) {
+        None | Some(Some("characters")) => generate_password(
+            request["length"].as_u64().unwrap_or(20) as usize,
+            request["upper"] != false,
+            request["lower"] != false,
+            request["digits"] != false,
+            request["symbols"] != false,
+        )?,
+        Some(Some("passphrase")) => {
+            let words = match present(request.get("words")) {
+                None => PASSPHRASE_DEFAULT_WORDS,
+                Some(value) => value
+                    .as_u64()
+                    .and_then(|n| usize::try_from(n).ok())
+                    .ok_or(VaultError::InvalidData)?,
+            };
+            let separator = match present(request.get("separator")) {
+                None => "-",
+                Some(value) => value.as_str().ok_or(VaultError::InvalidData)?,
+            };
+            let flag = |key: &str| match present(request.get(key)) {
+                None => Ok(false),
+                Some(value) => value.as_bool().ok_or(VaultError::InvalidData),
+            };
+            generate_passphrase(words, separator, flag("capitalize")?, flag("number")?)?
+        }
+        _ => return Err(VaultError::InvalidData),
+    };
+    Ok(json!({ "password": password }))
+}
+
 pub fn matching_accounts(items: &[Value], origin: &str) -> Result<Value> {
     let origin = Url::parse(origin).map_err(|_| VaultError::InvalidData)?;
     if !["https", "http"].contains(&origin.scheme()) || origin.host_str().is_none() {
@@ -159,7 +248,8 @@ pub fn matching_accounts(items: &[Value], origin: &str) -> Result<Value> {
         .filter(|v| v["type"] == "password" && v["isDeleted"] != true)
         .filter(|v| {
             v["url"].as_str().is_some_and(|s| {
-                s.split(|c: char| c.is_whitespace() || c == ',')
+                // Same separators as the desktop and mobile site editors.
+                s.split(|c: char| c.is_whitespace() || c == ',' || c == ';')
                     .any(|entry| {
                         Url::parse(entry)
                             .or_else(|_| Url::parse(&format!("https://{entry}")))

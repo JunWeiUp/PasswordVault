@@ -54,8 +54,12 @@ test("device import previews before creating and repeated import does not duplic
   await app.press("text:切换设备只读");
   expect(app.texts()).toContain("主力控制台");
   await app.press("text:切换设备编辑");
-  await app.press("text:AI 访问");
-  await app.waitFor("text:打开 AI 访问设置");
+  // AI access moved to Tools; the device detail keeps only device content.
+  expect(app.texts().includes("AI 工作台")).toBe(false);
+  await app.press("text:连接与服务");
+  await app.waitFor("text:服务入口");
+  await app.press("text:脚本与资料");
+  await app.waitFor("text:资料目录");
 
   await app.press("text:打开合成资料导入");
   await app.press("text:选择资料文件…");
