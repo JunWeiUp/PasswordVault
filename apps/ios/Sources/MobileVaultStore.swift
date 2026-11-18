@@ -422,7 +422,12 @@ final class MobileVaultStore: ObservableObject {
     defer { busy = false }
     do {
       var item = item
-      item.set("updatedAt", ISO8601DateFormatter().string(from: Date()))
+      let time = ISO8601DateFormatter().string(from: Date())
+      item.set("updatedAt", time)
+      // New entries record when they were created (used by the notes sort); existing ones keep theirs.
+      if item.string("createdAt").isEmpty && !items.contains(where: { $0.id == item.id }) {
+        item.set("createdAt", time)
+      }
       _ = try await perform(["op": .string("save"), "item": try .from(item)])
       try await refresh()
       activity()
