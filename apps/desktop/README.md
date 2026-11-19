@@ -50,14 +50,25 @@ and compilation caches remain owned by the fork. Desktop wrappers isolate depend
 metadata because core and desktop use different pinned rustc versions. It never invokes upstream Cargo.
 
 ```sh
-bash tool/nsh_mac.sh check                      # Rust build + TypeScript check
-cd apps/desktop && cargo run --example seed -- /tmp/pv-nsh-qa/vault   # synthetic vault (with the pinned toolchain)
-PASSWORDVAULT_VAULT_DIRECTORY=/tmp/<copy>/vault bash tool/nsh_mac.sh test   # headless UI tests
+bash tool/nsh_mac.sh check                      # Rust build + TypeScript check (0 warnings)
+bash tool/nsh_mac.sh test-fast ts-api           # pure TS unit tests (auto-seeds /tmp vault)
+bash tool/nsh_mac.sh test-fast devices          # single headless UI suite (~8s, auto-seeds /tmp vault)
+bash tool/nsh_mac.sh test-fast --rust ai::      # targeted Rust unit tests (~2s)
+bash tool/nsh_mac.sh test-smoke                 # full suite skipping 27s memory test
+bash tool/nsh_mac.sh test-full                  # full suite including memory test
+bash tool/macos-nsh/deploy.sh                   # --auto: ~3-5s QuickJS bundle swap when only TS changed, else full signed install
 ```
 
+Desktop logic, view-models, typed API adapters (`ui/api/`), formatting and UI
+workflows stay in TypeScript so UI iterations ship via `--ui-only` without
+recompiling Rust. Standalone native helpers (`helpers/pv-mcp`,
+`helpers/pv-browser-host`) live as lightweight workspace members so helper
+changes never rebuild the full desktop UI library.
+
 `nsh_mac.sh test` refuses to run unless `PASSWORDVAULT_VAULT_DIRECTORY` points
-inside a temporary directory. Always create a fresh synthetic vault there; do not
-point tests at existing vault data.
+inside a temporary directory (`test-fast`, `test-smoke` and `test-full` manage
+an isolated cached synthetic seed vault under `/tmp` automatically). Always use
+fresh synthetic vaults; never point tests at existing vault data.
 
 Real-window tests run only on a yomado virtual screen whose name contains
 `PasswordVault QA`, never on a physical display. `bash tool/macos-nsh/gui.sh` finds that
@@ -136,7 +147,7 @@ items until the Dock icon shows the window again.
 | Touch ID, sleep/screen-lock locking, system idle | Implemented (`src/macos/README.md`); Keychain/Touch ID and physical sleep unverified — needs a signed preview bundle with keychain entitlements; signals are polled every 500 ms |
 | Relay sync and device groups (`src/relay/`, `ui/relay/`) | Implemented against protocol vectors and loopback servers: groups, scan-to-join invitations/QR, presence, symmetric bidirectional sync (newest change wins, older versions in entry history, no grants/primary/conflict list), peer-library sync, encrypted journal, file transfer. Production admission/WSS and QR image auto-password joining passed with synthetic vaults through the NSH headless component driver; native image-picker UI, camera, phone interoperability and long-offline/memory behavior unverified; see `src/relay/README.md` |
 | Browser extension bridge (`src/browser/`, `pv-browser-host`) | Core flows implemented (status, pairing, matches, fill, save, lock, background save, startup unlock). `open-entry`, login update, OTP, structured fill and passkeys are not yet supported (fail closed). Real browsers unverified; see `src/browser/README.md` |
-| AI access (`src/ai/`, `pv-mcp`) | Local MCP + script mode, default off, read-only, per-request secret approval, audit without content, fixed socket path. Real AI clients unverified; see `src/ai/README.md` |
+| AI access (`src/ai/`, `pv-mcp`) | Local MCP + script mode with five tools (`search`, `get`, `get_secret`, `add`, `ask_user`), one-click pairing, default off, per-request secret approval (incl. device service paths/private commands), direct creation of new entries without approval (never edits existing data), audit without content, fixed socket path. Real AI clients unverified; see `src/ai/README.md` |
 | Devices & services (`ui/devices/`, core `device` type) | Implemented behind an explicit format-7 upgrade with snapshot; symmetric sync carries format 7 to updated clients. Other clients' device UI not yet built; see `docs/architecture/DEVICE-ITEMS.md` |
 
 Passing compilation or headless tests is not acceptance for Touch ID, the browser, devices,

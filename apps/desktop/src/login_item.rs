@@ -4,6 +4,7 @@
 
 use nsh_core::prelude::*;
 
+/// Launch-at-login registration backed by macOS SMAppService.
 #[module]
 pub struct LoginItem;
 

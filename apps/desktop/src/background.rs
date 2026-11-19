@@ -130,6 +130,24 @@ mod server {
                     value
                 })
                 .map_err(error),
+            "attachment-import-file" => session
+                .import_note_attachment_file(
+                    string(args, "noteId")?,
+                    string(args, "path")?,
+                    string(args, "name")?,
+                    string(args, "mime")?,
+                )
+                .map(Value::String)
+                .map_err(error),
+            "attachment-export-file" => session
+                .export_note_attachment_file(
+                    string(args, "noteId")?,
+                    string(args, "id")?,
+                    string(args, "destPath")?,
+                    args["readonly"] == true,
+                )
+                .map(Value::String)
+                .map_err(error),
             "attachment-discard" => session
                 .discard_note_attachment(string(args, "noteId")?, string(args, "id")?)
                 .map(|_| Value::Null)

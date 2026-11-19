@@ -13,20 +13,34 @@ export function askEnableHistory(done: () => void = () => {}) {
 }
 
 export function RecoverySettings() {
-  const enabled = signal(false), history = signal(false), error = signal("");
+  const enabled = signal(false), history = signal(false), splitNotes = signal<number | null>(null), blobStats = signal<{ count: number; uniqueBlobs: number; totalBytes: number } | null>(null), error = signal("");
   let alive = true;
   cleanup(() => { alive = false; });
   const refresh = async () => { try {
     const r = await call({ op: "recovery-status" }); const h = await call({ op: "history-status" });
-    if (alive) { enabled.set(r.enabled); history.set(h.enabled); }
+    const nb = await call({ op: "note-bodies-status" }).catch(() => null);
+    const bs = await call({ op: "note-attachments-status" }).catch(() => null);
+    if (alive) {
+      enabled.set(r.enabled);
+      history.set(h.enabled);
+      splitNotes.set(typeof nb?.count === "number" ? nb.count : null);
+      if (bs && typeof bs.count === "number") {
+        blobStats.set({ count: bs.count, uniqueBlobs: bs.uniqueBlobs ?? bs.diskFiles ?? 0, totalBytes: bs.totalBytes ?? 0 });
+      }
+    }
   } catch (e) { if (alive) error.set(errorText(e)); } };
   void refresh();
+  const fmtBytes = (b: number) => b < 1024 ? `${b} B` : b < 1048576 ? `${(b / 1024).toFixed(1)} KB` : `${(b / 1048576).toFixed(1)} MB`;
   return <View><T weight="600">应急恢复</T><Group>
     <OptionRow title={enabled() ? "恢复密钥已启用" : "恢复密钥尚未启用"} note={warning}>
       <Btn label="管理恢复密钥…" onPress={() => openSheet({ width: 610, render: close => <RecoverySetup close={close} done={refresh} /> })} />
     </OptionRow>
-  </Group><T weight="600">版本历史</T><Group><OptionRow title={history() ? "完整历史已启用" : "完整版本历史"} note={historyWarning}>
+  </Group><T weight="600">版本历史、笔记分表与资产分块存储</T><Group><OptionRow title={history() ? "完整历史已启用" : "完整版本历史"} note={historyWarning}>
     <Btn label={history() ? "已启用" : "启用…"} disabled={history()} onPress={() => askEnableHistory(refresh)} />
+  </OptionRow><OptionRow title="笔记正文独立加密分表（note_bodies）" note="每篇笔记正文按独立 AES-256-GCM 行存在 SQLCipher 的 note_bodies 表中，vault_state 仅保留摘要，笔记增多也不拖慢解锁与保存。">
+    <T size={12} color="#217a52">{splitNotes() === null ? "已启用" : `已分表 ${splitNotes()} 篇`}</T>
+  </OptionRow><OptionRow title="外置加密资产分块存储（blobs/）" note="PDF / Word / Excel / 图片（单文件上限 100 MB）按 64 KiB 分块 AES-256-GCM 独立存放，磁盘隐藏文件名，支持去重与历史引用计数。">
+    <T size={12} color="#217a52">{blobStats() === null ? "已启用" : `${blobStats()!.count} 个资产 · ${fmtBytes(blobStats()!.totalBytes)}`}</T>
   </OptionRow></Group><T>{error()}</T></View>;
 }
 

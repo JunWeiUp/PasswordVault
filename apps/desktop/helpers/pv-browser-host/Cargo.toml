@@ -1,0 +1,27 @@
+[package]
+name = "pv-browser-host"
+version = "2.5.6"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[[bin]]
+name = "pv-browser-host"
+path = "src/main.rs"
+
+[features]
+# Declared only so shared service_ipc.rs cfg(feature = "ui") checks pass cleanly.
+ui = []
+
+[dependencies]
+base64 = "0.22"
+serde_json = "1"
+sha2 = "0.10"
+uuid = { version = "1", features = ["v4"] }
+vault-core = { path = "../../../../crates/vault-core" }
+zeroize = "1.8"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+core-foundation = "0.10"
+libc = "0.2"
+security-framework-sys = { version = "2.17", features = ["OSX_10_15"] }

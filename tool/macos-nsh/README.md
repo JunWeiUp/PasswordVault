@@ -6,6 +6,8 @@ required huacnlee/cargo bridge.
 
 | Script | Purpose |
 | --- | --- |
+| `deploy.sh` | Fast local deploy (`--auto` / `--ui-only` 3–5s bundle swap / `--full` signed install + hardlink backup) |
+| `signing-cache.sh` | Caches Xcode provisioning profile, entitlements, and signing identity under `private/signing/macos/.cache/` |
 | `gui.sh` | Synthetic-vault GUI tests on the task's virtual display |
 | `package.sh` | Signed development package and native helpers |
 | `install.sh` | Daily installation after a verified private backup |

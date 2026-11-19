@@ -1944,7 +1944,7 @@ dependencies = [
 
 [[package]]
 name = "nsh-app-passwordvault"
-version = "2.4.2"
+version = "2.5.6"
 dependencies = [
  "aes-gcm",
  "base64 0.22.1",
@@ -1979,6 +1979,7 @@ dependencies = [
  "vault-core",
  "windows-sys 0.61.2",
  "zeroize",
+ "zip",
 ]
 
 [[package]]
@@ -2424,6 +2425,29 @@ name = "psl-types"
 version = "2.0.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "33cb294fe86a74cbcf50d4445b37da762029549ebeea341421c7c70370f86cac"
+
+[[package]]
+name = "pv-browser-host"
+version = "2.5.6"
+dependencies = [
+ "base64 0.22.1",
+ "core-foundation",
+ "libc",
+ "security-framework-sys",
+ "serde_json",
+ "sha2",
+ "uuid",
+ "vault-core",
+ "zeroize",
+]
+
+[[package]]
+name = "pv-mcp"
+version = "2.5.6"
+dependencies = [
+ "serde_json",
+ "socket2",
+]
 
 [[package]]
 name = "pxfm"

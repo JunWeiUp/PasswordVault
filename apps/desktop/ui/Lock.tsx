@@ -1,7 +1,7 @@
 // Locked and first-run screens. No vault content is mounted here.
 import { signal, View } from "nsh";
 import { Icon } from "./icons";
-import { Banner, Btn, Row, Strength, strengthOf, T, TextBox } from "./kit";
+import { Banner, Btn, IconBtn, Row, Strength, strengthOf, T, TextBox } from "./kit";
 import { create, errorText, unlock, load, vaultDirectory } from "./store";
 import { isMac, biometricAvailability, biometricEnabled, biometricError, unlockWithBiometrics } from "./native";
 import { c } from "./theme";
@@ -27,13 +27,14 @@ const busy = signal(false);
 let unlockField: any;
 
 export function LockScreen() {
+  const showPassword = signal(false);
   let touchEnabled = false;
   try { touchEnabled = biometricAvailability() && biometricEnabled(); } catch { /* Master password stays available. */ }
   const touchUnlock = async () => {
     if (busy()) return;
     busy.set(true);
     error.set("");
-    try { await unlockWithBiometrics(); await load(); password.set(""); }
+    try { await unlockWithBiometrics(); await load(); password.set(""); showPassword.set(false); }
     catch (e) { error.set(biometricError(e)); }
     finally { busy.set(false); }
   };
@@ -44,6 +45,7 @@ export function LockScreen() {
     try {
       await unlock(password());
       password.set("");
+      showPassword.set(false);
     } catch (e) {
       // Start the next attempt from an empty field instead of editing a wrong secret.
       password.set("");
@@ -63,8 +65,9 @@ export function LockScreen() {
       </View>
       <Row gap={8}>
         <View style={{ flex: 1 }}>
-          <TextBox ref={(r) => (unlockField = r)} testID="unlock-password" value={password()} onChange={(v) => password.set(v)} masked autoFocus placeholder="主密码" onSubmit={submit} />
+          <TextBox ref={(r) => (unlockField = r)} testID="unlock-password" value={password()} onChange={(v) => password.set(v)} masked={!showPassword()} autoFocus placeholder="主密码" onSubmit={submit} />
         </View>
+        <IconBtn icon="eye" label={showPassword() ? "隐藏主密码" : "显示主密码"} tint={showPassword() ? c().blue : c().muted} onPress={() => showPassword.update((s) => !s)} />
         <Btn label={busy() ? "正在解锁…" : "解锁"} kind="primary" disabled={!password() || busy()} onPress={submit} />
       </Row>
       <View style={{ minHeight: 22, marginTop: 8 }}>
@@ -90,6 +93,8 @@ const creating = signal(false);
 const restoreAfterCreate = signal(false);
 
 export function OnboardingScreen() {
+  const showFirst = signal(false);
+  const showSecond = signal(false);
   const error = createError;
   const busy = creating;
   const problem = () =>
@@ -125,10 +130,20 @@ export function OnboardingScreen() {
             ? "先创建新的密码库，随后选择加密备份文件，并输入创建备份时使用的密码；备份内容会合并进这个新密码库。"
             : "主密码用于加密整个密码库。我们无法帮你找回，请务必记住。"}</T>
           <T size={12} color={c().ink2} style={{ marginTop: 8 }}>主密码</T>
-          <TextBox testID="create-password" value={first()} onChange={(v) => first.set(v)} masked autoFocus placeholder="至少 10 个字符" />
+          <Row gap={8}>
+            <View style={{ flex: 1 }}>
+              <TextBox testID="create-password" value={first()} onChange={(v) => first.set(v)} masked={!showFirst()} autoFocus placeholder="至少 10 个字符" />
+            </View>
+            <IconBtn icon="eye" label={showFirst() ? "隐藏主密码" : "显示主密码"} tint={showFirst() ? c().blue : c().muted} onPress={() => showFirst.update((s) => !s)} />
+          </Row>
           <If when={first()}><Strength level={strengthOf(first())} /></If>
           <T size={12} color={c().ink2} style={{ marginTop: 4 }}>确认主密码</T>
-          <TextBox testID="create-confirm" value={second()} onChange={(v) => second.set(v)} masked placeholder="再次输入" onSubmit={submit} />
+          <Row gap={8}>
+            <View style={{ flex: 1 }}>
+              <TextBox testID="create-confirm" value={second()} onChange={(v) => second.set(v)} masked={!showSecond()} placeholder="再次输入" onSubmit={submit} />
+            </View>
+            <IconBtn icon="eye" label={showSecond() ? "隐藏确认密码" : "显示确认密码"} tint={showSecond() ? c().blue : c().muted} onPress={() => showSecond.update((s) => !s)} />
+          </Row>
           <T size={12} color={c().red}>{problem() || error()}</T>
           <Banner tone="warn" title="建议使用 4 个以上随机单词组成的短语">例如「海港-枫叶-安静-银色」。</Banner>
           <Row style={{ justifyContent: "space-between" }}>

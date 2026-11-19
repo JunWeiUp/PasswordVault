@@ -15,6 +15,7 @@ import { deviceSubtitle, deviceTitle, importDeviceDocuments, newDevice } from ".
 import { RowCode } from "./entries/linkedCode";
 import { askAddCode } from "./entries/CodeDetail";
 import { listDensity, rowPadding, SORT_LABEL, setSortMode, sortMode, type SortMode } from "./preferences";
+import { catLeaf, isAiActor } from "./notes/knowledge";
 
 export const searchFocus = signal(0);
 const itemTitle = (item: Item) => (item.type === "device" ? deviceTitle(item) : item.title || "未命名");
@@ -128,7 +129,12 @@ function ItemRow(props: { item: Item }) {
         <If when={item().type === "secureNote" && dest() !== "trash"}>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 5, marginTop: 4 }}>
             <Icon name="folder" size={11} tint={c().faint} />
-            <T size={11} color={c().faint} style={{ flex: 1 }}>{item().category || "未分类"}</T>
+            <T size={11} color={c().faint} style={{ flex: 1 }} lines={1}>{catLeaf(item().category)}</T>
+            <If when={isAiActor(item().lastActor)}>
+              <View style={{ backgroundColor: c().blueSoft, borderRadius: 4, paddingHorizontal: 5, paddingVertical: 1 }}>
+                <T size={9.5} weight="600" color={c().blue}>AI</T>
+              </View>
+            </If>
             <T size={11} color={c().faint}>{shortDate(item().updatedAt)}</T>
           </View>
         </If>
@@ -192,9 +198,9 @@ function Chip(props: { value: ReturnType<typeof chip>; label: string }) {
   const on = () => chip() === props.value;
   return (
     <View role="button" accessibilityState={{ selected: on() }} onPress={() => chip.set(props.value)}
-      style={{ paddingHorizontal: 9, paddingVertical: 4, borderRadius: 6, backgroundColor: on() ? c().blueSoft : "transparent", cursor: "pointer" }}
+      style={{ paddingHorizontal: 7, paddingVertical: 4, borderRadius: 6, backgroundColor: on() ? c().blueSoft : "transparent", cursor: "pointer" }}
       hoverStyle={on() ? undefined : { backgroundColor: c().field }}>
-      <T size={12} color={on() ? c().blue : c().muted}>{props.label}</T>
+      <T size={11.5} color={on() ? c().blue : c().muted} lines={1}>{props.label}</T>
     </View>
   );
 }
@@ -204,11 +210,12 @@ function Chips() {
   if (d === "trash") return <T size={11.5} color={c().muted}>项目保留至手动永久删除</T>;
   if (d === "wallets") return <><Chip value="all" label="全部" /><Chip value="card" label="银行卡" /><Chip value="identity" label="身份" /><Chip value="crypto" label="加密钱包" /></>;
   if (d === "accounts") return <><Chip value="all" label="全部" /><Chip value="fav" label="收藏" /><Chip value="issue" label="需关注" /></>;
+  if (d === "notes") return <><Chip value="all" label="全部" /><Chip value="fav" label="收藏" /><Chip value="ai" label="AI 更新" /></>;
   return <><Chip value="all" label="全部" /><Chip value="fav" label="收藏" /></>;
 }
 
 export function ItemList() {
-  const title = () => (dest() === "notes" ? noteCategory() ?? "全部笔记" : DEST_NAME[dest()]);
+  const title = () => (dest() === "notes" ? (noteCategory() ? catLeaf(noteCategory()) : "全部笔记") : DEST_NAME[dest()]);
   let input: any;
   effect(() => {
     if (searchFocus() > 0) input?.focus?.();
@@ -228,20 +235,20 @@ export function ItemList() {
         <View desktop={{ windowDrag: false }} tooltip="搜索当前列表；多个关键词用空格分隔。在「全部项目」中可跨类型搜索。" style={{ flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: c().field, borderRadius: 7, paddingHorizontal: 9 }}>
           <Icon name="search" size={13} tint={c().faint} />
           <SearchInput ref={(r: any) => (input = r)} />
-          <If when={query()} else={<T size={11} color={c().faint}>{shortcutLabel("⌘K")}</T>}>
+          <If when={query()} else={<T size={11} color={c().faint} style={{ flexShrink: 0 }}>{shortcutLabel("⌘K")}</T>}>
             <IconBtn icon="x" label="清除搜索" size={13} onPress={() => { query.set(""); input?.focus?.(); }} />
           </If>
         </View>
-        <View desktop={{ windowDrag: false }} style={{ flexDirection: "row", alignItems: "center", gap: 4, marginTop: 10, minHeight: 24 }}>
+        <View desktop={{ windowDrag: false }} style={{ flexDirection: "row", alignItems: "center", gap: 3, marginTop: 10, minHeight: 24, flexWrap: "wrap" }}>
           {/* Rebuilt per destination: a component body runs only once. */}
           <Each of={[dest()]} key={(d) => d}>{() => <Chips />}</Each>
-          <View style={{ flex: 1 }} />
-          <T size={11} color={c().faint}>{visible().length} {query().trim() ? "个搜索结果" : "个项目"}</T>
+          <View style={{ flex: 1, minWidth: 4 }} />
+          <T size={11} color={c().faint} lines={1}>{visible().length} {query().trim() ? "个搜索结果" : "个项目"}</T>
           <View role="button" testID="sort-menu" accessibilityLabel={`排序：${SORT_LABEL[sortMode()]}`} tooltip="排序方式（置顶项目始终在前）"
             onPress={(e: any) => void Menu.popup((Object.keys(SORT_LABEL) as SortMode[]).map((m) => ({ label: SORT_LABEL[m], checked: sortMode() === m, onSelect: () => setSortMode(m) })), e?.pagePosition)}
-            style={{ flexDirection: "row", alignItems: "center", gap: 3, paddingHorizontal: 6, paddingVertical: 4, borderRadius: 6, cursor: "pointer" }}
+            style={{ flexDirection: "row", alignItems: "center", gap: 2, paddingHorizontal: 5, paddingVertical: 4, borderRadius: 6, cursor: "pointer" }}
             hoverStyle={{ backgroundColor: c().field }}>
-            <T size={11.5} color={c().muted}>{SORT_LABEL[sortMode()]}</T>
+            <T size={11} color={c().muted} lines={1}>{SORT_LABEL[sortMode()]}</T>
             <Icon name="chevd" size={10} tint={c().faint} />
           </View>
         </View>
@@ -256,17 +263,26 @@ export function ItemList() {
 }
 
 import { Input } from "nsh/base";
+const SEARCH_PLACEHOLDER: Partial<Record<string, string>> = {
+  notes: "搜索笔记、标签或目录…",
+  accounts: "搜索账号、网站或用户名…",
+  codes: "搜索发行方或账号…",
+  wallets: "搜索银行卡、证件或地址…",
+  devices: "搜索设备、主机或脚本…",
+  trash: "搜索已删除的项目…",
+};
+
 function SearchInput(props: { ref: (r: any) => void }) {
   return (
     <Input
       ref={props.ref}
       testID="search"
       value={query()}
-      placeholder={dest() === "notes" ? "搜索标题、正文、分类或附件名" : "搜索名称、账号、备注等"}
+      placeholder={SEARCH_PLACEHOLDER[dest()] ?? "搜索名称、账号、备注…"}
       accessibilityLabel={`搜索${DEST_NAME[dest()]}，多个关键词用空格分隔`}
       autoCorrect={false}
       onChange={({ value }) => query.set(value)}
-      style={{ flex: 1, fontSize: fs(12.5), paddingVertical: 6, color: c().ink, backgroundColor: "transparent", borderWidth: 0 }}
+      style={{ flex: 1, minWidth: 0, fontSize: fs(12.5), paddingVertical: 6, color: c().ink, backgroundColor: "transparent", borderWidth: 0 }}
     />
   );
 }

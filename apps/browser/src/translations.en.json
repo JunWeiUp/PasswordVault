@@ -470,5 +470,21 @@
   "弱密码": "Weak passwords",
   "重复使用的密码": "Reused passwords",
   "泄露的密码": "Breached passwords",
-  "过期的密码": "Expired passwords"
+  "过期的密码": "Expired passwords",
+  "通行密钥": "Passkeys",
+  "全部笔记": "All notes",
+  "备份与导入": "Backup & import",
+  "密码健康": "Password health",
+  "回收站": "Trash",
+  "锁定资料库": "Lock vault",
+  "移到回收站": "Move to trash",
+  "再次输入主密码": "Re-enter master password",
+  "加密保存在本地浏览器": "Encrypted in this browser",
+  "数据加密保存在此浏览器的独立资料库中。": "Encrypted in this browser's independent vault.",
+  "复制密码": "Copy password",
+  "复制密码：{title} {username}": "Copy password: {title} {username}",
+  "弱": "Weak",
+  "一般": "Fair",
+  "良好": "Good",
+  "强": "Strong"
 }

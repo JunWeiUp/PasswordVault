@@ -3,13 +3,15 @@
   /* Design palette (docs/design 插件完整界面); every color below derives from these. */
   --blue: #3265db;
   --blue-h: #2a57c2;
+  --btn-pri: #3265db;
+  --btn-pri-h: #2a57c2;
   --blue-soft: #e8eefb;
   --blue-line: #dce6fa;
   --on-blue: #fff;
   --ink: #242a35;
-  --ink2: #5c6573;
-  --muted: #7b838f;
-  --faint: #9aa1ab;
+  --ink2: #4a5362;
+  --muted: #5e6775;
+  --faint: #6b7482;
   --line: #e6e8ec;
   --line2: #eff1f4;
   --control-line: #d9dde3;
@@ -18,11 +20,11 @@
   --surface: #fff;
   --soft: #f5f6f8;
   --field: #edf0f4;
-  --green: #2f8f63;
+  --green: #217a52;
   --green-soft: #eaf6f0;
-  --orange: #b86a12;
+  --orange: #a55c0c;
   --orange-soft: #fdf3e6;
-  --red: #cf3f3f;
+  --red: #c43333;
   --red-soft: #fdeeee;
   --red-line: #f0c9cc;
   --star: #d99d27;
@@ -94,12 +96,12 @@ select:focus-visible {
   outline-offset: 2px;
 }
 button.primary {
-  background: var(--blue);
-  border-color: var(--blue);
+  background: var(--btn-pri);
+  border-color: var(--btn-pri);
   color: var(--on-blue);
 }
 button.primary:not(:disabled):hover {
-  background: var(--blue-h);
+  background: var(--btn-pri-h);
 }
 .text-button,
 .icon-button {
@@ -248,9 +250,9 @@ hr {
   gap: 9px;
 }
 .sidebar nav button.selected {
-  background: var(--blue);
+  background: var(--btn-pri);
   color: var(--on-blue);
-  box-shadow: 0 2px 3px color-mix(in srgb, var(--blue) 8%, transparent);
+  box-shadow: 0 2px 3px color-mix(in srgb, var(--btn-pri) 8%, transparent);
 }
 .sidebar nav button.selected-soft {
   background: var(--subtle);
@@ -260,9 +262,17 @@ hr {
 }
 .nav-symbol {
   width: 19px;
-  font-size: 18px;
-  text-align: center;
-  line-height: 20px;
+  height: 19px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.sidebar-bottom button {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 12px;
 }
 .count {
   margin-left: auto;
@@ -309,8 +319,11 @@ hr {
   font-weight: 400;
 }
 .search > span {
-  font-size: 21px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   color: var(--muted);
+  flex-shrink: 0;
 }
 .search input {
   border: 0;
@@ -735,6 +748,48 @@ summary {
 .popup-empty input {
   margin: 8px 0 15px;
 }
+.popup-empty .capture-secret {
+  margin: 8px 0 12px;
+  text-align: left;
+}
+.popup-empty .capture-secret input {
+  margin: 0;
+}
+.popup-empty .secret-toggle {
+  width: 36px;
+  margin: 0;
+}
+.popup-empty .strength-meter {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin: -4px 0 12px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.strength-meter i {
+  display: block;
+  flex: 1;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--line);
+}
+.strength-meter.low i.on { background: var(--red); }
+.strength-meter.mid i.on { background: var(--orange); }
+.strength-meter.high i.on { background: var(--green); }
+.popup-secondary-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin: 12px 0;
+}
+.popup-secondary-actions button {
+  padding: 7px 8px;
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .popup-empty button {
   width: 100%;
   margin: 5px 0 15px;
@@ -938,12 +993,21 @@ summary {
 /* Pending login confirmation is the first task, before matches/settings. */
 .popup.has-capture {
   min-height: 560px;
+  padding-top: 10px;
 }
 .popup.has-capture .brand {
-  margin-bottom: 12px;
+  margin-bottom: 6px;
+}
+.popup.has-capture .mode-switch button {
+  padding: 4px;
 }
 .popup.has-capture .section-title {
-  margin-top: 12px;
+  margin-top: 4px;
+}
+.popup.has-capture p[role="status"] {
+  margin: 3px 0;
+  font-size: 11px;
+  line-height: 1.35;
 }
 .popup .origin {
   overflow-wrap: anywhere;
@@ -953,22 +1017,30 @@ summary {
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
-  margin-bottom: 8px;
+  font-size: 12px;
+  line-height: 1.35;
+  margin: 2px 0 4px;
 }
 .popup .capture {
-  margin-top: 8px;
-  padding: 14px;
+  margin-top: 4px;
+  padding: 9px 11px;
 }
 .capture h3 {
-  margin-bottom: 6px;
+  font-size: 14px;
+  margin-bottom: 3px;
 }
 .capture .capture-hint {
-  font-size: 11px;
-  line-height: 1.5;
-  margin-bottom: 12px;
+  font-size: 10.5px;
+  line-height: 1.35;
+  margin-bottom: 4px;
 }
 .capture label {
-  margin: 10px 0 6px;
+  margin: 4px 0 2px;
+  gap: 3px;
+}
+.capture input,
+.capture select {
+  padding: 5px 9px;
 }
 .capture-secret {
   position: relative;
@@ -979,9 +1051,9 @@ summary {
 .capture-secret .secret-toggle {
   position: absolute;
   right: 3px;
-  top: 3px;
-  bottom: 3px;
-  width: 36px;
+  top: 2px;
+  bottom: 2px;
+  width: 34px;
   padding: 0;
   display: grid;
   place-items: center;
@@ -995,10 +1067,15 @@ summary {
   color: var(--blue);
 }
 .capture .actions {
-  margin-top: 14px;
+  margin-top: 8px;
+}
+.capture .actions button {
+  padding: 5px 12px;
 }
 .capture .error {
-  margin: 10px 0 0;
+  margin: 5px 0 0;
+  font-size: 11px;
+  line-height: 1.35;
 }
 .site-accounts {
   margin: 12px 0;
@@ -1080,15 +1157,17 @@ summary {
 
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --blue: #5b8cff;
-  --blue-h: #7aa2ff;
+  --blue: #6b97ff;
+  --blue-h: #8ab0ff;
+  --btn-pri: #3b6fe6;
+  --btn-pri-h: #4c7ef0;
   --blue-soft: #243250;
   --blue-line: #30446c;
   --on-blue: #fff;
   --ink: #e8ebf1;
-  --ink2: #b9c0cc;
-  --muted: #8d96a5;
-  --faint: #6f7887;
+  --ink2: #c2c9d4;
+  --muted: #97a0b0;
+  --faint: #858e9e;
   --line: #2d333e;
   --line2: #272c35;
   --control-line: #3a4350;
@@ -1099,13 +1178,13 @@ summary {
   --field: #2b313b;
   --green: #57c18f;
   --green-soft: #1c3529;
-  --orange: #e3a04f;
+  --orange: #e8a958;
   --orange-soft: #3a2d1a;
-  --red: #f07171;
+  --red: #f27c7c;
   --red-soft: #3e2226;
   --red-line: #5a2d33;
   --star: #e3b341;
-  --focus: #5b8cff99;
+  --focus: #6b97ff99;
   --backdrop: #000a;
   --shadow-sm: 0 1px 4px #0006;
   --shadow: 0 3px 17px #0007;
@@ -1119,7 +1198,8 @@ summary {
 :root[data-theme="dark"] select { background: var(--field); color: var(--foreground); border-color: var(--border); }
 :root[data-theme="dark"] button { border-color: var(--border); }
 :root[data-theme="dark"] button:not(:disabled):hover { background: var(--soft); }
-:root[data-theme="dark"] button.primary { background: var(--blue); color: var(--on-blue); }
+:root[data-theme="dark"] button.primary { background: var(--btn-pri); border-color: var(--btn-pri); color: var(--on-blue); }
+:root[data-theme="dark"] button.primary:not(:disabled):hover { background: var(--btn-pri-h); }
 :root[data-theme="dark"] .selected-soft,
 :root[data-theme="dark"] .selected { background: var(--blue-soft); color: var(--ink); }
 :root[data-theme="dark"] .markdown,

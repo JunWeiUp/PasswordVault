@@ -18,8 +18,12 @@ mod socket {
     }
 }
 mod clipboard;
+mod notes;
+mod projection;
 #[cfg(test)]
 mod tests;
+
+use projection::{bounded, new_item, projection, prune, secret};
 type Result<T> = std::result::Result<T, String>;
 struct Pending {
     view: Value,
@@ -28,6 +32,8 @@ struct Pending {
     /// Requested by the approver: skip approval for this client/entry/field for
     /// this many seconds; 0 means until the vault locks (low-sensitivity fields only).
     lease: Option<u64>,
+    /// `ask_user`: the account the user saved from the sheet.
+    created: Option<String>,
 }
 /// In-memory only: never persisted, dropped on lock and on any policy change.
 #[derive(Clone)]
@@ -40,6 +46,19 @@ struct Lease {
 }
 const LEASE_SECONDS: u64 = 15 * 60;
 const CLIPBOARD_SECONDS: u64 = 30;
+/// A paired client may add at most this many entries per rolling minute.
+const ADD_LIMIT: usize = 10;
+const ADD_WINDOW: Duration = Duration::from_secs(60);
+/// Reserves one write slot for the client, or refuses when the rolling window is full.
+fn reserve_add(st: &mut State, client: &str, now: Instant) -> Result<()> {
+    let recent = st.adds.entry(client.to_string()).or_default();
+    recent.retain(|t| now.duration_since(*t) < ADD_WINDOW);
+    if recent.len() >= ADD_LIMIT {
+        return Err("RateLimited".into());
+    }
+    recent.push(now);
+    Ok(())
+}
 /// Fields whose disclosure is low impact may stay approved until the vault locks.
 fn low_sensitivity(field: &str) -> bool {
     matches!(field, "phone" | "address1" | "address2" | "postalCode")
@@ -54,10 +73,17 @@ fn lease_matches(l: &Lease, client: &str, entry: &str, field: &str, reveal: bool
 #[derive(Default)]
 struct State {
     pending: HashMap<String, Pending>,
-    pair: Option<(String, String, Instant)>,
     socket: Option<String>,
     deferred_audit: Vec<Value>,
     leases: Vec<Lease>,
+    /// Bumped when an AI client adds or updates an entry, so the window reloads its list.
+    changes: u64,
+    /// Latest AI note auto-save notification for the desktop UI.
+    last_note_change: Option<Value>,
+    /// Recent `add` times per client, for the write rate limit.
+    adds: HashMap<String, Vec<Instant>>,
+    /// Recent `note_update` times per client, for the note write rate limit.
+    note_writes: HashMap<String, Vec<Instant>>,
 }
 static STATE: OnceLock<Mutex<State>> = OnceLock::new();
 static SERIAL: Mutex<()> = Mutex::new(());
@@ -76,6 +102,16 @@ fn save(s: &VaultSession, patch: Value) -> Result<()> {
 }
 fn hash(s: &str) -> String {
     format!("{:x}", Sha256::digest(s.as_bytes()))
+}
+fn now_unix() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
+}
+fn client_fingerprint(token_hash: &str) -> String {
+    let fp = hash(&format!("pv-client-fp:{token_hash}"));
+    format!("{}…{}", &fp[..4], &fp[fp.len() - 4..])
 }
 fn approval_decision(p: &Pending) -> Option<Result<()>> {
     if Instant::now() >= p.expires {
@@ -106,33 +142,32 @@ fn scope(item: &Value) -> Option<&'static str> {
 fn client<'a>(d: &'a Value, token: &str) -> Result<&'a Value> {
     client_digest(d, &hash(token))
 }
-fn client_digest<'a>(d: &'a Value, digest: &str) -> Result<&'a Value> {
-    if d["settings"]["aiAccessEnabled"] != true {
-        return Err("Disabled".into());
-    }
+fn find_client_by_digest<'a>(d: &'a Value, digest: &str) -> Option<&'a Value> {
     d["settings"]["aiAccessClients"]
         .as_array()
         .into_iter()
         .flatten()
         .find(|c| c["tokenHash"] == digest)
-        .ok_or("RevokedOrUnknownClient".into())
 }
-fn allowed(d: &Value, c: &Value, item: &Value) -> bool {
+fn client_digest<'a>(d: &'a Value, digest: &str) -> Result<&'a Value> {
+    if d["settings"]["aiAccessEnabled"] != true {
+        return Err("Disabled".into());
+    }
+    let c = find_client_by_digest(d, digest).ok_or("RevokedOrUnknownClient")?;
+    if c["paused"] == true {
+        return Err("ClientPaused".into());
+    }
+    Ok(c)
+}
+fn excluded(d: &Value, item: &Value) -> bool {
+    item["id"]
+        .as_str()
+        .is_some_and(|id| d["settings"]["aiAccessExcludedEntries"][id] == true)
+}
+fn allowed(d: &Value, _c: &Value, item: &Value) -> bool {
     !item["isDeleted"].as_bool().unwrap_or(false)
-        && scope(item).is_some_and(|scope| {
-            d["settings"]["aiAccessScopes"][scope] == true
-                && c["entries"][item["id"].as_str().unwrap_or("")] == true
-        })
-}
-/// An existing entry in an enabled category that this client has not been granted yet.
-/// The user may grant it from the approval sheet instead of opening Settings.
-fn grantable<'a>(d: &'a Value, c: &Value, r: &Value) -> Option<&'a Value> {
-    d["items"].as_array().into_iter().flatten().find(|i| {
-        i["id"] == r["id"]
-            && !i["isDeleted"].as_bool().unwrap_or(false)
-            && scope(i).is_some_and(|scope| d["settings"]["aiAccessScopes"][scope] == true)
-            && c["entries"][i["id"].as_str().unwrap_or("")] != true
-    })
+        && !excluded(d, item)
+        && scope(item).is_some_and(|scope| d["settings"]["aiAccessScopes"][scope] == true)
 }
 fn entry<'a>(d: &'a Value, c: &Value, r: &Value) -> Result<&'a Value> {
     d["items"]
@@ -142,161 +177,8 @@ fn entry<'a>(d: &'a Value, c: &Value, r: &Value) -> Result<&'a Value> {
         .find(|i| i["id"] == r["id"] && allowed(d, c, i))
         .ok_or("UnscopedOrMissing".into())
 }
-fn projection(i: &Value, details: bool) -> Value {
-    let mut out = json!({"id":i["id"],"type":i["type"],"title":i["title"]});
-    if details {
-        let keys: &[&str] = match i["type"].as_str() {
-            Some("password") => &["username", "url"],
-            Some("device") => &[],
-            Some("secureNote") => &["note", "noteDocument"],
-            _ => &[],
-        };
-        for k in keys {
-            if let Some(v) = i.get(*k) {
-                out[*k] = v.clone();
-            }
-        }
-    }
-    if details && i["type"] == "password" {
-        // A website field can itself contain credentials; expose only its origin/path.
-        if let Some(raw) = i["url"].as_str() {
-            let candidate = if raw.contains("://") {
-                raw.to_string()
-            } else {
-                format!("https://{raw}")
-            };
-            out.as_object_mut().unwrap().remove("url");
-            if let Ok(mut url) = reqwest::Url::parse(&candidate) {
-                if matches!(url.scheme(), "http" | "https") {
-                    let _ = url.set_username("");
-                    let _ = url.set_password(None);
-                    url.set_query(None);
-                    url.set_fragment(None);
-                    out["url"] = json!(url.to_string());
-                }
-            }
-        }
-    }
-    if details && i["type"] == "device" {
-        let device = &i["device"];
-        let mut safe = json!({});
-        for k in ["host", "port", "username", "authMethod", "aliases"] {
-            if let Some(v) = device.get(k) {
-                safe[k] = v.clone();
-            }
-        }
-        safe["services"] = json!(
-            device["services"]
-                .as_array()
-                .into_iter()
-                .flatten()
-                .map(|svc| {
-                    let mut v = json!({});
-                    for k in ["id", "name", "kind", "remotePort", "localPort"] {
-                        v[k] = svc[k].clone();
-                    }
-                    v
-                })
-                .collect::<Vec<_>>()
-        );
-        safe["commands"] = json!(device["commands"]
-            .as_array()
-            .into_iter()
-            .flatten()
-            .filter(|cmd| cmd["secret"] == false)
-            .map(|cmd| {
-                let mut row = json!({"id":cmd["id"],"title":cmd["title"],"text":cmd["text"],"dataOnly":true});
-                if let Some(label) = cmd["label"].as_str().filter(|s| !s.trim().is_empty()) {
-                    row["label"] = json!(label);
-                }
-                row
-            })
-            .collect::<Vec<_>>());
-        out["device"] = safe;
-    }
-    if details && i["type"] == "identity" {
-        let identity = &i["identity"];
-        let mut safe = json!({});
-        for k in ["firstName", "lastName", "email", "company", "city", "region", "country"] {
-            if let Some(v) = identity.get(k) {
-                safe[k] = v.clone();
-            }
-        }
-        out["identity"] = safe;
-    }
-    if details && i["type"] == "creditCard" {
-        let card = &i["card"];
-        let mut safe = json!({});
-        for k in ["cardholder", "expiryMonth", "expiryYear", "brand"] {
-            if let Some(v) = card.get(k) {
-                safe[k] = v.clone();
-            }
-        }
-        out["card"] = safe;
-    }
-    if let Some(fields) = i["customFields"].as_array() {
-        out["customFields"] = json!(fields
-            .iter()
-            .filter(|field| field["kind"] != "concealed")
-            .map(|field| {
-                json!({
-                    "id": field["id"],
-                    "group": field["group"],
-                    "label": field["label"],
-                    "kind": field["kind"],
-                    "value": field["value"],
-                    "dataOnly": true,
-                })
-            })
-            .collect::<Vec<_>>());
-    }
-    out
-}
-fn secret<'a>(i: &'a Value, field: &str) -> Result<&'a Value> {
-    if !matches!(
-        field,
-        "password"
-            | "token"
-            | "privateKey"
-            | "nodeLink"
-            | "notes"
-            | "phone"
-            | "address1"
-            | "address2"
-            | "postalCode"
-            | "number"
-            | "securityCode"
-    ) {
-        if !field.starts_with("custom:") {
-            return Err("DeniedField".into());
-        }
-    }
-    if let Some(id) = field.strip_prefix("custom:") {
-        return i["customFields"]
-            .as_array()
-            .into_iter()
-            .flatten()
-            .find(|custom| custom["id"] == id && custom["kind"] == "concealed")
-            .and_then(|custom| custom.get("value"))
-            .filter(|value| value.is_string())
-            .ok_or("DeniedField".into());
-    }
-    let source = match i["type"].as_str() {
-        Some("device") => &i["device"],
-        Some("password") if field == "password" => i,
-        Some("identity") if matches!(field, "phone" | "address1" | "address2" | "postalCode") => {
-            &i["identity"]
-        }
-        Some("creditCard") if matches!(field, "number" | "securityCode") => &i["card"],
-        _ => return Err("DeniedField".into()),
-    };
-    source
-        .get(field)
-        .filter(|v| v.is_string())
-        .ok_or("MissingField".into())
-}
-fn approved_file(d: &Value, c: &Value, i: &Value, fid: &str) -> bool {
-    c["files"][i["id"].as_str().unwrap_or("")] == true
+fn approved_file(d: &Value, _c: &Value, i: &Value, fid: &str) -> bool {
+    !excluded(d, i)
         && d["settings"]["aiAccessOrdinaryFiles"][i["id"].as_str().unwrap_or("")][fid] == true
 }
 fn audit(s: &VaultSession, cid: &str, item: &str, op: &str, rid: &str, result: &str) -> Result<()> {
@@ -309,9 +191,22 @@ fn audit(s: &VaultSession, cid: &str, item: &str, op: &str, rid: &str, result: &
     for row in deferred {
         log.insert(0, row);
     }
-    log.insert(0,json!({"client":cid,"item":item,"operation":op,"requestId":rid,"result":result,"unixSeconds":std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs()}));
+    let ts = now_unix();
+    log.insert(0,json!({"client":cid,"item":item,"operation":op,"requestId":rid,"result":result,"unixSeconds":ts}));
     log.truncate(200);
-    save(s, json!({"aiAccessAudit":log}))?;
+    let mut patch = json!({"aiAccessAudit": log});
+    if op != "unlock" && result != "ClientPaused" && cid != "unknown" && cid != "app" {
+        if let Some(mut cs) = d["settings"]["aiAccessClients"].as_array().cloned() {
+            if let Some(c) = cs.iter_mut().find(|c| c["id"].as_str() == Some(cid)) {
+                let prev = c["callCount"].as_u64().unwrap_or(0);
+                c["callCount"] = json!(prev.saturating_add(1));
+                c["lastUsedUnix"] = json!(ts);
+                c["lastOp"] = json!(op);
+                patch["aiAccessClients"] = json!(cs);
+            }
+        }
+    }
+    save(s, patch)?;
     state().deferred_audit.clear();
     Ok(())
 }
@@ -322,7 +217,7 @@ pub(super) fn request(s: &VaultSession, r: Value) -> Result<Value> {
 }
 fn request_digest(s: &VaultSession, r: Value, digest: &str) -> Result<Value> {
     let initial = doc(s).ok();
-    let c = initial.as_ref().and_then(|d| client_digest(d, digest).ok());
+    let c = initial.as_ref().and_then(|d| find_client_by_digest(d, digest));
     let cid = c
         .and_then(|c| c["id"].as_str())
         .unwrap_or("unknown")
@@ -335,8 +230,19 @@ fn request_digest(s: &VaultSession, r: Value, digest: &str) -> Result<Value> {
         .unwrap_or("")
         .to_string();
     let op = match r["op"].as_str().unwrap_or("") {
-        v @ ("pair" | "search_entries" | "get_entry" | "get_secret" | "list_files"
-        | "read_file") => v.to_string(),
+        v @ (
+            "search"
+            | "get"
+            | "get_secret"
+            | "ask_user"
+            | "add"
+            | "note_list"
+            | "note_read"
+            | "note_update"
+            | "note_attach"
+            | "note_read_asset"
+            | "note_history"
+        ) => v.to_string(),
         _ => "unsupported".into(),
     };
     let rid = r["requestId"]
@@ -345,18 +251,42 @@ fn request_digest(s: &VaultSession, r: Value, digest: &str) -> Result<Value> {
         .map(|v| v.to_string())
         .unwrap_or_else(id);
     let mut result = request_inner(s, r.clone(), &rid, digest);
+    let item = if !item.is_empty() {
+        item
+    } else {
+        result
+            .as_ref()
+            .ok()
+            .and_then(|v| v["id"].as_str())
+            .unwrap_or("")
+            .to_string()
+    };
     let _guard = SERIAL.lock().unwrap();
-    if result.is_ok() && op != "pair" {
+    if result.is_ok() {
         let final_check = (|| {
             let d = doc(s)?;
             let c = client_digest(&d, digest)?;
-            if op == "search_entries" {
+            if op == "add" || op == "note_update" || op == "note_attach" {
+                // Added/auto-saved entries need no approval; only the client must still be valid.
+            } else if op == "note_list" {
+                if d["settings"]["aiAccessScopes"]["notes"] != true {
+                    return Err("UnscopedOrMissing".into());
+                }
+            } else if op == "note_read" || op == "note_history" || op == "note_read_asset" {
+                let target = json!({"id": item});
+                let found = notes::find_note(&d, &target).ok_or("UnscopedOrMissing")?;
+                if !notes::note_readable(&d, c, found) {
+                    return Err("UnscopedOrMissing".into());
+                }
+            } else if op == "search" {
                 for row in result.as_ref().unwrap().as_array().into_iter().flatten() {
                     entry(&d, c, &json!({"id":row["id"]}))?;
                 }
             } else {
-                let i = entry(&d, c, &r)?;
-                if op == "read_file" && !approved_file(&d, c, i, r["fileId"].as_str().unwrap_or(""))
+                let target = if op == "ask_user" { json!({"id": result.as_ref().unwrap()["id"]}) } else { r.clone() };
+                let i = entry(&d, c, &target)?;
+                if let Some(fid) = r["fileId"].as_str().filter(|_| op == "get")
+                    && !approved_file(&d, c, i, fid)
                 {
                     return Err("UnclassifiedOrDeniedFile".into());
                 }
@@ -387,33 +317,35 @@ fn request_digest(s: &VaultSession, r: Value, digest: &str) -> Result<Value> {
 }
 fn request_inner(s: &VaultSession, r: Value, request_id: &str, digest: &str) -> Result<Value> {
     let op = r["op"].as_str().unwrap_or("");
-    if op == "pair" {
+    let rid = request_id.to_string();
+    if op == "ask_user" {
+        return ask_user(s, &r, &rid, digest);
+    }
+    if op == "add" {
+        return add(s, &r, digest);
+    }
+    if op == "note_update" {
+        return notes::note_update(s, &r, digest);
+    }
+    if op == "note_attach" {
+        return notes::note_attach(s, &r, digest);
+    }
+    if matches!(op, "note_list" | "note_read" | "note_read_asset" | "note_history") {
         let _guard = SERIAL.lock().unwrap();
         let d = doc(s)?;
-        if d["settings"]["aiAccessEnabled"] != true {
-            return Err("Disabled".into());
-        }
-        let mut st = state();
-        let (code, name, expires) = st.pair.take().ok_or("NoPairing".to_string())?;
-        if expires <= Instant::now() || r["code"] != code {
-            return Err("PairingDenied".into());
-        }
-        let token = format!("{}{}", id(), id());
-        let cid = id();
-        let mut clients = d["settings"]["aiAccessClients"]
-            .as_array()
-            .cloned()
-            .unwrap_or_default();
-        clients
-            .push(json!({"id":cid,"name":name,"tokenHash":hash(&token),"entries":{},"files":{}}));
-        save(s, json!({"aiAccessClients":clients}))?;
-        return Ok(json!({"clientId":cid,"token":token}));
+        let c = client_digest(&d, digest)?;
+        return match op {
+            "note_list" => notes::note_list(&d, c, &r),
+            "note_read" => notes::note_read(s, &d, c, &r),
+            "note_read_asset" => notes::note_read_asset(s, &d, c, &r),
+            "note_history" => notes::note_history(s, &d, c, &r),
+            _ => unreachable!(),
+        };
     }
-    let rid = request_id.to_string();
     let field = r["field"].as_str().unwrap_or("").to_string();
     // Secrets go to the clipboard unless the client explicitly asks to see them.
     let reveal = r["delivery"] == "reveal";
-    let (approval, revision, grant, leased) = {
+    let (approval, revision, leased) = {
         let _guard = SERIAL.lock().unwrap();
         let d = match doc(s) {
             Ok(d) => d,
@@ -424,45 +356,40 @@ fn request_inner(s: &VaultSession, r: Value, request_id: &str, digest: &str) -> 
         };
         let c = client_digest(&d, digest)?;
         let cid = c["id"].as_str().unwrap_or("").to_string();
-        let entry_op = matches!(op, "get_entry" | "get_secret" | "list_files");
-        let (i, grant) = match entry(&d, c, &r) {
-            Ok(i) => (Some(i), false),
-            Err(e) if entry_op => (Some(grantable(&d, c, &r).ok_or(e)?), true),
-            Err(_) => (None, false),
-        };
+        let i = entry(&d, c, &r).ok();
         if op == "get_secret" {
-            secret(i.unwrap(), &field)?;
+            let item = i.ok_or("UnscopedOrMissing")?;
+            secret(item, &field)?;
         }
         let item_id = i.map(|i| i["id"].as_str().unwrap_or("").to_string()).unwrap_or_default();
         let leased = op == "get_secret"
-            && !grant
             && state().leases.iter().any(|l| lease_matches(l, &cid, &item_id, &field, reveal));
-        if (op == "get_secret" && !leased) || grant {
+        if op == "get_secret" && !leased {
             let i = i.unwrap();
             let mut st = state();
             if st.pending.len() >= 8 {
                 return Err("Busy".into());
             }
-            let secret_view = op == "get_secret";
             st.pending.insert(rid.clone(), Pending {
                 view: json!({
                     "requestId": rid, "client": c["name"], "item": i["title"],
-                    "kind": if secret_view { "secret" } else { "grant" },
-                    "grant": grant,
-                    "field": if secret_view { json!(field) } else { Value::Null },
-                    "delivery": if secret_view { json!(if reveal { "reveal" } else { "clipboard" }) } else { Value::Null },
-                    "leaseUntilLock": secret_view && low_sensitivity(&field),
-                    "leaseMinutes": if secret_view { LEASE_SECONDS / 60 } else { 0 },
+                    "kind": "secret",
+                    "grant": false,
+                    "field": json!(field),
+                    "delivery": json!(if reveal { "reveal" } else { "clipboard" }),
+                    "leaseUntilLock": low_sensitivity(&field),
+                    "leaseMinutes": LEASE_SECONDS / 60,
                     // Untrusted client text: bounded before it reaches the approval sheet.
                     "purpose": r["purpose"].as_str().map(|p| p.chars().take(120).collect::<String>()),
                 }),
                 expires: Instant::now() + Duration::from_secs(60),
                 answer: None,
                 lease: None,
+                created: None,
             });
-            (true, hash(&i.to_string()), grant, false)
+            (true, hash(&i.to_string()), false)
         } else {
-            (false, i.map_or(String::new(), |i| hash(&i.to_string())), false, leased)
+            (false, i.map_or(String::new(), |i| hash(&i.to_string())), leased)
         }
     };
     let mut decision: Result<()> = Ok(());
@@ -485,26 +412,13 @@ fn request_inner(s: &VaultSession, r: Value, request_id: &str, digest: &str) -> 
         }
         state().pending.remove(&rid);
     }
-    if decision.is_ok() && grant {
-        // Approving an ungranted entry adds it to this client's list, like Settings would.
-        let _guard = SERIAL.lock().unwrap();
-        let d = doc(s)?;
-        let cid = client_digest(&d, digest)?["id"].clone();
-        let mut cs = d["settings"]["aiAccessClients"].as_array().cloned().unwrap_or_default();
-        let c = cs.iter_mut().find(|c| c["id"] == cid).ok_or("RevokedOrUnknownClient")?;
-        if !c["entries"].is_object() {
-            c["entries"] = json!({});
-        }
-        c["entries"][r["id"].as_str().unwrap_or("")] = json!(true);
-        save(s, json!({"aiAccessClients":cs}))?;
-    }
     let _guard = SERIAL.lock().unwrap();
     let result: Result<Value> = (|| {
         decision?;
         let d = doc(s)?;
         let c = client_digest(&d, digest)?;
         match op {
-            "search_entries" => {
+            "search" => {
                 let q = r["query"].as_str().unwrap_or("").to_lowercase();
                 Ok(json!(
                     d["items"]
@@ -513,10 +427,12 @@ fn request_inner(s: &VaultSession, r: Value, request_id: &str, digest: &str) -> 
                         .flatten()
                         .filter(|i| allowed(&d, c, i)
                             && format!(
-                                "{} {} {} {}",
+                                "{} {} {} {} {} {}",
                                 i["title"],
                                 i["tags"],
                                 i["device"]["aliases"],
+                                i["device"]["host"],
+                                i["device"]["services"].as_array().into_iter().flatten().map(|svc| svc["name"].as_str().unwrap_or("")).collect::<Vec<_>>().join(" "),
                                 d["settings"]["aiAccessAliases"][i["id"].as_str().unwrap_or("")]
                             )
                             .to_lowercase()
@@ -526,7 +442,21 @@ fn request_inner(s: &VaultSession, r: Value, request_id: &str, digest: &str) -> 
                         .collect::<Vec<_>>()
                 ))
             }
-            "get_entry" => Ok(projection(entry(&d, c, &r)?, true)),
+            "get" if r.get("fileId").is_none() => {
+                let i = entry(&d, c, &r)?;
+                let mut out = projection(i, true);
+                let files: Vec<&String> = d["settings"]["aiAccessOrdinaryFiles"][i["id"].as_str().unwrap_or("")]
+                    .as_object()
+                    .into_iter()
+                    .flatten()
+                    .filter(|(fid, _)| approved_file(&d, c, i, fid))
+                    .map(|(fid, _)| fid)
+                    .collect();
+                if !files.is_empty() {
+                    out["files"] = json!(files);
+                }
+                Ok(out)
+            }
             "get_secret" => {
                 let i = entry(&d, c, &r)?;
                 if hash(&i.to_string()) != revision {
@@ -546,25 +476,9 @@ fn request_inner(s: &VaultSession, r: Value, request_id: &str, digest: &str) -> 
                     return Ok(json!({"value":value,"approval":approval}));
                 }
                 clipboard::put(value, CLIPBOARD_SECONDS)?;
-                Ok(json!({
-                    "delivered": "clipboard",
-                    "clearsAfterSeconds": CLIPBOARD_SECONDS,
-                    "approval": approval,
-                    "note": "The value is on the user's clipboard and was not returned to you. Ask the user to paste it, or paste it into the focused field yourself. Request delivery \"reveal\" only if you must read the text.",
-                }))
+                Ok(json!({"delivered": "clipboard", "clearsAfterSeconds": CLIPBOARD_SECONDS, "approval": approval}))
             }
-            "list_files" => {
-                let i = entry(&d, c, &r)?;
-                let files = d["settings"]["aiAccessOrdinaryFiles"][i["id"].as_str().unwrap_or("")]
-                    .as_object()
-                    .into_iter()
-                    .flatten()
-                    .filter(|(fid, _)| approved_file(&d, c, i, fid))
-                    .map(|(fid, _)| json!({"id":fid,"classification":"ordinary"}))
-                    .collect::<Vec<_>>();
-                Ok(json!(files))
-            }
-            "read_file" => {
+            "get" => {
                 let i = entry(&d, c, &r)?;
                 let fid = r["fileId"].as_str().ok_or("MissingFile")?;
                 if !approved_file(&d, c, i, fid) {
@@ -580,13 +494,114 @@ fn request_inner(s: &VaultSession, r: Value, request_id: &str, digest: &str) -> 
                 let chunk: String = text.chars().skip(offset).take(limit).collect();
                 let next = offset.saturating_add(chunk.chars().count());
                 Ok(
-                    json!({"text":chunk,"nextOffset":next,"eof":next>=text.chars().count(),"dataOnly":true}),
+                    json!({"text":chunk,"nextOffset":next,"eof":next>=text.chars().count()}),
                 )
             }
             _ => Err("ReadOnlyUnsupportedOperation".into()),
         }
     })();
     result
+}
+/// Adds one entry to the requesting client's list, like Settings would.
+fn grant_entry(s: &VaultSession, digest: &str, entry_id: &str) -> Result<()> {
+    let _guard = SERIAL.lock().unwrap();
+    let d = doc(s)?;
+    let cid = client_digest(&d, digest)?["id"].clone();
+    let mut cs = d["settings"]["aiAccessClients"].as_array().cloned().unwrap_or_default();
+    let c = cs.iter_mut().find(|c| c["id"] == cid).ok_or("RevokedOrUnknownClient")?;
+    if !c["entries"].is_object() {
+        c["entries"] = json!({});
+    }
+    c["entries"][entry_id] = json!(true);
+    save(s, json!({"aiAccessClients":cs}))
+}
+/// Adds a new entry straight away, without approval. Wallets are excluded; existing
+/// records are never touched. The entry joins the client's list so it can read it back.
+fn add(s: &VaultSession, r: &Value, digest: &str) -> Result<Value> {
+    let item = new_item(r)?;
+    {
+        let _guard = SERIAL.lock().unwrap();
+        let d = doc(s)?;
+        let cid = client_digest(&d, digest)?["id"].as_str().unwrap_or("").to_string();
+        if item["type"] == "device" && core(s, json!({"op":"devices-status"}))?["enabled"] != true {
+            return Err("DevicesNotEnabled".into());
+        }
+        reserve_add(&mut state(), &cid, Instant::now())?;
+        if let Err(e) = core(s, json!({"op":"save","item":item,"richNotes":true})) {
+            // A failed save does not use up the client's quota.
+            if let Some(recent) = state().adds.get_mut(&cid) {
+                recent.pop();
+            }
+            return Err(e);
+        }
+    }
+    grant_entry(s, digest, item["id"].as_str().unwrap_or(""))?;
+    state().changes += 1;
+    Ok(json!({"id":item["id"],"type":item["type"],"title":item["title"],"added":true}))
+}
+/// The AI asks for an account the vault lacks. The user fills it in a sheet; the UI saves it
+/// through the normal store path, and the new entry is granted to this client and returned.
+fn ask_user(s: &VaultSession, r: &Value, rid: &str, digest: &str) -> Result<Value> {
+    let reveal = r["delivery"] == "reveal";
+    {
+        let _guard = SERIAL.lock().unwrap();
+        let d = doc(s)?;
+        let c = client_digest(&d, digest)?;
+        if d["settings"]["aiAccessScopes"]["accounts"] != true {
+            return Err("UnscopedOrMissing".into());
+        }
+        let mut st = state();
+        if st.pending.len() >= 8 {
+            return Err("Busy".into());
+        }
+        st.pending.insert(rid.to_string(), Pending {
+            // Untrusted client text, bounded before it reaches the sheet as suggestions.
+            view: json!({
+                "requestId": rid, "client": c["name"], "kind": "create",
+                "item": bounded(&r["title"], 80), "url": bounded(&r["url"], 200),
+                "username": bounded(&r["username"], 120), "purpose": bounded(&r["purpose"], 120),
+                "delivery": if reveal { "reveal" } else { "clipboard" },
+            }),
+            // Typing takes longer than a yes/no answer.
+            expires: Instant::now() + Duration::from_secs(180),
+            answer: None,
+            lease: None,
+            created: None,
+        });
+    }
+    let (decision, created) = loop {
+        if doc(s).is_err() {
+            break (Err("Locked".into()), None);
+        }
+        let st = state();
+        let p = st.pending.get(rid).unwrap();
+        if let Some(answer) = approval_decision(p) {
+            break (answer, p.created.clone());
+        }
+        drop(st);
+        std::thread::sleep(Duration::from_millis(100));
+    };
+    state().pending.remove(rid);
+    decision?;
+    let entry_id = created.ok_or("ApprovalDenied")?;
+    grant_entry(s, digest, &entry_id)?;
+    let _guard = SERIAL.lock().unwrap();
+    let d = doc(s)?;
+    let c = client_digest(&d, digest)?;
+    let i = entry(&d, c, &json!({"id": entry_id}))?;
+    if i["type"] != "password" {
+        return Err("InvalidData".into());
+    }
+    let mut out = projection(i, true);
+    if let Some(value) = i["password"].as_str().filter(|v| !v.is_empty()) {
+        if reveal {
+            out["password"] = json!(value);
+        } else {
+            clipboard::put(value, CLIPBOARD_SECONDS)?;
+            out["delivered"] = json!({"password": "clipboard", "clearsAfterSeconds": CLIPBOARD_SECONDS});
+        }
+    }
+    Ok(out)
 }
 /// Read-only local AI access with encrypted grants and single-request approvals.
 #[module]
@@ -596,7 +611,6 @@ impl Ai {
     /// Clears outstanding approvals when the UI transitions to locked.
     pub fn cancel_pending() {
         let mut st = state();
-        st.pair = None;
         st.leases.clear();
         for p in st.pending.values_mut() {
             p.answer = Some(false);
@@ -628,9 +642,6 @@ impl Ai {
                 .ok_or("UnknownClient")?
                 .to_string();
             let r: Value = serde_json::from_str(&request).map_err(|_| "InvalidData")?;
-            if r["op"] == "pair" {
-                return Err("Unsupported".into());
-            }
             request_digest(&s, r, &digest).map(|v| v.to_string())
         })
         .await
@@ -672,7 +683,16 @@ fn control(s: &VaultSession, r: Value) -> Result<Value> {
             }
             if let Some(cs) = settings["aiAccessClients"].as_array_mut() {
                 for c in cs {
-                    c.as_object_mut().unwrap().remove("tokenHash");
+                    if let Some(obj) = c.as_object_mut() {
+                        let fp_source = obj
+                            .get("tokenHash")
+                            .and_then(|v| v.as_str())
+                            .or_else(|| obj.get("id").and_then(|v| v.as_str()))
+                            .unwrap_or("");
+                        let fp = client_fingerprint(fp_source);
+                        obj.remove("tokenHash");
+                        obj.insert("fingerprint".into(), json!(fp));
+                    }
                 }
             }
             let mut st = state();
@@ -682,22 +702,32 @@ fn control(s: &VaultSession, r: Value) -> Result<Value> {
                 "secondsLeft": l.expires.map(|t| t.saturating_duration_since(Instant::now()).as_secs()),
             })).collect();
             Ok(
-                json!({"settings":settings,"leases":leases,"pending":st.pending.values().filter(|p|p.answer.is_none() && p.expires>Instant::now()).map(|p|p.view.clone()).collect::<Vec<_>>(),"socket":st.socket,"helper":std::env::current_exe().ok().and_then(|p|p.parent().map(|p|p.join("pv-mcp"))).map(|p|p.to_string_lossy().into_owned())}),
+                json!({"settings":settings,"leases":leases,"changes":st.changes,"lastNoteChange":st.last_note_change,"pending":st.pending.values().filter(|p|p.answer.is_none() && p.expires>Instant::now()).map(|p|p.view.clone()).collect::<Vec<_>>(),"socket":st.socket,"helper":std::env::current_exe().ok().and_then(|p|p.parent().map(|p|p.join("pv-mcp"))).map(|p|p.to_string_lossy().into_owned())}),
             )
         }
         "pair" => {
-            let code = id();
-            state().pair = Some((
-                code.clone(),
-                r["name"]
-                    .as_str()
-                    .unwrap_or("Local client")
-                    .chars()
-                    .take(80)
-                    .collect(),
-                Instant::now() + Duration::from_secs(120),
-            ));
-            Ok(json!({"code":code}))
+            // One step: the app creates the client and hands its token to the UI exactly once.
+            if d["settings"]["aiAccessEnabled"] != true {
+                return Err("Disabled".into());
+            }
+            let name: String = r["name"].as_str().unwrap_or("").trim().chars().take(80).collect();
+            let token = format!("{}{}", id(), id());
+            let token_hash = hash(&token);
+            let fp = client_fingerprint(&token_hash);
+            let cid = id();
+            let created = now_unix();
+            let mut clients = d["settings"]["aiAccessClients"].as_array().cloned().unwrap_or_default();
+            clients.push(json!({
+                "id": cid,
+                "name": if name.is_empty() { "Local client".into() } else { name },
+                "tokenHash": token_hash,
+                "createdUnix": created,
+                "paused": false,
+                "entries": {},
+                "files": {}
+            }));
+            save(s, json!({"aiAccessClients":clients}))?;
+            Ok(json!({"clientId":cid,"token":token,"fingerprint":fp}))
         }
         "approve" => {
             let mut st = state();
@@ -709,6 +739,9 @@ fn control(s: &VaultSession, r: Value) -> Result<Value> {
                 return Err("ExpiredRequest".into());
             }
             let allow = r["allow"] == true;
+            if p.view["kind"] == "create" && allow {
+                p.created = Some(r["entryId"].as_str().filter(|v| !v.is_empty()).ok_or("InvalidData")?.to_string());
+            }
             if allow {
                 if let Some(seconds) = r["leaseSeconds"].as_u64() {
                     let field = p.view["field"].as_str().unwrap_or("");
@@ -733,6 +766,10 @@ fn control(s: &VaultSession, r: Value) -> Result<Value> {
                 "aiAccessScopes",
                 "aiAccessAliases",
                 "aiAccessOrdinaryFiles",
+                "aiAccessExcludedEntries",
+                "aiAccessNoteAutoWrite",
+                "aiAccessNoteWritableCategories",
+                "aiAccessNoteAssetText",
             ] {
                 if let Some(v) = r.get(k) {
                     patch[k] = v.clone()
@@ -740,6 +777,69 @@ fn control(s: &VaultSession, r: Value) -> Result<Value> {
             }
             save(s, patch)?;
             Ok(json!({"ok":true}))
+        }
+        "rename" => {
+            let name: String = r["name"]
+                .as_str()
+                .unwrap_or("")
+                .trim()
+                .chars()
+                .take(80)
+                .collect();
+            if name.is_empty() {
+                return Err("InvalidData".into());
+            }
+            let mut cs = d["settings"]["aiAccessClients"]
+                .as_array()
+                .cloned()
+                .unwrap_or_default();
+            let c = cs
+                .iter_mut()
+                .find(|c| c["id"] == r["clientId"])
+                .ok_or("UnknownClient")?;
+            c["name"] = json!(name);
+            save(s, json!({"aiAccessClients":cs}))?;
+            Ok(json!({"ok":true}))
+        }
+        "set_paused" => {
+            let cid = r["clientId"].as_str().ok_or("InvalidData")?;
+            let paused = r["paused"].as_bool().ok_or("InvalidData")?;
+            let mut cs = d["settings"]["aiAccessClients"]
+                .as_array()
+                .cloned()
+                .unwrap_or_default();
+            let c = cs
+                .iter_mut()
+                .find(|c| c["id"] == cid)
+                .ok_or("UnknownClient")?;
+            c["paused"] = json!(paused);
+            if paused {
+                let mut st = state();
+                st.leases.retain(|l| l.client != cid);
+                for p in st.pending.values_mut() {
+                    p.answer = Some(false);
+                }
+            }
+            save(s, json!({"aiAccessClients":cs}))?;
+            Ok(json!({"ok":true}))
+        }
+        "revoke_many" => {
+            Ai::cancel_pending();
+            let ids: Vec<String> = r["clientIds"]
+                .as_array()
+                .ok_or("InvalidData")?
+                .iter()
+                .filter_map(|v| v.as_str().map(str::to_string))
+                .collect();
+            let mut cs = d["settings"]["aiAccessClients"]
+                .as_array()
+                .cloned()
+                .unwrap_or_default();
+            let before = cs.len();
+            cs.retain(|c| !c["id"].as_str().is_some_and(|cid| ids.iter().any(|x| x == cid)));
+            state().leases.retain(|l| !ids.iter().any(|x| x == &l.client));
+            save(s, json!({"aiAccessClients":cs}))?;
+            Ok(json!({"ok":true,"removed":before.saturating_sub(cs.len())}))
         }
         "grant" | "revoke" => {
             Ai::cancel_pending();

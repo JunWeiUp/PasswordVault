@@ -2,6 +2,7 @@ import { cleanup, signal, Scroll, View } from "nsh";
 import { Banner, Btn, openSheet, SheetTitle, SheetFooter, T, Toggle } from "../kit";
 import { call, errorText, flush, items, load, now, onLock, phase, type Item } from "../store";
 import { askEnableHistory, historyWarning } from "../recovery";
+import { NoteHistorySheet } from "./NoteHistorySheet";
 
 type Revision = { id: string; capturedAt: number; item: Item; deviceName?: string; deviceId?: string };
 export function differingFields(a: Record<string, unknown>, b: Record<string, unknown>): string[] {
@@ -9,6 +10,13 @@ export function differingFields(a: Record<string, unknown>, b: Record<string, un
 }
 export function openItemHistory(item: Item) {
   if (phase() !== "unlocked") return;
+  if (item.type === "secureNote") {
+    openSheet({
+      width: 920,
+      render: (close) => <NoteHistorySheet item={item} close={close} reopen={() => openItemHistory(item)} />,
+    });
+    return;
+  }
   openSheet({ width: 680, render: close => <History item={item} close={close} /> });
 }
 function History(props: { item: Item; close: () => void }) {

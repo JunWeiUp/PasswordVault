@@ -32,7 +32,7 @@ export function AccountDetail(p:EntryProps) {
   const addSecret=()=>askAddCode(fields=>edit(p.item.id,d=>{d.secret=fields.secret;d.period=fields.period??30;if(!d.username)d.username=fields.username??"";}));
   return <><EntryHero item={p.item} editing={editable()} />
     <If when={audit()[p.item.id]&&!p.item.isDeleted}><Banner tone="warn" title={audit()[p.item.id]?.weak?"密码过弱":audit()[p.item.id]?.reused?"密码被重复使用":"密码已超过设定的更换周期"} actions={<Btn label="生成新密码" onPress={()=>void generate()} />}>先在网站修改，再更新这里。</Banner></If>
-    <Row gap={8} wrap style={{marginBottom:4}}><Btn label="复制密码" icon="copy" kind="primary" hint={shortcutLabel("⇧⌘C")}  disabled={!p.item.password} onPress={()=>void copySecret(p.item.password,"密码")} /><Btn label="复制用户名" hint={shortcutLabel("⌘C")}  disabled={!p.item.username} onPress={()=>void copySecret(p.item.username,"用户名")} /><If when={code()&&!p.item.isDeleted}><Btn label={`复制验证码 ${formatCode(current())}`} icon="clock" hint={shortcutLabel("⌥⌘C")} onPress={()=>void copyAccountCode(p.item)} /></If><If when={websites(p.item.url??"").length}><Btn label="打开网站" icon="globe" onPress={()=>openSites()} /></If></Row>
+    <Row gap={8} wrap style={{marginBottom:4}}><Btn label="复制密码" icon="copy" kind={editable()?"default":"primary"} hint={shortcutLabel("⇧⌘C")}  disabled={!p.item.password} onPress={()=>void copySecret(p.item.password,"密码")} /><Btn label="复制用户名" hint={shortcutLabel("⌘C")}  disabled={!p.item.username} onPress={()=>void copySecret(p.item.username,"用户名")} /><If when={code()&&!p.item.isDeleted}><Btn label={`复制验证码 ${formatCode(current())}`} icon="clock" hint={shortcutLabel("⌥⌘C")} onPress={()=>void copyAccountCode(p.item)} /></If><If when={websites(p.item.url??"").length}><Btn label="打开网站" icon="globe" onPress={()=>openSites()} /></If></Row>
     <SectionHead title="登录信息" note={editable()?"修改即时加密保存":undefined} /><Group>
       <Field label="用户名" value={p.item.username??""} editing={editable()} onChange={change(p.item,"username")} />
       <Field label="密码" value={p.item.password??""} secret editing={editable()} onChange={change(p.item,"password")} after={<Strength level={strengthOf(p.item.password??"")} />} actions={<If when={editable()}><Btn label="生成" onPress={()=>void generate()} /></If>} />
@@ -50,7 +50,7 @@ export function AccountDetail(p:EntryProps) {
       <PasswordHistory record={p.item.accounts[index()]} />
       <If when={editable()}><Row style={{paddingVertical:10}}><Btn label="移除附加账号" kind="danger" onPress={()=>{normalize();const id=p.item.accounts[index()].id;confirm({title:"移除此附加账号？",text:"该账号的用户名、密码及历史将从当前记录移除。",ok:"确认移除",danger:true,onConfirm:()=>edit(p.item.id,d=>{d.accounts=d.accounts.filter((a:any)=>a.id!==id);})});}} /></Row></If>
     </Group>}</Each>
-    <If when={!(p.item.accounts??[]).length}><T size={11.5} color="#8490a2">同一网站的其他登录身份，例如测试账号或机器人账号。</T></If>
+    <If when={!(p.item.accounts??[]).length}><T size={11.5} color={c().muted}>同一网站的其他登录身份，例如测试账号或机器人账号。</T></If>
     {/* Embedded-secret settings only while editing; the live code sits in 登录信息. */}
     <If when={editable()&&code()?.source!=="entry"}><CodeSettings item={p.item} editing={editable()} /></If>
     <Passkeys item={p.item} editing={editable()} /><CustomFields item={p.item} editing={editable()} /><EntryMeta item={p.item} editing={editable()} /></>;

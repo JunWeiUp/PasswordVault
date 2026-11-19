@@ -12,10 +12,36 @@ pub(crate) struct HistoryRevision {
     pub item_id: String,
     pub captured_at: u64,
     pub item: Value,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub actor_type: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub actor: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub summary: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub milestone: Option<bool>,
 }
 
-pub(crate) const FILE_LIMIT: usize = 25 * 1024 * 1024;
-pub(crate) const NOTE_LIMIT: usize = 250 * 1024 * 1024;
+impl HistoryRevision {
+    pub(crate) fn plain(id: String, item_id: String, captured_at: u64, item: Value) -> Self {
+        Self {
+            id,
+            item_id,
+            captured_at,
+            item,
+            actor_type: None,
+            actor: None,
+            summary: None,
+            milestone: None,
+        }
+    }
+}
+
+pub(crate) const FILE_LIMIT: usize = 100 * 1024 * 1024;
+pub(crate) const NOTE_LIMIT: usize = 500 * 1024 * 1024;
+#[cfg(target_pointer_width = "64")]
+pub(crate) const ARCHIVE_LIMIT: usize = 2 * 1024 * 1024 * 1024;
+#[cfg(not(target_pointer_width = "64"))]
 pub(crate) const ARCHIVE_LIMIT: usize = 1024 * 1024 * 1024;
 
 #[derive(Clone, Serialize, Deserialize)]

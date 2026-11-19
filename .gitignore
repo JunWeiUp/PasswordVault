@@ -135,7 +135,7 @@ coverage/
 
 /apps/desktop/node_modules/
 
-/apps/desktop/.nsh/
+**/.nsh/
 
 /apps/desktop/target/
 /vendor/nsh-embed/

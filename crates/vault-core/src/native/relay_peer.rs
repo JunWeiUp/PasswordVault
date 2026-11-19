@@ -523,6 +523,7 @@ impl DiskVault {
     }
 }
 pub(super) fn command(session: &mut DiskVault, request: &Value) -> Result<Value> {
+    let vault_dir = session.directory.clone();
     let op = string(request, "op")?;
     guard_device_sync(session.open()?.document.format_version, op)?;
     if ["relay-peer-join", "relay-peer-receive"].contains(&op)
@@ -732,11 +733,13 @@ pub(super) fn command(session: &mut DiskVault, request: &Value) -> Result<Value>
             .operations
             .values()
             .filter(|o| o.key == key && !l.hidden_history.contains(&o.id))
-            .map(|o| history::Revision {
-                id: o.id.clone(),
-                item_id: string(request, "id").unwrap().into(),
-                captured_at: o.captured_at,
-                item: o.value.clone(),
+            .map(|o| {
+                history::Revision::plain(
+                    o.id.clone(),
+                    string(request, "id").unwrap().into(),
+                    o.captured_at,
+                    o.value.clone(),
+                )
             })
             .collect();
         revisions.sort_by(|a, b| b.captured_at.cmp(&a.captured_at).then(b.id.cmp(&a.id)));
@@ -755,7 +758,7 @@ pub(super) fn command(session: &mut DiskVault, request: &Value) -> Result<Value>
             .map(|o| json!({"value":o.value}))
             .collect();
         return Ok(
-            json!({"protocol":"peer-v2","packet":packet,"files":attachments(open,&json!({"changes":changes}))?}),
+            json!({"protocol":"peer-v2","packet":packet,"files":attachments(&vault_dir, open, &json!({"changes":changes}))?}),
         );
     }
     let mut next = open.document.clone();
@@ -879,7 +882,13 @@ pub(super) fn command(session: &mut DiskVault, request: &Value) -> Result<Value>
                 }
                 return Err(err);
             }
-            receive_files(&tx, &open.root, &open.header.vault_id, &incoming["files"])?;
+            receive_files(
+                &vault_dir,
+                &tx,
+                &open.root,
+                &open.header.vault_id,
+                &incoming["files"],
+            )?;
         }
         "relay-peer-history-prune" => {
             let key = format!("item:{}", string(request, "id")?);
@@ -935,12 +944,12 @@ pub(super) fn command(session: &mut DiskVault, request: &Value) -> Result<Value>
                     &tx,
                     &open.root,
                     &open.header.vault_id,
-                    &history::Revision {
-                        id: operation.id.clone(),
-                        item_id: item_id.into(),
-                        captured_at: operation.captured_at,
-                        item: operation.value.clone(),
-                    },
+                    &history::Revision::plain(
+                        operation.id.clone(),
+                        item_id.into(),
+                        operation.captured_at,
+                        operation.value.clone(),
+                    ),
                 )?;
             }
         }
@@ -1479,10 +1488,12 @@ mod tests {
             size: 15,
         };
         let secret = b"PRIVATE_CONTENT";
+        let vault_dir = victim.directory.clone();
         {
             let open = victim.open().unwrap();
             notes::table(&open.connection).unwrap();
             notes::write(
+                &vault_dir,
                 &open.connection,
                 &open.root,
                 &open.header.vault_id,

@@ -190,11 +190,78 @@ pub(super) fn write(
 }
 use rusqlite::OptionalExtension;
 
+const MANUAL_COALESCE_MS: u64 = 5 * 60 * 1000;
+
+#[derive(Clone, Default)]
+pub(super) struct HistoryMeta {
+    pub item_id: Option<String>,
+    pub actor_type: Option<String>,
+    pub actor: Option<String>,
+    pub summary: Option<String>,
+    pub milestone: bool,
+    pub coalesce: bool,
+}
+
+impl HistoryMeta {
+    pub(super) fn parse(raw: &Value, item_id: Option<&str>) -> Result<Option<Self>> {
+        if raw.is_null() {
+            return Ok(None);
+        }
+        let obj = raw.as_object().ok_or(VaultError::InvalidData)?;
+        let bounded = |key: &str, max: usize| -> Result<Option<String>> {
+            match obj.get(key) {
+                None | Some(Value::Null) => Ok(None),
+                Some(Value::String(s)) => {
+                    let t = s.trim();
+                    if t.chars().count() > max || t.chars().any(char::is_control) {
+                        return Err(VaultError::InvalidData);
+                    }
+                    Ok((!t.is_empty()).then(|| t.to_owned()))
+                }
+                _ => Err(VaultError::InvalidData),
+            }
+        };
+        let actor_type = bounded("actorType", 32)?;
+        if let Some(ref kind) = actor_type {
+            if !matches!(
+                kind.as_str(),
+                "user" | "ai" | "milestone" | "restore" | "sync"
+            ) {
+                return Err(VaultError::InvalidData);
+            }
+        }
+        Ok(Some(Self {
+            item_id: item_id.map(str::to_owned),
+            actor_type,
+            actor: bounded("actor", 120)?,
+            summary: bounded("summary", 240)?,
+            milestone: obj
+                .get("milestone")
+                .and_then(Value::as_bool)
+                .unwrap_or(false),
+            coalesce: obj
+                .get("coalesce")
+                .and_then(Value::as_bool)
+                .unwrap_or(false),
+        }))
+    }
+}
+
 pub(super) fn capture(
     conn: &Connection,
     root: &[u8; 32],
     vault: &str,
     next: &Document,
+) -> Result<()> {
+    capture_with_meta(conn, root, vault, next, None)
+}
+
+pub(super) fn capture_with_meta(
+    conn: &Connection,
+    root: &[u8; 32],
+    vault: &str,
+    next: &Document,
+    meta: Option<&HistoryMeta>,
 ) -> Result<()> {
     if !enabled(conn)?
         || next.settings["activePeerLibrary"]
@@ -240,36 +307,48 @@ pub(super) fn capture(
                 conn,
                 root,
                 vault,
-                &Revision {
-                    id: new_id(),
-                    item_id: item["id"].as_str().unwrap().into(),
-                    captured_at: now,
-                    item: item.clone(),
-                },
+                &Revision::plain(
+                    new_id(),
+                    item["id"].as_str().unwrap().into(),
+                    now,
+                    item.clone(),
+                ),
             )?;
         }
     }
     for item in &next.items {
-        if previous_items
-            .get(item["id"].as_str().ok_or(VaultError::InvalidData)?)
-            .copied()
-            == Some(item)
-        {
+        let id = item["id"].as_str().ok_or(VaultError::InvalidData)?;
+        let item_meta = meta.filter(|m| m.item_id.as_deref().is_none_or(|target| target == id));
+        let force_milestone = item_meta.is_some_and(|m| m.milestone);
+        if !force_milestone && previous_items.get(id).copied() == Some(item) {
             continue;
         }
-        if page(
-            conn,
-            root,
-            vault,
-            item["id"].as_str().ok_or(VaultError::InvalidData)?,
-            0,
-            1,
-        )?
-        .1
-        .first()
-        .is_some_and(|r| r.item == *item)
-        {
+        let (total, latest_rows) = page(conn, root, vault, id, 0, 1)?;
+        if !force_milestone && latest_rows.first().is_some_and(|r| r.item == *item) {
             continue;
+        }
+        // Coalesce continuous manual note drafts within 5 minutes, while keeping the baseline,
+        // milestones, AI updates, restores, and attachment changes intact.
+        if item["type"] == "secureNote"
+            && total >= 2
+            && item_meta.is_some_and(|m| {
+                m.coalesce && !m.milestone && matches!(m.actor_type.as_deref(), None | Some("user"))
+            })
+        {
+            if let Some(latest) = latest_rows.first() {
+                let latest_is_manual = latest.milestone != Some(true)
+                    && matches!(latest.actor_type.as_deref(), None | Some("user"));
+                let within_window = now.saturating_sub(latest.captured_at) < MANUAL_COALESCE_MS;
+                let mut old_refs = std::collections::HashSet::new();
+                let mut new_refs = std::collections::HashSet::new();
+                let same_attachments =
+                    crate::archive::item_attachment_refs(&latest.item, &mut old_refs).is_ok()
+                        && crate::archive::item_attachment_refs(item, &mut new_refs).is_ok()
+                        && old_refs == new_refs;
+                if latest_is_manual && within_window && same_attachments {
+                    storage(conn.execute("DELETE FROM entry_history WHERE id=?1", [&latest.id]))?;
+                }
+            }
         }
         write(
             conn,
@@ -277,9 +356,13 @@ pub(super) fn capture(
             vault,
             &Revision {
                 id: new_id(),
-                item_id: item["id"].as_str().unwrap().into(),
+                item_id: id.into(),
                 captured_at: now,
                 item: item.clone(),
+                actor_type: item_meta.and_then(|m| m.actor_type.clone()),
+                actor: item_meta.and_then(|m| m.actor.clone()),
+                summary: item_meta.and_then(|m| m.summary.clone()),
+                milestone: item_meta.and_then(|m| m.milestone.then_some(true)),
             },
         )?;
     }
@@ -289,12 +372,12 @@ pub(super) fn capture(
                 conn,
                 root,
                 vault,
-                &Revision {
-                    id: new_id(),
-                    item_id: item["id"].as_str().unwrap().into(),
-                    captured_at: now,
-                    item: Value::Null,
-                },
+                &Revision::plain(
+                    new_id(),
+                    item["id"].as_str().unwrap().into(),
+                    now,
+                    Value::Null,
+                ),
             )?;
         }
     }
@@ -313,6 +396,38 @@ pub(super) fn with_history(doc: &Document, revisions: &[Revision]) -> Document {
 }
 
 impl DiskVault {
+    pub(super) fn ensure_history_enabled(&mut self) -> Result<()> {
+        if enabled(&self.open()?.connection)? {
+            return Ok(());
+        }
+        let destination = self.directory.join("before-entry-history");
+        if !destination.exists() {
+            let temp = storage(
+                tempfile::Builder::new()
+                    .prefix(".history-backup-")
+                    .tempdir_in(&self.directory),
+            )?;
+            for file in ["header.json", "vault.sqlite"] {
+                atomic_write(
+                    &temp.path().join(file),
+                    &storage(fs::read(self.directory.join(file)))?,
+                )?;
+            }
+            note_blobs::copy_blobs_dir(&self.directory, temp.path())?;
+            storage(fs::rename(temp.path(), &destination))?;
+            storage(crate::native_file_ops::sync_directory(&self.directory))?;
+        }
+        let open = self.open()?;
+        let mut next = open.document.clone();
+        next.format_version = next.format_version.max(5);
+        next.settings["entryHistoryEnabled"] = json!(true);
+        let tx = storage(open.connection.transaction())?;
+        table(&tx)?;
+        save_document_row(&tx, &open.root, &open.header.vault_id, &next)?;
+        storage(tx.commit())?;
+        open.document = next;
+        Ok(())
+    }
     pub(super) fn history_command(&mut self, request: &Value) -> Result<Value> {
         let text = |key: &str| request[key].as_str().ok_or(VaultError::InvalidData);
         if let Some(library) = self.open()?.document.settings["activePeerLibrary"]
@@ -327,32 +442,7 @@ impl DiskVault {
         }
         match text("op")? {
             "history-enable" => {
-                self.open()?;
-                let destination = self.directory.join("before-entry-history");
-                if !destination.exists() {
-                    let temp = storage(
-                        tempfile::Builder::new()
-                            .prefix(".history-backup-")
-                            .tempdir_in(&self.directory),
-                    )?;
-                    for file in ["header.json", "vault.sqlite"] {
-                        atomic_write(
-                            &temp.path().join(file),
-                            &storage(fs::read(self.directory.join(file)))?,
-                        )?;
-                    }
-                    storage(fs::rename(temp.path(), &destination))?;
-                    storage(crate::native_file_ops::sync_directory(&self.directory))?;
-                }
-                let open = self.open()?;
-                let mut next = open.document.clone();
-                next.format_version = next.format_version.max(5);
-                next.settings["entryHistoryEnabled"] = json!(true);
-                let tx = storage(open.connection.transaction())?;
-                table(&tx)?;
-                save_document_row(&tx, &open.root, &open.header.vault_id, &next)?;
-                storage(tx.commit())?;
-                open.document = next;
+                self.ensure_history_enabled()?;
                 Ok(json!({"ok":true}))
             }
             "history-status" => Ok(json!({"enabled":enabled(&self.open()?.connection)?})),
@@ -371,8 +461,48 @@ impl DiskVault {
                 )?;
                 Ok(json!({"total":total,"revisions":revisions}))
             }
+            "history-milestone" => {
+                let id = text("id")?;
+                let summary = text("summary")?.trim();
+                if summary.is_empty()
+                    || summary.chars().count() > 240
+                    || summary.chars().any(char::is_control)
+                {
+                    return Err(VaultError::InvalidData);
+                }
+                self.ensure_history_enabled()?;
+                let open = self.open()?;
+                let current = open
+                    .document
+                    .items
+                    .iter()
+                    .find(|i| i["id"] == id && i["isDeleted"] != true)
+                    .cloned()
+                    .ok_or(VaultError::InvalidData)?;
+                authorize_item_write(&open.document, &current)?;
+                let now = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map_err(|_| VaultError::InvalidData)?
+                    .as_millis() as u64;
+                let rev = Revision {
+                    id: new_id(),
+                    item_id: id.into(),
+                    captured_at: now,
+                    item: current,
+                    actor_type: Some("milestone".into()),
+                    actor: Some("里程碑 · 我".into()),
+                    summary: Some(summary.to_owned()),
+                    milestone: Some(true),
+                };
+                let tx = storage(open.connection.transaction())?;
+                write(&tx, &open.root, &open.header.vault_id, &rev)?;
+                storage(tx.commit())?;
+                Ok(json!({"ok":true,"revision":rev}))
+            }
             "history-prune" => {
                 let id = text("id")?;
+                let keep_milestones = request["keepMilestones"].as_bool().unwrap_or(false);
+                let vault_dir = self.directory.clone();
                 let open = self.open()?;
                 let current = open
                     .document
@@ -383,11 +513,28 @@ impl DiskVault {
                 authorize_item_write(&open.document, current)?;
                 let revisions = read(&open.connection, &open.root, &open.header.vault_id)?;
                 let tx = storage(open.connection.transaction())?;
-                for revision in revisions.iter().filter(|r| r.item_id == id) {
+                for revision in revisions
+                    .iter()
+                    .filter(|r| r.item_id == id && !(keep_milestones && r.milestone == Some(true)))
+                {
                     storage(tx.execute("DELETE FROM entry_history WHERE id=?1", [&revision.id]))?;
                 }
+                let (_, remaining) = page(&tx, &open.root, &open.header.vault_id, id, 0, 1)?;
+                if !remaining.first().is_some_and(|r| r.item == *current) {
+                    let now = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .map_err(|_| VaultError::InvalidData)?
+                        .as_millis() as u64;
+                    write(
+                        &tx,
+                        &open.root,
+                        &open.header.vault_id,
+                        &Revision::plain(new_id(), id.into(), now, current.clone()),
+                    )?;
+                }
                 capture(&tx, &open.root, &open.header.vault_id, &open.document)?;
-                if !relay::retains_attachments(&tx)? {
+                let retains = relay::retains_attachments(&tx)?;
+                if !retains {
                     let retained = with_history(
                         &open.document,
                         &read(&tx, &open.root, &open.header.vault_id)?,
@@ -401,10 +548,14 @@ impl DiskVault {
                             storage(
                                 tx.execute("DELETE FROM note_attachments WHERE id=?1", [&meta.id]),
                             )?;
+                            note_blobs::delete_ref(&tx, &meta.id)?;
                         }
                     }
                 }
                 storage(tx.commit())?;
+                if !retains {
+                    let _ = note_blobs::prune_unreferenced(&vault_dir, &open.connection);
+                }
                 Ok(json!({"ok":true}))
             }
             "history-restore" => {
@@ -435,8 +586,22 @@ impl DiskVault {
                 authorize_item_write(&open.document, &revision.item)?;
                 let mut item = revision.item;
                 item["updatedAt"] = json!(time);
+                let meta = HistoryMeta {
+                    item_id: Some(id.to_owned()),
+                    actor_type: Some("restore".into()),
+                    actor: Some("从历史恢复 · 我".into()),
+                    summary: Some(
+                        revision
+                            .summary
+                            .as_deref()
+                            .map(|s| format!("恢复历史版本（{s}）"))
+                            .unwrap_or_else(|| "从历史版本恢复".into()),
+                    ),
+                    milestone: false,
+                    coalesce: false,
+                };
                 self.validate_note_save(&json!({"item":item,"richNotes":true}))?;
-                self.mutate(|doc| {
+                self.mutate_with_history(Some(&meta), |doc| {
                     doc.upsert(item)?;
                     Ok(json!({"ok":true}))
                 })
@@ -474,12 +639,12 @@ mod index_tests {
             legacy_row(
                 &conn,
                 &root,
-                &Revision {
-                    id: format!("{n:032x}"),
-                    item_id: item.into(),
-                    captured_at: n,
-                    item: json!({"id":item,"type":"secureNote","title":format!("Revision {n}")}),
-                },
+                &Revision::plain(
+                    format!("{n:032x}"),
+                    item.into(),
+                    n,
+                    json!({"id":item,"type":"secureNote","title":format!("Revision {n}")}),
+                ),
             );
         }
         let (total, rows) = page(&conn, &root, "fixture", "first", 3, 2).unwrap();
@@ -521,12 +686,7 @@ mod index_tests {
         legacy_row(
             &conn,
             &root,
-            &Revision {
-                id: format!("{:032x}", 1),
-                item_id: "fixture".into(),
-                captured_at: 1,
-                item: Value::Null,
-            },
+            &Revision::plain(format!("{:032x}", 1), "fixture".into(), 1, Value::Null),
         );
         conn.execute(
             "INSERT INTO entry_history VALUES('broken',?1)",

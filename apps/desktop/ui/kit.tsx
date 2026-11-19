@@ -34,7 +34,7 @@ export function Btn(props: {
 }) {
   const kind = () => props.kind ?? "default";
   const bg = () =>
-    ({ primary: c().blue, default: c().surface, ghost: "transparent", danger: c().surface, dangerSolid: c().red })[kind()];
+    ({ primary: c().primaryBg, default: c().surface, ghost: "transparent", danger: c().surface, dangerSolid: c().dangerBg })[kind()];
   const fg = () =>
     ({ primary: c().onBlue, default: c().ink, ghost: c().ink2, danger: c().red, dangerSolid: c().onBlue })[kind()];
   return (
@@ -49,11 +49,11 @@ export function Btn(props: {
         flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6,
         paddingHorizontal: 12, height: fs(30), borderRadius: radius.control,
         borderWidth: kind() === "ghost" ? 0 : 1,
-        borderColor: kind() === "primary" ? c().blue : kind() === "dangerSolid" ? c().red : c().line,
+        borderColor: kind() === "primary" ? c().primaryBg : kind() === "dangerSolid" ? c().dangerBg : c().line,
         backgroundColor: bg(), opacity: props.disabled ? 0.45 : 1, cursor: props.disabled ? "default" : "pointer",
         flexGrow: props.grow ? 1 : 0,
       }}
-      hoverStyle={props.disabled ? undefined : { backgroundColor: kind() === "primary" ? c().blueHover : kind() === "dangerSolid" ? c().red : c().blueSoft }}
+      hoverStyle={props.disabled ? undefined : { backgroundColor: kind() === "primary" ? c().primaryBgHover : kind() === "dangerSolid" ? c().dangerBg : c().blueSoft }}
       activeStyle={{ opacity: 0.8 }}
       focusStyle={{ borderColor: c().blue, borderWidth: 2 }}
     >
@@ -81,8 +81,8 @@ export function IconBtn(props: { icon: IconName; label: string; onPress?: (e?: a
   );
 }
 
-export function Row(props: { children?: any; gap?: number; style?: any; wrap?: boolean }) {
-  return <View style={{ flexDirection: "row", alignItems: "center", gap: props.gap ?? 8, flexWrap: props.wrap ? "wrap" : "nowrap", ...props.style }}>{props.children}</View>;
+export function Row(props: { children?: any; gap?: number; style?: any; wrap?: boolean; testID?: string }) {
+  return <View testID={props.testID} style={{ flexDirection: "row", alignItems: "center", gap: props.gap ?? 8, flexWrap: props.wrap ? "wrap" : "nowrap", ...props.style }}>{props.children}</View>;
 }
 export const Spacer = () => <View style={{ flex: 1 }} />;
 
@@ -233,7 +233,7 @@ export function Toggle(props: { title: string; note?: string; checked: boolean; 
         disabled={props.disabled}
         accessibilityLabel={props.title}
         onChange={({ checked }) => props.onChange(checked)}
-        trackStyle={{ width: 32, height: 19, borderRadius: 10, padding: 2, backgroundColor: props.checked ? c().blue : c().line }}
+        trackStyle={{ width: 32, height: 19, borderRadius: 10, padding: 2, backgroundColor: props.checked ? c().primaryBg : c().line }}
         thumbStyle={{ width: 15, height: 15, borderRadius: 8, backgroundColor: "#ffffff", transform: [{ translateX: props.checked ? 13 : 0 }] }}
       />
     </Row>
@@ -307,7 +307,7 @@ export function confirm(o: { title: string; text: string; ok: string; danger?: b
         <SheetTitle title={o.title} text={o.text} />
         <SheetFooter>
           <Btn label="取消" onPress={() => { close(); o.onCancel?.(); }} />
-          <Btn label={o.ok} kind={o.danger ? "dangerSolid" : "primary"} onPress={() => { close(); o.onConfirm(); }} />
+          <Btn testID="confirm-ok" label={o.ok} kind={o.danger ? "dangerSolid" : "primary"} onPress={() => { close(); o.onConfirm(); }} />
         </SheetFooter>
       </View>
     ),
@@ -382,7 +382,7 @@ export function Card(props: { title?: string; note?: string; right?: JSX.Element
 }
 export function IconTile(props: { name: IconName; size?: number; solid?: boolean }) {
   const size = props.size ?? 30;
-  return <View style={{ width: size, height: size, borderRadius: size * 0.3, backgroundColor: props.solid ? c().blue : c().soft, alignItems: "center", justifyContent: "center", flexShrink: 0 }}><Icon name={props.name} size={size * 0.52} tint={props.solid ? c().onBlue : c().blue} /></View>;
+  return <View style={{ width: size, height: size, borderRadius: size * 0.3, backgroundColor: props.solid ? c().primaryBg : c().soft, alignItems: "center", justifyContent: "center", flexShrink: 0 }}><Icon name={props.name} size={size * 0.52} tint={props.solid ? c().onBlue : c().blue} /></View>;
 }
 export function ListRow(props: { icon: IconName; title: string; note: string; disabled?: boolean; busy?: boolean; onPress: () => void }) {
   const off = () => props.disabled || props.busy;

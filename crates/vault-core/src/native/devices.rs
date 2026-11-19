@@ -9,6 +9,7 @@ impl DiskVault {
             );
         }
         if request["op"] == "devices-file-read" {
+            let vault_dir = self.directory.clone();
             let open = self.open()?;
             let owner = request["id"].as_str().ok_or(VaultError::InvalidData)?;
             let id = request["attachmentId"]
@@ -32,7 +33,13 @@ impl DiskVault {
                 .into_iter()
                 .find(|m| m.id == id && m.note_id == owner && m.size <= 262144)
                 .ok_or(VaultError::InvalidData)?;
-            let bytes = notes::read(&open.connection, &open.root, &open.header.vault_id, &meta)?;
+            let bytes = notes::read(
+                &vault_dir,
+                &open.connection,
+                &open.root,
+                &open.header.vault_id,
+                &meta,
+            )?;
             let text = std::str::from_utf8(&bytes).map_err(|_| VaultError::InvalidData)?;
             return Ok(json!({"text":text}));
         }
@@ -73,6 +80,7 @@ impl DiskVault {
             };
             atomic_write(&temp.path().join(name), &bytes)?;
         }
+        note_blobs::copy_blobs_dir(&self.directory, temp.path())?;
         storage(fs::rename(temp.path(), &destination))?;
         storage(crate::native_file_ops::sync_directory(&self.directory))?;
         self.mutate(|doc| {

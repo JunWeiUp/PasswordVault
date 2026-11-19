@@ -1,12 +1,16 @@
 [package]
 name = "nsh-app-passwordvault"
-version = "2.4.2"
+version = "2.5.6"
 edition = "2024"
 license = "MIT"
 publish = false
+autobins = false
 
 # Built by the nsh CLI as its own workspace, outside the repository's core workspace.
+# Lightweight native helpers live in dedicated workspace members so builds never
+# compile the full UI library when only a helper changed.
 [workspace]
+members = [".", "helpers/pv-mcp", "helpers/pv-browser-host"]
 
 [features]
 default = ["ui"]
@@ -40,6 +44,7 @@ zeroize = "1.8"
 base64 = "0.22"
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls"] }
 roxmltree = "0.20"
+zip = { version = "2.4.2", default-features = false, features = ["deflate"] }
 percent-encoding = "2"
 uuid = { version = "1", features = ["v4"] }
 

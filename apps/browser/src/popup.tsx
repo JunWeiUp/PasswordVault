@@ -24,6 +24,9 @@ function Popup() {
   const [macOpenFailed, setMacOpenFailed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
   const [matches, setMatches] = useState<any>();
   const [captured, setCaptured] = useState<any>();
   const [matchesError, setMatchesError] = useState("");
@@ -125,6 +128,22 @@ function Popup() {
       throw e;
     }
   });
+  const strengthOf = (pw: string) => {
+    if (!pw) return 0;
+    const classes = [/[a-z]/, /[A-Z]/, /[0-9]/, /[^a-zA-Z0-9]/].filter((r) => r.test(pw)).length;
+    if (pw.length < 10) return 1;
+    if (pw.length < 12 || classes < 2) return 2;
+    if (pw.length < 16 || classes < 3) return 3;
+    return 4;
+  };
+  const strengthLevel = strengthOf(password);
+  const nativeDisconnected =
+    state?.mode === "native" &&
+    state.available === false &&
+    !state.readReady &&
+    !state.syncReady;
+  const creatingIndependent =
+    state && state.mode !== "native" && !state.unlocked && !state.exists;
   const manage = () =>
     chrome.tabs.create({ url: chrome.runtime.getURL("index.html") });
   return (
@@ -196,31 +215,92 @@ function Popup() {
         <form
           onSubmit={(e) => {
             e.preventDefault();
+            if (!state.exists && password !== confirmPassword) {
+              setError(t("两次输入的主密码不一致。"));
+              return;
+            }
             const value = password;
             setPassword("");
+            setConfirmPassword("");
+            setShowPassword(false);
+            setShowConfirm(false);
             void run(() => authenticate(value, !state.exists));
           }}
         >
           <section class="popup-empty">
-            <span class="lock-symbol">⌑</span>
+            <span class="lock-symbol" aria-hidden="true">
+              <svg width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="4" y="11" width="16" height="10" rx="2" />
+                <path d="M8 11V7a4 4 0 0 1 8 0v4" />
+              </svg>
+            </span>
             <h2>{state.exists ? t("解锁资料库") : t("创建独立资料库")}</h2>
             <p>
               {state.exists
                 ? t("使用主密码继续。")
                 : t("数据加密保存在此浏览器。请记住主密码。")}
             </p>
-            <input
-              autoFocus
-              type="password"
-              autoComplete={state.exists ? "current-password" : "new-password"}
-              minLength={state.exists ? 1 : 10}
-              required
-              placeholder={
-                state.exists ? t("主密码") : t("设置主密码（至少 10 字符）")
-              }
-              value={password}
-              onInput={(e) => setPassword(e.currentTarget.value)}
-            />
+            <div class="capture-secret">
+              <input
+                autoFocus
+                type={showPassword ? "text" : "password"}
+                autoComplete={state.exists ? "current-password" : "new-password"}
+                minLength={state.exists ? 1 : 10}
+                required
+                placeholder={
+                  state.exists ? t("主密码") : t("设置主密码（至少 10 字符）")
+                }
+                value={password}
+                onInput={(e) => setPassword(e.currentTarget.value)}
+              />
+              <button
+                type="button"
+                class="secret-toggle"
+                aria-label={showPassword ? t("隐藏密码") : t("显示密码")}
+                title={showPassword ? t("隐藏密码") : t("显示密码")}
+                aria-pressed={showPassword}
+                onClick={() => setShowPassword((v) => !v)}
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z" />
+                  <circle cx="12" cy="12" r="3" />
+                  {showPassword && <path d="m3 3 18 18" />}
+                </svg>
+              </button>
+            </div>
+            {!state.exists && password && (
+              <div class={`strength-meter ${strengthLevel <= 1 ? "low" : strengthLevel === 2 ? "mid" : "high"}`} aria-live="polite">
+                {[1, 2, 3, 4].map((i) => <i class={i <= strengthLevel ? "on" : ""} />)}
+                <span>{[ "", t("弱"), t("一般"), t("良好"), t("强") ][strengthLevel]}</span>
+              </div>
+            )}
+            {!state.exists && (
+              <div class="capture-secret">
+                <input
+                  type={showConfirm ? "text" : "password"}
+                  autoComplete="new-password"
+                  minLength={10}
+                  required
+                  placeholder={t("再次输入主密码")}
+                  value={confirmPassword}
+                  onInput={(e) => setConfirmPassword(e.currentTarget.value)}
+                />
+                <button
+                  type="button"
+                  class="secret-toggle"
+                  aria-label={showConfirm ? t("隐藏密码") : t("显示密码")}
+                  title={showConfirm ? t("隐藏密码") : t("显示密码")}
+                  aria-pressed={showConfirm}
+                  onClick={() => setShowConfirm((v) => !v)}
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z" />
+                    <circle cx="12" cy="12" r="3" />
+                    {showConfirm && <path d="m3 3 18 18" />}
+                  </svg>
+                </button>
+              </div>
+            )}
             <button class="primary" disabled={busy}>
               {busy ? t("请稍候…") : state.exists ? t("解锁") : t("创建资料库")}
             </button>
@@ -280,38 +360,21 @@ function Popup() {
           )}
           <div class="section-title">
             <span>{t("当前网站")}</span>
-            <button
-              class="text-button"
-              onClick={() =>
-                run(async () => {
-                  await lock();
-                  setCaptured(undefined);
-                })
-              }
-            >
-              {t("锁定")}
-            </button>
+            {!nativeDisconnected && (
+              <button
+                class="text-button"
+                onClick={() =>
+                  run(async () => {
+                    await lock();
+                    setCaptured(undefined);
+                  })
+                }
+              >
+                {t("锁定")}
+              </button>
+            )}
           </div>
           <p class="origin">{matches?.origin ?? t("请打开一个网站")}</p>
-          {!captured && (
-            <button
-              class="primary wide"
-              disabled={busy || !matches}
-              onClick={() => {
-                revision.current++;
-                setCaptured({
-                  tabId: matches.id,
-                  origin: matches.origin,
-                  mode: state.mode,
-                  manual: true,
-                  username: "",
-                  password: "",
-                });
-              }}
-            >
-              {t("添加账号密码")}
-            </button>
-          )}
           {captured && (
             <CaptureConfirmation
               key={`${captured.tabId}:${captured.origin}:${captured.id ?? "manual"}`}
@@ -355,7 +418,6 @@ function Popup() {
               {matchesError}
             </p>
           )}
-          <StructuredFill/>
           <details
             class="site-accounts"
             open={!captured}
@@ -452,6 +514,40 @@ function Popup() {
                   )}
             </div>
           </details>
+          {!captured && (
+            <div class="popup-secondary-actions">
+              <button
+                class={matches?.accounts?.length ? "" : "primary"}
+                disabled={busy || !matches}
+                onClick={() => {
+                  revision.current++;
+                  setCaptured({
+                    tabId: matches.id,
+                    origin: matches.origin,
+                    mode: state.mode,
+                    manual: true,
+                    username: "",
+                    password: "",
+                  });
+                }}
+              >
+                {t("添加账号密码")}
+              </button>
+              <button
+                disabled={busy || !matches}
+                onClick={() =>
+                  run(async () =>
+                    setCaptured(
+                      await message({ action: "capture", tabId: matches.id }),
+                    ),
+                  )
+                }
+              >
+                {t("保存网页中的账号")}
+              </button>
+            </div>
+          )}
+          {!captured && !nativeDisconnected && <StructuredFill/>}
           {matches && (
             <div class="reminder-setting">
               <button
@@ -482,24 +578,9 @@ function Popup() {
               </small>
             </div>
           )}
-          {!captured && (
-            <button
-              class="wide"
-              disabled={busy || !matches}
-              onClick={() =>
-                run(async () =>
-                  setCaptured(
-                    await message({ action: "capture", tabId: matches.id }),
-                  ),
-                )
-              }
-            >
-              {t("保存网页中的账号")}
-            </button>
-          )}
         </>
       )}
-      {state && (<details class="authorization-settings">
+      {state && !creatingIndependent && (<details class="authorization-settings">
             <summary>{t("自动锁定")}{state.autoLockEnabled ? fmt(t(" · {hours} 小时"),{hours:state.autoLockMinutes / 60}) : t(" · 未开启")}</summary>
             <label class="authorization-option">
               <input id="browser-auto-lock" type="checkbox" checked={state.autoLockEnabled === true} disabled={busy}
@@ -516,7 +597,7 @@ function Popup() {
             <p class="muted">{t("默认保持授权，不因空闲或电脑锁屏要求重新输入。开启后，达到所选空闲时长或电脑锁屏时锁定插件。手动锁定、撤销授权或修改主密码后仍需验证。")}</p>
           </details>)}
       <footer class="popup-footer">
-        <span>{state?.autoLockEnabled ? fmt(t("空闲 {hours} 小时后锁定"),{hours:state.autoLockMinutes / 60}) : t("自动锁定未开启")}</span>
+        <span>{creatingIndependent ? t("加密保存在本地浏览器") : state?.autoLockEnabled ? fmt(t("空闲 {hours} 小时后锁定"),{hours:state.autoLockMinutes / 60}) : t("自动锁定未开启")}</span>
         <button class="text-button" onClick={manage}>
           {t("管理资料库 ↗")}
         </button>
@@ -568,7 +649,7 @@ function CaptureConfirmation({
       <h3>{captured.updateId ? t("修改账号密码") : captured.manual ? t("添加账号密码") : t("确认保存账号")}</h3>
       <p class="muted capture-hint">
         {captured.manual ? t("为当前网站填写账号和密码。") : t("可修改后保存。")}
-        {t("离线暂存使用此浏览器的设备密钥加密。")}
+        {captured.mode === "native" ? t("离线暂存使用此浏览器的设备密钥加密。") : t("数据加密保存在此浏览器的独立资料库中。")}
         {captured.expires ? t("待保存信息将在两分钟后清除。") : t("确认后加密保存。")}
       </p>
       <label>{t("保存方式")}<select disabled={busy} value={captured.updateId ? JSON.stringify([captured.updateId,captured.updateAccountId ?? null]) : ""} onChange={event=>{

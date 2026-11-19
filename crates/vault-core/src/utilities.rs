@@ -51,7 +51,9 @@ pub fn parse_totp_uri(input: &str) -> Result<Value> {
     // QR codes often upper-case the whole URI (alphanumeric mode); the URL parser only
     // lower-cases the scheme, so compare the type and parameter names case-insensitively.
     if url.scheme() != "otpauth"
-        || !url.host_str().is_some_and(|host| host.eq_ignore_ascii_case("totp"))
+        || !url
+            .host_str()
+            .is_some_and(|host| host.eq_ignore_ascii_case("totp"))
         || url.fragment().is_some()
         || !url.username().is_empty()
         || url.password().is_some()
@@ -61,7 +63,10 @@ pub fn parse_totp_uri(input: &str) -> Result<Value> {
     }
     let mut params = std::collections::HashMap::new();
     for (key, value) in url.query_pairs() {
-        if params.insert(key.to_ascii_lowercase(), value.to_string()).is_some() {
+        if params
+            .insert(key.to_ascii_lowercase(), value.to_string())
+            .is_some()
+        {
             return Err(VaultError::InvalidData);
         }
     }

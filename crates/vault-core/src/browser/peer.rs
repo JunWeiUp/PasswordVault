@@ -586,11 +586,13 @@ impl BrowserVault {
                 .operations
                 .values()
                 .filter(|o| o.key == key && !l.hidden.contains(&o.id))
-                .map(|o| HistoryRevision {
-                    id: o.id.clone(),
-                    item_id: text(request, "id").unwrap().into(),
-                    captured_at: o.captured_at,
-                    item: o.value.clone(),
+                .map(|o| {
+                    HistoryRevision::plain(
+                        o.id.clone(),
+                        text(request, "id").unwrap().into(),
+                        o.captured_at,
+                        o.value.clone(),
+                    )
                 })
                 .collect();
             revisions.sort_by(|a, b| b.captured_at.cmp(&a.captured_at).then(b.id.cmp(&a.id)));

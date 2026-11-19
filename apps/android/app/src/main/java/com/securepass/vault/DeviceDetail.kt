@@ -112,13 +112,17 @@ internal fun DeviceDetailContent(item: JSONObject, vault: VaultRepository, t: (S
         val context = LocalContext.current
         DetailSection(t("外部终端", "External terminal")) {
             DetailField(t("连接命令", "Connection command"), command, vault, t, monospace = true)
-            OutlinedButton(onClick = {
-                val send = android.content.Intent(android.content.Intent.ACTION_SEND)
-                    .setType("text/plain").putExtra(android.content.Intent.EXTRA_TEXT, command)
-                context.startActivity(android.content.Intent.createChooser(send, t("用终端应用打开", "Open in a terminal app")))
-            }) { Text(t("发送到终端应用…", "Send to a terminal app…")) }
+            OutlinedButton(
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                onClick = {
+                    val send = android.content.Intent(android.content.Intent.ACTION_SEND)
+                        .setType("text/plain").putExtra(android.content.Intent.EXTRA_TEXT, command)
+                    context.startActivity(android.content.Intent.createChooser(send, t("用终端应用打开", "Open in a terminal app")))
+                },
+            ) { Text(t("发送到终端应用…", "Send to a terminal app…")) }
             Text(t("命令只包含用户名、主机和端口，不含密码或私钥；在 Termux、JuiceSSH 等终端中由你确认执行，本机不会执行。",
                 "The command holds only the user, host and port, never a password or key. You run it in a terminal app such as Termux or JuiceSSH; this phone does not run it."),
+                modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 14.dp),
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }

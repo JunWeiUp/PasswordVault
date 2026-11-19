@@ -5,18 +5,23 @@ import { Menu } from "nsh/desktop";
 import { Input } from "nsh/base";
 import { Icon } from "./icons";
 import {
-  Banner, Btn, copySecret, Empty, Field, Group, IconBtn, openSite, Row, SectionHead, Strength, strengthOf, T,
+  Banner, Btn, copySecret, Empty, Field, Group, IconBtn, openSite, Row, SectionHead, SmallAction, Strength, strengthOf, T,
 } from "./kit";
 import {
-  audit, DEST_NAME, dest, edit, editing, flush, lock, noteCategories, restore, saveError, saveState,
+  audit, DEST_NAME, dest, edit, editing, flush, items, lock, noteCategories, onLock, restore, saveError, saveState,
   selected, toggleFavorite, type Item,
 } from "./store";
-import { askDeleteForever, askTrash, showPasswordHistory } from "./sheets";
+import { askDeleteForever, askSaveMilestone, askTrash, showPasswordHistory } from "./sheets";
 import { moveToCategoryMenu, rowMenu, Tile } from "./ItemList";
 import { c, layout, MONO, fs } from "./theme";
 import { formatCode, secondsLeft, useCode } from "./totp";
 import { askGeneratedPassword } from "./Tools";
 import { RichNoteEditor } from "./notes/RichNoteEditor";
+import { NotePreviewView } from "./notes/NotePreviewView";
+import { getUiPref, setUiPref } from "./api/extensions";
+import { AgentAutoSaveBanner, NoteLinksSection, NoteMarkdownPane, NotePropertiesPanel } from "./notes/NoteKnowledgePanels";
+import { NoteAssetsSection, NoteExternalEditBanner } from "./notes/NoteAssetsPanel";
+import { catLeaf } from "./notes/knowledge";
 import { openItemHistory } from "./history";
 import { askExportNote } from "./notes/export";
 import { DeviceDetail, deviceTitle } from "./devices";
@@ -28,7 +33,21 @@ import { isDocumentField } from "./entries/documents";
 import { openSettings } from "./Settings";
 import { vaultInstance } from "./store";
 
-const noteMode = signal<"edit" | "preview">("edit");
+const noteModeOverride = signal<"edit" | "preview" | "md" | null>(null);
+onLock(() => noteModeOverride.set(null));
+const noteMode = (): "edit" | "preview" | "md" => {
+  const override = noteModeOverride();
+  if (override) return override;
+  const saved = getUiPref<string>("noteMode", "edit");
+  return saved === "preview" || saved === "md" ? saved : "edit";
+};
+function setNoteMode(next: "edit" | "preview" | "md") {
+  noteModeOverride.set(next);
+  // Persist reading/editing preference via generic encrypted settings.uiPrefs pass-through (zero Rust schema).
+  if (next === "edit" || next === "preview") {
+    void setUiPref("noteMode", next);
+  }
+}
 
 function Toolbar(props: { item: Item; extra?: JSX.Element }) {
   const item = () => props.item;
@@ -38,7 +57,7 @@ function Toolbar(props: { item: Item; extra?: JSX.Element }) {
         <T size={12} color={c().muted}>{DEST_NAME[dest()]}</T>
         <If when={item().type === "secureNote" && item().category}>
           <Icon name="chev" size={11} tint={c().faint} />
-          <T size={12} color={c().muted}>{item().category}</T>
+          <T size={12} color={c().muted}>{catLeaf(item().category)}</T>
         </If>
         <Icon name="chev" size={11} tint={c().faint} />
         <T size={12} weight="500" lines={1} style={{ flexShrink: 1 }}>{item().type === "device" ? deviceTitle(item()) : item().title || "未命名"}</T>
@@ -68,6 +87,8 @@ function moreMenu(item: Item) {
     { label: "版本历史…", onSelect: () => openItemHistory(item) },
     { label: "复制条目链接", onSelect: () => copySecret(`passwordvault://item/${item.id}`, "条目链接") },
     ...(item.type === "secureNote" ? [
+      { label: "保存里程碑版本…", onSelect: () => askSaveMilestone(item) },
+      { label: "查看规范 Markdown", onSelect: () => setNoteMode("md") },
       { label: "另存为 Markdown…", onSelect: () => askExportNote(item, "markdown") },
       { label: "另存为 HTML…", onSelect: () => askExportNote(item, "html") },
     ] : []),
@@ -252,57 +273,78 @@ function WalletDetail(props: { item: Item }) {
 
 function NoteDetail(props: { item: Item }) {
   const item = () => props.item;
-  const rich = () => item().noteFormat === "rich-v1";
   const canEdit = () => noteMode() === "edit" && !item().isDeleted;
+  const wikilinkTargets = () =>
+    items()
+      .filter((n) => n.type === "secureNote" && !n.isDeleted && n.id !== item().id && n.title?.trim())
+      .map((n) => n.title.trim());
+  const modeLabel = (m: "edit" | "preview" | "md") => (m === "edit" ? "编辑" : m === "preview" ? "预览" : "MD");
   const extra = (
     <If when={!item().isDeleted}>
-      <View style={{ flexDirection: "row", backgroundColor: c().field, borderRadius: 7, padding: 2 }}>
-        {(["edit", "preview"] as const).map((m) => (
-          <View role="button" accessibilityState={{ selected: noteMode() === m }} onPress={() => noteMode.set(m)}
-            style={{ paddingHorizontal: 12, paddingVertical: 4, borderRadius: 5, backgroundColor: noteMode() === m ? c().surface : "transparent", cursor: "pointer" }}>
-            <T size={12} weight={noteMode() === m ? "600" : "400"} color={noteMode() === m ? c().blue : c().muted}>{m === "edit" ? "编辑" : "预览"}</T>
-          </View>
-        ))}
-      </View>
+      <Row gap={6}>
+        <Btn testID="note-history-btn" label="历史" icon="history" onPress={() => openItemHistory(item())} />
+        <View style={{ flexDirection: "row", backgroundColor: c().field, borderRadius: 7, padding: 2 }}>
+          {(["edit", "preview", "md"] as const).map((m) => (
+            <View role="button" testID={`note-mode-${m}`} accessibilityState={{ selected: noteMode() === m }} onPress={() => setNoteMode(m)}
+              style={{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: 5, backgroundColor: noteMode() === m ? c().surface : "transparent", cursor: "pointer" }}>
+              <T size={12} weight={noteMode() === m ? "600" : "400"} color={noteMode() === m ? c().blue : c().muted}>{modeLabel(m)}</T>
+            </View>
+          ))}
+        </View>
+      </Row>
     </If>
   );
   return (
     <>
       <Toolbar item={item()} extra={extra} />
-      <Scroll style={{ flex: 1 }} contentStyle={{ paddingHorizontal: 40, paddingTop: 26, paddingBottom: 40 }}>
-        <View style={{ maxWidth: 760 }}>
+      <Scroll style={{ flex: 1 }} contentStyle={{ paddingHorizontal: 40, paddingTop: 24, paddingBottom: 40 }}>
+        <View style={{ maxWidth: 780 }}>
           <SaveFailure />
           <If when={item().isDeleted}>
             <Banner tone="info" title="已移到回收站" actions={<Btn label="恢复" onPress={() => void restore(item())} />}>
               恢复后回到原分类{item().category ? `「${item().category}」` : ""}。
             </Banner>
           </If>
-          <If when={canEdit()} else={<T size={30} weight="700" selectable>{item().title || "未命名笔记"}</T>}>
+          <If when={canEdit() || (noteMode() === "md" && !item().isDeleted)} else={<T size={28} weight="700" selectable style={{ marginBottom: 12 }}>{item().title || "未命名笔记"}</T>}>
             <Input value={item().title} accessibilityLabel="标题" placeholder="标题" onChange={({ value }) => edit(item().id, (d) => (d.title = value))}
-              style={{ fontSize: fs(30), fontWeight: "700", color: c().ink, backgroundColor: "transparent", borderWidth: 0, paddingVertical: 4 }} />
+              style={{ fontSize: fs(28), fontWeight: "700", color: c().ink, backgroundColor: "transparent", borderWidth: 0, paddingVertical: 4, marginBottom: 10 }} />
           </If>
-          <Row gap={8} style={{ marginVertical: 10 }}>
-            <Icon name="folder" size={12} tint={c().faint} />
-            <If when={!item().isDeleted} else={<T size={12} color={c().muted}>{item().category || "未分类"}</T>}>
-              <View role="button" accessibilityLabel="移动到分类" tooltip="移动到分类" onPress={() => void Menu.popup(moveToCategoryMenu(item()))}
-                style={{ flexDirection: "row", alignItems: "center", gap: 4, cursor: "pointer" }}>
-                <T size={12} color={c().blue}>{item().category || "未分类"}</T>
-                <Icon name="chevd" size={11} tint={c().blue} />
-              </View>
-            </If>
-          </Row>
-          <View style={{ height: 1, backgroundColor: c().line, marginBottom: 16 }} />
+          <NotePropertiesPanel item={item()} editable={canEdit() || (noteMode() === "md" && !item().isDeleted)} />
+          <NoteExternalEditBanner item={item()} />
+          <AgentAutoSaveBanner item={item()} onOpenHistory={() => openItemHistory(item())} />
           <If when={!item().noteSummary} else={<T size={13} color={c().muted}>正在加载笔记…</T>}>
-            <RichNoteEditor item={item() as any} editable={canEdit()} vault={vaultInstance}
-              onChange={(patch, owner) => edit(owner ?? item().id, (d) => Object.assign(d, patch))} />
+            <If when={noteMode() === "md"} else={
+              <If when={noteMode() === "preview" || item().isDeleted} else={
+                <RichNoteEditor
+                  item={item() as any}
+                  editable={canEdit()}
+                  vault={vaultInstance}
+                  wikilinkTargets={wikilinkTargets()}
+                  onMilestone={() => askSaveMilestone(item())}
+                  onChange={(patch, owner) => edit(owner ?? item().id, (d) => Object.assign(d, patch))}
+                />
+              }>
+                <NotePreviewView item={item()} />
+              </If>
+            }>
+              <NoteMarkdownPane item={item()} editable={!item().isDeleted} />
+            </If>
           </If>
-
+          <NoteAssetsSection item={item()} editable={!item().isDeleted} />
+          <NoteLinksSection item={item()} />
         </View>
       </Scroll>
-      <View testID="note-status-footer" style={{ flexShrink: 0, paddingHorizontal: 40, paddingVertical: 12, borderTopWidth: 1, borderTopColor: c().line, backgroundColor: c().surface }}>
-        <Row style={{ maxWidth: 760, justifyContent: "space-between" }}>
-          <T size={11} color={c().faint}>{String(item().note ?? "").length} 字</T>
-          <T size={11} color={c().faint}>{canEdit() ? shortcutLabel("自动加密保存 · ⌘Z 撤销") : "预览为只读"}</T>
+      <View testID="note-status-footer" style={{ flexShrink: 0, paddingHorizontal: 40, paddingVertical: 10, borderTopWidth: 1, borderTopColor: c().line, backgroundColor: c().surface }}>
+        <Row style={{ maxWidth: 780, justifyContent: "space-between" }}>
+          <T size={11} color={c().faint}>{String(item().note ?? "").length} 字 · 独立分表加密（note_bodies + blobs/ 分块）</T>
+          <Row gap={10}>
+            <If when={!item().isDeleted}>
+              <SmallAction icon="history" label="版本历史" onPress={() => openItemHistory(item())} />
+            </If>
+            <T size={11} color={c().faint}>
+              {canEdit() ? shortcutLabel("自动加密保存 · ⌘Z 撤销") : noteMode() === "md" ? "规范 Markdown 源码" : "预览为只读"}
+            </T>
+          </Row>
         </Row>
       </View>
     </>

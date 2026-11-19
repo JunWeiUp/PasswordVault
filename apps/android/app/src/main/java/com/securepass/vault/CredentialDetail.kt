@@ -53,10 +53,11 @@ private fun EntryDetailContent(
     if (history) HistoryDialog(vault, item.getString("id"), t) { history = false }
     val writable = vault.canEdit(item)
     val deleted = item.optBoolean("isDeleted")
+    val totpSource = resolvedTotpSource(item, state.entries)
     var code by remember(item.optString("id")) { mutableStateOf("") }
-    var nextCode by remember(item.optString("id"), item.optString("secret"), item.optInt("period", 30)) { mutableStateOf("") }
+    var nextCode by remember(item.optString("id"), totpSource) { mutableStateOf("") }
     var remaining by remember(item.optString("id")) { mutableIntStateOf(0) }
-    val period = item.optInt("period", 30).coerceAtLeast(1)
+    val period = totpSource?.second ?: item.optInt("period", 30).coerceAtLeast(1)
     // Same core audit the list's "Needs attention" chip uses; re-run when the entry changes.
     var healthFinding by remember(item.optString("id")) { mutableStateOf<JSONObject?>(null) }
     LaunchedEffect(item.toString()) {
@@ -65,8 +66,8 @@ private fun EntryDetailContent(
                 runCatching { vault.audit().objects().firstOrNull { it.optString("id") == item.optString("id") } }.getOrNull()
             else null
     }
-    LaunchedEffect(item.toString()) {
-        if (type == "totp" || (type == "password" && item.optString("secret").isNotBlank()))
+    LaunchedEffect(item.toString(), totpSource) {
+        if (totpSource != null && (type == "totp" || type == "password"))
             while (true) {
                 val now = System.currentTimeMillis() / 1000
                 remaining = period - (now % period).toInt()
@@ -76,7 +77,7 @@ private fun EntryDetailContent(
                             .command(
                                 "totp",
                                 JSONObject()
-                                    .put("secret", item.optString("secret"))
+                                    .put("secret", totpSource.first)
                                     .put("period", period)
                                     .put("time", now),
                             )
@@ -85,7 +86,7 @@ private fun EntryDetailContent(
                         ""
                     }
                 if (type == "totp" && (nextCode.isEmpty() || remaining == period)) {
-                    nextCode = try { vault.command("totp", JSONObject().put("secret", item.optString("secret")).put("period", period).put("time", now + period)).optString("code") } catch (_: Exception) { "" }
+                    nextCode = try { vault.command("totp", JSONObject().put("secret", totpSource.first).put("period", period).put("time", now + period)).optString("code") } catch (_: Exception) { "" }
                 }
                 delay(1000)
             }
@@ -115,6 +116,12 @@ private fun EntryDetailContent(
                         Icon(Icons.Outlined.ContentCopy, null, Modifier.size(16.dp)); Spacer(Modifier.width(6.dp)); Text(t("复制密码", "Copy password"))
                     }
                     OutlinedButton(onClick = { copy(item.optString("username")) }, enabled = item.optString("username").isNotEmpty(), contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)) { Text(t("复制用户名", "Copy username")) }
+                    if (totpSource != null) {
+                        OutlinedButton(onClick = { if (code.isNotBlank()) copy(code) }, enabled = code.isNotBlank(), contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)) {
+                            Icon(Icons.Outlined.Timer, null, Modifier.size(16.dp)); Spacer(Modifier.width(6.dp))
+                            Text(if (code.isNotBlank()) t("验证码 ${code.chunked(3).joinToString(" ")}", "Code ${code.chunked(3).joinToString(" ")}") else t("复制验证码", "Copy code"))
+                        }
+                    }
                     if (item.optString("url").isNotBlank()) {
                         val rawUrl = item.optString("url").trim().lineSequence().firstOrNull().orEmpty()
                         val uri = android.net.Uri.parse(if ("://" in rawUrl) rawUrl else "https://$rawUrl")
@@ -128,7 +135,7 @@ private fun EntryDetailContent(
                     DetailField(t("密码", "Password"), item.optString("password"), vault, t, secret = true)
                     PasswordStrengthBar(item.optString("password"), t, Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 10.dp))
                     if (item.optString("url").isNotBlank()) DetailField(t("网站", "Website"), item.optString("url"), vault, t)
-                    if (item.optString("secret").isNotBlank()) DetailCodeRow(code, remaining, period, copy, t, compact = true)
+                    if (totpSource != null) DetailCodeRow(code, remaining, period, copy, t, compact = true)
                     if (item.optInt("passwordDuration") > 0) DetailValue(t("密码有效期", "Password validity"), t("${item.optInt("passwordDuration")} 天", "${item.optInt("passwordDuration")} days"))
                 }
                 val accounts = item.optJSONArray("accounts")?.objects().orEmpty()

@@ -8,6 +8,7 @@
 
 mod ai;
 #[cfg(target_os = "macos")]
+#[allow(dead_code)] // Shared with pv-background and pv-browser-host helpers.
 mod browser;
 #[cfg(not(target_os = "macos"))]
 #[path = "windows/browser.rs"]
@@ -19,10 +20,12 @@ mod relay;
 mod session;
 pub use data_dir::data_directory_name;
 mod breach;
+#[allow(dead_code)] // Shared with pv-background helper.
 mod hotkey;
 mod login_item;
 mod window_ctl;
 
+mod asset_sessions;
 mod attachments;
 mod backup;
 mod files;
@@ -30,6 +33,7 @@ mod markdown;
 mod qr_import;
 mod recovery_io;
 mod rich_notes;
+mod text_extract;
 #[cfg(target_os = "macos")]
 mod script_runner;
 #[cfg(not(target_os = "macos"))]
@@ -101,6 +105,7 @@ impl Vault {
     /// Opens the vault directory (it is created on first use).
     pub fn new() -> Self {
         qa_window::place_for_qa();
+        asset_sessions::sweep_stale_sessions();
         Vault {
             directory: vault_directory(),
             session: None,
@@ -170,6 +175,12 @@ impl Vault {
                 session
             }
         };
+        let is_lock = serde_json::from_str::<serde_json::Value>(&request)
+            .ok()
+            .is_some_and(|v| v["op"] == "lock");
+        if is_lock {
+            asset_sessions::cleanup_all();
+        }
         let request = Zeroizing::new(with_rich_notes(request)?);
         blocking(move || session.command(request.to_string()))
             .await
@@ -244,9 +255,12 @@ impl Platform {
         platform::poll()
     }
 
-    /// The app's version as shown next to its name.
+    /// The app's version as shown next to its name (sourced from nsh.json so it never drifts from the bundle version).
     pub fn version() -> String {
-        env!("CARGO_PKG_VERSION").to_string()
+        serde_json::from_str::<serde_json::Value>(include_str!("../nsh.json"))
+            .ok()
+            .and_then(|v| v.get("version").and_then(|s| s.as_str()).map(str::to_string))
+            .unwrap_or_else(|| env!("CARGO_PKG_VERSION").to_string())
     }
 
     /// Shows `path` selected in the system file manager.
@@ -262,6 +276,8 @@ impl Platform {
 }
 
 #[cfg(target_os = "macos")]
+#[allow(dead_code)] // Shared with pv-background helper.
 mod background;
 #[cfg(target_os = "macos")]
+#[allow(dead_code)] // Shared with pv-background and pv-browser-host helpers.
 mod service_ipc;

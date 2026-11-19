@@ -9,6 +9,7 @@ use std::time::Duration;
 const ENDPOINT: &str = "https://api.pwnedpasswords.com/range/";
 const MAX_RESPONSE: u64 = 4 * 1024 * 1024;
 
+/// Opt-in Have I Been Pwned k-anonymity range lookup (5-hex SHA-1 prefix only).
 #[module]
 pub struct Breach;
 

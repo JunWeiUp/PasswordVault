@@ -61,7 +61,7 @@ struct MobileGeneralSettings: View {
           Text(store.t("浅色", "Light")).tag("light")
           Text(store.t("深色", "Dark")).tag("dark")
         }
-        Picker("Language", selection: $store.language) {
+        Picker(store.t("语言 / Language", "Language"), selection: $store.language) {
           Text("简体中文").tag("zh")
           Text("English").tag("en")
         }.onChange(of: store.language) { UserDefaults.standard.set($0, forKey: "language") }

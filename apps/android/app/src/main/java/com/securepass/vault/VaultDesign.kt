@@ -19,7 +19,7 @@ fun LegacyVaultTheme(dark: Boolean, content: @Composable () -> Unit) {
             darkColorScheme(
                 secondaryContainer = Color(0xFF283653),
                 onSecondaryContainer = Color(0xFFC8D5FF),
-                primary = Color(0xFF7AA2FF),
+                primary = Color(0xFF6B97FF),
                 onPrimary = Color(0xFF0C1834),
                 primaryContainer = Color(0xFF243250),
                 onPrimaryContainer = Color(0xFFDFe8FF),
@@ -46,7 +46,7 @@ fun LegacyVaultTheme(dark: Boolean, content: @Composable () -> Unit) {
                 surfaceContainerLow = Color(0xFFF7F8FA),
                 surfaceContainerHigh = Color(0xFFEDF0F4),
                 onSurface = Color(0xFF242A35),
-                onSurfaceVariant = Color(0xFF5C6573),
+                onSurfaceVariant = Color(0xFF5E6775),
                 outlineVariant = Color(0xFFE4E8EF),
             )
     val base = Typography()

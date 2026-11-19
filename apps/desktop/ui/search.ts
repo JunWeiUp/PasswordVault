@@ -24,10 +24,11 @@ function displayFields(item: SearchItem): string[] {
     }
   };
   add(item.title, item.username, item.email, item.url, item.issuer, item.note,
-    item.category, item.tags, item.colorLabel, item.network, item.address, item.__noteSearchText);
+    item.category, item.slug, item.tags, item.colorLabel, item.network, item.address, item.__noteSearchText);
   const each = (value: unknown, visit: (field: any) => void) => {
     if (Array.isArray(value)) for (const field of value) if (field && typeof field === "object") visit(field);
   };
+  each(item.noteProperties, (prop) => add(prop.key, prop.value));
   each(item.accounts, (account) => add(account.label, account.username, account.email, account.url));
   each(item.customFields, (field) => {
     add(field.label, field.group);

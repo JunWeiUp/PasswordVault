@@ -14,6 +14,49 @@ struct MobileEntryList: View {
   @State private var history: VaultItem?
   @State private var moving: VaultItem?
   @State private var addingCode = false
+  @State private var openedPassword: VaultItem?
+  private static func tileColor(_ title: String) -> Color {
+    let palette: [Color] = [
+      Color(red: 0.196, green: 0.396, blue: 0.859),
+      Color(red: 0.129, green: 0.478, blue: 0.322),
+      Color(red: 0.647, green: 0.361, blue: 0.047),
+      Color(red: 0.478, green: 0.353, blue: 0.961),
+      Color(red: 0.141, green: 0.161, blue: 0.184),
+      Color(red: 0.769, green: 0.200, blue: 0.200),
+    ]
+    let sum = title.unicodeScalars.reduce(0) { ($0 &* 31) &+ Int($1.value) }
+    return palette[abs(sum) % palette.count]
+  }
+  @ViewBuilder private func rowContent(_ item: VaultItem) -> some View {
+    HStack(spacing: 12) {
+      if item.type == "password" {
+        let letter = String((item.title.trimmingCharacters(in: .whitespaces).first ?? "?")).uppercased()
+        Text(letter)
+          .font(.subheadline.weight(.semibold))
+          .foregroundStyle(.white)
+          .frame(width: 34, height: 34)
+          .background(Self.tileColor(item.title), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+          .accessibilityHidden(true)
+      }
+      VStack(alignment: .leading, spacing: 4) {
+        HStack(spacing: 5) {
+          Text(item.title.isEmpty ? store.t("未命名", "Untitled") : item.title).font(.headline)
+            .lineLimit(1)
+          if item.isPinned {
+            Image(systemName: "pin.fill").font(.caption).foregroundStyle(.secondary)
+          }
+          if item.isFavorite {
+            Image(systemName: "star.fill").font(.caption).foregroundStyle(.yellow)
+          }
+        }
+        Text(
+          item.type == "secureNote"
+            ? item.note.components(separatedBy: "\n").first ?? "" : item.username
+        ).font(.subheadline).lineLimit(2).foregroundStyle(.secondary)
+      }
+      Spacer(minLength: 4)
+    }.padding(.vertical, 4).contentShape(Rectangle())
+  }
   private var entries: [VaultItem] {
     store.items.filter {
       (destination == .trash ? $0.isDeleted : !$0.isDeleted && destination.listedTypes.contains($0.type))
@@ -80,40 +123,29 @@ struct MobileEntryList: View {
         Group {
         if destination == .codes {
           MobileCodeRow(item: item)
-        } else {
-        HStack(spacing: 8) {
-        NavigationLink {
-          if item.type == "secureNote" && !item.isDeleted { MobileNoteReader(id: item.id) } else { MobileEntryDetail(id: item.id) }
-        } label: {
-          VStack(alignment: .leading, spacing: 5) {
-            HStack {
-              Text(item.title.isEmpty ? store.t("未命名", "Untitled") : item.title).font(.headline)
-                .lineLimit(1)
-              if item.isPinned {
-                Image(systemName: "pin.fill").font(.caption).foregroundStyle(.secondary)
-              }
-              if item.isFavorite {
-                Image(systemName: "star.fill").font(.caption).foregroundStyle(.yellow)
-              }
+        } else if item.type == "password" && !item.isDeleted && !selecting {
+          // Avoid a trailing disclosure chevron colliding with the one-tap copy button.
+          HStack(spacing: 8) {
+            Button { openedPassword = item } label: { rowContent(item) }
+              .buttonStyle(.plain)
+            Button { store.copy(item.password) } label: {
+              Image(systemName: "doc.on.doc")
+                .font(.subheadline)
+                .frame(width: 36, height: 36)
+                .background(Color.accentColor.opacity(0.1), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
             }
-            Text(
-              item.type == "secureNote"
-                ? item.note.components(separatedBy: "\n").first ?? "" : item.username
-            ).lineLimit(2).foregroundStyle(.secondary)
-          }.padding(.vertical, 6)
-        }
-        if item.type == "password" && !item.isDeleted {
-          // One-tap copy of the main password; the row itself never shows the secret.
-          Button { store.copy(item.password) } label: {
-            Image(systemName: "doc.on.doc").frame(width: 44, height: 44)
+            .buttonStyle(.borderless)
+            .disabled(item.password.isEmpty)
+            .accessibilityLabel(store.t("复制密码", "Copy password"))
+            .accessibilityValue(item.title)
+            .accessibilityIdentifier("row.copyPassword")
           }
-          .buttonStyle(.borderless)
-          .disabled(item.password.isEmpty)
-          .accessibilityLabel(store.t("复制密码", "Copy password"))
-          .accessibilityValue(item.title)
-          .accessibilityIdentifier("row.copyPassword")
-        }
-        }
+        } else {
+          NavigationLink {
+            if item.type == "secureNote" && !item.isDeleted { MobileNoteReader(id: item.id) } else { MobileEntryDetail(id: item.id) }
+          } label: {
+            rowContent(item)
+          }
         }
         }
         .swipeActions {
@@ -134,6 +166,9 @@ struct MobileEntryList: View {
       }
     }
     .navigationTitle(destination.title(chinese: store.chinese))
+    .navigationDestination(isPresented: Binding(get: { openedPassword != nil }, set: { if !$0 { openedPassword = nil } })) {
+      if let target = openedPassword { MobileEntryDetail(id: target.id) }
+    }
     .searchable(text: $search, prompt: store.t("搜索", "Search"))
     .modifier(EntrySelection(selecting: $selecting, selection: $selection, visible: entries))
     .toolbar {

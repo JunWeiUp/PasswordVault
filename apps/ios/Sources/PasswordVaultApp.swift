@@ -124,6 +124,7 @@ struct MobileUnlockView: View {
   @EnvironmentObject private var store: MobileVaultStore
   @State private var password = ""
   @State private var confirmation = ""
+  @State private var showPassword = false
   @State private var legacyPassword = ""
   @State private var importing = false
   @State private var pendingImport: URL?
@@ -180,10 +181,29 @@ struct MobileUnlockView: View {
             SecureField(store.t("旧版主密码", "Legacy master password"), text: $legacyPassword)
           }
           VStack(alignment: .leading, spacing: 6) {
-            SecureField(store.t("主密码", "Master password"), text: $password).textContentType(.password)
+            HStack(spacing: 8) {
+              Group {
+                if showPassword {
+                  TextField(store.t("主密码", "Master password"), text: $password)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                } else {
+                  SecureField(store.t("主密码", "Master password"), text: $password)
+                }
+              }
+              .textContentType(.password)
               .accessibilityIdentifier("vault.password")
               .onChange(of: password) { _ in store.unlockError = nil }
               .onSubmit { if store.exists && !password.isEmpty { submit() } }
+              Button {
+                showPassword.toggle()
+              } label: {
+                Image(systemName: showPassword ? "eye.slash" : "eye")
+                  .foregroundStyle(.secondary)
+              }
+              .buttonStyle(.borderless)
+              .accessibilityLabel(showPassword ? store.t("隐藏主密码", "Hide master password") : store.t("显示主密码", "Show master password"))
+            }
             if let message = store.unlockError {
               Label(message, systemImage: "exclamationmark.circle.fill")
                 .font(.footnote).foregroundStyle(.red)
@@ -198,17 +218,25 @@ struct MobileUnlockView: View {
                 .font(.footnote).foregroundStyle(password == confirmation ? Color.green : Color.red)
             }
           }
+        }
+        Section {
           Button(action: submit) {
-            HStack {
-              Spacer()
-              if store.busy { ProgressView() }
+            HStack(spacing: 8) {
+              if store.busy { ProgressView().tint(.white) }
               Text(store.exists ? store.t("解锁", "Unlock") : store.t("创建资料库", "Create vault"))
-              Spacer()
+                .fontWeight(.semibold)
             }
-          }.disabled(
+            .frame(maxWidth: .infinity)
+          }
+          .buttonStyle(.borderedProminent)
+          .controlSize(.large)
+          .disabled(
             !store.ready || store.busy || password.isEmpty
               || (!store.exists && (password.isEmpty || password != confirmation))
-          ).accessibilityIdentifier("vault.unlock")
+          )
+          .accessibilityIdentifier("vault.unlock")
+          .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
+          .listRowBackground(Color.clear)
         }
         if !store.exists {
           Section {
@@ -232,7 +260,7 @@ struct MobileUnlockView: View {
         }
         if store.exists { Section { NavigationLink(store.t("使用恢复密钥", "Use recovery key")) { MobileRecoveryView() } } }
         Section {
-          Picker("Language", selection: $store.language) {
+          Picker(store.t("语言 / Language", "Language"), selection: $store.language) {
             Text("简体中文").tag("zh")
             Text("English").tag("en")
           }.onChange(of: store.language) { UserDefaults.standard.set($0, forKey: "language") }

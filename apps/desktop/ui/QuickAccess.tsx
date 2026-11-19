@@ -5,6 +5,8 @@ import { Icon } from "./icons";
 import { copySecret, T } from "./kit";
 import { items, onLock, reveal, toast, totpCode, TYPE_NAME, type Item } from "./store";
 import { websites } from "./entries/model";
+import { codeFor, copyAccountCode } from "./entries/linkedCode";
+import { TotpText } from "./totp";
 import { Tile } from "./ItemList";
 import { deviceSubtitle, deviceTitle } from "./devices";
 import { searchItems } from "./search";
@@ -39,14 +41,23 @@ async function primary(item: Item | undefined) {
   else reveal(item);
 }
 
-/** ⌘C copies the username, ⌘O opens the first website, ⌘↩ shows the item in the main window. */
-async function secondary(action: "username" | "website" | "reveal") {
+/** ⌘C copies the username, ⌥⌘C copies the 2FA code, ⌘O opens the first website, ⌘↩ shows the item in the main window. */
+async function secondary(action: "username" | "totp" | "website" | "reveal") {
   const item = results()[index()];
   if (!item) return;
   if (action === "username") {
     if (!item.username) return toast("这个项目没有用户名");
     if (quickCloseAfterCopy()) open.set(false);
     await copySecret(item.username, "用户名");
+  } else if (action === "totp") {
+    if (item.type === "totp" && item.secret) {
+      if (quickCloseAfterCopy()) open.set(false);
+      await copySecret(await totpCode(item.secret, item.period ?? 30), "验证码");
+      return;
+    }
+    if (!codeFor(item)) return toast("这个项目没有验证码");
+    if (quickCloseAfterCopy()) open.set(false);
+    await copyAccountCode(item);
   } else if (action === "website") {
     const site = websites(String(item.url ?? ""))[0];
     if (!site) return toast("这个项目没有网站");
@@ -62,6 +73,7 @@ function QuickKeys() {
   // Bound while the panel is open; removed with it. "always" lets them work in the search field.
   keymap.bind({
     "mod+c": () => void secondary("username"),
+    "mod+alt+c": () => void secondary("totp"),
     "mod+o": () => void secondary("website"),
     "mod+enter": () => void secondary("reveal"),
   }, { when: "always" });
@@ -96,26 +108,37 @@ export function QuickAccessHost() {
             <Each of={results()} key={(i) => i.id}>
               {(item, i) => {
                 const on = () => index() === i();
+                const liveCode = () => {
+                  const it = item();
+                  if (it.type === "totp" && it.secret) return { secret: it.secret, period: Number(it.period ?? 30) || 30 };
+                  return codeFor(it);
+                };
                 return (
                   <View role="button" accessibilityState={{ selected: on() }} onMouseEnter={() => index.set(i())} onPress={() => void primary(item())}
-                    style={{ flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 8, backgroundColor: on() ? c().blue : "transparent", cursor: "pointer" }}>
+                    style={{ flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 8, backgroundColor: on() ? c().primaryBg : "transparent", cursor: "pointer" }}>
                     <Tile item={item()} size={30} />
-                    <View style={{ flex: 1 }}>
-                      <T weight="600" color={on() ? "#ffffff" : c().ink}>{item().type === "device" ? deviceTitle(item()) : item().title || "未命名"}</T>
-                      <T size={11.5} color={on() ? "#dbe5ff" : c().muted}>{TYPE_NAME[item().type]} · {item().type === "device" ? deviceSubtitle(item()) : item().username || item().issuer || item().network || ""}</T>
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <T weight="600" color={on() ? "#ffffff" : c().ink} lines={1}>{item().type === "device" ? deviceTitle(item()) : item().title || "未命名"}</T>
+                      <T size={11.5} color={on() ? "#e6eeff" : c().muted} lines={1}>{TYPE_NAME[item().type]} · {item().type === "device" ? deviceSubtitle(item()) : item().username || item().issuer || item().network || ""}</T>
                     </View>
-                    <T size={11} color={on() ? "#dbe5ff" : c().faint} style={{ fontFamily: MONO }}>↩</T>
+                    <If when={liveCode()}>
+                      <View style={{ paddingHorizontal: 7, paddingVertical: 2, borderRadius: 6, backgroundColor: on() ? "rgba(255,255,255,0.16)" : c().blueSoft, borderWidth: 1, borderColor: on() ? "rgba(255,255,255,0.22)" : c().blueLine }}>
+                        <TotpText secret={liveCode()!.secret} period={liveCode()!.period} style={{ fontFamily: MONO, fontSize: fs(11.5), fontWeight: "600", color: on() ? "#ffffff" : c().blue }} />
+                      </View>
+                    </If>
+                    <T size={11} color={on() ? "#e6eeff" : c().faint} style={{ fontFamily: MONO }}>↩</T>
                   </View>
                 );
               }}
             </Each>
           </If>
         </View>
-        <View style={{ flexDirection: "row", gap: 14, paddingHorizontal: 16, paddingVertical: 9, borderTopWidth: 1, borderTopColor: c().line }}>
+        <View style={{ flexDirection: "row", gap: 12, flexWrap: "wrap", paddingHorizontal: 16, paddingVertical: 9, borderTopWidth: 1, borderTopColor: c().line }}>
           <T size={11} color={c().muted}>↩ 复制密码/验证码</T>
+          <T size={11} color={c().muted}>{keymap.label("mod+alt+c")} 复制验证码</T>
           <T size={11} color={c().muted}>{keymap.label("mod+c")} 复制用户名</T>
           <T size={11} color={c().muted}>{keymap.label("mod+o")} 打开网站</T>
-          <T size={11} color={c().muted}>{keymap.label("mod+enter")} 在主窗口显示</T>
+          <T size={11} color={c().muted}>{keymap.label("mod+enter")} 主窗口显示</T>
           <View style={{ flex: 1 }} />
           <T size={11} color={c().muted}>{quickCloseAfterCopy() ? "复制后关闭 · 锁定时关闭" : "锁定时自动关闭"}</T>
         </View>

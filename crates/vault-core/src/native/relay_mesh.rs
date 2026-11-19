@@ -287,6 +287,7 @@ fn migrate(legacy: &State, doc: &Document, device: &str, now: u64) -> BTreeMap<S
 
 impl DiskVault {
     pub(super) fn mesh_command(&mut self, request: &Value) -> Result<Value> {
+        let vault_dir = self.directory.clone();
         let op = string(request, "op")?;
         if op == "relay-mesh-init" {
             return self.mesh_init(request);
@@ -333,7 +334,7 @@ impl DiskVault {
                 if records.is_empty() && mesh.ack_sent.get(peer) == Some(&ack) {
                     return Ok(json!({"packet":null}));
                 }
-                let files = attachments(open, &json!({"records":values}))?;
+                let files = attachments(&vault_dir, open, &json!({"records":values}))?;
                 mesh.ack_sent.insert(peer.into(), ack);
                 store(&open.connection, &open.root, &open.header.vault_id, &mesh)?;
                 Ok(json!({"packet":{
@@ -374,7 +375,13 @@ impl DiskVault {
                 next.format_version = next.format_version.max(format);
                 let mut working = mesh_records(&next);
                 let tx = storage(open.connection.transaction())?;
-                receive_files(&tx, &open.root, &open.header.vault_id, &packet["files"])?;
+                receive_files(
+                    &vault_dir,
+                    &tx,
+                    &open.root,
+                    &open.header.vault_id,
+                    &packet["files"],
+                )?;
                 let mut changed = false;
                 let mut applied = 0usize;
                 for (key, record) in incoming {
@@ -449,12 +456,12 @@ impl DiskVault {
                             &tx,
                             &open.root,
                             &open.header.vault_id,
-                            &history::Revision {
-                                id: new_id(),
-                                item_id: key["item:".len()..].to_string(),
-                                captured_at: stamp.0,
-                                item: value,
-                            },
+                            &history::Revision::plain(
+                                new_id(),
+                                key["item:".len()..].to_string(),
+                                stamp.0,
+                                value,
+                            ),
                         )?;
                     }
                 }
@@ -552,6 +559,7 @@ impl DiskVault {
                     &storage(fs::read(self.directory.join(file)))?,
                 )?;
             }
+            note_blobs::copy_blobs_dir(&self.directory, stage.path())?;
             storage(fs::rename(stage.path(), &backup))?;
         }
         let open = self.open()?;
@@ -618,12 +626,12 @@ impl DiskVault {
                             &tx,
                             &open.root,
                             &open.header.vault_id,
-                            &history::Revision {
-                                id: new_id(),
-                                item_id: id.to_string(),
-                                captured_at: now,
-                                item: conflict.change.value.clone(),
-                            },
+                            &history::Revision::plain(
+                                new_id(),
+                                id.to_string(),
+                                now,
+                                conflict.change.value.clone(),
+                            ),
                         )?;
                         mesh.archived_conflicts += 1;
                     }

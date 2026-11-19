@@ -289,6 +289,7 @@ struct MobileNoteReader: View {
           .padding()
         }
         .navigationTitle(item.title).navigationBarTitleDisplayMode(.inline)
+        .toolbar(.hidden, for: .tabBar)
         .toolbar {
           if store.canEdit(item) {
             ToolbarItem(placement: .navigationBarTrailing) {

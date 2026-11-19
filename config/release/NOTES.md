@@ -1,10 +1,10 @@
 ## Changes
 
-- Mac and Windows (NSH 0.6.0): AI access moves to Tools with clipboard delivery for secrets, 15-minute or until-lock approvals and first-request grants. Accounts show their two-factor code in the list and detail, link existing code entries after confirmation, and list several websites. Identity documents can be shown and edited. The sidebar, toolbar, settings, Touch ID and relay pages are reorganized.
-- iOS: codes from a scan, image, link or manual key; multi-select and context menus; read-only Devices & services; a passphrase generator; identity document fields; a step-by-step first run; and Sync & devices organized around the device group.
-- Android: account health and strength, save-failure recovery, setup QR codes, a card-face header, format-7 device entries, a passphrase generator, identity documents, fingerprint re-verification and an IME-safe input mode.
-- Browser extension: popup and full page follow the extension design, page language and theme, with refined account tiles, sync state and fill confirmation.
-- Core: upper-case `otpauth://` links import correctly, `;` separates account websites for matching, and passphrases can be generated.
+- Mac and Windows (NSH 0.6.0): Personal knowledge base notes with hierarchical folders, structured properties and `slug` routes, `[[wikilinks]]` and backlinks, diff version history, and 100 MB encrypted chunked assets (`blobs/`) with Quick Look, local PDF/Office text extraction, and one-click external-edit encrypted write-back.
+- Local AI (MCP): Category-level access scopes (`accounts`, `profiles`, `devices`, `notes`, `noteAssets`) with top-pinned sidebar `AI Access`, interactive paired-client management (non-secret fingerprints, encrypted remarks, duplicate-name warnings, pause/resume, audit filtering, and one-click unused token cleanup), and six note/asset MCP tools (`note_list`, `note_read`, `note_update`, `note_attach`, `note_read_asset`, `note_history`). Devices & services document library supports per-row deletion.
+- Core: Per-note encrypted `note_bodies` storage, 64 KiB AES-256-GCM chunked `blobs/` with HMAC-SHA256 deduplication and reference-counted GC, and generic JSON passthrough primitives.
+- iOS & Android: Linked live 2FA codes with countdown and copy on account detail, password strength indicators, and device/entry list refinements.
+- Browser extension: Quick password copy and strength indicators, passkey and vault UI refinements, and updated English localization.
 
 ## Downloads
 
