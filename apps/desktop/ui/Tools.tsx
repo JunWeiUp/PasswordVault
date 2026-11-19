@@ -1,7 +1,7 @@
 import { shortcutLabel } from "./shortcut-label";
 // Tools: the password generator and password health.
 import { effect, Scroll, signal, View } from "nsh";
-import { Icon } from "./icons";
+import { Icon, type IconName } from "./icons";
 import {
   Btn, copySecret, Empty, Group, openSheet, Row, SheetFooter, SheetTitle, Strength, T, Toggle,
 } from "./kit";
@@ -50,12 +50,15 @@ function ColoredPassword(props: { value: string; size?: number }) {
   );
 }
 
-export function ToolHeader(props: { title: string; right?: any }) {
+export function ToolHeader(props: { title: string; right?: any; parent?: string | null; icon?: IconName }) {
+  const parent = () => (props.parent === undefined ? "工具" : props.parent);
   return (
     <View desktop={{ windowDrag: true }} style={{ height: layout.toolbar, flexDirection: "row", alignItems: "center", paddingLeft: 26, paddingRight: 18, gap: 8, borderBottomWidth: 1, borderBottomColor: c().line }}>
-      <Icon name="tools" size={12} tint={c().muted} />
-      <T size={12} color={c().muted}>工具</T>
-      <Icon name="chev" size={11} tint={c().faint} />
+      <Icon name={props.icon ?? "tools"} size={12} tint={c().muted} />
+      <If when={!!parent()}>
+        <T size={12} color={c().muted}>{parent()}</T>
+        <Icon name="chev" size={11} tint={c().faint} />
+      </If>
       <T size={12} weight="500" style={{ flex: 1 }}>{props.title}</T>
       <View desktop={{ windowDrag: false }} style={{ flexDirection: "row", gap: 6 }}>
         {props.right}

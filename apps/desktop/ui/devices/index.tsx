@@ -158,14 +158,13 @@ function ConnectionCell(props: { label: string; value: string; editing: boolean;
 
 function DeviceConnectionView(props: { data: DeviceData; editing: boolean; writable: boolean; set: (key: keyof DeviceData, value: unknown) => void; onAdd: () => void; onRemove: (service: DeviceService) => void }) {
   const d = () => props.data;
-  const canRun = () => desktopCapabilities.terminal && !!d().host.trim();
   return <View style={{ gap: 16 }}>
     <Row gap={10} wrap style={{ alignItems: "stretch" }}>
       <ConnectionCell label="主机" mono value={d().host} editing={props.editing} onChange={value => props.set("host", value.trim())} />
       <ConnectionCell label="用户名" value={d().username} editing={props.editing} onChange={value => props.set("username", value.trim())} />
       <ConnectionCell label="端口" mono value={String(d().port || "")} editing={props.editing} onChange={value => { if (value === "" || validPort(value)) props.set("port", value === "" ? 22 : Number(value)); }} />
     </Row>
-    <Banner tone="info" icon="tools" title="连接交给外部终端" style={{ marginBottom: 0, alignItems: "center" }} actions={<><Btn label="复制命令" icon="copy" disabled={!d().host} onPress={() => void copySecret(connectionCommand(d()), "连接命令")} /><Btn label="打开外部终端" disabled={!canRun()} tooltip={!desktopCapabilities.terminal ? "此平台暂未开放终端运行" : !d().host ? "请先填写主机" : undefined} onPress={() => runInTerminal("connect.sh", connectionCommand(d()))} /></>}>PasswordVault 只生成命令并交给首选终端，不在应用内执行，也不会把密码拼进命令。</Banner>
+    <Banner tone="info" icon="tools" title="连接交给外部终端" style={{ marginBottom: 0 }}>PasswordVault 只生成命令并交给首选终端，不在应用内执行，也不会把密码拼进命令。</Banner>
     <Row gap={8}><T size={15} weight="600" style={{ flex: 1 }}>服务入口</T><Btn label="添加服务" icon="plus" kind="ghost" disabled={!props.writable} onPress={props.onAdd} /></Row>
     <If when={d().services.length > 0} else={<Card><T size={12} color={c().muted}>还没有服务入口。添加 SSH、VNC、网页或自定义服务后，可以一键复制入口或交给外部应用打开。</T></Card>}>
       <Row gap={12} wrap style={{ alignItems: "stretch" }}>{d().services.map(service => <Card style={{ flex: 1, minWidth: 260, flexBasis: 260 }}>
@@ -186,12 +185,19 @@ function DeviceConnectionView(props: { data: DeviceData; editing: boolean; writa
 
 const deviceTab = signal("");
 export function DeviceDetail(props: { item: Item; editable?: boolean }) {
-  const busy = signal(false), error = signal("");
+  const busy = signal(false), error = signal(""), selectedDoc = signal("");
   let alive = true; const owner = props.item.id;
   cleanup(() => { alive = false; });
   const data = (): DeviceData => props.item.device;
   const writable = () => !props.item.isDeleted && phase() === "unlocked";
   const set = (key: keyof DeviceData, value: unknown) => { if (writable()) edit(owner, i => { i.device = { ...i.device, [key]: value }; }); };
+  const addDocument = () => {
+    if (!writable()) return;
+    const row = { id: crypto.randomUUID(), title: "未命名.txt", label: "", text: "", secret: true };
+    set("commands", [...data().commands, row]);
+    selectedDoc.set(row.id);
+    if (!props.editable) editing.set(true);
+  };
   const addService = () => openSheet({ width: 520, render: close => <ServiceEditor close={close} onSave={service => { set("services", [...data().services, service]); void flush().then(ok => ok && toast("服务入口已保存")); }} /> });
   const removeService = (service: DeviceService) => confirm({ title: `移除“${service.name}”？`, text: "只移除这个服务入口，不影响主机上的服务。", ok: "移除", danger: true, onConfirm: () => { set("services", data().services.filter(row => row.id !== service.id)); void flush(); } });
   const importDocuments = async () => {
@@ -257,12 +263,43 @@ export function DeviceDetail(props: { item: Item; editable?: boolean }) {
         <T size={12} color={c().muted} lines={1}>{deviceSubtitle(props.item)}{data().commands.length && data().host ? ` · ${data().commands.length} 条资料` : ""}</T>
       </View>
     </Row>
+    <If when={!props.item.isDeleted}>
+      <Row gap={8} wrap>
+        <If when={sub() === "commands"} else={
+          <>
+            <Btn label="打开外部终端" icon="tools" kind={props.editable ? "default" : "primary"} disabled={!desktopCapabilities.terminal || !data().host.trim()} tooltip={!desktopCapabilities.terminal ? "此平台暂未开放终端运行" : !data().host.trim() ? "请先填写主机" : undefined} onPress={() => runInTerminal("connect.sh", connectionCommand(data()))} />
+            <Btn label="复制连接命令" icon="copy" disabled={!data().host.trim()} onPress={() => void copySecret(connectionCommand(data()), "连接命令")} />
+          </>
+        }>
+          <Btn label="导入文件…" icon="plus" kind={props.editable ? "default" : "primary"} disabled={!writable() || busy()} onPress={() => void importDocuments()} />
+          <Btn label="新建资料" icon="plus" disabled={!writable()} onPress={addDocument} />
+        </If>
+      </Row>
+    </If>
     <If when={error()}><Banner tone="err" title={error()} style={{ marginBottom: 0 }} /></If>
     <>
       <Segmented label="设备资料视图" tabs={[["overview", "连接与服务"], ["commands", "脚本与资料"]]} value={sub()} onChange={value => deviceTab.set(value)} />
       <If when={sub() === "overview"}><DeviceConnectionView data={data()} editing={!!props.editable && writable()} writable={writable()} set={set} onAdd={addService} onRemove={removeService} /></If>
       <If when={sub() === "commands"}>
-        <DocumentLibrary commands={data().commands} editable={!!props.editable && writable()} canManage={writable()} onEdit={() => editing.set(!editing())} onRun={row => void openScriptRun(row)} busy={busy()} onChange={rows => set("commands", rows)} onImport={() => void importDocuments()} />
+        <DocumentLibrary
+          commands={data().commands}
+          editable={!!props.editable && writable()}
+          canManage={writable()}
+          selectedId={selectedDoc()}
+          onSelect={id => selectedDoc.set(id)}
+          showHeaderActions={false}
+          onEdit={() => editing.set(!editing())}
+          onRun={row => void openScriptRun(row)}
+          busy={busy()}
+          onChange={rows => set("commands", rows)}
+          onDelete={(row, remaining) => {
+            set("commands", remaining);
+            void flush().then(ok => {
+              if (ok) toast(`已删除资料「${row.label?.trim() || row.title || "未命名"}」`);
+            });
+          }}
+          onImport={() => void importDocuments()}
+        />
         {files}
       </If>
     </>

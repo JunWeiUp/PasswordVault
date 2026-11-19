@@ -8,5 +8,5 @@ pub fn connect_timeout(path: &Path, timeout: Duration) -> io::Result<UnixStream>
     // socket2 sets CLOEXEC and connects nonblocking, then polls with a deadline.
     // CLOEXEC alone cannot prevent a brief inherited-fd window before exec.
     socket.connect_timeout(&socket2::SockAddr::unix(path)?, timeout)?;
-    Ok(socket.into())
+    Ok(UnixStream::from(std::os::fd::OwnedFd::from(socket)))
 }

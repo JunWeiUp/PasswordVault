@@ -304,10 +304,26 @@ fn rfc_totp_and_strict_origin_matching() {
     let several = vec![
         json!({"id":"many","type":"password","title":"many","username":"u","url":"https://a.example; https://b.example,c.example\nd.example"}),
     ];
-    for site in ["https://a.example", "https://b.example", "https://c.example", "https://d.example"] {
-        assert_eq!(matching_accounts(&several, site).unwrap().as_array().unwrap().len(), 1, "{site}");
+    for site in [
+        "https://a.example",
+        "https://b.example",
+        "https://c.example",
+        "https://d.example",
+    ] {
+        assert_eq!(
+            matching_accounts(&several, site)
+                .unwrap()
+                .as_array()
+                .unwrap()
+                .len(),
+            1,
+            "{site}"
+        );
     }
-    assert_eq!(matching_accounts(&several, "https://e.example").unwrap(), json!([]));
+    assert_eq!(
+        matching_accounts(&several, "https://e.example").unwrap(),
+        json!([])
+    );
     assert_eq!(
         matching_accounts(&records, "https://example.com.attacker.test").unwrap(),
         json!([])

@@ -188,7 +188,7 @@ fn valid_name(s: &str) -> bool {
 fn string<'a>(v: &'a Value, k: &str) -> Result<&'a str> {
     v[k].as_str().ok_or(VaultError::InvalidData)
 }
-fn attachments(open: &OpenVault, packet: &Value) -> Result<Value> {
+fn attachments(vault_dir: &Path, open: &OpenVault, packet: &Value) -> Result<Value> {
     let mut needed = std::collections::HashSet::new();
     if let Some(records) = packet["records"].as_object() {
         for item in records.values() {
@@ -205,12 +205,24 @@ fn attachments(open: &OpenVault, packet: &Value) -> Result<Value> {
         if !needed.contains(&meta.id) {
             continue;
         }
-        let bytes = notes::read(&open.connection, &open.root, &open.header.vault_id, &meta)?;
+        let bytes = notes::read(
+            vault_dir,
+            &open.connection,
+            &open.root,
+            &open.header.vault_id,
+            &meta,
+        )?;
         files.push(json!({"meta":meta,"data":STANDARD.encode(bytes.as_slice())}));
     }
     Ok(json!(files))
 }
-fn receive_files(conn: &Connection, root: &[u8; 32], vault: &str, files: &Value) -> Result<()> {
+fn receive_files(
+    vault_dir: &Path,
+    conn: &Connection,
+    root: &[u8; 32],
+    vault: &str,
+    files: &Value,
+) -> Result<()> {
     let files = files.as_array().ok_or(VaultError::InvalidData)?;
     if files.len() > 10000 {
         return Err(VaultError::InvalidData);
@@ -230,7 +242,7 @@ fn receive_files(conn: &Connection, root: &[u8; 32], vault: &str, files: &Value)
             .checked_add(bytes.len())
             .ok_or(VaultError::InvalidData)?;
         if bytes.len() != meta.size
-            || bytes.len() > 25 * 1024 * 1024
+            || bytes.len() > crate::archive::FILE_LIMIT
             || total > 512 * 1024 * 1024
             || !ids.insert(meta.id.clone())
         {
@@ -238,12 +250,12 @@ fn receive_files(conn: &Connection, root: &[u8; 32], vault: &str, files: &Value)
         }
         if let Some(old) = existing.iter().find(|m| m.id == meta.id) {
             if serde_json::to_value(old).ok() != serde_json::to_value(&meta).ok()
-                || notes::read(conn, root, vault, old)?.as_slice() != bytes.as_slice()
+                || notes::read(vault_dir, conn, root, vault, old)?.as_slice() != bytes.as_slice()
             {
                 return Err(VaultError::InvalidData);
             }
         } else {
-            notes::write(conn, root, vault, &meta, &bytes)?;
+            notes::write(vault_dir, conn, root, vault, &meta, &bytes)?;
         }
     }
     Ok(())
@@ -267,6 +279,7 @@ fn validate_files(conn: &Connection, doc: &Document) -> Result<()> {
 }
 impl DiskVault {
     pub(super) fn relay_command(&mut self, request: &Value) -> Result<Value> {
+        let vault_dir = self.directory.clone();
         let op = string(request, "op")?;
         if !personal_operation(op) {
             guard_device_sync(self.open()?.document.format_version, op)?;
@@ -396,6 +409,7 @@ impl DiskVault {
                         &storage(fs::read(self.directory.join(file)))?,
                     )?;
                 }
+                note_blobs::copy_blobs_dir(&self.directory, stage.path())?;
                 storage(fs::rename(stage.path(), &backup))?;
             }
             let open = self.open()?;
@@ -531,7 +545,7 @@ impl DiskVault {
                 packet["version"] = json!(2);
                 packet["formatVersion"] = json!(open.document.format_version);
             }
-            packet["files"] = attachments(open, &packet)?;
+            packet["files"] = attachments(&vault_dir, open, &packet)?;
             return Ok(packet);
         }
         let peer_capable = request["peer"].as_str().is_some_and(capable);
@@ -581,7 +595,13 @@ impl DiskVault {
                 {
                     return Err(VaultError::Authentication);
                 }
-                receive_files(&tx, &open.root, &open.header.vault_id, &packet["files"])?;
+                receive_files(
+                    &vault_dir,
+                    &tx,
+                    &open.root,
+                    &open.header.vault_id,
+                    &packet["files"],
+                )?;
                 if state.role == "hub" {
                     if packet["kind"] != "changes" {
                         return Err(VaultError::InvalidData);
@@ -815,6 +835,7 @@ impl DiskVault {
                                             .find(|m| m.id == old_id)
                                             .ok_or(VaultError::InvalidData)?;
                                         let bytes = notes::read(
+                                            &vault_dir,
                                             &tx,
                                             &open.root,
                                             &open.header.vault_id,
@@ -837,6 +858,7 @@ impl DiskVault {
                                             }
                                         }
                                         notes::write(
+                                            &vault_dir,
                                             &tx,
                                             &open.root,
                                             &open.header.vault_id,

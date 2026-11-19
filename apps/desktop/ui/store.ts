@@ -3,50 +3,26 @@ import { captureNotes } from "./notes/capture";
 // this module keeps the decrypted list the interface shows while unlocked and
 // forgets it on lock.
 import { batch, computed, effect, signal } from "nsh";
-import { Vault } from "passwordvault/native";
+import { Attachments, Browser, Vault } from "passwordvault/native";
 import { bindNativeVault } from "./native";
 import { clearSearchIndex, searchItems } from "./search";
+import { catMatches, isAiActor } from "./notes/knowledge";
 import { sortMode } from "./preferences";
-import { Browser } from "passwordvault/native";
+import {
+  DEST_NAME,
+  DEST_TYPES,
+  ERROR_TEXT,
+  TYPE_NAME,
+  destOf,
+  errorText,
+  inDest,
+  type Dest,
+  type Item,
+  type ItemType,
+  type Phase,
+} from "./api/vaultMeta";
 
-export type ItemType = "password" | "totp" | "crypto" | "secureNote" | "creditCard" | "identity" | "device";
-export type Item = { id: string; type: ItemType; title: string; [key: string]: any };
-export type Dest =
-  | "all" | "accounts" | "codes" | "wallets" | "notes" | "devices"
-  | "favorites" | "trash" | "generator" | "health" | "ai";
-export type Phase = "loading" | "onboard" | "locked" | "unlocked";
-
-export const DEST_TYPES: Partial<Record<Dest, ItemType[]>> = {
-  accounts: ["password"],
-  codes: ["totp"],
-  wallets: ["creditCard", "identity", "crypto"],
-  notes: ["secureNote"],
-  devices: ["device"],
-};
-export const DEST_NAME: Record<Dest, string> = {
-  all: "全部项目", accounts: "账号", codes: "验证码", wallets: "钱包", notes: "笔记",
-  devices: "设备与服务", favorites: "收藏", trash: "回收站", generator: "密码生成器", health: "密码健康", ai: "AI 访问",
-};
-export const TYPE_NAME: Record<ItemType, string> = {
-  password: "账号", totp: "验证码", crypto: "加密钱包", secureNote: "笔记", creditCard: "银行卡", identity: "身份信息", device: "设备",
-};
-export const ERROR_TEXT: Record<string, string> = {
-  Locked: "密码库已锁定。",
-  Authentication: "主密码不正确，或加密数据已损坏。",
-  InvalidData: "数据无效或不受支持。",
-  AlreadyExists: "该位置已存在密码库。",
-  InUse: "密码库正被另一个进程使用。请先退出其他 PasswordVault。",
-  Storage: "写入失败，已保留原有数据。",
-  StaleEdit: "此条目已在其他设备上修改，请检查后再保存。",
-  Unsupported: "此操作不受支持。",
-  DevicesUpgradeRequired: "请先启用设备与服务。",
-  DevicesSyncBlocked: "对端尚未验证格式兼容性，请升级并解锁对端后重试。对等库暂不支持设备条目同步。",
-  UpdateRequired: "请更新客户端以打开此密码库。",
-};
-export const errorText = (e: unknown) => ERROR_TEXT[String(e).replace(/^Error:\s*/, "")] ?? String(e);
-
-export const destOf = (type: ItemType): Dest =>
-  (Object.keys(DEST_TYPES) as Dest[]).find((d) => DEST_TYPES[d]!.includes(type)) ?? "all";
+export { DEST_NAME, DEST_TYPES, ERROR_TEXT, TYPE_NAME, destOf, errorText, inDest, type Dest, type Item, type ItemType, type Phase };
 
 const vault = new Vault();
 bindNativeVault(vault);
@@ -66,7 +42,7 @@ export const settings = signal<Record<string, any>>({});
 export const dest = signal<Dest>("notes");
 export const noteCategory = signal<string | null>(null);
 export const query = signal("");
-export const chip = signal<"all" | "fav" | "issue" | "card" | "identity" | "crypto">("all");
+export const chip = signal<"all" | "fav" | "ai" | "issue" | "card" | "identity" | "crypto">("all");
 export const selection = signal<Partial<Record<Dest, string>>>({});
 export const editing = signal(false);
 export const saveState = signal<"saved" | "saving" | "failed">("saved");
@@ -92,13 +68,6 @@ export const noteCategories = computed<string[]>(() => {
   return [...new Set([...saved, ...used])];
 });
 
-export function inDest(item: Item, d: Dest): boolean {
-  if (d === "trash") return !!item.isDeleted;
-  if (item.isDeleted) return false;
-  if (d === "all") return true;
-  if (d === "favorites") return !!item.isFavorite;
-  return DEST_TYPES[d]?.includes(item.type) ?? false;
-}
 export const countIn = (d: Dest) => items().filter((i) => inDest(i, d)).length;
 
 export const visible = computed<Item[]>(() => {
@@ -106,9 +75,10 @@ export const visible = computed<Item[]>(() => {
   const q = query();
   const issues = audit();
   let list = items().filter((i) => inDest(i, d));
-  if (d === "notes" && noteCategory()) list = list.filter((i) => i.category === noteCategory());
+  if (d === "notes" && noteCategory()) list = list.filter((i) => catMatches(i.category, noteCategory()));
   const f = chip();
   if (f === "fav") list = list.filter((i) => i.isFavorite);
+  if (f === "ai") list = list.filter((i) => isAiActor(i.lastActor));
   if (f === "issue") list = list.filter((i) => issues[i.id]);
   if (f === "card") list = list.filter((i) => i.type === "creditCard");
   if (f === "identity") list = list.filter((i) => i.type === "identity");
@@ -227,6 +197,9 @@ export async function lock() {
   // manual or system lock can never be undone by the extension.
   try {
     await Browser.cancelStartup();
+  } catch {}
+  try {
+    await (Attachments as any).cleanupSessions?.();
   } catch {}
   await flush();
   try {
@@ -380,7 +353,11 @@ export async function flush() {
   const batchItems = [...pending.values()];
   for (const item of batchItems) {
     try {
-      const saved = await call<any>({ op: "save", item: stripLocal(item) });
+      const req: Record<string, unknown> = { op: "save", item: stripLocal(item) };
+      if (item.type === "secureNote") {
+        req.historyMeta = { actorType: "user", actor: "手动编辑 · 我", coalesce: true };
+      }
+      const saved = await call<any>(req);
       if (pending.get(item.id) === item) pending.delete(item.id);
       if (saved?.peerBaseHeads) {
         const cur = items().find((i) => i.id === item.id);
@@ -484,10 +461,12 @@ export async function emptyTrash() {
 
 export async function addCategory(name: string) {
   try {
-    await call({ op: "category-add", name });
-    const doc = await call<{ settings: Record<string, any> }>({ op: "list" });
+    const clean = name.trim().replace(/^\/+|\/+$/g, "");
+    if (!clean) return;
+    await call({ op: "category-add", name: clean });
+    const doc = await call<{ settings: Record<string, any> }>({ op: "list", summaries: true });
     settings.set(doc.settings ?? {});
-    noteCategory.set(name.trim());
+    noteCategory.set(clean);
   } catch (e) {
     toast(errorText(e));
   }
@@ -495,10 +474,14 @@ export async function addCategory(name: string) {
 export async function renameCategory(name: string, to: string) {
   await flush();
   try {
-    const result = await call<{ updated: number }>({ op: "category-rename", name, to: to.trim(), time: now() });
+    const cleanTo = to.trim().replace(/^\/+|\/+$/g, "");
+    const result = await call<{ updated: number }>({ op: "category-rename", name, to: cleanTo, time: now() });
     await load();
-    if (noteCategory() === name) noteCategory.set(to.trim());
-    toast(`已重命名为「${to.trim()}」${result.updated ? `，${result.updated} 篇笔记已移动` : ""}`);
+    const sel = noteCategory();
+    if (sel && catMatches(sel, name)) {
+      noteCategory.set(sel === name ? cleanTo : `${cleanTo}${sel.slice(name.length)}`);
+    }
+    toast(`已重命名为「${cleanTo}」${result.updated ? `，${result.updated} 篇笔记已移动` : ""}`);
   } catch (e) {
     toast(errorText(e));
   }
@@ -508,10 +491,25 @@ export async function removeCategory(name: string) {
   try {
     await call({ op: "category-remove", name, time: now() });
     await load();
-    noteCategory.set(null);
+    if (noteCategory() && catMatches(noteCategory()!, name)) noteCategory.set(null);
     toast(`已删除分类「${name}」，笔记已保留`);
   } catch (e) {
     toast(errorText(e));
+  }
+}
+
+export async function saveMilestone(id: string, summary: string) {
+  if (!(await flush())) return false;
+  try {
+    const clean = summary.trim();
+    if (!clean) return false;
+    await call({ op: "history-milestone", id, summary: clean, actor: "手动里程碑" });
+    await refreshItems();
+    toast(`已保存里程碑版本「${clean}」`);
+    return true;
+  } catch (e) {
+    toast(errorText(e));
+    return false;
   }
 }
 

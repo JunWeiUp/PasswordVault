@@ -141,7 +141,7 @@ internal fun EntryCollection(
             } else {
                 Surface(modifier = Modifier.fillMaxWidth().padding(start = 14.dp - headerGutter, end = 14.dp - headerGutter, top = 4.dp, bottom = 6.dp), shape = RoundedCornerShape(28.dp), color = MaterialTheme.colorScheme.surfaceContainer) {
                     Row(Modifier.height(50.dp).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                        IconButton(onClick = { openNavigation?.invoke() }) { Icon(Icons.Outlined.MoreHoriz, t("打开导航", "Open navigation"), Modifier.size(20.dp)) }
+                        IconButton(onClick = { openNavigation?.invoke() }) { Icon(Icons.Outlined.Menu, t("打开导航", "Open navigation"), Modifier.size(20.dp)) }
                         androidx.compose.foundation.text.BasicTextField(
                             value = search, onValueChange = { search = it; clearSelection() }, singleLine = true,
                             modifier = Modifier.weight(1f), textStyle = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.onSurface),
@@ -191,7 +191,7 @@ internal fun EntryCollection(
                     chip(t("全部", "All"), !favorites && kind.isEmpty() && category.isEmpty()) { favorites = false; kind = ""; category = "" }
                     chip(t("收藏", "Favorites"), favorites) { favorites = !favorites; kind = ""; category = "" }
                     if (page == "password") {
-                        chip(t("需要处理", "Needs attention"), kind == "issue") { kind = if (kind == "issue") "" else "issue"; favorites = false; category = "" }
+                        chip(t("需关注", "Needs attention"), kind == "issue") { kind = if (kind == "issue") "" else "issue"; favorites = false; category = "" }
                         categories.forEach { name -> chip(name, category == name) { category = name; kind = ""; favorites = false } }
                     }
                 }
@@ -200,10 +200,10 @@ internal fun EntryCollection(
             if (page == "totp") Text(t("点按复制当前验证码 · 时间以手机系统时钟为准", "Tap to copy the current code · Uses your device clock"),
                 Modifier.padding(start = 16.dp, end = 16.dp, bottom = 12.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             if (page == "password" && audit.isNotEmpty() && search.isBlank() && !favorites && kind.isEmpty()) Surface(
-                onClick = openHealth, modifier = Modifier.fillMaxWidth().padding(start = 10.dp, end = 10.dp, bottom = 12.dp), shape = RoundedCornerShape(14.dp), color = Color(0xFFB86A12).copy(alpha = .10f),
+                onClick = openHealth, modifier = Modifier.fillMaxWidth().padding(start = 10.dp, end = 10.dp, bottom = 12.dp), shape = RoundedCornerShape(14.dp), color = Color(0xFFA55C0C).copy(alpha = .10f),
             ) { Row(Modifier.padding(14.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                Icon(Icons.Outlined.GppMaybe, null, tint = Color(0xFFB86A12), modifier = Modifier.size(22.dp))
-                Column { Text(t("${audit.size} 个账号需要处理", "${audit.size} accounts need attention"), style = MaterialTheme.typography.titleMedium)
+                Icon(Icons.Outlined.GppMaybe, null, tint = Color(0xFFA55C0C), modifier = Modifier.size(22.dp))
+                Column { Text(t("${audit.size} 个账号需关注", "${audit.size} accounts need attention"), style = MaterialTheme.typography.titleMedium)
                     Text(t("弱密码、重复使用或已过期 · 查看密码健康", "Weak, reused or expired passwords · View password health"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
             } }
             if (page == "trash" && source.isNotEmpty()) Surface(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp), color = MaterialTheme.colorScheme.primaryContainer, shape = RoundedCornerShape(14.dp)) {
@@ -239,23 +239,24 @@ internal fun EntryCollection(
             if (search.isNotEmpty()) OutlinedButton(onClick = { search = "" }) { Text(t("清除搜索", "Clear search")) }
         }
     }
+    val fabClearance = if (LocalDensity.current.fontScale > 1.2f) 136.dp else 112.dp
     if (notes && grid) {
         LazyVerticalStaggeredGrid(columns = StaggeredGridCells.Fixed(if (LocalDensity.current.fontScale > 1.2f) 1 else 2), state = ui.masonry,
-            modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 10.dp, end = 10.dp, bottom = 100.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalItemSpacing = 8.dp) {
+            modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 10.dp, end = 10.dp, bottom = fabClearance), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalItemSpacing = 8.dp) {
             item(key = "controls", span = StaggeredGridItemSpan.FullLine) { header() }
             if (filtered.isEmpty()) item(key = "empty", span = StaggeredGridItemSpan.FullLine) { empty() }
             gridItems(filtered, key = { it.getString("id") }) { item ->
                 NoteCard(item, vault, t, { openItem(item) }, { edit(item) }, { delete(item) }, if (ui.selecting.value) item.optString("id") in ui.selectedIds.value else null)
             }
         }
-    } else LazyColumn(state = ui.list, modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 100.dp)) {
+    } else LazyColumn(state = ui.list, modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = fabClearance)) {
         item(key = "controls") { header() }
         if (filtered.isEmpty()) item(key = "empty") { empty() }
         itemsIndexed(filtered, key = { _, item -> item.getString("id") }) { index, item ->
             Surface(modifier = Modifier.padding(horizontal = 10.dp), color = MaterialTheme.colorScheme.surface,
                 shape = RoundedCornerShape(topStart = if (index == 0) 16.dp else 0.dp, topEnd = if (index == 0) 16.dp else 0.dp, bottomStart = if (index == filtered.lastIndex) 16.dp else 0.dp, bottomEnd = if (index == filtered.lastIndex) 16.dp else 0.dp)) {
                 Column {
-                    CredentialCard(item, vault, t, { openItem(item) }, { edit(item) }, { delete(item) }, if (ui.selecting.value) item.optString("id") in ui.selectedIds.value else null, { select(item) }, findings[item.optString("id")])
+                    CredentialCard(item, vault, t, { openItem(item) }, { edit(item) }, { delete(item) }, if (ui.selecting.value) item.optString("id") in ui.selectedIds.value else null, { select(item) }, findings[item.optString("id")], state.entries)
                     if (index != filtered.lastIndex) HorizontalDivider(Modifier.padding(start = 60.dp), thickness = .5.dp, color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = .45f))
                 }
             }
@@ -329,24 +330,40 @@ internal fun EntryCollection(
         confirmButton = { TextButton(enabled = !categoryBusy, onClick = { scope.launch { categoryBusy = true; if (vault.mutate("category-remove", JSONObject().put("name", name).put("time", Instant.now().toString()))) { if (category == name) category = ""; categoryToRemove = null }; categoryBusy = false } }) { Text(t("删除分类", "Remove category")) } }, dismissButton = { TextButton(enabled = !categoryBusy, onClick = { categoryToRemove = null }) { Text(t("取消", "Cancel")) } }) }
 }
 
+internal fun resolvedTotpSource(item: JSONObject, entries: List<JSONObject>): Pair<String, Int>? {
+    if (item.optBoolean("isDeleted")) return null
+    val embedded = item.optString("secret").trim()
+    if (embedded.isNotEmpty()) return embedded to item.optInt("period", 30).coerceAtLeast(1)
+    if (item.optString("type") != "password") return null
+    val linkedId = item.optString("linkedTotpId")
+    if (linkedId.isBlank()) return null
+    val linked = entries.firstOrNull { it.optString("id") == linkedId && it.optString("type") == "totp" && !it.optBoolean("isDeleted") } ?: return null
+    val secret = linked.optString("secret").trim()
+    return if (secret.isNotEmpty()) secret to linked.optInt("period", 30).coerceAtLeast(1) else null
+}
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun CredentialCard(
     item: JSONObject, vault: VaultRepository, t: (String, String) -> String,
     open: () -> Unit, edit: () -> Unit, delete: () -> Unit, selection: Boolean? = null,
-    longSelect: () -> Unit = {}, finding: JSONObject? = null,
+    longSelect: () -> Unit = {}, finding: JSONObject? = null, allEntries: List<JSONObject> = emptyList(),
 ) {
     val type = item.optString("type")
     var code by remember(item.optString("id")) { mutableStateOf("") }
     var remaining by remember { mutableIntStateOf(0) }
-    val period = item.optInt("period", 30).coerceAtLeast(1)
+    val totpSource = resolvedTotpSource(item, allEntries)
+    val period = totpSource?.second ?: item.optInt("period", 30).coerceAtLeast(1)
     var menu by remember { mutableStateOf(false) }
-    val hasCode = type == "totp" && item.optString("secret").isNotBlank() && !item.optBoolean("isDeleted")
-    LaunchedEffect(item.toString()) {
-        if (hasCode) while (true) {
+    val hasCode = type == "totp" && totpSource != null
+    val hasAccountCode = type == "password" && totpSource != null
+    LaunchedEffect(item.toString(), totpSource) {
+        if (totpSource != null) while (true) {
             remaining = period - (System.currentTimeMillis() / 1000 % period).toInt()
-            code = runCatching { vault.command("totp", JSONObject().put("secret", item.optString("secret")).put("period", period).put("time", System.currentTimeMillis() / 1000)).optString("code") }.getOrDefault("")
+            code = runCatching { vault.command("totp", JSONObject().put("secret", totpSource.first).put("period", period).put("time", System.currentTimeMillis() / 1000)).optString("code") }.getOrDefault("")
             delay(1000)
+        } else {
+            code = ""
         }
     }
     val sub = when (type) {
@@ -364,7 +381,11 @@ private fun CredentialCard(
                 Box(contentAlignment = Alignment.Center) { if (selection) Icon(Icons.Outlined.Check, null, tint = MaterialTheme.colorScheme.onPrimary) }
             }
         } else if (hasCode) {
-            CircularProgressIndicator(progress = { remaining.toFloat() / period }, modifier = Modifier.size(30.dp), strokeWidth = 3.dp, trackColor = MaterialTheme.colorScheme.outlineVariant)
+            val ringTint = if (remaining <= 5 && code.isNotBlank()) Color(0xFFA55C0C) else MaterialTheme.colorScheme.primary
+            Box(contentAlignment = Alignment.Center, modifier = Modifier.size(36.dp)) {
+                CircularProgressIndicator(progress = { remaining.toFloat() / period }, modifier = Modifier.size(34.dp), color = ringTint, strokeWidth = 3.dp, trackColor = MaterialTheme.colorScheme.outlineVariant)
+                Text(remaining.toString(), style = MaterialTheme.typography.labelSmall, color = ringTint, fontFamily = FontFamily.Monospace)
+            }
         } else {
             val icon = when (type) { "secureNote" -> Icons.Outlined.Description; "creditCard" -> Icons.Outlined.CreditCard; "identity" -> Icons.Outlined.Badge; "crypto" -> Icons.Outlined.CurrencyBitcoin; "device" -> Icons.Outlined.Dns; "totp" -> Icons.Outlined.Timer; else -> null }
             val tint = if (icon != null) MaterialTheme.colorScheme.primaryContainer else accountTileColor(item.optString("title"))
@@ -377,16 +398,35 @@ private fun CredentialCard(
                 if (item.optBoolean("isPinned")) Icon(Icons.Outlined.PushPin, t("已置顶", "Pinned"), Modifier.size(12.dp))
                 Text(item.optString("title"), style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
                 if (item.optBoolean("isFavorite")) Text("★", color = Color(0xFFB86A12), style = MaterialTheme.typography.labelSmall)
-                if (finding != null) Surface(shape = RoundedCornerShape(6.dp), color = Color(0xFFB86A12).copy(alpha = .1f)) { Text(when { finding.optBoolean("weak") -> t("弱密码", "Weak"); finding.optBoolean("reused") -> t("重复", "Reused"); else -> t("过期", "Expired") }, Modifier.padding(horizontal = 4.dp, vertical = 1.dp), style = MaterialTheme.typography.labelSmall, color = Color(0xFFB86A12)) }
+                if (finding != null) Surface(shape = RoundedCornerShape(6.dp), color = Color(0xFFA55C0C).copy(alpha = .1f)) { Text(when { finding.optBoolean("weak") -> t("弱密码", "Weak"); finding.optBoolean("reused") -> t("重复", "Reused"); else -> t("过期", "Expired") }, Modifier.padding(horizontal = 4.dp, vertical = 1.dp), style = MaterialTheme.typography.labelSmall, color = Color(0xFFA55C0C)) }
             }
             if (sub.isNotBlank()) Text(sub.replace(Regex("[\\r\\n]+"), " "), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
             if (!vault.canEdit(item)) Text(t("只读", "Read only"), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         if (selection == null && !item.optBoolean("isDeleted")) {
             if (hasCode) {
-                Text(code.chunked(3).joinToString(" "), color = MaterialTheme.colorScheme.primary, fontFamily = FontFamily.Monospace, fontSize = 18.sp)
+                val codeTint = if (remaining <= 5 && code.isNotBlank()) Color(0xFFA55C0C) else MaterialTheme.colorScheme.primary
+                Text(code.chunked(3).joinToString(" "), color = codeTint, fontFamily = FontFamily.Monospace, fontSize = 18.sp)
                 IconButton(onClick = open) { Icon(Icons.Outlined.ChevronRight, t("详情", "Details"), Modifier.size(18.dp)) }
-            } else if (type == "password") IconButton(enabled = item.optString("password").isNotBlank(), onClick = { vault.copy(item.optString("password")) }) { Icon(Icons.Outlined.ContentCopy, t("复制密码", "Copy password"), Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant) }
+            } else if (type == "password") {
+                if (hasAccountCode && code.isNotBlank()) {
+                    val codeTint = if (remaining <= 5) Color(0xFFA55C0C) else MaterialTheme.colorScheme.primary
+                    Surface(
+                        onClick = { vault.copy(code) },
+                        shape = RoundedCornerShape(8.dp),
+                        color = MaterialTheme.colorScheme.primaryContainer,
+                    ) {
+                        Text(
+                            code.chunked(3).joinToString(" "),
+                            Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
+                            color = codeTint,
+                            fontFamily = FontFamily.Monospace,
+                            style = MaterialTheme.typography.labelSmall,
+                        )
+                    }
+                }
+                IconButton(enabled = item.optString("password").isNotBlank(), onClick = { vault.copy(item.optString("password")) }) { Icon(Icons.Outlined.ContentCopy, t("复制密码", "Copy password"), Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant) }
+            }
         }
     }
     EntryMenu(menu, { menu = false }, item, vault, t, edit, delete)

@@ -32,6 +32,7 @@ impl DiskVault {
             };
             atomic_write(&temp.path().join(name), &bytes)?;
         }
+        note_blobs::copy_blobs_dir(&self.directory, temp.path())?;
         storage(fs::rename(temp.path(), &destination))?;
         storage(crate::native_file_ops::sync_directory(&self.directory))?;
         Ok(())

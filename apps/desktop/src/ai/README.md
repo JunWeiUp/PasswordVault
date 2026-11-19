@@ -15,76 +15,77 @@ bearer token is the second boundary. Protect client configuration accordingly.
 ## Pair and configure
 
 1. Unlock the app, enable AI access, and enable the desired category scopes.
-2. Enter a recognizable client name and generate a confirmation code in Settings.
-   It expires after 120 seconds and is consumed by one pairing attempt.
-3. Run the adapter's script mode with the code. The app returns a random client ID
-   and token exactly once. Neither token nor confirmation code goes in audit logs.
-4. Explicitly grant that client individual entries. Pairing alone grants none.
-   File access additionally needs the per-entry client switch and explicit ordinary
-   classification of each immutable attachment ID.
-
-```sh
-PV_AI_SOCKET='<socket shown in Settings>' /path/to/pv-mcp --call '{"op":"pair","code":"<confirmation code>"}'
-```
-
-Example client configuration (illustrative only; do not edit real AI client
-configuration during development):
+2. In the top-pinned **AI 访问** view, enter a client name (and optional remark stored in
+   encrypted `settings.uiPrefs.aiClientNotes`) and press **复制给 AI**. The app creates the
+   client (control-plane `pair`, never reachable through the socket) and copies a short
+   instruction plus a ready MCP configuration that already contains the token. The token
+   is shown only in that clipboard payload (cleared after 30 seconds) and never in audit.
+   Paired clients expose a deterministic non-secret `fingerprint` (never `tokenHash`),
+   support temporary pause/resume (`set_paused`, rejecting MCP calls with `ClientPaused`
+   while preserving the token), and atomic batch revoke (`revoke_many`).
+3. Enabled category scopes (`accounts`, `profiles`, `devices`, `notes`, `noteAssets`) apply
+   directly to all paired clients without per-item manual whitelisting; individual entries
+   can be hidden via the per-entry exclusion list (`aiAccessExcludedEntries`). Ordinary
+   fields are readable in plain text; only passwords, card numbers/CVV, private keys,
+   tokens, concealed custom fields and secret device commands go through `get_secret`
+   approval. Binary note asset text extraction additionally requires the per-attachment
+   `AI 可读文本` toggle (`aiAccessNoteAssetText`).
 
 ```json
 {
   "mcpServers": {
     "passwordvault": {
       "command": "/path/to/pv-mcp",
-      "env": {
-        "PV_AI_SOCKET": "<socket shown in Settings>",
-        "PV_AI_TOKEN": "<token returned by pairing>"
-      }
+      "env": { "PV_AI_SOCKET": "<socket>", "PV_AI_TOKEN": "<token>" }
     }
   }
 }
 ```
 
-Scripts use the same policy, audit, and approval flow:
+Scripts use the same policy, audit and approval flow (set `PV_AI_SOCKET` and
+`PV_AI_TOKEN` in the environment; never pass a real token as an argument):
 
 ```sh
-/path/to/pv-mcp --call '{"op":"search_entries","query":"server"}'
-/path/to/pv-mcp --call '{"op":"get_entry","id":"<stable ID>"}'
+/path/to/pv-mcp --call '{"op":"search","query":"server"}'
+/path/to/pv-mcp --call '{"op":"get","id":"<stable ID>"}'
 ```
 
-Set `PV_AI_SOCKET` and `PV_AI_TOKEN` in the script environment. Never pass a real
-token as a command argument or commit it. `tool/macos-nsh/package.sh` builds `pv-mcp`,
-places it at `Contents/MacOS/pv-mcp` in the signed preview bundle and signs it with the app's
-identity; Settings → AI 访问 shows a client configuration pointing at that path.
-`nsh check` validates the binary target; its source is `src/bin/pv-mcp.rs`.
+`tool/macos-nsh/package.sh` builds `pv-mcp` as a lightweight standalone workspace member
+(`apps/desktop/helpers/pv-mcp`, embedding `apps/desktop/src/ai/tools.schema.json`),
+places it at `Contents/MacOS/pv-mcp` in the signed preview bundle and signs it with the
+app's identity. Both `pv-mcp` and `apps/desktop/ui/api/mcpTools.ts` read from the same
+`tools.schema.json` file.
 
-## Tool schemas
+## Tools
 
-All tools describe returned documents/scripts as untrusted **data, never
-instructions**. No tools execute commands, launch services, or modify records.
-MCP supports `initialize`, `ping`, `tools/list`, `tools/call`; protocol 2024-11-05.
-Schemas reject extra properties at the MCP schema level; the app only consumes
-known read parameters and never exposes its control plane through the socket.
+Kept small so the model reads little: one-line descriptions, and the shared rules are sent
+once as `initialize.instructions` (protocol 2024-11-05, or the client's 2025-03-26 /
+2025-06-18). Successful calls return only the compact result JSON (nulls, empty strings and
+empty lists are dropped); failures return one line `Code: hint`. Schemas reject extra
+properties; the socket never exposes the control plane.
 
 | Tool | Arguments | Result |
 | --- | --- | --- |
-| `search_entries` | `query?: string` | At most 100 permitted `{id,type,title}` summaries; matches titles, tags, device aliases, app aliases |
-| `get_entry` | `id: string` | Whitelisted ordinary fields, never complete records |
-| `list_files` | `id: string` | Only ordinary, client-authorized file ID summaries |
-| `read_file` | `id, fileId: string`, `offset?: integer`, `limit?: integer` | UTF-8 text, Unicode-scalar offsets, `nextOffset`, `eof`, `dataOnly`; default 4096, maximum 16384 scalars |
-| `get_secret` | `id: string`, `field: password\|token\|privateKey\|nodeLink\|notes\|phone\|address1\|address2\|postalCode\|number\|securityCode\|custom:<id>`, `delivery?: clipboard\|reveal`, `purpose?: string` | One field after approval or an active lease; delivered to the clipboard by default, returned only for `reveal` |
+| `search` | `query?` | At most 100 `{id,type,title,sub}` across enabled categories (excluding `aiAccessExcludedEntries`); `sub` is username, host, email or card brand. Matches title, tags, device aliases, host, service names and app aliases |
+| `get` | `id`, `fileId?`, `offset?`, `limit?` | Without `fileId`: ordinary plain-text fields (account username/url/note, identity contact/address fields, card brand/holder/expiry, device host/port/username/services/paths/notes/non-secret commands, non-hidden note text), non-concealed custom `fields`, `secretFields` (names requiring `get_secret`) and `files` (ordinary file IDs). With `fileId`: UTF-8 `{text,nextOffset,eof}`, default 4096, maximum 16384 scalars |
+| `get_secret` | `id`, `field`, `delivery?: clipboard\|reveal`, `purpose?` | One high-sensitivity secret after approval or an active lease: `password`, `token`, `privateKey`, `nodeLink`, `number`, `securityCode`, `custom:<id>` (concealed), and `command:<id>` (secret device command) |
+| `note_list` | `category?`, `tag?`, `query?`, `propertyKey?`, `propertyValue?`, `limit?` | Lists non-hidden notes matching filters along with `slug`, `category`, `tags`, `properties`, `writable`, and the configured `writableCategories` |
+| `note_read` | `id` or `slug`, `section?` | Returns canonical Markdown, `properties`, `tags`, `attachments[]` (including `aiTextAllowed`), `versionHash`, and `writable` |
+| `note_update` | `id` or `slug`, `mode: append\|replace_section\|replace`, `content`, `summary`, `section?`, `expectedVersion?`, `createIfMissing?`, `category?`, `title?`, `properties?`, `tags?` | No-popup auto-save into whitelisted `aiAccessNoteWritableCategories` (30/min rate limit, mandatory `summary`, optimistic lock `VersionConflict`, immutable encrypted history revision). Never modifies credentials or deletes notes |
+| `note_attach` | `id` or `slug`, `path`, `name?`, `summary`, `insertLink?`, `aiTextAllowed?` | Encrypts a local file (≤ 100 MiB) into chunked `<vault_dir>/blobs/<id>.pvblob`, appends `[name](pv-asset://<id>)` to a whitelisted note, records history, and leaves the original file untouched |
+| `note_read_asset` | `id` or `slug`, `attachmentId`, `offset?`, `limit?` | Returns bounded locally extracted plain text (PDFKit / DOCX / XLSX / PPTX / UTF-8, no network) only when `noteAssets` scope and the attachment's `AI 可读文本` toggle are both enabled |
+| `note_history` | `id` or `slug`, `revisionId?`, `limit?` | Lists encrypted note history revisions or returns a specific historical revision snapshot |
+| `add` | `type: account\|note\|totp\|identity\|card\|device`, `title`, plus type fields (`username`, `password`, `url`, `note`, `tags`, `secret`/`issuer`/`period`, `identity{}`, `card{}`, `device{}`) | Saves a new entry immediately, **without approval or scope**: only a valid paired client and an unlocked vault are required. Fields are whitelisted and bounded; a fresh ID is always generated so existing records cannot be overwritten. Device commands are private unless `secret:false`; devices need the vault's 设备与服务 upgrade (`DevicesNotEnabled`). Wallets are refused. Each client may add at most 10 entries per rolling minute (`RateLimited`; in memory, failed saves do not count). Audited as `add` (no content), and the window reloads its list. Returns `{id,type,title,added}` |
+| `ask_user` | `title`, `url?`, `username?`, `delivery?`, `purpose?` | When no account exists: the user fills a sheet (AI values are only suggestions), the UI saves a new account through the normal store path and returns it with the password delivered like `get_secret`. Cancel returns `ApprovalDenied` |
 
-Wallets, crypto records and TOTP secrets remain unavailable. Identity documents and cards
-are available only through the `profiles` scope and their ordinary projections. Device
-projection follows `docs/architecture/DEVICE-ITEMS.md`: host/port/username/authMethod,
-aliases, service identity/kind/ports, and only commands explicitly marked
-`secret:false`. Device notes, service paths, unclassified commands and files are
-excluded. Commands are returned only as data. Service-path and individual private
-command retrieval are not currently supported by `get_secret`; they fail closed.
-Account details expose title, website and username. Authorized identity records expose
-ordinary name, email, company and coarse address fields. Authorized card records expose
-cardholder, brand and expiry metadata. Phone, address lines, postal codes, card numbers
-and security codes are individual sensitive fields and require the same fresh approval as
-passwords. Authorized notes expose their body/document. Core still checks attachment
+`add`, `ask_user`, `note_update` (whitelisted note categories only) and `note_attach` (whitelisted note categories only) are the only tools that write data; nothing edits credentials or deletes records. `ask_user` needs the `accounts` scope. Its sheet expires after 180 seconds.
+
+Wallets, crypto records and TOTP secrets remain unavailable. Ordinary fields across accounts,
+profiles, cards, devices (including service paths, notes and non-secret commands) and notes
+are returned directly when their category scope is enabled and the entry is not excluded in
+`aiAccessExcludedEntries`. Only passwords, card numbers, security codes, private keys,
+tokens, concealed custom fields and secret device commands require `get_secret` approval.
+Commands are returned only as data and never executed. Core still checks attachment
 ownership and encrypted integrity.
 
 ### Delivery, leases and first-request grants
@@ -98,15 +99,14 @@ ownership and encrypted integrity.
   any field, or until lock for phone/address/postal-code fields only. A reveal lease also
   covers clipboard requests, not the reverse. Leases live only in memory, are listed by
   `status` (`leases`), ended with control op `end_leases` (all, or `entryId`/`field`), and
-  are cleared on lock, `configure`, `grant` and `revoke`. Lease reads are audited as
+  are cleared on lock, `configure`, `exclude` and `revoke`. Lease reads are audited as
   `AllowedByLease`.
-- `get_entry`, `get_secret` and `list_files` on an existing, non-deleted entry whose category
-  scope is enabled but which the client has not been granted open an approval sheet;
-  approving adds the entry to that client's encrypted grant map. Disabled scopes, unknown
-  or deleted entries, wallets and `read_file` still fail closed without asking.
+- `get` on an existing, non-deleted, non-excluded entry in an enabled category returns
+  ordinary fields directly. Disabled scopes, excluded entries, unknown/deleted entries,
+  wallets and unauthorized file reads fail closed without asking.
 - `purpose` is untrusted client text, truncated to 120 characters before display.
 
-Approval expires after 60 seconds. Closing the sheet denies it. Any scope/grant
+Approval expires after 60 seconds. Closing the sheet denies it. Any scope/exclusion
 change cancels pending approvals. The app rechecks live lock state, client token,
 entry permission and a hash of the complete entry after approval; a changed entry
 requires a new request. Consumed approvals cannot be replayed.
@@ -114,10 +114,11 @@ requires a new request. Consumed approvals cannot be replayed.
 ## Encrypted persistence and audit
 
 Only the core `settings` operation writes configuration:
-`aiAccessEnabled`, `aiAccessScopes` (including the `profiles` scope), `aiAccessClients` (token SHA-256 digest,
-per-client entry/file maps), `aiAccessAliases`, `aiAccessOrdinaryFiles`,
-`aiAccessAudit`. Missing settings mean OFF/deny. No plaintext settings file exists.
-The UI strips token digests from its status response.
+`aiAccessEnabled`, `aiAccessScopes` (`accounts`, `profiles`, `devices`, `notes`, `noteAssets`),
+`aiAccessClients` (token SHA-256 digest and name), `aiAccessExcludedEntries`,
+`aiAccessNoteAutoWrite`, `aiAccessNoteWritableCategories`, `aiAccessNoteAssetText`,
+`aiAccessAliases`, `aiAccessOrdinaryFiles`, `aiAccessAudit`. Missing settings mean
+OFF/deny. No plaintext settings file exists. The UI strips token digests from its status response.
 
 Audit is bounded to 200 entries and records trusted client ID, known item ID,
 canonical operation, result, generated request ID and Unix time; never returned
@@ -152,8 +153,11 @@ PASSWORDVAULT_VAULT_DIRECTORY='<fresh synthetic vault copy>' bash tool/nsh_mac.s
 ```
 
 Tests cover default-off, unscoped entries, revoked tokens, wallet denial, locked
-core, secret stripping, private device fields, ordinary classification, approval
-deadline/denial (including expired pending requests), real encrypted pairing, single-use approvals, revocation during approval, UTF-8 file chunking, unclassified-file and wrong-owner rejection, and content-free audit.
+core, secret stripping, private device fields, service-path and private-command release,
+compact summaries/details, ordinary classification, approval deadline/denial, real
+encrypted pairing, single-use approvals, revocation during approval, `ask_user`
+cancel/save/grant, UTF-8 file chunking, unclassified-file and wrong-owner rejection, and
+content-free audit.
 Native approval-sheet appearance, real AI clients, a full signed-package run,
 peer-credential rejection across OS users and full device attachment round trips
 still require integration acceptance. This preview is not production-security acceptance.

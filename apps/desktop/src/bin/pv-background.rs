@@ -1,4 +1,4 @@
-#![cfg_attr(not(target_os = "macos"), allow(dead_code))]
+#![allow(dead_code)] // Shares desktop modules that also serve the UI and browser-host targets.
 #[cfg(target_os = "macos")]
 #[path = "../browser/mod.rs"]
 mod browser;

@@ -1,6 +1,7 @@
 // Category rename, list sorting, clipboard/menu-bar preferences and the About page,
 // against the synthetic vault from `examples/seed.rs`.
 import { expect, open, test } from "nsh/test";
+import nsh from "../nsh.json";
 
 const PASSWORD = "synthetic-preview-password";
 
@@ -41,6 +42,7 @@ test("sorts the list by name and keeps the choice visible", async () => {
 
 test("general settings offer clipboard duration and the menu bar icon; About copies safe diagnostics", async () => {
   const app = await unlocked();
+  expect(app.texts()).toContain(nsh.version);
   await app.press("text:设置");
   await app.waitFor("text:自动清除剪贴板");
   expect(app.texts()).toContain("在菜单栏显示图标");
@@ -50,7 +52,7 @@ test("general settings offer clipboard duration and the menu bar icon; About cop
   await app.press("id:copy-diagnostics");
   await app.waitFor("text:已复制诊断信息");
   const text = app.clipboard() ?? "";
-  expect(text).toContain("PasswordVault ");
+  expect(text).toContain(`PasswordVault ${nsh.version}`);
   expect(text).toContain("Platform: macOS");
   expect(text).not.toContain("/Users/");
   expect(text).not.toContain("@");

@@ -139,4 +139,10 @@ test("document editor opens full Python text and preserves full filenames", asyn
   await app.setViewport(1100, 900);
   expect(app.texts()).toContain("资料目录");
 
+  // Every individual entry in 资料目录 can be deleted directly via its row delete button.
+  await app.press("label:删除 配置.json");
+  await app.waitFor("text:删除资料「配置.json」？");
+  await app.press("text:删除此资料");
+  expect(app.texts().includes("配置.json")).toBe(false);
+  expect(app.texts()).toContain("自动备份与健康检查");
 });

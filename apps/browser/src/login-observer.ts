@@ -120,7 +120,7 @@
     const shadow = banner.attachShadow({ mode: "closed" });
     const style = document.createElement("style");
     style.textContent =
-      ":host{all:initial}.card{font:14px/1.6 system-ui;color:#243049;background:white;border:1px solid #bdcbe4;border-radius:14px;padding:18px;box-shadow:0 8px 32px #172a5026}strong{font-size:15px}p{margin:8px 0}button{font:inherit;border:1px solid #cbd5e5;background:#f2f5fc;color:#244879;border-radius:7px;padding:6px 12px;cursor:pointer}button:hover{background:#dfe9fc}button:focus-visible{outline:3px solid #84a9f9}";
+      ":host{all:initial}.card{font:14px/1.6 system-ui;color:#242a35;background:white;border:1px solid #dce6fa;border-radius:14px;padding:18px;box-shadow:0 8px 32px #172a5026}strong{font-size:15px}.origin-pill{display:inline-block;margin:8px 0 2px;padding:2px 8px;border-radius:6px;background:#eef2f8;color:#4a5362;font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace}p{margin:8px 0;color:#4a5362}button{font:inherit;border:1px solid #cbd5e5;background:#f2f5fc;color:#244879;border-radius:7px;padding:6px 12px;cursor:pointer}button:hover{background:#dfe9fc}button.primary{background:#3265db;border-color:#3265db;color:#fff;font-weight:600}button.primary:hover{background:#2a57c2}button:focus-visible{outline:3px solid #84a9f9}";
     const card = document.createElement("section");
     card.className = "card";
     card.setAttribute("role", "status");
@@ -135,13 +135,25 @@
       removeBanner();
       if (dismiss) void send({ action: "login-dismiss" });
     };
-    card.append(title, description);
+    card.append(title);
+    if (notice?.origin) {
+      try {
+        const originBadge = document.createElement("div");
+        originBadge.className = "origin-pill";
+        originBadge.textContent = new URL(notice.origin).host;
+        card.append(originBadge);
+      } catch {
+        // Ignore non-URL origins.
+      }
+    }
+    card.append(description);
     if (dismiss || saved) {
       const review = document.createElement("button");
       const choose = !saved && notice?.choose === true;
       const update = !saved && notice?.update === true;
       const label = saved ? observerText("修改账号密码") : choose ? observerText("选择账号") : update ? observerText("更新账号") : observerText("保存");
       review.textContent = label;
+      if (!saved) review.className = "primary";
       review.style.marginRight = "8px";
       const currentBanner = banner;
       review.onclick = async (event) => {

@@ -9,11 +9,13 @@ set -euo pipefail
 root="$(cd "$(dirname "$0")/../.." && pwd)"
 backup="${1:?backup directory required}"
 [[ -d "$root/$backup/PasswordVaultNative/vault" ]] || { echo "missing vault backup in $backup" >&2; exit 1; }
-if pgrep -f "/Applications/PasswordVault.*\.app/Contents/MacOS/" >/dev/null; then
+if pgrep -f "/Applications/PasswordVault.*\.app/Contents/.*MacOS/(PasswordVault|pv-background|pv-browser-host)" >/dev/null; then
   echo "quit PasswordVault first" >&2; exit 1
 fi
 built="$root/native-test-output/mac-nsh-preview/PasswordVault NSH Preview.app"
-stage="$(mktemp -d /tmp/pv-daily.XXXXXX)/PasswordVault.app"
+stage_root="$(mktemp -d /tmp/pv-daily.XXXXXX)"
+trap 'rm -rf "$stage_root"' EXIT
+stage="$stage_root/PasswordVault.app"
 cp -R "$built" "$stage"
 plist="$stage/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Delete :PVVaultDirectoryName" "$plist" 2>/dev/null || true

@@ -56,6 +56,7 @@ impl WindowCtl {
     }
     /// Exits only the interface after its drafts have been saved.
     pub fn finish_close() {
+        crate::asset_sessions::cleanup_all();
         #[cfg(target_os = "macos")]
         imp::on_main(|_| {
             imp::ALLOW_TERMINATION.store(true, std::sync::atomic::Ordering::SeqCst);

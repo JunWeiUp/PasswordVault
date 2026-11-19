@@ -106,7 +106,14 @@ impl Document {
         if item["type"] == "secureNote" {
             let mut categories = self.note_categories();
             if let Some(name) = item["category"].as_str().filter(|s| !s.is_empty()) {
-                categories.push(name.to_owned());
+                let mut prefix = String::new();
+                for seg in name.split('/').filter(|s| !s.trim().is_empty()) {
+                    if !prefix.is_empty() {
+                        prefix.push('/');
+                    }
+                    prefix.push_str(seg.trim());
+                    categories.push(prefix.clone());
+                }
             }
             self.store_note_categories(categories)?;
         }
@@ -191,10 +198,7 @@ impl Document {
     }
 
     pub fn add_note_category(&mut self, name: &str) -> Result<String> {
-        let name = name.trim();
-        if name.is_empty() || name.chars().count() > 80 || name.chars().any(char::is_control) {
-            return Err(VaultError::InvalidData);
-        }
+        let name = normalize_category_path(name)?;
         let mut categories = self.note_categories();
         if categories
             .iter()
@@ -202,13 +206,27 @@ impl Document {
         {
             return Err(VaultError::AlreadyExists);
         }
-        categories.push(name.to_owned());
+        // Automatically ensure parent folders exist for hierarchical `/` paths.
+        let mut prefix = String::new();
+        for seg in name.split('/') {
+            if !prefix.is_empty() {
+                prefix.push('/');
+            }
+            prefix.push_str(seg);
+            if !categories
+                .iter()
+                .any(|value| value.to_lowercase() == prefix.to_lowercase())
+            {
+                categories.push(prefix.clone());
+            }
+        }
         self.store_note_categories(categories)?;
-        Ok(name.to_owned())
+        Ok(name)
     }
 
     /// Removing a category never deletes a note or changes a non-note category.
     /// Include trashed notes so restoring them cannot resurrect a removed category.
+    /// Removing a parent folder also removes its nested sub-paths.
     pub fn remove_note_category(&mut self, name: &str, updated_at: &str) -> Result<usize> {
         if name.is_empty()
             || !self.note_categories().iter().any(|value| value == name)
@@ -216,25 +234,27 @@ impl Document {
         {
             return Err(VaultError::InvalidData);
         }
-        for item in self
-            .items
-            .iter()
-            .filter(|item| item["type"] == "secureNote" && item["category"] == name)
-        {
+        for item in self.items.iter().filter(|item| {
+            item["type"] == "secureNote"
+                && item["category"]
+                    .as_str()
+                    .is_some_and(|c| category_matches(c, name))
+        }) {
             crate::authorize_item_write(self, item)?;
         }
         let categories = self
             .note_categories()
             .into_iter()
-            .filter(|value| value != name)
+            .filter(|value| !category_matches(value, name))
             .collect();
         self.store_note_categories(categories)?;
         let mut count = 0;
-        for item in self
-            .items
-            .iter_mut()
-            .filter(|item| item["type"] == "secureNote" && item["category"] == name)
-        {
+        for item in self.items.iter_mut().filter(|item| {
+            item["type"] == "secureNote"
+                && item["category"]
+                    .as_str()
+                    .is_some_and(|c| category_matches(c, name))
+        }) {
             item["category"] = json!("");
             item["updatedAt"] = json!(updated_at);
             count += 1;
@@ -242,25 +262,24 @@ impl Document {
         Ok(count)
     }
 
-    /// Renames a note category: every note in it, including trashed ones, moves to the
-    /// new name. Non-note items are untouched; categories stay sorted by name.
+    /// Renames a note category: every note in it (and nested sub-paths), including trashed
+    /// ones, moves to the new name. Non-note items are untouched; categories stay sorted by name.
     pub fn rename_note_category(
         &mut self,
         from: &str,
         to: &str,
         updated_at: &str,
     ) -> Result<usize> {
-        let to = to.trim();
-        if from.is_empty()
-            || to.is_empty()
-            || to.chars().count() > 80
-            || to.chars().any(char::is_control)
-            || chrono::DateTime::parse_from_rfc3339(updated_at).is_err()
-        {
+        let to = normalize_category_path(to)?;
+        if from.is_empty() || chrono::DateTime::parse_from_rfc3339(updated_at).is_err() {
             return Err(VaultError::InvalidData);
         }
         let categories = self.note_categories();
         if !categories.iter().any(|value| value == from) {
+            return Err(VaultError::InvalidData);
+        }
+        // Prevent renaming a folder into one of its own descendants.
+        if to != from && category_matches(&to, from) {
             return Err(VaultError::InvalidData);
         }
         // A different category may not take the new name; changing only letter case is allowed.
@@ -273,30 +292,79 @@ impl Document {
         if from == to {
             return Ok(0);
         }
-        for item in self
-            .items
-            .iter()
-            .filter(|item| item["type"] == "secureNote" && item["category"] == from)
-        {
+        for item in self.items.iter().filter(|item| {
+            item["type"] == "secureNote"
+                && item["category"]
+                    .as_str()
+                    .is_some_and(|c| category_matches(c, from))
+        }) {
             crate::authorize_item_write(self, item)?;
         }
-        let renamed = categories
-            .into_iter()
-            .map(|value| if value == from { to.to_owned() } else { value })
-            .collect();
+        let remap = |value: &str| -> String {
+            if value == from {
+                to.clone()
+            } else if let Some(rest) = value.strip_prefix(&format!("{from}/")) {
+                format!("{to}/{rest}")
+            } else {
+                value.to_owned()
+            }
+        };
+        let mut renamed: Vec<String> = categories.iter().map(|v| remap(v)).collect();
+        let mut prefix = String::new();
+        for seg in to.split('/') {
+            if !prefix.is_empty() {
+                prefix.push('/');
+            }
+            prefix.push_str(seg);
+            if !renamed
+                .iter()
+                .any(|v| v.to_lowercase() == prefix.to_lowercase())
+            {
+                renamed.push(prefix.clone());
+            }
+        }
         self.store_note_categories(renamed)?;
         let mut count = 0;
-        for item in self
-            .items
-            .iter_mut()
-            .filter(|item| item["type"] == "secureNote" && item["category"] == from)
-        {
-            item["category"] = json!(to);
+        for item in self.items.iter_mut().filter(|item| {
+            item["type"] == "secureNote"
+                && item["category"]
+                    .as_str()
+                    .is_some_and(|c| category_matches(c, from))
+        }) {
+            if let Some(cat) = item["category"].as_str() {
+                item["category"] = json!(remap(cat));
+            }
             item["updatedAt"] = json!(updated_at);
             count += 1;
         }
         Ok(count)
     }
+}
+
+pub fn category_matches(category: &str, prefix: &str) -> bool {
+    category == prefix
+        || category
+            .strip_prefix(prefix)
+            .is_some_and(|rest| rest.starts_with('/'))
+}
+
+fn normalize_category_path(raw: &str) -> Result<String> {
+    let trimmed = raw.trim().trim_matches('/');
+    if trimmed.is_empty() || trimmed.chars().count() > 80 || trimmed.chars().any(char::is_control) {
+        return Err(VaultError::InvalidData);
+    }
+    let mut segments = Vec::new();
+    for seg in trimmed.split('/') {
+        let seg = seg.trim();
+        if seg.is_empty() || seg == "." || seg == ".." {
+            return Err(VaultError::InvalidData);
+        }
+        segments.push(seg);
+    }
+    if segments.len() > 6 {
+        return Err(VaultError::InvalidData);
+    }
+    Ok(segments.join("/"))
 }
 
 fn merge_named(dest: &mut Vec<Value>, source: Vec<Value>) {
@@ -377,6 +445,62 @@ pub fn normalize_item(item: &mut Value) -> Result<()> {
     obj.entry("isFavorite").or_insert(json!(false));
     obj.entry("isPinned").or_insert(json!(false));
     obj.entry("tags").or_insert(json!([]));
+    if obj.get("type").and_then(Value::as_str) == Some("secureNote") {
+        if let Some(slug) = obj.get("slug").and_then(Value::as_str) {
+            let trimmed = slug.trim().trim_matches('/');
+            if trimmed.chars().count() > 120 || trimmed.chars().any(char::is_control) {
+                return Err(VaultError::InvalidData);
+            }
+            if trimmed.is_empty() {
+                obj.remove("slug");
+            } else {
+                obj.insert("slug".into(), json!(trimmed));
+            }
+        } else if obj.get("slug").is_some_and(|v| !v.is_null()) {
+            return Err(VaultError::InvalidData);
+        }
+        if let Some(props) = obj.get("noteProperties") {
+            if !props.is_null() {
+                let arr = props
+                    .as_array()
+                    .filter(|a| a.len() <= 64)
+                    .ok_or(VaultError::InvalidData)?;
+                for row in arr {
+                    let k = row
+                        .get("key")
+                        .and_then(Value::as_str)
+                        .ok_or(VaultError::InvalidData)?;
+                    let v = row
+                        .get("value")
+                        .and_then(Value::as_str)
+                        .ok_or(VaultError::InvalidData)?;
+                    if k.chars().count() > 80
+                        || v.chars().count() > 500
+                        || k.chars().any(char::is_control)
+                    {
+                        return Err(VaultError::InvalidData);
+                    }
+                }
+            }
+        }
+        for (field, max) in [("lastActor", 120usize), ("lastSummary", 240usize)] {
+            if let Some(v) = obj.get(field) {
+                if !v.is_null() {
+                    let s = v.as_str().ok_or(VaultError::InvalidData)?;
+                    if s.chars().count() > max {
+                        return Err(VaultError::InvalidData);
+                    }
+                }
+            }
+        }
+    }
+    if let Some(meta) = obj.get("uiMeta") {
+        if meta.is_null() {
+            obj.remove("uiMeta");
+        } else {
+            validate_passthrough_object(meta, UI_META_LIMIT, 6)?;
+        }
+    }
     crate::validate_device(item)?;
     crate::validate_structured_item(item)?;
     if let Some(passkeys) = item.get("passkeys") {
@@ -392,11 +516,49 @@ pub fn normalize_item(item: &mut Value) -> Result<()> {
     Ok(())
 }
 
+const UI_META_LIMIT: usize = 16 * 1024;
+const UI_PREFS_LIMIT: usize = 64 * 1024;
+
+/// Validates a bounded generic pass-through JSON object (arbitrary keys/values owned by
+/// client TS/UI layers so new UI metadata never requires Rust schema whitelist changes).
+fn validate_passthrough_object(value: &Value, max_bytes: usize, max_depth: usize) -> Result<()> {
+    if !value.is_object() {
+        return Err(VaultError::InvalidData);
+    }
+    fn check_depth(v: &Value, depth: usize, max_depth: usize) -> bool {
+        if depth > max_depth {
+            return false;
+        }
+        match v {
+            Value::Object(map) => {
+                map.len() <= 256 && map.values().all(|c| check_depth(c, depth + 1, max_depth))
+            }
+            Value::Array(arr) => {
+                arr.len() <= 256 && arr.iter().all(|c| check_depth(c, depth + 1, max_depth))
+            }
+            _ => true,
+        }
+    }
+    if !check_depth(value, 1, max_depth) {
+        return Err(VaultError::InvalidData);
+    }
+    let bytes = serde_json::to_vec(value).map_err(|_| VaultError::InvalidData)?;
+    if bytes.len() > max_bytes {
+        return Err(VaultError::InvalidData);
+    }
+    Ok(())
+}
+
 pub fn update_settings(doc: &mut Document, settings: &Value) -> Result<()> {
     let input = settings.as_object().ok_or(VaultError::InvalidData)?;
     if let Some(minutes) = input.get("autoLockMinutes") {
         if !minutes.as_u64().is_some_and(|v| (1..=120).contains(&v)) {
             return Err(VaultError::InvalidData);
+        }
+    }
+    if let Some(ui_prefs) = input.get("uiPrefs") {
+        if !ui_prefs.is_null() {
+            validate_passthrough_object(ui_prefs, UI_PREFS_LIMIT, 6)?;
         }
     }
     for (key, value) in input {
@@ -412,7 +574,6 @@ pub fn update_settings(doc: &mut Document, settings: &Value) -> Result<()> {
             "peerLibrarySnapshots",
             "_peerLibraryRole",
             "_peerLibraryReadOnly",
-            "_peerLibraryName",
             "_peerLibraryName",
         ]
         .contains(&key.as_str())

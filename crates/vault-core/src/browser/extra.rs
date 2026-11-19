@@ -112,12 +112,12 @@ impl BrowserVault {
             let id = current["id"].as_str().ok_or(VaultError::InvalidData)?;
             if !self.extras.history.iter().any(|r| r.item_id == id) {
                 if let Some(old) = before.items.iter().find(|i| i["id"] == id) {
-                    self.extras.history.push(HistoryRevision {
-                        id: new_id(),
-                        item_id: id.into(),
-                        captured_at: now(),
-                        item: old.clone(),
-                    });
+                    self.extras.history.push(HistoryRevision::plain(
+                        new_id(),
+                        id.into(),
+                        now(),
+                        old.clone(),
+                    ));
                 }
             }
             if !self
@@ -128,12 +128,12 @@ impl BrowserVault {
                 .find(|r| r.item_id == id)
                 .is_some_and(|r| r.item == *current)
             {
-                self.extras.history.push(HistoryRevision {
-                    id: new_id(),
-                    item_id: id.into(),
-                    captured_at: now(),
-                    item: current.clone(),
-                });
+                self.extras.history.push(HistoryRevision::plain(
+                    new_id(),
+                    id.into(),
+                    now(),
+                    current.clone(),
+                ));
             }
         }
         Ok(())

@@ -156,7 +156,7 @@ class SettingsGeneralTest {
                 device.wait(Until.hasObject(By.text("Prefs fixture")), 5_000)
             }
             waitText("Prefs fixture", 5_000)
-            assertTrue("Accounts selected", device.findObject(By.desc("账号")).isSelected || device.hasObject(By.text("需要处理")))
+            assertTrue("Accounts selected", device.findObject(By.desc("账号")).isSelected || device.hasObject(By.text("需关注")))
         } finally {
             prefs.edit().remove(AppPreferences.CLIPBOARD_SECONDS).remove(AppPreferences.START_PAGE).remove(AppPreferences.LAST_PAGE).commit()
         }

@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Synthetic QA client. Not included in application packages.
 #[cfg(target_os = "macos")]
 #[path = "../src/service_ipc.rs"]

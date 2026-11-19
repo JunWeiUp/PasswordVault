@@ -32,6 +32,12 @@ def validate_versions(root, tag=None):
     nsh = json.loads((root / 'apps/desktop/nsh.json').read_text())
     if (nsh['version'], nsh['build']) != (version, data['macos_build']):
         raise SystemExit('NSH Mac version/build differs from the native release.')
+    desktop_cargo = root / 'apps/desktop/Cargo.toml'
+    if desktop_cargo.is_file():
+        package_block = desktop_cargo.read_text().split('\n[', 1)[0]
+        match = re.search(r'^version\s*=\s*"([^"]+)"', package_block, re.MULTILINE)
+        if not match or match.group(1) != version:
+            raise SystemExit('Desktop Cargo.toml version differs from the native release.')
     android = (root / 'apps/android/app/build.gradle.kts').read_text()
     if f'versionName = "{version}"' not in android or f'versionCode = {data["android_version_code"]}\n' not in android:
         raise SystemExit('Android version/build differs from the native release.')

@@ -131,15 +131,18 @@ fn format6_snapshot_contains_encrypted_attachment_storage() {
     call(&session,json!({"op":"save","item":{"id":"identity","type":"identity","title":"Fixture","identity":{}}})).unwrap();
     let restored = tempfile::tempdir().unwrap();
     std::fs::create_dir(restored.path().join("vault")).unwrap();
+    let snap = directory.path().join("vault/before-capability-format6");
     for name in ["header.json", "vault.sqlite"] {
-        std::fs::copy(
-            directory
-                .path()
-                .join("vault/before-capability-format6")
-                .join(name),
-            restored.path().join("vault").join(name),
-        )
-        .unwrap();
+        std::fs::copy(snap.join(name), restored.path().join("vault").join(name)).unwrap();
+    }
+    let snap_blobs = snap.join("blobs");
+    if snap_blobs.is_dir() {
+        let dst_blobs = restored.path().join("vault/blobs");
+        std::fs::create_dir(&dst_blobs).unwrap();
+        for entry in std::fs::read_dir(&snap_blobs).unwrap() {
+            let entry = entry.unwrap();
+            std::fs::copy(entry.path(), dst_blobs.join(entry.file_name())).unwrap();
+        }
     }
     let restored_session = VaultSession::new(restored.path().to_string_lossy().into()).unwrap();
     call(

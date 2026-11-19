@@ -2,10 +2,13 @@
 // the host's footprint (tool/macos-nsh/memory.sh). Real-window runs only; with the
 // long-note fixture (examples/seed_long_note.rs) the pinned long note opens first.
 import { open, test } from "nsh/test";
+import { Vault } from "passwordvault/native";
 
 const PASSWORD = "synthetic-preview-password";
+const isSmoke = new Vault().directory.includes("pv-nsh-smoke-");
+const memoryTest = isSmoke ? test.skip : test;
 
-test("holds pages for memory sampling", async () => {
+memoryTest("holds pages for memory sampling", async () => {
   const app = await open("../App.tsx", { width: 1440, height: 960, platform: "macos" });
   await app.waitFor("id:unlock-password");
   await app.wait(8000); // locked

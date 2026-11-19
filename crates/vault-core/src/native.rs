@@ -2,6 +2,8 @@ use crate::*;
 mod capabilities;
 mod devices;
 mod history;
+mod note_blobs;
+mod note_bodies;
 mod notes;
 mod passkey_backups;
 mod passkeys;
@@ -92,8 +94,17 @@ fn save_document(
     vault_id: &str,
     doc: &Document,
 ) -> Result<()> {
+    save_document_with_history(conn, root, vault_id, doc, None)
+}
+fn save_document_with_history(
+    conn: &mut Connection,
+    root: &[u8; 32],
+    vault_id: &str,
+    doc: &Document,
+    meta: Option<&history::HistoryMeta>,
+) -> Result<()> {
     let tx = storage(conn.transaction())?;
-    save_document_row(&tx, root, vault_id, doc)?;
+    save_document_row_with_meta(&tx, root, vault_id, doc, meta)?;
     storage(tx.commit())?;
     Ok(())
 }
@@ -102,6 +113,15 @@ fn save_document_row(
     root: &[u8; 32],
     vault_id: &str,
     doc: &Document,
+) -> Result<()> {
+    save_document_row_with_meta(conn, root, vault_id, doc, None)
+}
+fn save_document_row_with_meta(
+    conn: &Connection,
+    root: &[u8; 32],
+    vault_id: &str,
+    doc: &Document,
+    meta: Option<&history::HistoryMeta>,
 ) -> Result<()> {
     let mut guarded = doc.clone();
     if relay::enabled(conn)? {
@@ -112,9 +132,11 @@ fn save_document_row(
         guarded.settings["entryHistoryEnabled"] = json!(true);
     }
     let doc = &guarded;
-    history::capture(conn, root, vault_id, doc)?;
+    history::capture_with_meta(conn, root, vault_id, doc, meta)?;
     relay::capture(conn, root, vault_id, doc)?;
-    let bytes = Zeroizing::new(serde_json::to_vec(doc).map_err(|_| VaultError::InvalidData)?);
+    let persisted = note_bodies::sync_and_strip(conn, root, vault_id, doc)?;
+    let bytes =
+        Zeroizing::new(serde_json::to_vec(&persisted).map_err(|_| VaultError::InvalidData)?);
     let sealed = seal(&subkey(root, b"document"), &bytes, vault_id.as_bytes())?;
     let encrypted = serde_json::to_vec(&sealed).map_err(|_| VaultError::InvalidData)?;
     storage(conn.execute("INSERT INTO vault_state(id,payload) VALUES(1,?1) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload",[encrypted]))?;
@@ -139,7 +161,7 @@ fn load_document(conn: &Connection, root: &[u8; 32], vault_id: &str) -> Result<D
     {
         return Err(VaultError::InvalidData);
     }
-    Ok(document)
+    note_bodies::hydrate(conn, root, vault_id, document)
 }
 
 impl DiskVault {
@@ -258,14 +280,22 @@ impl DiskVault {
         }
     }
     fn mutate(&mut self, f: impl FnOnce(&mut Document) -> Result<Value>) -> Result<Value> {
+        self.mutate_with_history(None, f)
+    }
+    fn mutate_with_history(
+        &mut self,
+        meta: Option<&history::HistoryMeta>,
+        f: impl FnOnce(&mut Document) -> Result<Value>,
+    ) -> Result<Value> {
         let open = self.open()?;
         let mut next = open.document.clone();
         let result = f(&mut next)?;
-        save_document(
+        save_document_with_history(
             &mut open.connection,
             &open.root,
             &open.header.vault_id,
             &next,
+            meta,
         )?;
         open.document = next;
         Ok(result)
@@ -447,6 +477,7 @@ impl DiskVault {
                 if ids.len() > 50 {
                     return Err(VaultError::InvalidData);
                 }
+                let vault_dir = self.directory.clone();
                 let open = self.open()?;
                 let item = open
                     .document
@@ -468,8 +499,13 @@ impl DiskVault {
                     if bytes_total > 24 * 1024 * 1024 {
                         return Err(VaultError::InvalidData);
                     }
-                    let bytes =
-                        notes::read(&open.connection, &open.root, &open.header.vault_id, meta)?;
+                    let bytes = notes::read(
+                        &vault_dir,
+                        &open.connection,
+                        &open.root,
+                        &open.header.vault_id,
+                        meta,
+                    )?;
                     attachments.push(share_attachment(
                         meta.name.clone(),
                         meta.mime.clone(),
@@ -481,6 +517,14 @@ impl DiskVault {
             "collect-note-attachments" if request["richNotes"] == true => {
                 self.collect_note_attachments()
             }
+            "note-attachments-status" => {
+                let vault_dir = self.directory.clone();
+                note_blobs::status(&vault_dir, &self.open()?.connection)
+            }
+            "note-attachments-list" => {
+                let note_id = string("noteId")?;
+                notes::list_note_attachments(&self.open()?.connection, note_id)
+            }
             "category-add" => {
                 self.mutate(|doc| Ok(json!({"name":doc.add_note_category(string("name")?)?})))
             }
@@ -490,6 +534,7 @@ impl DiskVault {
             "category-rename" => self.mutate(|doc| {
                 Ok(json!({"updated":doc.rename_note_category(string("name")?,string("to")?,string("time")?)?}))
             }),
+            "note-bodies-status" => note_bodies::status(&self.open()?.connection),
             "save" => {
                 // A summary lacks note structures; writing it back would drop them.
                 if request["item"]["noteSummary"] == true {
@@ -507,7 +552,16 @@ impl DiskVault {
                 let mut cleaned = request.clone();
                 cleaned["item"] = item.clone();
                 self.validate_note_save(&cleaned)?;
-                self.mutate(|doc| {
+                let item_id = item["id"].as_str().ok_or(VaultError::InvalidData)?.to_owned();
+                let history_meta = history::HistoryMeta::parse(&request["historyMeta"], Some(&item_id))?;
+                // AI writes and explicit milestones auto-enable history so every update is reversible.
+                if history_meta
+                    .as_ref()
+                    .is_some_and(|m| m.actor_type.as_deref() == Some("ai") || m.milestone)
+                {
+                    self.ensure_history_enabled()?;
+                }
+                self.mutate_with_history(history_meta.as_ref(), |doc| {
                     authorize_item_write(doc, &item)?;
                     if let Some(old) = doc.items.iter().find(|v| v["id"] == item["id"]) {
                         authorize_item_write(doc, old)?;
@@ -521,7 +575,7 @@ impl DiskVault {
                     &open.root,
                     &open.header.vault_id,
                     &open.document,
-                    item["id"].as_str().ok_or(VaultError::InvalidData)?,
+                    &item_id,
                 )
             }
             "remove" => self.remove_note_record(string("id")?),

@@ -39,18 +39,38 @@ fn marked(mut content: Vec<Value>, mark: Value) -> Vec<Value> {
     }
     content
 }
-fn attachment(url: &str, title: &str) -> Option<Value> {
-    let id = url.strip_prefix("pv-attachment://")?;
-    let bytes = URL_SAFE_NO_PAD
-        .decode(title.strip_prefix("pv-meta:")?)
-        .ok()?;
-    let n: Value = serde_json::from_slice(&bytes).ok()?;
-    if !matches!(n["type"].as_str(), Some("vaultImage" | "vaultAttachment"))
-        || n["attrs"]["attachmentId"].as_str() != Some(id)
-    {
-        return None;
+fn attachment(url: &str, title: &str, label: &str, is_image: bool) -> Option<Value> {
+    if let Some(id) = url.strip_prefix("pv-attachment://") {
+        let bytes = URL_SAFE_NO_PAD
+            .decode(title.strip_prefix("pv-meta:")?)
+            .ok()?;
+        let n: Value = serde_json::from_slice(&bytes).ok()?;
+        if !matches!(n["type"].as_str(), Some("vaultImage" | "vaultAttachment"))
+            || n["attrs"]["attachmentId"].as_str() != Some(id)
+        {
+            return None;
+        }
+        return Some(n);
     }
-    Some(n)
+    if let Some(id) = url.strip_prefix("pv-asset://") {
+        let id = id.trim();
+        if id.is_empty() || id.len() > 128 || id.chars().any(char::is_control) {
+            return None;
+        }
+        let name = if label.trim().is_empty() { "attachment" } else { label.trim() };
+        return Some(if is_image {
+            json!({
+                "type": "vaultImage",
+                "attrs": { "attachmentId": id, "name": name, "mime": "image/png", "width": 600, "caption": "" }
+            })
+        } else {
+            json!({
+                "type": "vaultAttachment",
+                "attrs": { "attachmentId": id, "name": name, "mime": "application/octet-stream", "size": 0 }
+            })
+        });
+    }
+    None
 }
 fn convert<'a>(n: &'a AstNode<'a>) -> Vec<Value> {
     let data = n.data.borrow();
@@ -174,22 +194,15 @@ fn convert<'a>(n: &'a AstNode<'a>) -> Vec<Value> {
         NodeValue::Emph => return marked(children(n), json!({"type":"italic"})),
         NodeValue::Strikethrough => return marked(children(n), json!({"type":"strike"})),
         NodeValue::Link(l) | NodeValue::Image(l) => {
-            if let Some(a) = attachment(&l.url, &l.title) {
+            let is_image = matches!(&data.value, NodeValue::Image(_));
+            let label = children(n).iter().map(plain).collect::<String>();
+            if let Some(a) = attachment(&l.url, &l.title, &label, is_image) {
                 a
-            } else if matches!(&data.value, NodeValue::Image(_)) {
-                text(format!(
-                    "![{}]({})",
-                    children(n).iter().map(plain).collect::<String>(),
-                    l.url
-                ))
+            } else if is_image {
+                text(format!("![{label}]({})", l.url))
             } else {
                 if !l.title.is_empty() {
-                    return vec![text(format!(
-                        "[{}]({} \"{}\")",
-                        children(n).iter().map(plain).collect::<String>(),
-                        l.url,
-                        l.title
-                    ))];
+                    return vec![text(format!("[{label}]({} \"{}\")", l.url, l.title))];
                 }
                 let attrs = json!({"href":l.url});
                 return marked(children(n), json!({"type":"link", "attrs":attrs}));
@@ -561,6 +574,392 @@ fn html_page(markdown: &str, title: &str) -> String {
     )
 }
 
+fn readable_inline(n: &Value, in_table: bool) -> String {
+    if n["type"] == "hardBreak" {
+        return if in_table { " ".into() } else { "  \n".into() };
+    }
+    if n["type"] != "text" {
+        return readable_block(n);
+    }
+    let raw = n["text"].as_str().unwrap_or("");
+    let marks = n["marks"].as_array();
+    if marks.is_some_and(|m| m.iter().any(|x| x["type"] == "code")) {
+        return code(raw);
+    }
+    let mut out = if in_table {
+        raw.replace('|', "\\|")
+    } else {
+        raw.to_owned()
+    };
+    for mark in marks.into_iter().flatten() {
+        match mark["type"].as_str().unwrap_or("") {
+            "bold" => out = format!("**{out}**"),
+            "italic" => out = format!("*{out}*"),
+            "strike" => out = format!("~~{out}~~"),
+            "link" => {
+                let href = mark["attrs"]["href"].as_str().unwrap_or("");
+                if !href.is_empty() {
+                    out = format!("[{out}]({href})");
+                }
+            }
+            _ => {}
+        }
+    }
+    out
+}
+
+fn readable_inlines(n: &Value, in_table: bool) -> String {
+    content(n)
+        .iter()
+        .map(|c| readable_inline(c, in_table))
+        .collect()
+}
+
+fn prefix_item(prefix: &str, body: &str) -> String {
+    let indent = if prefix.starts_with("- [") {
+        "  ".to_owned()
+    } else {
+        " ".repeat(prefix.len())
+    };
+    let mut lines = body.split('\n');
+    format!(
+        "{prefix}{}{}",
+        lines.next().unwrap_or(""),
+        lines
+            .map(|l| if l.is_empty() {
+                "\n".to_owned()
+            } else {
+                format!("\n{indent}{l}")
+            })
+            .collect::<String>()
+    )
+}
+
+fn readable_block(n: &Value) -> String {
+    let join_children = || {
+        content(n)
+            .iter()
+            .map(readable_block)
+            .filter(|s| !s.is_empty())
+            .collect::<Vec<_>>()
+            .join("\n\n")
+    };
+    match n["type"].as_str().unwrap_or("") {
+        "doc" | "listItem" | "taskItem" => join_children(),
+        "paragraph" => readable_inlines(n, false),
+        "heading" => format!(
+            "{} {}",
+            "#".repeat(n["attrs"]["level"].as_u64().unwrap_or(1).clamp(1, 6) as usize),
+            readable_inlines(n, false)
+        ),
+        "blockquote" => join_children()
+            .lines()
+            .map(|l| if l.is_empty() { ">".into() } else { format!("> {l}") })
+            .collect::<Vec<_>>()
+            .join("\n"),
+        "bulletList" => content(n)
+            .iter()
+            .map(|it| prefix_item("- ", &readable_block(it)))
+            .collect::<Vec<_>>()
+            .join("\n"),
+        "orderedList" => {
+            let start = n["attrs"]["start"].as_u64().unwrap_or(1);
+            content(n)
+                .iter()
+                .enumerate()
+                .map(|(i, it)| prefix_item(&format!("{}. ", start + i as u64), &readable_block(it)))
+                .collect::<Vec<_>>()
+                .join("\n")
+        }
+        "taskList" => content(n)
+            .iter()
+            .map(|it| {
+                let mark = if it["attrs"]["checked"] == true {
+                    "- [x] "
+                } else {
+                    "- [ ] "
+                };
+                prefix_item(mark, &readable_block(it))
+            })
+            .collect::<Vec<_>>()
+            .join("\n"),
+        "codeBlock" => {
+            let lang = n["attrs"]["language"].as_str().unwrap_or("");
+            let body: String = content(n)
+                .iter()
+                .map(|c| c["text"].as_str().unwrap_or(""))
+                .collect();
+            let fence = "`".repeat(body.split(|c| c != '`').map(str::len).max().unwrap_or(0).max(2) + 1);
+            format!("{fence}{lang}\n{body}\n{fence}")
+        }
+        "horizontalRule" => "---".into(),
+        "table" => {
+            let rows: Vec<Vec<String>> = content(n)
+                .iter()
+                .map(|row| {
+                    content(row)
+                        .iter()
+                        .map(|cell| {
+                            content(cell)
+                                .iter()
+                                .map(|c| readable_inlines(c, true))
+                                .collect::<Vec<_>>()
+                                .join(" ")
+                                .replace('\n', " ")
+                        })
+                        .collect()
+                })
+                .collect();
+            let Some(head) = rows.first() else {
+                return String::new();
+            };
+            let line = |r: &[String]| format!("| {} |", r.join(" | "));
+            let sep = format!("| {} |", vec!["---"; head.len()].join(" | "));
+            let mut out = vec![line(head), sep];
+            for row in rows.iter().skip(1) {
+                out.push(line(row));
+            }
+            out.join("\n")
+        }
+        "vaultImage" | "vaultAttachment" => {
+            let id = n["attrs"]["attachmentId"].as_str().unwrap_or("");
+            let name = n["attrs"]["name"].as_str().unwrap_or("attachment");
+            let bang = if n["type"] == "vaultImage" { "!" } else { "" };
+            format!("{bang}[{name}](pv-asset://{id})")
+        }
+        _ => plain(n),
+    }
+}
+
+fn collect_attachment_nodes(node: &Value, map: &mut std::collections::HashMap<String, Value>) {
+    if matches!(node["type"].as_str(), Some("vaultImage" | "vaultAttachment")) {
+        if let Some(id) = node["attrs"]["attachmentId"].as_str() {
+            map.insert(id.to_owned(), node.clone());
+        }
+    }
+    if let Some(arr) = node["content"].as_array() {
+        for c in arr {
+            collect_attachment_nodes(c, map);
+        }
+    }
+}
+
+fn apply_attachment_attrs(
+    node: &mut Value,
+    known: &std::collections::HashMap<String, Value>,
+    metas: &std::collections::HashMap<String, Value>,
+) {
+    if matches!(node["type"].as_str(), Some("vaultImage" | "vaultAttachment")) {
+        if let Some(id) = node["attrs"]["attachmentId"].as_str().map(str::to_owned) {
+            if let Some(prev) = known.get(&id) {
+                *node = prev.clone();
+                return;
+            }
+            if let Some(meta) = metas.get(&id) {
+                let mime = meta["mime"]
+                    .as_str()
+                    .unwrap_or("application/octet-stream");
+                let name = meta["name"]
+                    .as_str()
+                    .or_else(|| node["attrs"]["name"].as_str())
+                    .unwrap_or("attachment");
+                let size = meta["size"].as_u64().unwrap_or(0);
+                if mime.starts_with("image/") {
+                    *node = json!({
+                        "type": "vaultImage",
+                        "attrs": { "attachmentId": id, "name": name, "mime": mime, "width": 600, "caption": "" }
+                    });
+                } else {
+                    *node = json!({
+                        "type": "vaultAttachment",
+                        "attrs": { "attachmentId": id, "name": name, "mime": mime, "size": size }
+                    });
+                }
+                return;
+            }
+        }
+    }
+    if let Some(arr) = node["content"].as_array_mut() {
+        for c in arr {
+            apply_attachment_attrs(c, known, metas);
+        }
+    }
+}
+
+pub(crate) fn hydrate_attachment_nodes(
+    doc: &mut Value,
+    previous_doc: Option<&Value>,
+    attachment_metas: &[Value],
+) {
+    let mut known = std::collections::HashMap::new();
+    if let Some(prev) = previous_doc {
+        collect_attachment_nodes(prev, &mut known);
+    }
+    let mut metas = std::collections::HashMap::new();
+    for m in attachment_metas {
+        if let Some(id) = m["id"].as_str() {
+            metas.insert(id.to_owned(), m.clone());
+        }
+    }
+    if !known.is_empty() || !metas.is_empty() {
+        apply_attachment_attrs(doc, &known, &metas);
+    }
+}
+
+pub(crate) fn item_to_markdown(item: &Value) -> String {
+    if item["noteFormat"] == "rich-v1" && item["noteDocument"]["type"] == "doc" {
+        return readable_block(&item["noteDocument"]);
+    }
+    item["note"].as_str().unwrap_or("").to_owned()
+}
+
+pub(crate) fn parse_markdown_patch(markdown: &str) -> Result<(String, Value), String> {
+    if markdown.len() > LIMIT {
+        return Err("NoteTooLarge".into());
+    }
+    let doc = try_parse(markdown)?;
+    Ok((plain(&doc), doc))
+}
+
+fn parse_heading_line(line: &str) -> Option<(usize, &str)> {
+    let trimmed = line.trim_start();
+    let hashes = trimmed.bytes().take_while(|b| *b == b'#').count();
+    if !(1..=6).contains(&hashes) {
+        return None;
+    }
+    let rest = trimmed.get(hashes..)?;
+    if !rest.starts_with(' ') && !rest.starts_with('\t') {
+        return None;
+    }
+    Some((hashes, rest.trim().trim_end_matches('#').trim()))
+}
+
+fn find_section_bounds(lines: &[&str], heading: &str) -> Option<(usize, usize, usize)> {
+    let target = heading.trim().trim_start_matches('#').trim().to_lowercase();
+    if target.is_empty() {
+        return None;
+    }
+    let mut in_fence = false;
+    let mut start = None;
+    let mut level = 0;
+    for (idx, line) in lines.iter().enumerate() {
+        let trimmed = line.trim_start();
+        if trimmed.starts_with("```") || trimmed.starts_with("~~~") {
+            in_fence = !in_fence;
+            continue;
+        }
+        if in_fence {
+            continue;
+        }
+        if let Some((lvl, text)) = parse_heading_line(line) {
+            if let Some(s) = start {
+                if lvl <= level {
+                    return Some((s, idx, level));
+                }
+            } else if text.to_lowercase() == target {
+                start = Some(idx);
+                level = lvl;
+            }
+        }
+    }
+    start.map(|s| (s, lines.len(), level))
+}
+
+pub(crate) fn extract_section(markdown: &str, heading: &str) -> Option<String> {
+    let lines: Vec<&str> = markdown.lines().collect();
+    let (start, end, _) = find_section_bounds(&lines, heading)?;
+    Some(lines[start..end].join("\n").trim_end().to_owned())
+}
+
+pub(crate) fn replace_section(
+    markdown: &str,
+    heading: &str,
+    replacement: &str,
+) -> Result<String, String> {
+    let lines: Vec<&str> = markdown.lines().collect();
+    let (start, end, level) =
+        find_section_bounds(&lines, heading).ok_or_else(|| "SectionNotFound".to_string())?;
+    let body = replacement.trim();
+    let has_own_heading = body
+        .lines()
+        .next()
+        .and_then(parse_heading_line)
+        .is_some_and(|(_, t)| {
+            t.eq_ignore_ascii_case(heading.trim().trim_start_matches('#').trim())
+        });
+    let mut out = Vec::new();
+    out.extend(lines[..start].iter().copied().map(str::to_owned));
+    if has_own_heading {
+        out.push(body.to_owned());
+    } else {
+        out.push(format!(
+            "{} {}",
+            "#".repeat(level),
+            heading.trim().trim_start_matches('#').trim()
+        ));
+        if !body.is_empty() {
+            out.push(String::new());
+            out.push(body.to_owned());
+        }
+    }
+    if end < lines.len() {
+        out.push(String::new());
+        out.extend(lines[end..].iter().copied().map(str::to_owned));
+    }
+    Ok(out.join("\n").trim_end().to_owned())
+}
+
+pub(crate) fn append_markdown(
+    markdown: &str,
+    section: Option<&str>,
+    addition: &str,
+) -> Result<String, String> {
+    let add = addition.trim();
+    if add.is_empty() {
+        return Err("EmptyContent".into());
+    }
+    let Some(heading) = section.map(str::trim).filter(|s| !s.is_empty()) else {
+        let base = markdown.trim_end();
+        if base.is_empty() {
+            return Ok(add.to_owned());
+        }
+        let table_join = base.lines().last().is_some_and(|l| l.trim_start().starts_with('|'))
+            && add.starts_with('|');
+        return Ok(format!(
+            "{base}{}{add}",
+            if table_join { "\n" } else { "\n\n" }
+        ));
+    };
+    let lines: Vec<&str> = markdown.lines().collect();
+    let Some((_, end, _)) = find_section_bounds(&lines, heading) else {
+        let clean_heading = heading.trim_start_matches('#').trim();
+        let base = markdown.trim_end();
+        return Ok(if base.is_empty() {
+            format!("## {clean_heading}\n\n{add}")
+        } else {
+            format!("{base}\n\n## {clean_heading}\n\n{add}")
+        });
+    };
+    let mut insert_at = end;
+    while insert_at > 0 && lines[insert_at - 1].trim().is_empty() {
+        insert_at -= 1;
+    }
+    let prev_line = if insert_at > 0 { lines[insert_at - 1] } else { "" };
+    let tight_join = (prev_line.trim_start().starts_with('|') && add.starts_with('|'))
+        || (prev_line.trim_start().starts_with("- ") && add.starts_with("- "));
+    let mut out = Vec::new();
+    out.extend(lines[..insert_at].iter().copied().map(str::to_owned));
+    if !tight_join {
+        out.push(String::new());
+    }
+    out.push(add.to_owned());
+    if end < lines.len() {
+        out.push(String::new());
+        out.extend(lines[end..].iter().copied().map(str::to_owned));
+    }
+    Ok(out.join("\n").trim_end().to_owned())
+}
+
 /// Markdown conversion for the lightweight native note editor. No network or file access.
 #[module]
 pub struct NoteMarkdown;
@@ -569,6 +968,17 @@ impl NoteMarkdown {
     /// Returns JSON {markdown,lossless}. A false gate must never be edited/saved.
     pub fn to_markdown(note_document_json: String) -> Result<String, String> {
         to_markdown(&note_document_json).map(|v| v.to_string())
+    }
+    /// Returns human- and Agent-readable GFM Markdown without punctuation backslash escapes.
+    pub fn to_readable_markdown(note_document_json: String) -> Result<String, String> {
+        if note_document_json.len() > LIMIT {
+            return Err("NoteTooLarge".into());
+        }
+        let doc: Value = serde_json::from_str(&note_document_json).map_err(|_| "InvalidData")?;
+        if doc["type"] != "doc" {
+            return Err("InvalidData".into());
+        }
+        Ok(readable_block(&doc))
     }
     /// A standalone HTML page for "save as HTML". Raw HTML in the source is omitted
     /// (comrak's safe default), so an export cannot carry scripts or embedded markup.
@@ -584,6 +994,20 @@ impl NoteMarkdown {
             return Err("NoteTooLarge".into());
         }
         let doc = try_parse(&markdown)?;
+        Ok(json!({"text":plain(&doc),"noteDocument":doc}).to_string())
+    }
+    /// Parses GFM locally while preserving existing attachment attrs for clean `pv-asset://` links.
+    pub fn from_markdown_preserving(
+        markdown: String,
+        previous_note_document_json: String,
+    ) -> Result<String, String> {
+        if markdown.len() > LIMIT {
+            return Err("NoteTooLarge".into());
+        }
+        let mut doc = try_parse(&markdown)?;
+        if let Ok(prev) = serde_json::from_str::<Value>(&previous_note_document_json) {
+            hydrate_attachment_nodes(&mut doc, Some(&prev), &[]);
+        }
         Ok(json!({"text":plain(&doc),"noteDocument":doc}).to_string())
     }
 }
@@ -716,5 +1140,30 @@ mod tests {
         // Edge whitespace survives as text, not as an indented code block.
         let md = to_markdown(&json!({"type":"doc","content":[p("    four")]}).to_string()).unwrap();
         assert_eq!(plain(&parse(md["markdown"].as_str().unwrap())), "    four");
+    }
+    #[test]
+    fn readable_markdown_and_section_patching_preserve_clean_syntax() {
+        let src = "## 持仓明细\n\n| 日期 | 标的 |\n| --- | --- |\n| 2026-10-01 | [[年度复盘]] |\n\n## 调仓日志\n\n- 2026-10-01: 初始建仓";
+        let (_, doc) = parse_markdown_patch(src).unwrap();
+        let readable = readable_block(&doc);
+        assert!(readable.contains("2026-10-01"));
+        assert!(readable.contains("[[年度复盘]]"));
+        assert!(!readable.contains("\\-"));
+        assert!(!readable.contains("\\[\\["));
+
+        let extracted = extract_section(&readable, "持仓明细").unwrap();
+        assert!(extracted.contains("[[年度复盘]]"));
+        assert!(!extracted.contains("调仓日志"));
+
+        let appended =
+            append_markdown(&readable, Some("调仓日志"), "- 2026-10-05: 增持").unwrap();
+        assert!(appended.contains("- 2026-10-01: 初始建仓\n- 2026-10-05: 增持"));
+
+        let replaced =
+            replace_section(&appended, "持仓明细", "| 日期 | 标的 |\n| --- | --- |\n| 2026-10-05 | NVDA |")
+                .unwrap();
+        assert!(replaced.contains("## 持仓明细"));
+        assert!(replaced.contains("| 2026-10-05 | NVDA |"));
+        assert!(replaced.contains("## 调仓日志"));
     }
 }

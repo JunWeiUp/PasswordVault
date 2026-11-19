@@ -58,6 +58,9 @@ const paths = {
   archive: rect(3, 4, 18, 5, 1) + "M5 9v11h14V9M10 13h4",
   passkey: circle(9, 8, 4) + "M3 20a6 6 0 0 1 9.5-4.9M17 12a2.5 2.5 0 1 0 0 5v4l1.5-1 1.5 1v-4",
   paper: "M14 3H6v18h12V7zM14 3v4h4",
+  pause: rect(6, 4, 4, 16, 1) + rect(14, 4, 4, 16, 1),
+  play: "M7 4l13 8-13 8z",
+  filter: "M3 5h18l-7 8v6l-4-2v-4z",
 } as const;
 
 export type IconName = keyof typeof paths;

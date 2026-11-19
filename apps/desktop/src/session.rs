@@ -66,6 +66,22 @@ mod remote {
                     "attachment-read" => local
                         .read_note_attachment(text("noteId")?, text("id")?)
                         .map(|data| json!(STANDARD.encode(data))),
+                    "attachment-import-file" => local
+                        .import_note_attachment_file(
+                            text("noteId")?,
+                            text("path")?,
+                            text("name")?,
+                            text("mime")?,
+                        )
+                        .map(Value::String),
+                    "attachment-export-file" => local
+                        .export_note_attachment_file(
+                            text("noteId")?,
+                            text("id")?,
+                            text("destPath")?,
+                            args["readonly"] == true,
+                        )
+                        .map(Value::String),
                     "attachment-discard" => local
                         .discard_note_attachment(text("noteId")?, text("id")?)
                         .map(|_| Value::Null),
@@ -97,6 +113,7 @@ mod remote {
         pub fn command(&self, request: String) -> Result<String> {
             self.string("command", json!({"request":request}))
         }
+        #[allow(dead_code)] // Used by pv-background browser bridge.
         pub fn authorized_browser_command(
             &self,
             grant: Vec<u8>,
@@ -107,9 +124,11 @@ mod remote {
                 json!({"grant":grant,"request":request}),
             )
         }
+        #[allow(dead_code)] // Used by pv-background browser bridge.
         pub fn background_save(&self, grant: Vec<u8>, request: String) -> Result<String> {
             self.string("background-save", json!({"grant":grant,"request":request}))
         }
+        #[allow(dead_code)] // Used by pv-background auto-unlock.
         pub fn unlock_desktop_grant(&self, grant: Vec<u8>) -> Result<()> {
             self.invoke("unlock-grant", json!({"grant":grant}))
                 .map(|_| ())
@@ -125,6 +144,7 @@ mod remote {
                 ))
                 .map_err(|_| VaultError::InvalidData)
         }
+        #[allow(dead_code)] // Kept for small-buffer attachment tests and compatibility.
         pub fn import_note_attachment(
             &self,
             note_id: String,
@@ -141,6 +161,30 @@ mod remote {
             STANDARD
                 .decode(self.string("attachment-read", json!({"noteId":note_id,"id":id}))?)
                 .map_err(|_| VaultError::InvalidData)
+        }
+        pub fn import_note_attachment_file(
+            &self,
+            note_id: String,
+            path: String,
+            name: String,
+            mime: String,
+        ) -> Result<String> {
+            self.string(
+                "attachment-import-file",
+                json!({"noteId":note_id,"path":path,"name":name,"mime":mime}),
+            )
+        }
+        pub fn export_note_attachment_file(
+            &self,
+            note_id: String,
+            id: String,
+            dest_path: String,
+            readonly: bool,
+        ) -> Result<String> {
+            self.string(
+                "attachment-export-file",
+                json!({"noteId":note_id,"id":id,"destPath":dest_path,"readonly":readonly}),
+            )
         }
         pub fn discard_note_attachment(&self, note_id: String, id: String) -> Result<()> {
             self.invoke("attachment-discard", json!({"noteId":note_id,"id":id}))

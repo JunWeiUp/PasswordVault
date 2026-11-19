@@ -161,7 +161,7 @@ fn old_clients_cannot_downgrade_rich_notes_or_export_incomplete_backups() {
             "note".into(),
             "oversize".into(),
             "text/plain".into(),
-            vec![0; 25 * 1024 * 1024 + 1]
+            vec![0; 100 * 1024 * 1024 + 1]
         )
         .is_err());
     call(&s, json!({"op":"remove","id":"note","richNotes":true})).unwrap();

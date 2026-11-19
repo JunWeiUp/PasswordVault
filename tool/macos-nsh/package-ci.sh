@@ -6,7 +6,7 @@ cd "$root"
 source tool/cargo_fork_env.sh
 bash tool/nsh_mac.sh package App.tsx --target macos
 channel="$(sed -n 's/^channel = "\(.*\)"/\1/p' apps/desktop/rust-toolchain.toml)"
-RUSTUP_TOOLCHAIN="$channel" "$CARGO" build --manifest-path apps/desktop/Cargo.toml --release --bin pv-browser-host --bin pv-mcp --locked
+RUSTUP_TOOLCHAIN="$channel" "$CARGO" build --manifest-path apps/desktop/Cargo.toml --release -p pv-browser-host -p pv-mcp --locked
 RUSTUP_TOOLCHAIN="$channel" "$CARGO" build --manifest-path apps/desktop/Cargo.toml --release --no-default-features --features background-service --bin pv-background --locked
 app="$root/apps/desktop/.nsh/out/PasswordVault.app"
 bash tool/macos-nsh/icon.sh "$app"
