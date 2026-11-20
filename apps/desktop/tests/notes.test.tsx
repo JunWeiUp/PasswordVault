@@ -91,6 +91,14 @@ test("legacy blank paragraphs stay intact on opening", async () => {
 
 import { createNoteSession, equivalent, storedDocument } from "../ui/notes/rich-session";
 import { command, undo, redo, setTextSelection, insertTable } from "nsh/base";
+import {
+  activeLineAt,
+  extractLineAnchors,
+  gutterMetrics,
+  measureLineAnchors,
+  nodeSize,
+  sameMeasuredLines,
+} from "../ui/notes/line-numbers";
 
 test("official session preserves formatting, tables and attachment references", () => {
   const doc = clone(rich); delete doc.customVersion;
@@ -141,4 +149,132 @@ test("adjacent Markdown text spans normalize without relaxing content preservati
   expect(equivalent(split, changedMarks)).toBe(false);
   const unknown = clone(split); (unknown.content![0].content![0] as any).futureMetadata = 42;
   expect(equivalent(split, unknown)).toBe(false);
+});
+
+test("line-number helpers compute exact ProseMirror anchors, gutter widths and active lines", () => {
+  const doc: Node = {
+    type: "doc",
+    content: [
+      { type: "heading", attrs: { level: 1 }, content: [{ type: "text", text: "标题😀" }] }, // pos 0, size 2+4=6, content 1..5
+      { type: "paragraph" }, // pos 6, size 2, content 7..7
+      { type: "paragraph", content: [{ type: "text", text: "第一" }, { type: "hardBreak" }, { type: "text", text: "第二" }] }, // pos 8, size 2+5=7
+      { type: "codeBlock", content: [{ type: "text", text: "a\nb\nc" }] }, // pos 15, size 2+5=7
+      { type: "bulletList", content: [{ type: "listItem", content: [{ type: "paragraph", content: [{ type: "text", text: "项" }] }] }] },
+      { type: "horizontalRule" },
+      {
+        type: "table",
+        content: [
+          { type: "tableRow", content: [{ type: "tableHeader", content: [{ type: "paragraph", content: [{ type: "text", text: "H1" }] }] }, { type: "tableHeader", content: [{ type: "paragraph", content: [{ type: "text", text: "H2" }] }] }] },
+          { type: "tableRow", content: [{ type: "tableCell", content: [{ type: "paragraph", content: [{ type: "text", text: "A" }] }] }, { type: "tableCell", content: [{ type: "paragraph", content: [{ type: "text", text: "B" }] }] }] },
+        ],
+      },
+      { type: "vaultImage", attrs: { attachmentId: "img-1", name: "photo.png" } },
+    ],
+  };
+
+  expect(nodeSize(doc.content![0])).toBe(6);
+  expect(nodeSize(doc.content![1])).toBe(2);
+  expect(nodeSize(doc.content![5])).toBe(1);
+
+  const anchors = extractLineAnchors(doc);
+  // 1 heading + 1 blank para + 2 hardBreak lines + 3 code lines + 1 list item + 1 hr + 2 table rows + 1 image = 12
+  expect(anchors.length).toBe(12);
+  expect(anchors[0]).toMatchObject({ line: 1, pos: 1, from: 1, to: 5, measure: "caret" });
+  expect(anchors[1]).toMatchObject({ line: 2, pos: 7, from: 7, to: 7, measure: "caret" });
+  expect(anchors[2]).toMatchObject({ line: 3, pos: 9, from: 9, to: 11, measure: "caret" });
+  expect(anchors[3]).toMatchObject({ line: 4, pos: 12, from: 12, to: 14, measure: "caret" });
+  expect(anchors[4]).toMatchObject({ line: 5, pos: 16, from: 16, to: 17, measure: "caret" });
+  expect(anchors[5]).toMatchObject({ line: 6, pos: 18, from: 18, to: 19, measure: "caret" });
+  expect(anchors[6]).toMatchObject({ line: 7, pos: 20, from: 20, to: 21, measure: "caret" });
+  expect(anchors[8]).toMatchObject({ line: 9, measure: "node" });
+  expect(anchors[11]).toMatchObject({ line: 12, measure: "node" });
+
+  // Measure with simulated rects, including tall image clamping, thin HR centering and same-y dedup.
+  const measured = measureLineAnchors(
+    [
+      { line: 1, pos: 1, from: 1, to: 5, measure: "caret" },
+      { line: 2, pos: 6, from: 6, to: 6, measure: "caret" }, // same y as line 1 -> deduped
+      { line: 3, pos: 8, from: 8, to: 9, measure: "node" }, // thin rule
+      { line: 4, pos: 10, from: 10, to: 11, measure: "node" }, // tall image
+    ],
+    {
+      coordsAtPos: (pos) => (pos <= 6 ? { x: 47, y: 8, width: 0, height: 25 } : null),
+      nodeRect: (pos) =>
+        pos === 8 ? { x: 47, y: 50, width: 600, height: 1 } : { x: 47, y: 80, width: 400, height: 240 },
+    },
+    25,
+  );
+  expect(measured.length).toBe(3);
+  expect(measured[0]).toEqual({ line: 1, top: 8, height: 25, from: 1, to: 6 });
+  expect(measured[1]).toEqual({ line: 2, top: 38, height: 25, from: 8, to: 9 });
+  expect(measured[2]).toEqual({ line: 3, top: 80, height: 25, from: 10, to: 11 });
+  expect(sameMeasuredLines(measured, clone(measured))).toBe(true);
+  expect(activeLineAt(measured, 4)).toBe(1);
+  expect(activeLineAt(measured, 8)).toBe(2);
+  expect(activeLineAt(measured, 10)).toBe(3);
+
+  const codeAnchors = extractLineAnchors({
+    type: "doc",
+    content: [{ type: "codeBlock", content: [{ type: "text", text: "a\nb\nc" }] }],
+  });
+  const codeMeasured = measureLineAnchors(
+    codeAnchors,
+    {
+      coordsAtPos: (pos) => ({ x: 47, y: 20 + Math.floor((pos - 1) / 2) * 21, width: 0, height: 21 }),
+      nodeRect: () => null,
+    },
+    25,
+  );
+  expect(codeMeasured.map((r) => `${r.line}:${r.top}`)).toEqual(["1:20", "2:41", "3:62"]);
+
+  const m2 = gutterMetrics(9, (n) => n);
+  const m3 = gutterMetrics(120, (n) => n);
+  const m4 = gutterMetrics(1500, (n) => n);
+  expect(m2.digits).toBe(2);
+  expect(m3.digits).toBe(3);
+  expect(m4.digits).toBe(4);
+  expect(m3.contentPaddingLeft).toBeGreaterThan(m2.contentPaddingLeft);
+  expect(m4.contentPaddingLeft).toBeGreaterThan(m3.contentPaddingLeft);
+});
+
+test("RichNoteEditor shows line numbers and toggles them off and on cleanly", async () => {
+  const app = await open("../ui/notes/TestHarness.tsx", { width: 900, height: 900, platform: "macos" });
+  await app.waitFor("id:note-rich-editor");
+  await app.waitFor("id:note-line-gutter");
+  await app.waitFor("id:note-line-num-1");
+
+  // Multi-line fixture ("旧版示例") displays sequential line numbers for paragraphs and blank lines.
+  await app.press("text:旧版示例");
+  await app.waitFor("text:第一行");
+  await app.waitFor("id:note-line-num-4");
+  expect(app.shows("id:note-line-num-1")).toBe(true);
+  expect(app.shows("id:note-line-num-2")).toBe(true);
+  expect(app.shows("id:note-line-num-3")).toBe(true);
+  expect(app.shows("id:note-line-num-4")).toBe(true);
+
+  // Toggle line numbers OFF via toolbar button.
+  await app.press("id:note-line-numbers-toggle");
+  await app.waitFor("id:note-line-gutter", { state: "gone" });
+  expect(app.shows("id:note-line-num-1")).toBe(false);
+  expect(app.storage().noteLineNumbers).toBe("0");
+
+  // Toggle line numbers back ON via toolbar button.
+  await app.press("id:note-line-numbers-toggle");
+  await app.waitFor("id:note-line-gutter");
+  await app.waitFor("id:note-line-num-4");
+  expect(app.storage().noteLineNumbers).toBe("1");
+
+  // Multi-line wrapped paragraph + blank line + 3-line codeBlock + trailing paragraph.
+  // In headless mode (no CoreText TextLayout), codeBlock reports a single block y so dedup yields 5 non-overlapping lines.
+  await app.press("text:多行代码示例");
+  await app.waitFor("text:账号与接口说明");
+  await app.waitFor("id:note-line-num-5");
+  expect(app.shows("id:note-line-num-1")).toBe(true);
+  expect(app.shows("id:note-line-num-5")).toBe(true);
+
+  // Narrow viewport forces re-wrap; gutter and all line numbers stay rendered cleanly.
+  await app.setViewport(480, 900);
+  await app.wait(120);
+  expect(app.shows("id:note-line-gutter")).toBe(true);
+  expect(app.shows("id:note-line-num-5")).toBe(true);
 });

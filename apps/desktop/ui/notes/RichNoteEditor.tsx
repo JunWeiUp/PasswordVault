@@ -4,8 +4,17 @@ import { Menu } from "nsh/desktop";
 import { Attachments, Files, NoteMarkdown, type Vault } from "passwordvault/native";
 import { Icon, type IconName } from "../icons";
 import { Btn, Row, T } from "../kit";
-import { c, fs, MONO } from "../theme";
+import { noteLineNumbers, setNoteLineNumbers } from "../preferences";
+import { c, fs, MONO, textScale } from "../theme";
 import { bumpNoteAssets } from "./NoteAssetsPanel";
+import {
+  activeLineAt,
+  extractLineAnchors,
+  gutterMetrics,
+  measureLineAnchors,
+  sameMeasuredLines,
+  type MeasuredLine,
+} from "./line-numbers";
 import { patchFor, clone, documentFor, type Node, type Note, type Patch } from "./model";
 import { project } from "./projection";
 import { registerNoteCapture } from "./capture";
@@ -18,17 +27,72 @@ export type RichNoteEditorProps = {
   vault?: Vault;
   wikilinkTargets?: string[];
   onMilestone?: () => void;
+  showLineNumbers?: boolean;
+  onToggleLineNumbers?: () => void;
 };
 export function RichNoteEditor(props: RichNoteEditorProps) {
   const session = signal<ReturnType<typeof createNoteSession> | null>(null);
   const error = signal(""); const blocked = signal(false); const revision = signal(0);
   const panel = signal<"link" | "file" | "find" | "wikilink" | null>(null);
   const link = signal(""); const file = signal(""); const find = signal(""); const wikiQuery = signal(""); const busy = signal(false);
+  const measuredLines = signal<MeasuredLine[]>([]);
+  const anchorCount = signal(1);
+  const selectionHead = signal<number | null>(null);
   let owner = "", initialized = false, origin: Note, alive = true, generation = 0;
-  let last: Node | undefined, stop: (() => void) | undefined;
+  let last: Node | undefined, stop: (() => void) | undefined, stopSel: (() => void) | undefined;
+  let measureTimer: ReturnType<typeof setTimeout> | null = null;
+  let retryTimer: ReturnType<typeof setTimeout> | null = null;
   const dismiss = () => panel.set(null);
+  const showLineNumbers = () => props.showLineNumbers ?? noteLineNumbers();
+  const toggleLineNumbers = () => {
+    if (props.onToggleLineNumbers) props.onToggleLineNumbers();
+    else setNoteLineNumbers(!showLineNumbers());
+  };
+  const clearMeasureTimers = () => {
+    if (measureTimer !== null) { clearTimeout(measureTimer); measureTimer = null; }
+    if (retryTimer !== null) { clearTimeout(retryTimer); retryTimer = null; }
+  };
+  const measureNow = (allowRetry = false) => {
+    const editor = session();
+    if (!alive || !editor || !showLineNumbers()) {
+      if (measuredLines().length > 0) measuredLines.set([]);
+      return;
+    }
+    try {
+      const doc = editor.getJSON() as Node;
+      const anchors = extractLineAnchors(doc);
+      anchorCount.set(Math.max(1, anchors.length));
+      const next = measureLineAnchors(anchors, editor, fs(25));
+      if (next.length === 0 && anchors.length > 0) {
+        if (allowRetry && retryTimer === null) {
+          retryTimer = setTimeout(() => { retryTimer = null; measureNow(false); }, 80);
+        }
+        return;
+      }
+      if (!sameMeasuredLines(measuredLines(), next)) measuredLines.set(next);
+      if (next.length < anchors.length && allowRetry && retryTimer === null) {
+        retryTimer = setTimeout(() => { retryTimer = null; measureNow(false); }, 80);
+      }
+    } catch {
+      // Transient state while switching documents; next layout event will re-measure.
+    }
+  };
+  const scheduleMeasure = (delay = 16) => {
+    if (!alive || !showLineNumbers()) return;
+    if (measureTimer !== null) clearTimeout(measureTimer);
+    measureTimer = setTimeout(() => {
+      measureTimer = null;
+      measureNow(true);
+    }, delay);
+  };
+  const metrics = () => gutterMetrics(Math.max(measuredLines().length, anchorCount()), fs);
+  const activeLine = () => activeLineAt(measuredLines(), selectionHead());
   effect(() => registerNoteCapture(save));
-  effect(() => () => { save(); alive = false; generation++; stop?.(); const old = session(); old?.setEditable(false); session.set(null); old?.dispose(); });
+  effect(() => () => {
+    save(); alive = false; generation++; clearMeasureTimers();
+    stop?.(); stopSel?.();
+    const old = session(); old?.setEditable(false); session.set(null); old?.dispose();
+  });
   effect(() => { if (panel() && props.editable) return keymap.bind("escape", dismiss); });
   effect(() => {
     const item = props.item;
@@ -41,7 +105,10 @@ export function RichNoteEditor(props: RichNoteEditorProps) {
       !equivalent(last, item.noteDocument);
     if (owner !== item.id || externalUpdate) {
       if (owner !== item.id) save();
-      stop?.(); const old = session(); old?.setEditable(false); session.set(null); old?.dispose();
+      clearMeasureTimers();
+      stop?.(); stopSel?.();
+      const old = session(); old?.setEditable(false); session.set(null); old?.dispose();
+      measuredLines.set([]); selectionHead.set(null);
       owner = item.id; generation++; initialized = false; blocked.set(false); error.set(""); dismiss();
     }
     if (initialized || (item.noteFormat === "rich-v1" && !item.noteDocument)) return;
@@ -52,19 +119,37 @@ export function RichNoteEditor(props: RichNoteEditorProps) {
       const doc: Node = item.noteFormat === "rich-v1" ? clone(item.noteDocument!) : JSON.parse(NoteMarkdown.fromMarkdown(item.note ?? "")).noteDocument;
       // Validate before loading any resource. Unknown data never silently disappears.
       createNoteSession(doc).dispose(); // Validate without retaining a second native document.
+      anchorCount.set(Math.max(1, extractLineAnchors(doc).length));
       void loadImages(doc, props.vault, item.id).then(viewDoc => {
         if (!alive || ticket !== generation) return;
         const editor = createNoteSession(doc, viewDoc);
         last = storedDocument(editor.getJSON() as Node);
+        selectionHead.set(typeof (editor.selection as any)?.head === "number" ? (editor.selection as any).head : null);
         session.set(editor);
         stop = editor.on("revision", () => {
           if (!alive || ticket !== generation) return;
-          revision.update(n => n + 1); save();
+          revision.update(n => n + 1); save(); scheduleMeasure(16);
+        });
+        stopSel = editor.on("selectionUpdate", () => {
+          if (!alive || ticket !== generation) return;
+          const head = (editor.selection as any)?.head;
+          selectionHead.set(typeof head === "number" ? head : null);
         });
       }).catch(e => { if (alive && ticket === generation) { blocked.set(true); error.set(String(e)); } });
     } catch (e) { blocked.set(true); error.set(String(e)); }
   });
   effect(() => { if (!props.editable) save(); session()?.setEditable(!!props.editable && !blocked()); });
+  effect(() => {
+    const ed = session();
+    const on = showLineNumbers();
+    textScale();
+    if (!ed || !on) {
+      clearMeasureTimers();
+      measuredLines.set([]);
+      return;
+    }
+    scheduleMeasure(0);
+  });
   function save() {
     const editor = session();
     if (!editor || !alive || blocked() || editor.composing) return;
@@ -151,6 +236,8 @@ export function RichNoteEditor(props: RichNoteEditorProps) {
         <Tool label="撤销" glyph="↶" disabled={!writable()} onPress={() => run(undo())} />
         <Tool label="重做" glyph="↷" disabled={!writable()} onPress={() => run(redo())} />
         <Tool label="查找" icon="search" onPress={() => panel.set("find")} />
+        <Divider />
+        <Tool testID="note-line-numbers-toggle" label={showLineNumbers() ? "隐藏行号" : "显示行号"} icon="lineNumbers" glyph="行号" compactText selected={showLineNumbers()} onPress={toggleLineNumbers} />
         <If when={!!props.onMilestone}>
           <Divider />
           <Tool label="保存里程碑版本" icon="pin" glyph="里程碑" compactText disabled={!writable()} onPress={() => { save(); props.onMilestone?.(); }} />
@@ -176,9 +263,72 @@ export function RichNoteEditor(props: RichNoteEditorProps) {
     <If when={!!error()}><T color={c().red}>{error()}</T></If>
     <If when={!!session()} else={<TextView document={props.item.noteDocument ? project(props.item.noteDocument) : project(documentFor({ id: props.item.id, note: props.item.note, noteFormat: "plain" }))} links="report" onLinkPress={() => {}} />}>
       <Each of={session() ? [session()!] : []} key={editor => editor}>{editor => <RichEditor editor={editor()} editable={!!props.editable && !blocked()} testID="note-rich-editor" accessibilityLabel="笔记正文" onChange={save} onBlur={save}
+        onSelectionChange={({ selection }) => selectionHead.set(selection.head)}
+        onContentSizeChange={() => measureNow(false)}
+        onLayout={() => scheduleMeasure(16)}
+        contentLayer={
+          <View style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, pointerEvents: "none" }}>
+            <If when={showLineNumbers()}>
+              <View
+                testID="note-line-gutter"
+                style={{
+                  position: "absolute",
+                  top: 0,
+                  left: 0,
+                  bottom: 0,
+                  width: metrics().hairlineX + 1,
+                  pointerEvents: "none",
+                }}
+              >
+                <View
+                  style={{
+                    position: "absolute",
+                    top: 6,
+                    bottom: 6,
+                    left: metrics().hairlineX,
+                    width: 1,
+                    backgroundColor: c().line,
+                  }}
+                />
+                <Each of={measuredLines()} key={(row) => row.line}>
+                  {(row) => (
+                    <View
+                      testID={`note-line-num-${row().line}`}
+                      style={{
+                        position: "absolute",
+                        left: 0,
+                        top: row().top,
+                        width: metrics().numberWidth,
+                        height: row().height,
+                        justifyContent: "center",
+                        alignItems: "flex-end",
+                      }}
+                    >
+                      <T
+                        mono
+                        size={11.5}
+                        weight={activeLine() === row().line ? "600" : "400"}
+                        color={activeLine() === row().line ? c().ink2 : c().faint}
+                      >
+                        {String(row().line)}
+                      </T>
+                    </View>
+                  )}
+                </Each>
+              </View>
+            </If>
+          </View>
+        }
         style={{ height: 520 }}
         styles={{
-          content: { fontSize: fs(14.5), lineHeight: fs(25), color: c().ink, paddingVertical: 8, paddingHorizontal: 2 },
+          content: {
+            fontSize: fs(14.5),
+            lineHeight: fs(25),
+            color: c().ink,
+            paddingVertical: 8,
+            paddingLeft: showLineNumbers() ? metrics().contentPaddingLeft : 2,
+            paddingRight: 2,
+          },
           listMarker: { color: c().muted },
           taskCheckbox: { width: 16, height: 16, marginRight: 8, borderWidth: 1, borderColor: c().line, borderRadius: 3 },
           nodes: {
@@ -231,8 +381,8 @@ async function loadImages(doc: Node, vault: Vault | undefined, owner: string): P
   await visit(view); return view;
 }
 function Divider() { return <View style={{ width: 1, height: 14, backgroundColor: c().line, marginHorizontal: 3 }} />; }
-function Tool(props: { label: string; glyph?: string; icon?: IconName; onPress: () => void; disabled?: boolean; selected?: boolean; compactText?: boolean; bold?: boolean; italic?: boolean; underline?: boolean; strike?: boolean }) {
-  return <View role="button" accessibilityLabel={props.label} tooltip={props.label} accessibilityState={{ disabled: !!props.disabled }} onPress={props.disabled ? undefined : props.onPress}
+function Tool(props: { testID?: string; label: string; glyph?: string; icon?: IconName; onPress: () => void; disabled?: boolean; selected?: boolean; compactText?: boolean; bold?: boolean; italic?: boolean; underline?: boolean; strike?: boolean }) {
+  return <View testID={props.testID} role="button" accessibilityLabel={props.label} tooltip={props.label} accessibilityState={{ disabled: !!props.disabled, selected: !!props.selected }} onPress={props.disabled ? undefined : props.onPress}
     style={{ flexDirection: "row", gap: 4, minWidth: 26, height: 26, paddingHorizontal: props.compactText ? 7 : 5, borderRadius: 5, alignItems: "center", justifyContent: "center", cursor: props.disabled ? "default" : "pointer", opacity: props.disabled ? 0.4 : 1, backgroundColor: props.selected ? c().blueSoft : "transparent" }}
     hoverStyle={{ backgroundColor: c().field }}>
     <If when={!!props.icon}>

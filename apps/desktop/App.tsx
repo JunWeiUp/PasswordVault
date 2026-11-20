@@ -26,7 +26,7 @@ import { pollEvery } from "./ui/polling";
 import { WindowCtl } from "passwordvault/native";
 import { AiApprovalHost, AiWorkspacePage } from "./ui/ai";
 import { codeFor, copyAccountCode } from "./ui/entries/linkedCode";
-import { hideFromCapture, loadPreferences, trayIcon } from "./ui/preferences";
+import { hideFromCapture, loadPreferences, noteLineNumbers, setNoteLineNumbers, trayIcon } from "./ui/preferences";
 
 // NSH 0.5 replaced the static window API with WindowRef; `Window.get` is reactive,
 // so this applies once the main window exists.
@@ -83,6 +83,7 @@ effect(() => {
         { label: "回收站", disabled: !on, onSelect: () => go("trash") },
         { type: "separator" },
         { label: editing() ? "完成编辑" : "编辑", shortcut: "mod+e", disabled: !on || !selected(), onSelect: () => editing.update((e) => !e) },
+        { label: "显示笔记行号", checked: noteLineNumbers(), disabled: !on, onSelect: () => setNoteLineNumbers(!noteLineNumbers()) },
         { type: "separator" },
         { role: "toggleFullScreen" },
       ],

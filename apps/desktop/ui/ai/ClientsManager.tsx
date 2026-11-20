@@ -717,7 +717,7 @@ export function PairedClientsCard(props: {
     <View testID="ai-paired-clients-card">
       <Card
         title="已配对客户端"
-        note="按右侧「访问范围」生效，仅密码等秘密走 get_secret 审批。点击任意行展开指纹、活跃度与管理项。"
+        note="按右侧「访问范围」生效，仅读取密码等秘密需审批（read 的 field 参数）。点击任意行展开指纹、活跃度与管理项。"
         right={
           <Row gap={6}>
             <Pill tone="blue">{String(counts().total)}</Pill>

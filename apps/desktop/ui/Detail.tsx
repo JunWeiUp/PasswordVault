@@ -31,6 +31,7 @@ import { CustomFields } from "./entries/shared";
 import { IdentityDocument } from "./entries/IdentityDocument";
 import { isDocumentField } from "./entries/documents";
 import { openSettings } from "./Settings";
+import { noteLineNumbers, setNoteLineNumbers } from "./preferences";
 import { vaultInstance } from "./store";
 
 const noteModeOverride = signal<"edit" | "preview" | "md" | null>(null);
@@ -88,6 +89,7 @@ function moreMenu(item: Item) {
     { label: "复制条目链接", onSelect: () => copySecret(`passwordvault://item/${item.id}`, "条目链接") },
     ...(item.type === "secureNote" ? [
       { label: "保存里程碑版本…", onSelect: () => askSaveMilestone(item) },
+      { label: "显示行号", checked: noteLineNumbers(), onSelect: () => setNoteLineNumbers(!noteLineNumbers()) },
       { label: "查看规范 Markdown", onSelect: () => setNoteMode("md") },
       { label: "另存为 Markdown…", onSelect: () => askExportNote(item, "markdown") },
       { label: "另存为 HTML…", onSelect: () => askExportNote(item, "html") },

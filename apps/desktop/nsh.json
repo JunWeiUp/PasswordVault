@@ -1,8 +1,8 @@
 {
   "name": "PasswordVault",
   "id": "com.securepass.vault.nshpreview",
-  "version": "2.5.6",
-  "build": 46,
+  "version": "2.5.7",
+  "build": 47,
   "rust": ".",
   "appearance": "system",
   "capabilities": {

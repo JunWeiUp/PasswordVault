@@ -12,7 +12,7 @@ mod implementation {
 
     use serde_json::{Value, json};
     use std::{
-        io::{self, BufRead, BufReader, Write},
+        io::{self, BufRead, BufReader, Read, Write},
         os::unix::io::AsRawFd,
         time::Duration,
     };
@@ -38,7 +38,9 @@ mod implementation {
         }
         s.set_read_timeout(Some(Duration::from_secs(70)))
             .map_err(|_| "Socket")?;
-        request["token"] = json!(std::env::var("PV_AI_TOKEN").unwrap_or_default());
+        if request.get("ticket").is_none() {
+            request["token"] = json!(std::env::var("PV_AI_TOKEN").unwrap_or_default());
+        }
         writeln!(s, "{request}").map_err(|_| "Socket")?;
         let mut line = String::new();
         BufReader::new(s)
@@ -91,9 +93,9 @@ mod implementation {
             "AppUnavailable" => "PasswordVault is not running",
             "ApprovalDenied" => "the user declined",
             "ApprovalTimeout" => "the user did not answer in time",
-            "UnscopedOrMissing" => "no such entry, or its category is not shared",
+            "UnscopedOrMissing" => "no such entry, or its category is not shared; use find to get a valid id",
             "DeniedField" | "MissingField" => {
-                "that field is not available; use a name from secretFields"
+                "that field is not available; use a name from secretFields returned by read"
             }
             "UnclassifiedOrDeniedFile" => "that file is not shared",
             "EntryChanged" => "the entry changed during approval; ask again",
@@ -110,11 +112,11 @@ mod implementation {
                 "this note category is not authorized for AI auto-save; ask the user to enable it in AI 访问"
             }
             "VersionConflict" => {
-                "the note changed since note_read (or expectedVersion was omitted); call note_read again and merge"
+                "the record changed since you read it (or version was omitted); call read again and merge"
             }
             "MissingSummary" => "summary is required to explain the change in version history",
             "SectionNotFound" => {
-                "that Markdown heading was not found in the note; call note_read to check headings"
+                "that Markdown heading was not found in the note; call read to check headings"
             }
             "MissingSection" => "section heading is required for replace_section",
             "InvalidMode" => "mode must be append, replace_section or replace",
@@ -127,13 +129,77 @@ mod implementation {
             }
             "UnsupportedFormat" => "could not extract plain text from this file format",
             "MissingFile" => "attachmentId not found on this note",
+            "AmbiguousReference" => "several entries share that title; call find and pass the exact id",
+            "UseNoteContent" => "this is a Markdown note; update it with content and mode instead of note",
+            "PlaceholderNotResolved" => {
+                "your shell did not resolve the chat placeholders either, so this client cannot deliver the real values; tell the user which fields are missing and stop retrying"
+            }
+            "TicketInvalid" => {
+                "the retry ticket is unknown, expired or already used; call the same tool again to get a new ticket"
+            }
+            "RedactedPlaceholderDetected" => {
+                "refused to save chat-redacted placeholder (e.g. {{SECRET_...}} / {{EMAIL_...}}); ask the user to paste the real value directly in PasswordVault when this client cannot resolve placeholders"
+            }
             _ => "request refused",
         };
         format!("{code}: {hint}")
     }
 
+    /// Failure text for a placeholder refusal that carries a shell retry ticket. The command is
+    /// complete so the AI can run it verbatim; the arguments are never echoed back, because
+    /// some of them may already hold resolved real values.
+    fn shell_retry_hint(ticket: &str) -> String {
+        let exe = std::env::current_exe()
+            .map(|p| p.to_string_lossy().into_owned())
+            .unwrap_or_else(|_| "pv-mcp".into());
+        let socket = std::env::var("PV_AI_SOCKET").unwrap_or_default();
+        format!(
+            "RedactedPlaceholderDetected: the arguments reached PasswordVault as chat-redaction placeholders. Retry exactly once through your shell/terminal tool (shell commands get placeholders replaced with real values before running). Put the SAME JSON arguments object you just sent (same fields, placeholders copied verbatim and unmodified, no \"op\") between the markers and run:\n\nPV_AI_SOCKET='{socket}' '{exe}' --ticket {ticket} <<'PVJSON'\n{{...same arguments JSON...}}\nPVJSON\n\nThe ticket is single-use and expires in 5 minutes. If that also fails with PlaceholderNotResolved, stop and tell the user."
+        )
+    }
+
+    /// `--ticket <id>`: reads one JSON arguments object from stdin (never argv, which other
+    /// processes can see) and redeems the ticket instead of a token.
+    fn ticket_cli(ticket: &str) -> i32 {
+        let mut input = String::new();
+        if io::stdin().lock().take(65_000).read_to_string(&mut input).is_err() {
+            eprintln!("InvalidData: could not read stdin");
+            return 1;
+        }
+        let Ok(mut req) = serde_json::from_str::<Value>(input.trim()) else {
+            eprintln!("InvalidData: stdin must be one JSON object");
+            return 1;
+        };
+        if !req.is_object() {
+            eprintln!("InvalidData: stdin must be one JSON object");
+            return 1;
+        }
+        req["ticket"] = json!(ticket);
+        match rpc(req) {
+            Ok(v) if v["ok"] == true => {
+                println!("{}", v["result"]);
+                0
+            }
+            Ok(v) => {
+                eprintln!("{}", explain(v["error"].as_str().unwrap_or("")));
+                1
+            }
+            Err(e) => {
+                eprintln!("{}", explain(&e));
+                1
+            }
+        }
+    }
+
     pub(super) fn main() {
         let args: Vec<String> = std::env::args().collect();
+        if args.get(1).is_some_and(|a| a == "--ticket") {
+            let Some(ticket) = args.get(2).filter(|t| !t.is_empty()) else {
+                eprintln!("Usage: pv-mcp --ticket <id> < arguments.json");
+                std::process::exit(2);
+            };
+            std::process::exit(ticket_cli(ticket));
+        }
         if args.get(1).is_some_and(|a| a == "--call") {
             let r = args
                 .get(2)
@@ -185,7 +251,10 @@ mod implementation {
                     req["op"] = r["params"]["name"].clone();
                     let (error, text) = match rpc(req) {
                         Ok(v) if v["ok"] == true => (false, v["result"].to_string()),
-                        Ok(v) => (true, explain(v["error"].as_str().unwrap_or(""))),
+                        Ok(v) => match v["ticket"].as_str() {
+                            Some(t) if v["error"] == "RedactedPlaceholderDetected" => (true, shell_retry_hint(t)),
+                            _ => (true, explain(v["error"].as_str().unwrap_or(""))),
+                        },
                         Err(e) => (true, explain(&e)),
                     };
                     Ok(json!({"isError": error, "content": [{"type": "text", "text": text}]}))

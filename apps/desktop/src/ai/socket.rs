@@ -209,7 +209,10 @@ fn serve(mut stream: UnixStream, s: &VaultSession) -> Result<()> {
         });
     let response = match result {
         Ok(v) => json!({"ok":true,"result":v,"requestId":request_id}),
-        Err(e) => json!({"ok":false,"error":e,"requestId":request_id}),
+        Err(e) => match e.split_once('#') {
+            Some((code, ticket)) => json!({"ok":false,"error":code,"ticket":ticket,"requestId":request_id}),
+            None => json!({"ok":false,"error":e,"requestId":request_id}),
+        },
     };
     writeln!(stream, "{response}").map_err(|_| "Socket".into())
 }

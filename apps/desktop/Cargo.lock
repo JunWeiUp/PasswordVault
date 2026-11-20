@@ -1944,7 +1944,7 @@ dependencies = [
 
 [[package]]
 name = "nsh-app-passwordvault"
-version = "2.5.6"
+version = "2.5.7"
 dependencies = [
  "aes-gcm",
  "base64 0.22.1",
@@ -2428,7 +2428,7 @@ checksum = "33cb294fe86a74cbcf50d4445b37da762029549ebeea341421c7c70370f86cac"
 
 [[package]]
 name = "pv-browser-host"
-version = "2.5.6"
+version = "2.5.7"
 dependencies = [
  "base64 0.22.1",
  "core-foundation",
@@ -2443,7 +2443,7 @@ dependencies = [
 
 [[package]]
 name = "pv-mcp"
-version = "2.5.6"
+version = "2.5.7"
 dependencies = [
  "serde_json",
  "socket2",

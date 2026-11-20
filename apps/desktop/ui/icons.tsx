@@ -61,6 +61,7 @@ const paths = {
   pause: rect(6, 4, 4, 16, 1) + rect(14, 4, 4, 16, 1),
   play: "M7 4l13 8-13 8z",
   filter: "M3 5h18l-7 8v6l-4-2v-4z",
+  lineNumbers: "M3.5 6.5h2.5M3.5 12h2.5M3.5 17.5h2.5M9 4v16M12.5 6.5h8M12.5 12h8M12.5 17.5h5.5",
 } as const;
 
 export type IconName = keyof typeof paths;
