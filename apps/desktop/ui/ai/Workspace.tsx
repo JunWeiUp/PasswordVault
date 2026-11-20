@@ -52,7 +52,7 @@ async function trial(key: string, request: Record<string, unknown>, ok: (out: an
 }
 // Trial reads use the default clipboard delivery, exactly like an MCP client that does not ask to reveal.
 export const requestSecret = (item: Item, field: string, purpose: string) =>
-  trial(`${item.id}:${field}`, { op: "get_secret", id: item.id, field, purpose }, out => out.delivered === "clipboard" ? `${out.approval === "lease" ? "免确认授权中 · " : ""}已放到剪贴板，${out.clearsAfterSeconds ?? 30} 秒后清除` : "已允许 · 明文已返回给客户端");
+  trial(`${item.id}:${field}`, { op: "read", id: item.id, field, purpose }, out => out.delivered === "clipboard" ? `${out.approval === "lease" ? "免确认授权中 · " : ""}已放到剪贴板，${out.clearsAfterSeconds ?? 30} 秒后清除` : "已允许 · 明文已返回给客户端");
 function Divided(props: { rows: any[]; render: (row: any, index: number) => any; gap?: number }) {
   return <View>{props.rows.map((row, index) => <View style={{ paddingVertical: props.gap ?? 8, borderBottomWidth: index === props.rows.length - 1 ? 0 : 1, borderBottomColor: c().line2 }}>{props.render(row, index)}</View>)}</View>;
 }
@@ -337,13 +337,12 @@ export function AiWorkspacePage() {
     const requests = <Card title="试发请求" note="以已配对活跃客户端的身份发出，走与真实 MCP 完全相同的策略与审批。">
       <View style={{ gap: 8 }}>
         <ListRow icon="key" title={account() ? `请求 ${account()!.title || "账号"} 密码` : "请求账号密码"} note={account() ? "密码始终弹窗确认 · 默认放到剪贴板 30 秒" : "还没有账号条目"} disabled={!ready() || !account()} busy={busy() === `${account()?.id}:password`} onPress={() => void requestSecret(account()!, "password", "登录当前网页")} />
-        <ListRow icon="note" title="试查知识库笔记列表" note="列出可读笔记（含 Slug 与可写目录）" disabled={!ready() || !scopeOn("notes")} busy={busy() === "note_list"} onPress={() => void trial("note_list", { op: "note_list" }, out => {
+        <ListRow icon="note" title="试查知识库笔记列表" note="列出可读笔记（含 Slug 与可写目录）" disabled={!ready() || !scopeOn("notes")} busy={busy() === "note_list"} onPress={() => void trial("note_list", { op: "find", kind: "note" }, out => {
           const notes = Array.isArray(out) ? out : Array.isArray(out?.notes) ? out.notes : [];
           const cats = Array.isArray(out?.writableCategories) ? out.writableCategories : [];
           return `试查返回 ${notes.length} 篇笔记 · 可写目录 ${cats.length} 个`;
         })} />
-        <ListRow icon="search" title="试查范围条目摘要" note="按右侧已开启的访问范围直接搜索（不含密码）" disabled={!ready()} busy={busy() === "search"} onPress={() => void trial("search", { op: "search", query: "" }, out => `试查返回 ${Array.isArray(out) ? out.length : 0} 条范围摘要`)} />
-        <ListRow icon="plus" title="试请你填写账号" note="AI 找不到账号时会弹出表单" disabled={!ready()} busy={busy() === "ask"} onPress={() => void trial("ask", { op: "ask_user", title: "示例网站", url: "https://example.com", purpose: "试发请求" }, out => out.id ? "已保存并返回给客户端" : "已完成")} />
+        <ListRow icon="search" title="试查范围条目摘要" note="按右侧已开启的访问范围直接搜索（不含密码）" disabled={!ready()} busy={busy() === "search"} onPress={() => void trial("search", { op: "find", query: "" }, out => `试查返回 ${Array.isArray(out) ? out.length : 0} 条范围摘要`)} />
         <ListRow icon="tools" title="测试执行请求" note="始终拒绝 · 脚本只作为资料" disabled={!ready()} busy={busy() === "execute"} onPress={() => void trial("execute", { op: "execute", id: account()?.id ?? "" }, () => "执行请求未被拒绝，请检查 AI 设置")} />
       </View>
       <If when={!ready()}><T size={11} color={c().muted}>{enabled() ? "配对客户端后即可试发请求。" : "启用本机接口并配对客户端后即可试发请求。"}</T></If>

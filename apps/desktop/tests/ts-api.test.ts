@@ -28,20 +28,20 @@ import {
 import { readItemMeta, readUiPref } from "../ui/api/extensions";
 import { destOf, errorText, inDest, type Item } from "../ui/api/vaultMeta";
 
-test("shared tools.schema.json drives all 11 MCP tools without duplicates", () => {
+test("shared tools.schema.json drives the five CRUD MCP tools without duplicates", () => {
   expect(MCP_INSTRUCTIONS.length > 50).toBe(true);
-  expect(MCP_TOOLS.length).toBe(11);
+  expect(MCP_TOOLS.length).toBe(5);
   const names = MCP_TOOLS.map((t) => t.name);
-  expect(new Set(names).size).toBe(11);
-  for (const required of ["note_list", "note_read", "note_update", "note_attach", "note_read_asset", "note_history", "search", "get", "get_secret", "add", "ask_user"]) {
+  expect(new Set(names).size).toBe(5);
+  for (const required of ["find", "read", "create", "update", "delete"]) {
     expect(MCP_TOOL_BY_NAME[required]?.uiSummary.length).toBeGreaterThan(0);
     expect(MCP_TOOL_BY_NAME[required]?.description.length).toBeGreaterThan(0);
   }
-  expect(MCP_TOOL_BY_NAME.note_read.readOnly).toBe(true);
-  expect(MCP_TOOL_BY_NAME.note_attach.readOnly).toBe(false);
-  expect(MCP_TOOL_BY_NAME.note_update.readOnly).toBe(false);
-  expect(MCP_TOOL_BY_NAME.add.readOnly).toBe(false);
-  expect(MCP_TOOL_BY_NAME.ask_user.readOnly).toBe(false);
+  expect(MCP_TOOL_BY_NAME.find.readOnly).toBe(true);
+  expect(MCP_TOOL_BY_NAME.read.readOnly).toBe(true);
+  expect(MCP_TOOL_BY_NAME.create.readOnly).toBe(false);
+  expect(MCP_TOOL_BY_NAME.update.readOnly).toBe(false);
+  expect(MCP_TOOL_BY_NAME.delete.readOnly).toBe(false);
 });
 
 test("noteAssets pure TS helpers format sizes, recommend apps, and update rich-v1 attachment nodes", () => {
@@ -87,7 +87,8 @@ test("vaultMeta and aiAccess helpers map destinations and errors cleanly", () =>
   expect(inDest({ ...note, isDeleted: true }, "notes")).toBe(false);
   expect(errorText("Error: Locked")).toBe("密码库已锁定。");
   expect(aiError("Error: AssetTextDenied")).toBe(AI_ERRORS.AssetTextDenied);
-  expect(AI_OPS.note_attach).toBe("归档笔记资产");
+  expect(AI_OPS.update).toBe("修改");
+  expect(AI_OPS.delete).toBe("移到回收站");
 });
 
 test("TS asset classification and generic uiMeta / uiPrefs pass-through helpers work without Rust formatting", () => {

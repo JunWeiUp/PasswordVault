@@ -27,7 +27,7 @@ bearer token is the second boundary. Protect client configuration accordingly.
    directly to all paired clients without per-item manual whitelisting; individual entries
    can be hidden via the per-entry exclusion list (`aiAccessExcludedEntries`). Ordinary
    fields are readable in plain text; only passwords, card numbers/CVV, private keys,
-   tokens, concealed custom fields and secret device commands go through `get_secret`
+   tokens, concealed custom fields and secret device commands go through `read` with `field`
    approval. Binary note asset text extraction additionally requires the per-attachment
    `AI 可读文本` toggle (`aiAccessNoteAssetText`).
 
@@ -46,9 +46,32 @@ Scripts use the same policy, audit and approval flow (set `PV_AI_SOCKET` and
 `PV_AI_TOKEN` in the environment; never pass a real token as an argument):
 
 ```sh
-/path/to/pv-mcp --call '{"op":"search","query":"server"}'
-/path/to/pv-mcp --call '{"op":"get","id":"<stable ID>"}'
+/path/to/pv-mcp --call '{"op":"find","query":"server"}'
+/path/to/pv-mcp --call '{"op":"read","id":"passwordvault:<id|slug|title>"}'
 ```
+
+### Chat-redaction placeholders and the shell retry ticket
+
+Some AI clients show the model placeholders such as `{{SECRET_x1y2z3a4}}` instead of real
+values and only substitute the real value when a tool actually runs. `add` and `note_update`
+refuse any value that still holds such a placeholder (`RedactedPlaceholderDetected`; known
+category prefixes plus a generic `{{UPPER_lowercase-with-digit}}` shape, so ordinary
+`{{name}}` / `{{API_TOKEN}}` templates pass). For a valid client the app also mints a
+single-use ticket (in memory, 5 minutes, bound to the client and operation, cleared on lock;
+the socket replies `{"error":"RedactedPlaceholderDetected","ticket":…}`). `pv-mcp` turns it
+into a ready shell command:
+
+```sh
+PV_AI_SOCKET='<socket>' '/path/to/pv-mcp' --ticket <ticket> <<'PVJSON'
+{ ...same arguments, placeholders verbatim... }
+PVJSON
+```
+
+Shell tools resolve placeholders before running, and the arguments travel on stdin (never
+argv). The retry needs no token and runs with the original client's policy, rate limit and
+audit. If placeholders are still present it fails with `PlaceholderNotResolved` and no new
+ticket is issued, so the AI stops instead of looping. Arguments are never echoed back in the
+hint because some of them may already hold resolved values.
 
 `tool/macos-nsh/package.sh` builds `pv-mcp` as a lightweight standalone workspace member
 (`apps/desktop/helpers/pv-mcp`, embedding `apps/desktop/src/ai/tools.schema.json`),
@@ -64,33 +87,42 @@ once as `initialize.instructions` (protocol 2024-11-05, or the client's 2025-03-
 empty lists are dropped); failures return one line `Code: hint`. Schemas reject extra
 properties; the socket never exposes the control plane.
 
-| Tool | Arguments | Result |
-| --- | --- | --- |
-| `search` | `query?` | At most 100 `{id,type,title,sub}` across enabled categories (excluding `aiAccessExcludedEntries`); `sub` is username, host, email or card brand. Matches title, tags, device aliases, host, service names and app aliases |
-| `get` | `id`, `fileId?`, `offset?`, `limit?` | Without `fileId`: ordinary plain-text fields (account username/url/note, identity contact/address fields, card brand/holder/expiry, device host/port/username/services/paths/notes/non-secret commands, non-hidden note text), non-concealed custom `fields`, `secretFields` (names requiring `get_secret`) and `files` (ordinary file IDs). With `fileId`: UTF-8 `{text,nextOffset,eof}`, default 4096, maximum 16384 scalars |
-| `get_secret` | `id`, `field`, `delivery?: clipboard\|reveal`, `purpose?` | One high-sensitivity secret after approval or an active lease: `password`, `token`, `privateKey`, `nodeLink`, `number`, `securityCode`, `custom:<id>` (concealed), and `command:<id>` (secret device command) |
-| `note_list` | `category?`, `tag?`, `query?`, `propertyKey?`, `propertyValue?`, `limit?` | Lists non-hidden notes matching filters along with `slug`, `category`, `tags`, `properties`, `writable`, and the configured `writableCategories` |
-| `note_read` | `id` or `slug`, `section?` | Returns canonical Markdown, `properties`, `tags`, `attachments[]` (including `aiTextAllowed`), `versionHash`, and `writable` |
-| `note_update` | `id` or `slug`, `mode: append\|replace_section\|replace`, `content`, `summary`, `section?`, `expectedVersion?`, `createIfMissing?`, `category?`, `title?`, `properties?`, `tags?` | No-popup auto-save into whitelisted `aiAccessNoteWritableCategories` (30/min rate limit, mandatory `summary`, optimistic lock `VersionConflict`, immutable encrypted history revision). Never modifies credentials or deletes notes |
-| `note_attach` | `id` or `slug`, `path`, `name?`, `summary`, `insertLink?`, `aiTextAllowed?` | Encrypts a local file (≤ 100 MiB) into chunked `<vault_dir>/blobs/<id>.pvblob`, appends `[name](pv-asset://<id>)` to a whitelisted note, records history, and leaves the original file untouched |
-| `note_read_asset` | `id` or `slug`, `attachmentId`, `offset?`, `limit?` | Returns bounded locally extracted plain text (PDFKit / DOCX / XLSX / PPTX / UTF-8, no network) only when `noteAssets` scope and the attachment's `AI 可读文本` toggle are both enabled |
-| `note_history` | `id` or `slug`, `revisionId?`, `limit?` | Lists encrypted note history revisions or returns a specific historical revision snapshot |
-| `add` | `type: account\|note\|totp\|identity\|card\|device`, `title`, plus type fields (`username`, `password`, `url`, `note`, `tags`, `secret`/`issuer`/`period`, `identity{}`, `card{}`, `device{}`) | Saves a new entry immediately, **without approval or scope**: only a valid paired client and an unlocked vault are required. Fields are whitelisted and bounded; a fresh ID is always generated so existing records cannot be overwritten. Device commands are private unless `secret:false`; devices need the vault's 设备与服务 upgrade (`DevicesNotEnabled`). Wallets are refused. Each client may add at most 10 entries per rolling minute (`RateLimited`; in memory, failed saves do not count). Audited as `add` (no content), and the window reloads its list. Returns `{id,type,title,added}` |
-| `ask_user` | `title`, `url?`, `username?`, `delivery?`, `purpose?` | When no account exists: the user fills a sheet (AI values are only suggestions), the UI saves a new account through the normal store path and returns it with the password delivered like `get_secret`. Cancel returns `ApprovalDenied` |
+The MCP surface is five CRUD tools; `crud.rs` routes them onto the internal operations below.
+Only the five public names are accepted (anything else is `ReadOnlyUnsupportedOperation`) and
+audit rows record the public name. Any `id`, and a `find` query, may
+be a reference `passwordvault:<id|slug|title>` (case-insensitive prefix, optional `//`):
+exact ID, then note slug, then a unique exact title (`AmbiguousReference` otherwise).
 
-`add`, `ask_user`, `note_update` (whitelisted note categories only) and `note_attach` (whitelisted note categories only) are the only tools that write data; nothing edits credentials or deletes records. `ask_user` needs the `accounts` scope. Its sheet expires after 180 seconds.
+| Tool | Routes to | Behavior |
+| --- | --- | --- |
+| `find` | `search`, or `note_list` for `kind:"note"`/note filters | Summaries `{id,type,title,sub}`; matches title, username, URL, tags, device host/aliases/services and app aliases |
+| `read` | `get`, `get_secret` (`field`), `note_read` (Markdown notes/`slug`/`section`), `note_read_asset` (`attachmentId`), `note_history` (`history`/`revisionId`) | Ordinary fields plus `version`; secrets still need approval or a lease |
+| `create` | `add`, or `note_update` with `createIfMissing` for `type:"note"` with `category`/`content` | No approval; shared 10 writes/minute per client |
+| `update` | `entry_update`, `note_update` (`content`/`mode`/`slug`), `note_attach` (`attach{}`) | No approval. Entries: only supplied whitelisted fields change (custom fields merge by label), optional `version` lock (`VersionConflict`), the previous record is saved as an AI-attributed encrypted history revision and a replaced password is prepended to `passwordHistory`. Returns changed field names only |
+| `delete` | `entry_delete` | Moves to the Trash (`isDeleted`, `deletedAt`) with a history revision; never purges |
+
+Entries stay readable: instructions ask AI clients to put non-secret details in `note` as
+`Label: value` lines and keep `customFields` for a few secrets. `create`/`update` enforce it
+(`projection::split_fields`, limit 3): unlabeled or crowding non-secret fields are appended to
+the note (`fieldsMovedToNote`), concealed fields always stay fields, `name`/`title` are accepted
+as label aliases, and `update` accepts `removeFields` to tidy existing entries.
+
+Writes refuse wallets/TOTP (no scope), excluded entries, and filed knowledge-base notes outside
+`aiAccessNoteWritableCategories` (`NoteWriteDenied`). The former `ask_user` sheet was removed.
+
+`create`, `update` and `delete` are the only tools that write data. They need no approval; every write is an AI-attributed history revision and `delete` only moves to the Trash.
 
 Wallets, crypto records and TOTP secrets remain unavailable. Ordinary fields across accounts,
 profiles, cards, devices (including service paths, notes and non-secret commands) and notes
 are returned directly when their category scope is enabled and the entry is not excluded in
 `aiAccessExcludedEntries`. Only passwords, card numbers, security codes, private keys,
-tokens, concealed custom fields and secret device commands require `get_secret` approval.
+tokens, concealed custom fields and secret device commands require approval (`read` with `field`).
 Commands are returned only as data and never executed. Core still checks attachment
 ownership and encrypted integrity.
 
 ### Delivery, leases and first-request grants
 
-- `get_secret` accepts `delivery: "clipboard"` (default) or `"reveal"`. Clipboard delivery
+- `read` with `field` accepts `delivery: "clipboard"` (default) or `"reveal"`. Clipboard delivery
   writes the value to the general pasteboard marked `org.nspasteboard.ConcealedType` and
   `TransientType`, clears it after 30 seconds if nothing else was copied, and returns only
   `{delivered, clearsAfterSeconds, approval}` so the secret never enters the AI context.
@@ -155,8 +187,8 @@ PASSWORDVAULT_VAULT_DIRECTORY='<fresh synthetic vault copy>' bash tool/nsh_mac.s
 Tests cover default-off, unscoped entries, revoked tokens, wallet denial, locked
 core, secret stripping, private device fields, service-path and private-command release,
 compact summaries/details, ordinary classification, approval deadline/denial, real
-encrypted pairing, single-use approvals, revocation during approval, `ask_user`
-cancel/save/grant, UTF-8 file chunking, unclassified-file and wrong-owner rejection, and
+encrypted pairing, single-use approvals, revocation during approval,
+UTF-8 file chunking, unclassified-file and wrong-owner rejection, and
 content-free audit.
 Native approval-sheet appearance, real AI clients, a full signed-package run,
 peer-credential rejection across OS users and full device attachment round trips

@@ -9,7 +9,7 @@ import { Banner, Btn, Group, OptionRow, Row, T, TextBox, Toggle } from "./kit";
 import { call, errorText, onLock, saveSettings, settings, toast, vaultDirectory } from "./store";
 import { c, radius, TEXT_SCALES, textScale } from "./theme";
 import { appVersion } from "./version";
-import { CLIPBOARD_CHOICES, clipboardSeconds, DENSITY_LABEL, hideFromCapture, listDensity, quickCloseAfterCopy, setClipboardSeconds, setHideFromCapture, setListDensity, setQuickCloseAfterCopy, setTrayIcon, trayIcon, type ListDensity } from "./preferences";
+import { CLIPBOARD_CHOICES, clipboardSeconds, DENSITY_LABEL, hideFromCapture, listDensity, noteLineNumbers, quickCloseAfterCopy, setClipboardSeconds, setHideFromCapture, setListDensity, setNoteLineNumbers, setQuickCloseAfterCopy, setTrayIcon, trayIcon, type ListDensity } from "./preferences";
 import { SHORTCUT_LABEL, setShortcut, shortcut, shortcutAvailable, type ShortcutChoice } from "./hotkey";
 import { isMac, desktopCapabilities, biometricAvailability, biometricEnabled, biometricError, disableBiometrics, enableBiometrics, loginItemStatus, openLoginItemSettings, setLoginItem, type LoginStatus } from "./native";
 import { openSheet, SheetFooter, SheetTitle } from "./kit";
@@ -81,6 +81,11 @@ function General() {
             onChange={(v) => setListDensity(v as ListDensity)} />
         </OptionRow>
         <OptionRow title="语言" note="其他语言将在本地化接入后提供"><Picker value="zh" options={[["zh", "简体中文"]]} onChange={() => {}} /></OptionRow>
+      </Group>
+      <GroupTitle text="笔记编辑器" />
+      <Group>
+        <Toggle title="显示行号" note="在笔记编辑与 Markdown 源码左侧显示行号，也可在编辑器工具栏随时切换"
+          checked={noteLineNumbers()} onChange={setNoteLineNumbers} />
       </Group>
       <GroupTitle text="剪贴板" />
       <Group>

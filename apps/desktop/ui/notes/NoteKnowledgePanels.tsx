@@ -1,13 +1,14 @@
 // Obsidian-style knowledge base panels for secureNote detail view:
 // structured properties & slug, Agent auto-save banner, canonical Markdown pane, and wikilinks/backlinks.
 import { effect, signal, View } from "nsh";
-import { Input } from "nsh/base";
+import { Editor, Input } from "nsh/base";
 import { Menu } from "nsh/desktop";
 import { NoteMarkdown } from "passwordvault/native";
 import { Icon } from "../icons";
 import { Btn, copySecret, IconBtn, Pill, Row, SmallAction, T } from "../kit";
 import { aiSettings } from "../ai";
 import { desktopCapabilities } from "../native";
+import { noteLineNumbers, setNoteLineNumbers } from "../preferences";
 import { moveToCategoryMenu } from "../ItemList";
 import { createItem, edit, go, items, reveal, toast, type Item } from "../store";
 import { c, fs, MONO } from "../theme";
@@ -400,6 +401,30 @@ export function NoteMarkdownPane(props: { item: Item; editable: boolean }) {
       <Row style={{ justifyContent: "space-between", paddingBottom: 6, borderBottomWidth: 1, borderBottomColor: c().line2 }}>
         <T size={11.5} color={c().muted}>规范 Markdown · 与 Agent MCP 读写格式一致</T>
         <Row gap={6}>
+          <View
+            testID="md-line-numbers-toggle"
+            role="button"
+            accessibilityLabel={noteLineNumbers() ? "隐藏行号" : "显示行号"}
+            tooltip={noteLineNumbers() ? "隐藏行号" : "显示行号"}
+            accessibilityState={{ selected: noteLineNumbers() }}
+            onPress={() => setNoteLineNumbers(!noteLineNumbers())}
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 4,
+              height: 26,
+              paddingHorizontal: 8,
+              borderRadius: 6,
+              borderWidth: 1,
+              borderColor: noteLineNumbers() ? c().blueLine : c().line,
+              backgroundColor: noteLineNumbers() ? c().blueSoft : c().surface,
+              cursor: "pointer",
+            }}
+            hoverStyle={{ backgroundColor: noteLineNumbers() ? c().blueSoft : c().field }}
+          >
+            <Icon name="lineNumbers" size={12} tint={noteLineNumbers() ? c().blue : c().ink2} />
+            <T size={11.5} weight="500" color={noteLineNumbers() ? c().blue : c().ink2}>行号</T>
+          </View>
           <Btn label="复制 Markdown" icon="copy" onPress={() => void copySecret(draft(), "Markdown")} />
           <If when={props.editable && dirty()}>
             <Btn testID="md-apply-btn" label="应用修改" icon="check" kind="primary" onPress={applyMarkdown} />
@@ -409,32 +434,62 @@ export function NoteMarkdownPane(props: { item: Item; editable: boolean }) {
       <If when={err()}>
         <T size={12} color={c().red}>{err()}</T>
       </If>
-      <If when={props.editable} else={
-        <View style={{ backgroundColor: c().soft2, borderWidth: 1, borderColor: c().line, borderRadius: 8, padding: 14 }}>
-          <T mono size={12.5} selectable color={c().ink}>{draft() || "（空白笔记）"}</T>
-        </View>
-      }>
-        <Input
-          testID="note-markdown-input"
-          multiline
-          value={draft()}
-          accessibilityLabel="Markdown 源码"
-          autoCorrect={false}
-          onChange={({ value }) => { draft.set(value); dirty.set(true); }}
-          onBlur={applyMarkdown}
-          style={{
-            minHeight: 420,
-            fontFamily: MONO,
-            fontSize: fs(12.5),
-            padding: 14,
-            borderRadius: 8,
-            borderWidth: 1,
-            borderColor: c().line,
+      <Editor
+        testID="note-markdown-input"
+        value={draft()}
+        language="markdown"
+        readOnly={!props.editable}
+        placeholder="（空白笔记）"
+        lineNumbers={noteLineNumbers()}
+        folding={false}
+        softWrap
+        activeLine={props.editable}
+        indentGuides={false}
+        scrollBeyondLastLine={false}
+        fontFamily={MONO}
+        fontSize={fs(12.5)}
+        lineHeight={fs(21)}
+        accessibilityLabel="Markdown 源码"
+        onChange={({ value }) => {
+          if (!props.editable) return;
+          draft.set(value);
+          dirty.set(true);
+        }}
+        onBlur={applyMarkdown}
+        style={{
+          height: 440,
+          borderRadius: 8,
+          borderWidth: 1,
+          borderColor: c().line,
+          backgroundColor: c().soft2,
+        }}
+        styles={{
+          gutter: {
             backgroundColor: c().soft2,
+            borderRightWidth: 1,
+            borderRightColor: c().line,
+            paddingLeft: 8,
+            paddingRight: 10,
+          },
+          lineNumber: {
+            color: c().faint,
+            fontFamily: MONO,
+            fontSize: fs(11.5),
+          },
+          activeLineNumber: {
+            color: c().ink2,
+            fontWeight: "600",
+          },
+          activeLine: {
+            backgroundColor: c().soft,
+          },
+          content: {
             color: c().ink,
-          }}
-        />
-      </If>
+            paddingHorizontal: 14,
+            paddingVertical: 10,
+          },
+        }}
+      />
     </View>
   );
 }

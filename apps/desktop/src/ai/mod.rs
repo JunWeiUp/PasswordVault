@@ -18,12 +18,13 @@ mod socket {
     }
 }
 mod clipboard;
+mod crud;
 mod notes;
 mod projection;
 #[cfg(test)]
 mod tests;
 
-use projection::{bounded, new_item, projection, prune, secret};
+use projection::{new_item, projection, prune, secret};
 type Result<T> = std::result::Result<T, String>;
 struct Pending {
     view: Value,
@@ -32,8 +33,6 @@ struct Pending {
     /// Requested by the approver: skip approval for this client/entry/field for
     /// this many seconds; 0 means until the vault locks (low-sensitivity fields only).
     lease: Option<u64>,
-    /// `ask_user`: the account the user saved from the sheet.
-    created: Option<String>,
 }
 /// In-memory only: never persisted, dropped on lock and on any policy change.
 #[derive(Clone)]
@@ -45,6 +44,15 @@ struct Lease {
     expires: Option<Instant>,
 }
 const LEASE_SECONDS: u64 = 15 * 60;
+/// A write refused for chat-redaction placeholders mints a one-shot ticket so the AI can
+/// retry the same operation once through its shell, where clients resolve placeholders.
+struct Ticket {
+    digest: String,
+    op: String,
+    expires: Instant,
+}
+const TICKET_SECONDS: u64 = 5 * 60;
+const TICKET_LIMIT: usize = 20;
 const CLIPBOARD_SECONDS: u64 = 30;
 /// A paired client may add at most this many entries per rolling minute.
 const ADD_LIMIT: usize = 10;
@@ -84,6 +92,8 @@ struct State {
     adds: HashMap<String, Vec<Instant>>,
     /// Recent `note_update` times per client, for the note write rate limit.
     note_writes: HashMap<String, Vec<Instant>>,
+    /// One-shot shell retry tickets; in memory only, cleared on lock.
+    tickets: HashMap<String, Ticket>,
 }
 static STATE: OnceLock<Mutex<State>> = OnceLock::new();
 static SERIAL: Mutex<()> = Mutex::new(());
@@ -212,10 +222,78 @@ fn audit(s: &VaultSession, cid: &str, item: &str, op: &str, rid: &str, result: &
 }
 /// Every read checks the live core session, then permission, then a field whitelist.
 pub(super) fn request(s: &VaultSession, r: Value) -> Result<Value> {
+    if let Some(ticket) = r.get("ticket").and_then(Value::as_str).map(str::to_string) {
+        return ticket_request(s, r, &ticket);
+    }
     let digest = hash(r["token"].as_str().unwrap_or(""));
-    request_digest(s, r, &digest)
+    let op = r["op"].as_str().unwrap_or("").to_string();
+    match request_digest(s, r, &digest) {
+        Err(e) if e == "RedactedPlaceholderDetected" && matches!(op.as_str(), "create" | "update") => {
+            match mint_ticket(s, &digest, &op) {
+                Some(t) => Err(format!("{e}#{t}")),
+                None => Err(e),
+            }
+        }
+        other => other,
+    }
+}
+/// Issues a single-use retry ticket bound to this client and operation.
+fn mint_ticket(s: &VaultSession, digest: &str, op: &str) -> Option<String> {
+    let d = doc(s).ok()?;
+    client_digest(&d, digest).ok()?;
+    let mut st = state();
+    let now = Instant::now();
+    st.tickets.retain(|_, t| t.expires > now);
+    if st.tickets.len() >= TICKET_LIMIT {
+        return None;
+    }
+    let ticket = uuid::Uuid::new_v4().simple().to_string();
+    st.tickets.insert(
+        ticket.clone(),
+        Ticket { digest: digest.to_string(), op: op.to_string(), expires: now + Duration::from_secs(TICKET_SECONDS) },
+    );
+    Some(ticket)
+}
+/// Redeems a ticket once. The retry runs with the original client's identity, policy, rate
+/// limits and audit; if placeholders are still present the client cannot resolve them.
+fn ticket_request(s: &VaultSession, mut r: Value, ticket: &str) -> Result<Value> {
+    let t = {
+        let mut st = state();
+        let now = Instant::now();
+        st.tickets.retain(|_, t| t.expires > now);
+        st.tickets.remove(ticket)
+    }
+    .ok_or("TicketInvalid")?;
+    match r["op"].as_str().unwrap_or("") {
+        "" => r["op"] = json!(t.op),
+        op if op == t.op => {}
+        _ => return Err("TicketInvalid".into()),
+    }
+    if let Some(map) = r.as_object_mut() {
+        map.remove("ticket");
+        map.remove("token");
+    }
+    match request_digest(s, r, &t.digest) {
+        Err(e) if e == "RedactedPlaceholderDetected" => Err("PlaceholderNotResolved".into()),
+        other => other,
+    }
 }
 fn request_digest(s: &VaultSession, r: Value, digest: &str) -> Result<Value> {
+    // Public CRUD names and `passwordvault:` references resolve against the client's view.
+    let tool = match r["op"].as_str().unwrap_or("") {
+        t @ ("find" | "read" | "create" | "update" | "delete") => t.to_string(),
+        _ => "unsupported".into(),
+    };
+    // Locked, disabled, unknown-client and routing errors are still audited below.
+    let routed = match doc(s) {
+        _ if tool == "unsupported" => Err("ReadOnlyUnsupportedOperation".to_string()),
+        Ok(d) => client_digest(&d, digest).and_then(|c| crud::route(&d, c, r.clone())),
+        Err(e) => Err(e),
+    };
+    let (r, pre_error) = match routed {
+        Ok(r) => (r, None),
+        Err(e) => (r, Some(e)),
+    };
     let initial = doc(s).ok();
     let c = initial.as_ref().and_then(|d| find_client_by_digest(d, digest));
     let cid = c
@@ -229,28 +307,16 @@ fn request_digest(s: &VaultSession, r: Value, digest: &str) -> Result<Value> {
         .and_then(|i| i["id"].as_str())
         .unwrap_or("")
         .to_string();
-    let op = match r["op"].as_str().unwrap_or("") {
-        v @ (
-            "search"
-            | "get"
-            | "get_secret"
-            | "ask_user"
-            | "add"
-            | "note_list"
-            | "note_read"
-            | "note_update"
-            | "note_attach"
-            | "note_read_asset"
-            | "note_history"
-        ) => v.to_string(),
-        _ => "unsupported".into(),
-    };
+    let op = r["op"].as_str().unwrap_or("").to_string();
     let rid = r["requestId"]
         .as_str()
         .and_then(|v| uuid::Uuid::parse_str(v).ok())
         .map(|v| v.to_string())
         .unwrap_or_else(id);
-    let mut result = request_inner(s, r.clone(), &rid, digest);
+    let mut result = match pre_error {
+        Some(e) => Err(e),
+        None => request_inner(s, r.clone(), &rid, digest),
+    };
     let item = if !item.is_empty() {
         item
     } else {
@@ -266,7 +332,7 @@ fn request_digest(s: &VaultSession, r: Value, digest: &str) -> Result<Value> {
         let final_check = (|| {
             let d = doc(s)?;
             let c = client_digest(&d, digest)?;
-            if op == "add" || op == "note_update" || op == "note_attach" {
+            if matches!(op.as_str(), "add" | "note_update" | "note_attach" | "entry_update" | "entry_delete") {
                 // Added/auto-saved entries need no approval; only the client must still be valid.
             } else if op == "note_list" {
                 if d["settings"]["aiAccessScopes"]["notes"] != true {
@@ -283,8 +349,7 @@ fn request_digest(s: &VaultSession, r: Value, digest: &str) -> Result<Value> {
                     entry(&d, c, &json!({"id":row["id"]}))?;
                 }
             } else {
-                let target = if op == "ask_user" { json!({"id": result.as_ref().unwrap()["id"]}) } else { r.clone() };
-                let i = entry(&d, c, &target)?;
+                let i = entry(&d, c, &r)?;
                 if let Some(fid) = r["fileId"].as_str().filter(|_| op == "get")
                     && !approved_file(&d, c, i, fid)
                 {
@@ -302,11 +367,11 @@ fn request_digest(s: &VaultSession, r: Value, digest: &str) -> Result<Value> {
         .map(|v| if v["approval"] == "lease" { "AllowedByLease" } else { "Allowed" })
         .unwrap_or_else(|e| e.as_str());
     if doc(s).is_ok() {
-        audit(s, &cid, &item, &op, &rid, outcome)?;
+        audit(s, &cid, &item, &tool, &rid, outcome)?;
     } else {
         let mut st = state();
         st.deferred_audit.push(
-            json!({"client":cid,"item":item,"operation":op,"requestId":rid,"result":"Locked","unixSeconds":std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs()}),
+            json!({"client":cid,"item":item,"operation":tool,"requestId":rid,"result":"Locked","unixSeconds":std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs()}),
         );
         if st.deferred_audit.len() > 200 {
             st.deferred_audit.remove(0);
@@ -318,11 +383,14 @@ fn request_digest(s: &VaultSession, r: Value, digest: &str) -> Result<Value> {
 fn request_inner(s: &VaultSession, r: Value, request_id: &str, digest: &str) -> Result<Value> {
     let op = r["op"].as_str().unwrap_or("");
     let rid = request_id.to_string();
-    if op == "ask_user" {
-        return ask_user(s, &r, &rid, digest);
-    }
     if op == "add" {
         return add(s, &r, digest);
+    }
+    if op == "entry_update" {
+        return crud::entry_update(s, &r, digest);
+    }
+    if op == "entry_delete" {
+        return crud::entry_delete(s, &r, digest);
     }
     if op == "note_update" {
         return notes::note_update(s, &r, digest);
@@ -385,7 +453,6 @@ fn request_inner(s: &VaultSession, r: Value, request_id: &str, digest: &str) -> 
                 expires: Instant::now() + Duration::from_secs(60),
                 answer: None,
                 lease: None,
-                created: None,
             });
             (true, hash(&i.to_string()), false)
         } else {
@@ -426,9 +493,12 @@ fn request_inner(s: &VaultSession, r: Value, request_id: &str, digest: &str) -> 
                         .into_iter()
                         .flatten()
                         .filter(|i| allowed(&d, c, i)
+                            && r["id"].as_str().is_none_or(|id| i["id"] == id)
                             && format!(
-                                "{} {} {} {} {} {}",
+                                "{} {} {} {} {} {} {} {}",
                                 i["title"],
+                                i["username"],
+                                i["url"],
                                 i["tags"],
                                 i["device"]["aliases"],
                                 i["device"]["host"],
@@ -445,6 +515,7 @@ fn request_inner(s: &VaultSession, r: Value, request_id: &str, digest: &str) -> 
             "get" if r.get("fileId").is_none() => {
                 let i = entry(&d, c, &r)?;
                 let mut out = projection(i, true);
+                out["version"] = i["updatedAt"].clone();
                 let files: Vec<&String> = d["settings"]["aiAccessOrdinaryFiles"][i["id"].as_str().unwrap_or("")]
                     .as_object()
                     .into_iter()
@@ -518,7 +589,18 @@ fn grant_entry(s: &VaultSession, digest: &str, entry_id: &str) -> Result<()> {
 /// Adds a new entry straight away, without approval. Wallets are excluded; existing
 /// records are never touched. The entry joins the client's list so it can read it back.
 fn add(s: &VaultSession, r: &Value, digest: &str) -> Result<Value> {
-    let item = new_item(r)?;
+    let mut item = new_item(r)?;
+    let incoming = item["customFields"].as_array().cloned().unwrap_or_default();
+    let (keep, lines) = projection::split_fields(incoming, 0);
+    let folded = lines.len();
+    if keep.is_empty() {
+        if let Some(map) = item.as_object_mut() {
+            map.remove("customFields");
+        }
+    } else {
+        item["customFields"] = json!(keep);
+    }
+    projection::append_note(&mut item["note"], &lines);
     {
         let _guard = SERIAL.lock().unwrap();
         let d = doc(s)?;
@@ -537,69 +619,9 @@ fn add(s: &VaultSession, r: &Value, digest: &str) -> Result<Value> {
     }
     grant_entry(s, digest, item["id"].as_str().unwrap_or(""))?;
     state().changes += 1;
-    Ok(json!({"id":item["id"],"type":item["type"],"title":item["title"],"added":true}))
-}
-/// The AI asks for an account the vault lacks. The user fills it in a sheet; the UI saves it
-/// through the normal store path, and the new entry is granted to this client and returned.
-fn ask_user(s: &VaultSession, r: &Value, rid: &str, digest: &str) -> Result<Value> {
-    let reveal = r["delivery"] == "reveal";
-    {
-        let _guard = SERIAL.lock().unwrap();
-        let d = doc(s)?;
-        let c = client_digest(&d, digest)?;
-        if d["settings"]["aiAccessScopes"]["accounts"] != true {
-            return Err("UnscopedOrMissing".into());
-        }
-        let mut st = state();
-        if st.pending.len() >= 8 {
-            return Err("Busy".into());
-        }
-        st.pending.insert(rid.to_string(), Pending {
-            // Untrusted client text, bounded before it reaches the sheet as suggestions.
-            view: json!({
-                "requestId": rid, "client": c["name"], "kind": "create",
-                "item": bounded(&r["title"], 80), "url": bounded(&r["url"], 200),
-                "username": bounded(&r["username"], 120), "purpose": bounded(&r["purpose"], 120),
-                "delivery": if reveal { "reveal" } else { "clipboard" },
-            }),
-            // Typing takes longer than a yes/no answer.
-            expires: Instant::now() + Duration::from_secs(180),
-            answer: None,
-            lease: None,
-            created: None,
-        });
-    }
-    let (decision, created) = loop {
-        if doc(s).is_err() {
-            break (Err("Locked".into()), None);
-        }
-        let st = state();
-        let p = st.pending.get(rid).unwrap();
-        if let Some(answer) = approval_decision(p) {
-            break (answer, p.created.clone());
-        }
-        drop(st);
-        std::thread::sleep(Duration::from_millis(100));
-    };
-    state().pending.remove(rid);
-    decision?;
-    let entry_id = created.ok_or("ApprovalDenied")?;
-    grant_entry(s, digest, &entry_id)?;
-    let _guard = SERIAL.lock().unwrap();
-    let d = doc(s)?;
-    let c = client_digest(&d, digest)?;
-    let i = entry(&d, c, &json!({"id": entry_id}))?;
-    if i["type"] != "password" {
-        return Err("InvalidData".into());
-    }
-    let mut out = projection(i, true);
-    if let Some(value) = i["password"].as_str().filter(|v| !v.is_empty()) {
-        if reveal {
-            out["password"] = json!(value);
-        } else {
-            clipboard::put(value, CLIPBOARD_SECONDS)?;
-            out["delivered"] = json!({"password": "clipboard", "clearsAfterSeconds": CLIPBOARD_SECONDS});
-        }
+    let mut out = json!({"id":item["id"],"type":item["type"],"title":item["title"],"added":true});
+    if folded > 0 {
+        out["fieldsMovedToNote"] = json!(folded);
     }
     Ok(out)
 }
@@ -612,6 +634,7 @@ impl Ai {
     pub fn cancel_pending() {
         let mut st = state();
         st.leases.clear();
+        st.tickets.clear();
         for p in st.pending.values_mut() {
             p.answer = Some(false);
         }
@@ -739,9 +762,6 @@ fn control(s: &VaultSession, r: Value) -> Result<Value> {
                 return Err("ExpiredRequest".into());
             }
             let allow = r["allow"] == true;
-            if p.view["kind"] == "create" && allow {
-                p.created = Some(r["entryId"].as_str().filter(|v| !v.is_empty()).ok_or("InvalidData")?.to_string());
-            }
             if allow {
                 if let Some(seconds) = r["leaseSeconds"].as_u64() {
                     let field = p.view["field"].as_str().unwrap_or("");

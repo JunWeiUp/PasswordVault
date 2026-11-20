@@ -44,25 +44,13 @@ export const AI_RESULTS: Record<string, string> = {
   DeferredAuditFlushed: "解锁后补记",
 };
 
-// Older audit rows keep the previous tool names.
 export const AI_OPS: Record<string, string> = {
-  search: "搜索摘要",
-  get: "读取条目",
-  get_secret: "密码/敏感字段",
-  ask_user: "请你填写",
-  add: "新建条目",
-  note_list: "列出笔记",
-  note_read: "读取笔记",
-  note_update: "自动更新笔记",
-  note_attach: "归档笔记资产",
-  note_read_asset: "读取资产纯文本",
-  note_history: "读取笔记历史",
-  search_entries: "搜索摘要",
-  get_entry: "读取条目",
-  list_files: "列出附件",
-  read_file: "读取附件",
+  find: "查找",
+  read: "读取",
+  create: "新建",
+  update: "修改",
+  delete: "移到回收站",
   unsupported: "执行请求",
-  unlock: "审计",
 };
 
 export function relativeAuditTime(seconds: number): string {

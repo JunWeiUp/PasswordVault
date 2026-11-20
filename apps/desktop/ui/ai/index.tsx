@@ -4,8 +4,8 @@ import { cleanup, effect, signal, View } from "nsh";
 export { AiWorkspacePage } from "./Workspace";
 import { Dialog } from "nsh/base";
 import { Ai } from "passwordvault/native";
-import { Banner, Btn, IconBtn, Row, T, TextBox, Toggle } from "../kit";
-import { call, errorText, generatePassword, noteCategories, now, phase, refreshItems, saveNow, settings as vaultSettings, toast, vaultInstance } from "../store";
+import { Banner, Btn, Row, T, Toggle } from "../kit";
+import { call, noteCategories, phase, refreshItems, settings as vaultSettings, toast, vaultInstance } from "../store";
 import { c } from "../theme";
 export const status = signal<any>({ settings: {}, pending: [] });
 export async function control(r: any) { return JSON.parse(await Ai.control(vaultInstance, JSON.stringify(r))); }
@@ -76,12 +76,11 @@ export function AiApprovalHost() {
   });
   const p = () => phase() === "unlocked" ? status().pending[0] : undefined;
   const answer = (allow: boolean, leaseSeconds?: number) => void change({ op: "approve", requestId: p().requestId, allow, ...(leaseSeconds === undefined ? {} : { leaseSeconds }) });
-  const create = () => p()?.kind === "create";
   const secret = () => p()?.kind === "secret";
   const reveal = () => p()?.delivery === "reveal";
   const title = () => !secret() ? "允许 AI 访问这个条目？" : p()?.grant ? `允许 AI 访问此条目并读取${aiFieldLabel(p()?.field)}？` : `允许 AI 读取${aiFieldLabel(p()?.field)}？`;
   const line = (label: string, value: any, color?: string) => <Row gap={12} style={{ alignItems: "flex-start" }}><T size={12} color={c().muted} style={{ width: 56 }}>{label}</T><T size={12.5} color={color ?? c().ink} style={{ flex: 1, minWidth: 0 }}>{value}</T></Row>;
-  return <If when={p()}><If when={create()} else={<Dialog open onOpenChange={({ open: visible }) => { if (!visible && p()) answer(false); }} backdropStyle={{ backgroundColor: c().backdrop }} style={{ alignSelf: "center", marginTop: 130, width: 520, padding: 24, gap: 14, backgroundColor: c().surface, borderRadius: 14 }}>
+  return <If when={p()}><Dialog open onOpenChange={({ open: visible }) => { if (!visible && p()) answer(false); }} backdropStyle={{ backgroundColor: c().backdrop }} style={{ alignSelf: "center", marginTop: 130, width: 520, padding: 24, gap: 14, backgroundColor: c().surface, borderRadius: 14 }}>
     <T size={18} weight="600">{title()}</T>
     <View style={{ gap: 8 }}>
       {line("客户端", p()?.client)}{line("条目", p()?.item)}
@@ -102,49 +101,7 @@ export function AiApprovalHost() {
       <Btn label={secret() ? "允许一次" : "允许访问"} kind="primary" onPress={() => answer(true)} />
     </Row>
     <T size={10.5} color={c().faint}>请求 {p()?.requestId} · 60 秒未确认将自动拒绝</T>
-  </Dialog>}><Each of={[p()]} key={(r: any) => r.requestId}>{(r: any) => <AskUserDialog request={r()} />}</Each></If></If>;
-}
-/** AI asked for an account the vault lacks: the user fills it in, it is saved here, then returned. */
-function AskUserDialog(props: { request: any }) {
-  const r = props.request;
-  const title = signal(r.item ?? ""), url = signal(r.url ?? ""), username = signal(r.username ?? ""), secret = signal(""), showSecret = signal(false), saving = signal(false);
-  const deny = () => void change({ op: "approve", requestId: r.requestId, allow: false });
-  const generate = async () => {
-    try {
-      secret.set(await generatePassword({ length: 24, upper: true, lower: true, digits: true, symbols: true }));
-    } catch (e) { toast(errorText(e)); }
-  };
-  const submit = async () => {
-    if (saving() || !title().trim()) return;
-    saving.set(true);
-    const at = now();
-    const item = { id: crypto.randomUUID(), type: "password" as const, title: title().trim(), url: url().trim(), username: username().trim(), password: secret(), note: "", tags: [],
-      noteFormat: "plain", isDeleted: false, isFavorite: false, isPinned: false, createdAt: at, updatedAt: at };
-    if (await saveNow(item)) await change({ op: "approve", requestId: r.requestId, allow: true, entryId: item.id });
-    saving.set(false);
-  };
-  const reveal = r.delivery === "reveal";
-  const field = (label: string, value: () => string, set: (v: string) => void, masked = false) => <View style={{ gap: 4 }}><T size={11.5} color={c().muted}>{label}</T><TextBox label={label} value={value()} onChange={set} masked={masked} /></View>;
-  return <Dialog open onOpenChange={({ open: visible }) => { if (!visible) deny(); }} backdropStyle={{ backgroundColor: c().backdrop }} style={{ alignSelf: "center", marginTop: 100, width: 520, padding: 24, gap: 12, backgroundColor: c().surface, borderRadius: 14 }}>
-    <T size={18} weight="600">{r.client} 需要一个库里还没有的账号</T>
-    <If when={r.purpose}><T size={12.5} color={c().muted}>用途：{r.purpose}</T></If>
-    {field("名称", title, v => title.set(v))}
-    {field("网址", url, v => url.set(v))}
-    {field("用户名", username, v => username.set(v))}
-    <View style={{ gap: 4 }}>
-      <T size={11.5} color={c().muted}>密码</T>
-      <Row gap={6}>
-        <View style={{ flex: 1 }}>
-          <TextBox label="密码" value={secret()} onChange={v => secret.set(v)} masked={!showSecret()} />
-        </View>
-        <IconBtn icon="eye" label={showSecret() ? "隐藏密码" : "显示密码"} tint={showSecret() ? c().blue : c().muted} onPress={() => showSecret.update(s => !s)} />
-        <Btn label="生成" icon="wand" onPress={() => void generate()} />
-      </Row>
-    </View>
-    <Banner tone={reveal ? "warn" : "ok"} title={reveal ? "AI 将看到密码明文" : "密码只放到剪贴板"} style={{ marginBottom: 0 }}>保存到 PasswordVault 并允许该客户端访问此条目。{reveal ? "明文会进入 AI 对话，无法收回。" : "30 秒后清除，AI 看不到明文。"}</Banner>
-    <Row gap={8}><Btn label="取消" onPress={deny} /><View style={{ flex: 1 }} /><Btn label={saving() ? "正在保存…" : reveal ? "保存并返回明文" : "保存并复制密码"} kind="primary" disabled={saving() || !title().trim()} onPress={() => void submit()} /></Row>
-    <T size={10.5} color={c().faint}>请求 {r.requestId} · 3 分钟未提交将自动取消</T>
-  </Dialog>;
+  </Dialog></If>;
 }
 const FIELD_LABELS: Record<string, string> = { password: "密码", token: "令牌", privateKey: "私钥", nodeLink: "节点链接", notes: "备注", phone: "手机", address1: "地址", address2: "地址第二行", postalCode: "邮编", number: "卡号", securityCode: "安全码" };
 export const aiFieldLabel = (field?: string) => !field ? "敏感字段" : field.startsWith("custom:") ? "自定义敏感字段" : field.startsWith("service:") ? "服务路径" : field.startsWith("command:") ? "私密命令" : FIELD_LABELS[field] ?? field;

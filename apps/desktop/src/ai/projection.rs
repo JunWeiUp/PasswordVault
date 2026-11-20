@@ -260,6 +260,99 @@ pub(super) fn bounded(v: &Value, max: usize) -> Value {
         .map_or(Value::Null, |t| json!(t.trim().chars().take(max).collect::<String>()))
 }
 
+const REDACTED_PREFIXES: &[&str] = &[
+    "SECRET_",
+    "EMAIL_",
+    "TOKEN_",
+    "PASSWORD_",
+    "PASSWD_",
+    "API_KEY_",
+    "APIKEY_",
+    "KEY_",
+    "PHONE_",
+    "MOBILE_",
+    "CARD_",
+    "SSN_",
+    "CREDENTIAL_",
+    "PRIVATE_KEY_",
+    "REDACTED_",
+    "PERSON_",
+    "NAME_",
+    "USERNAME_",
+    "ACCOUNT_",
+    "HOSTNAME_",
+    "ADDRESS_",
+    "IP_",
+    "ID_",
+];
+
+/// Generic redaction shape for categories not listed above: an uppercase category followed by
+/// a 6..=12 char lowercase random suffix that contains a digit (e.g. `{{ORG_x7k2pq9a}}`).
+/// Requiring a digit keeps ordinary template names such as `{{API_TOKEN}}` or `{{DB_password}}`.
+fn generic_redaction(inner: &str) -> bool {
+    let Some((category, suffix)) = inner.rsplit_once('_') else {
+        return false;
+    };
+    category.len() >= 2
+        && category.bytes().all(|b| b.is_ascii_uppercase() || b.is_ascii_digit() || b == b'_')
+        && category.as_bytes()[0].is_ascii_uppercase()
+        && (6..=12).contains(&suffix.len())
+        && suffix.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit())
+        && suffix.bytes().any(|b| b.is_ascii_digit())
+}
+
+/// Detects chat/proxy redaction placeholders such as `{{SECRET_6tqpm8h7}}` or `{{EMAIL_nzi6gcy}}`.
+/// Intentionally narrow (exact uppercase prefix + `_` + 4..=48 token chars inside `{{...}}`) so
+/// ordinary template variables like `{{name}}` or `{{user_id}}` are never rejected.
+pub(super) fn contains_redacted_placeholder(text: &str) -> bool {
+    let mut rest = text;
+    while let Some(start) = rest.find("{{") {
+        let after_open = &rest[start + 2..];
+        let Some(end) = after_open.find("}}") else {
+            break;
+        };
+        let inner = &after_open[..end];
+        if generic_redaction(inner) {
+            return true;
+        }
+        for prefix in REDACTED_PREFIXES {
+            if let Some(suffix) = inner.strip_prefix(prefix)
+                && (4..=48).contains(&suffix.len())
+                && suffix
+                    .bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
+            {
+                return true;
+            }
+        }
+        rest = &after_open[end + 2..];
+    }
+    false
+}
+
+/// Rejects any JSON value tree containing a chat-redacted placeholder so AI clients never
+/// silently persist fake tokens or emails into the vault.
+pub(super) fn reject_redacted_placeholders(v: &Value) -> Result<()> {
+    match v {
+        Value::String(s) if contains_redacted_placeholder(s) => {
+            Err("RedactedPlaceholderDetected".into())
+        }
+        Value::Array(list) => {
+            for item in list {
+                reject_redacted_placeholders(item)?;
+            }
+            Ok(())
+        }
+        Value::Object(map) => {
+            for val in map.values() {
+                reject_redacted_placeholders(val)?;
+            }
+            Ok(())
+        }
+        _ => Ok(()),
+    }
+}
+
 /// Builds a new entry from whitelisted AI input. Never reads or replaces an existing record.
 pub(super) fn new_item(r: &Value) -> Result<Value> {
     let text = |v: &Value, max: usize| bounded(v, max);
@@ -420,7 +513,78 @@ pub(super) fn new_item(r: &Value) -> Result<Value> {
         }
         _ => {}
     }
-    Ok(prune_top(item))
+    if let Some(raw_fields) = r["customFields"].as_array() {
+        let mut fields = Vec::new();
+        for f in raw_fields.iter().take(32) {
+            // Some clients send `name`/`title` instead of `label`.
+            let label = ["label", "name", "title"]
+                .iter()
+                .map(|k| text(&f[*k], 200))
+                .find(|v| v.as_str().is_some_and(|s| !s.is_empty()))
+                .unwrap_or(Value::Null);
+            let value = text(&f["value"], 4000);
+            if label.is_null() && value.is_null() {
+                continue;
+            }
+            let kind = match f["kind"].as_str() {
+                Some(k @ ("text" | "concealed" | "url" | "email" | "date")) => k,
+                _ => "concealed",
+            };
+            let mut entry = json!({
+                "id": super::id(),
+                "label": label.as_str().unwrap_or(""),
+                "value": value.as_str().unwrap_or(""),
+                "kind": kind,
+            });
+            if let Some(group) = text(&f["group"], 100).as_str().filter(|g| !g.is_empty()) {
+                entry["group"] = json!(group);
+            }
+            fields.push(entry);
+        }
+        if !fields.is_empty() {
+            item["customFields"] = Value::Array(fields);
+        }
+    }
+    let item = prune_top(item);
+    reject_redacted_placeholders(&item)?;
+    Ok(item)
+}
+
+/// More custom fields than this make an entry hard to read; extra non-secret ones go to the note.
+pub(super) const FIELD_LIMIT: usize = 3;
+
+/// Splits incoming custom fields given `existing` fields already on the entry. Non-secret
+/// fields become `Label: value` note lines when unlabeled or when the entry would exceed
+/// FIELD_LIMIT; concealed fields always stay fields so secrets never become plain note text.
+pub(super) fn split_fields(incoming: Vec<Value>, existing: usize) -> (Vec<Value>, Vec<String>) {
+    let crowded = existing + incoming.len() > FIELD_LIMIT;
+    let (mut keep, mut lines) = (Vec::new(), Vec::new());
+    for mut f in incoming {
+        let label = f["label"].as_str().unwrap_or("").trim().to_string();
+        let value = f["value"].as_str().unwrap_or("").to_string();
+        if f["kind"] != "concealed" && (crowded || label.is_empty()) {
+            lines.push(if label.is_empty() { value } else { format!("{label}: {value}") });
+        } else {
+            if label.is_empty() {
+                f["label"] = json!("隐藏字段");
+            }
+            keep.push(f);
+        }
+    }
+    (keep, lines)
+}
+
+/// Appends lines to a plain-text note, one per line.
+pub(super) fn append_note(note: &mut Value, lines: &[String]) {
+    if lines.is_empty() {
+        return;
+    }
+    let mut text = note.as_str().unwrap_or("").trim_end().to_string();
+    if !text.is_empty() {
+        text.push('\n');
+    }
+    text.push_str(&lines.join("\n"));
+    *note = json!(text);
 }
 
 /// Drops unset optional top-level fields while keeping the fields every entry needs.

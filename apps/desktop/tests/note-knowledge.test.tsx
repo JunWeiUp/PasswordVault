@@ -98,6 +98,24 @@ test("notes support hierarchical folders, properties/slug, MD wikilinks/backlink
   await app.waitFor("id:note-assets-section");
   expect(app.texts().some((t) => t.includes("加密资产附件"))).toBe(true);
 
+  // Verify editor line numbers show by default, toggle off/on from toolbar, sync with MD mode and more menu.
+  await app.waitFor("id:note-line-gutter");
+  await app.waitFor("id:note-line-num-1");
+  await app.press("id:note-line-numbers-toggle");
+  await app.waitFor("id:note-line-gutter", { state: "gone" });
+  await app.press("id:note-mode-md");
+  await app.waitFor("id:md-line-numbers-toggle");
+  await app.press("id:md-line-numbers-toggle");
+  await app.press("id:note-mode-edit");
+  await app.waitFor("id:note-line-gutter");
+  await app.waitFor("id:note-line-num-1");
+  await app.press("id:detail-more");
+  expect((app.menu() ?? []).some((m) => m.label === "显示行号" && m.checked === true)).toBe(true);
+  await app.chooseMenuItem("显示行号");
+  await app.waitFor("id:note-line-gutter", { state: "gone" });
+  await app.press("id:note-line-numbers-toggle");
+  await app.waitFor("id:note-line-gutter");
+
   // Add slug & structured property
   await app.type("id:note-slug-input", "family-guide");
   await app.submit("id:note-slug-input");
@@ -138,12 +156,7 @@ test("notes support hierarchical folders, properties/slug, MD wikilinks/backlink
   // 5. Open AI Workspace, check Option A + asset MCP tools, add writable category & verify exclusion sheet
   await app.press("id:nav-ai");
   await app.waitFor("text:个人知识库 · AI 免弹窗自动保存与资产归档");
-  expect(app.texts()).toContain("note_list");
-  expect(app.texts()).toContain("note_read");
-  expect(app.texts()).toContain("note_update");
-  expect(app.texts()).toContain("note_attach");
-  expect(app.texts()).toContain("note_read_asset");
-  expect(app.texts()).toContain("note_history");
+  for (const tool of ["find", "read", "create", "update", "delete"]) expect(app.texts()).toContain(tool);
   if (app.texts().includes("启用接口")) {
     await app.press("text:启用接口");
     await app.waitFor("text:停用接口");

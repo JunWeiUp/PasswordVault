@@ -343,6 +343,14 @@ pub(super) fn note_update(s: &VaultSession, r: &Value, digest: &str) -> Result<V
     if content.len() > 2 * 1024 * 1024 {
         return Err("NoteTooLarge".into());
     }
+    if projection::contains_redacted_placeholder(content)
+        || r["title"]
+            .as_str()
+            .is_some_and(projection::contains_redacted_placeholder)
+    {
+        return Err("RedactedPlaceholderDetected".into());
+    }
+    projection::reject_redacted_placeholders(&r["properties"])?;
     let props_patch = sanitize_properties(&r["properties"])?;
     let slug_patch = sanitize_slug(&r["slug"])?;
 

@@ -1,10 +1,7 @@
 ## Changes
 
-- Mac and Windows (NSH 0.6.0): Personal knowledge base notes with hierarchical folders, structured properties and `slug` routes, `[[wikilinks]]` and backlinks, diff version history, and 100 MB encrypted chunked assets (`blobs/`) with Quick Look, local PDF/Office text extraction, and one-click external-edit encrypted write-back.
-- Local AI (MCP): Category-level access scopes (`accounts`, `profiles`, `devices`, `notes`, `noteAssets`) with top-pinned sidebar `AI Access`, interactive paired-client management (non-secret fingerprints, encrypted remarks, duplicate-name warnings, pause/resume, audit filtering, and one-click unused token cleanup), and six note/asset MCP tools (`note_list`, `note_read`, `note_update`, `note_attach`, `note_read_asset`, `note_history`). Devices & services document library supports per-row deletion.
-- Core: Per-note encrypted `note_bodies` storage, 64 KiB AES-256-GCM chunked `blobs/` with HMAC-SHA256 deduplication and reference-counted GC, and generic JSON passthrough primitives.
-- iOS & Android: Linked live 2FA codes with countdown and copy on account detail, password strength indicators, and device/entry list refinements.
-- Browser extension: Quick password copy and strength indicators, passkey and vault UI refinements, and updated English localization.
+- Mac and Windows (NSH 0.6.0): Optional line numbers in the note rich editor and Markdown source pane (Settings toggle, on by default).
+- Local AI (MCP): Tools consolidate into five — `find`, `read`, `create`, `update` and `delete` — across entries and knowledge-base notes, with `passwordvault:<id|slug|title>` references. Reading a password or other secret still needs approval; writes save an AI-attributed encrypted history revision and deletion only moves to the Trash, so every change is restorable. Non-secret extras are kept as `Label: value` lines in the note instead of scattered custom fields, and `update` can remove fields.
 
 ## Downloads
 

@@ -18,6 +18,8 @@ export const DENSITY_LABEL: Record<ListDensity, string> = { standard: "标准", 
 export const listDensity = signal<ListDensity>("standard");
 /** Close Quick Access after copying from it (default on). */
 export const quickCloseAfterCopy = signal(true);
+/** Show line numbers in the note rich editor and Markdown source pane (default on). */
+export const noteLineNumbers = signal(true);
 /** Vertical padding of an item list row for a density. */
 export const rowPadding = (density: ListDensity) => (density === "compact" ? 5 : 10);
 
@@ -29,6 +31,10 @@ export function setListDensity(value: ListDensity) {
 export function setQuickCloseAfterCopy(on: boolean) {
   quickCloseAfterCopy.set(on);
   void Storage.setItem("quickCloseAfterCopy", on ? "1" : "0");
+}
+export function setNoteLineNumbers(on: boolean) {
+  noteLineNumbers.set(on);
+  void Storage.setItem("noteLineNumbers", on ? "1" : "0");
 }
 
 export function setClipboardSeconds(value: number) {
@@ -52,9 +58,9 @@ export function setHideFromCapture(on: boolean) {
 }
 
 export async function loadPreferences() {
-  const [seconds, sort, tray, capture, density, quickClose] = await Promise.all([
+  const [seconds, sort, tray, capture, density, quickClose, lineNumbers] = await Promise.all([
     Storage.getItem("clipboardSeconds"), Storage.getItem("sortMode"), Storage.getItem("trayIcon"), Storage.getItem("hideFromCapture"),
-    Storage.getItem("listDensity"), Storage.getItem("quickCloseAfterCopy"),
+    Storage.getItem("listDensity"), Storage.getItem("quickCloseAfterCopy"), Storage.getItem("noteLineNumbers"),
   ]);
   const n = Number(seconds);
   if (seconds !== null && CLIPBOARD_CHOICES.some(([v]) => v === n)) clipboardSeconds.set(n);
@@ -63,4 +69,5 @@ export async function loadPreferences() {
   hideFromCapture.set(capture === "1");
   if (density && density in DENSITY_LABEL) listDensity.set(density as ListDensity);
   quickCloseAfterCopy.set(quickClose !== "0");
+  noteLineNumbers.set(lineNumbers !== "0");
 }
