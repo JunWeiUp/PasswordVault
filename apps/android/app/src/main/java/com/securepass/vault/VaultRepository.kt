@@ -219,7 +219,7 @@ class VaultRepository(
 
     fun foreground() {
         if (context.getSystemService(KeyguardManager::class.java)?.isDeviceLocked == true) lock()
-        else checkIdle()
+        else { checkIdle(); relay.resume() }
     }
 
     /** Keep the in-process session until idle expiry; backgrounding is not an unlock. */

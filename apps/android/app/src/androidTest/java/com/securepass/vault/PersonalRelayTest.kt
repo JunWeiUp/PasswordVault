@@ -236,6 +236,57 @@ class PersonalRelayTest {
             RelayLocalTest.enabled = false
         }
     }
+    /**
+     * HyperOS freezes backgrounded apps and the relay then drops their socket. Returning to the
+     * foreground must reconnect promptly and keep two-way sync working.
+     */
+    @Test fun foregroundReconnectsAfterTheRelayDroppedTheSocket() = runBlocking {
+        val endpoint = InstrumentationRegistry.getArguments().getString("presenceEndpoint")
+        org.junit.Assume.assumeTrue(endpoint?.startsWith("ws://127.0.0.1:") == true)
+        RelayLocalTest.enabled = true
+        val access = InstrumentationRegistry.getArguments().getString("relayPassword") ?: "fixture-access-123"
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val base = File(context.cacheDir, "reconnect-fixture-${UUID.randomUUID()}")
+        val mac = VaultRepository(context, File(base, "mac"))
+        val phone = VaultRepository(context, File(base, "phone"))
+        suspend fun until(timeout: Long = 40_000, condition: () -> Boolean) { withTimeout(timeout) { while (!condition()) delay(100) } }
+        fun online(v: VaultRepository) = v.relay.state.value.members.size == 2 && v.relay.state.value.members.all { it.online }
+        fun has(v: VaultRepository, id: String) = v.state.value.entries.any { it.optString("id") == id }
+        try {
+            until { mac.state.value.ready && phone.state.value.ready }
+            mac.authenticate("fixture", true); phone.authenticate("fixture", true)
+            mac.relay.createGroup(endpoint!!, "Reconnect fixture", "Mac", access)
+            until { mac.relay.state.value.managed && !mac.relay.state.value.busy }
+            mac.relay.inviteToGroup()
+            until { mac.relay.state.value.groupInvite.isNotEmpty() && !mac.relay.state.value.busy }
+            phone.relay.joinGroup(mac.relay.state.value.groupInvite, "Phone", access)
+            until { online(mac) && online(phone) && mac.relay.state.value.mesh && phone.relay.state.value.mesh }
+
+            // Simulate the OS freeze: the relay closed the phone's socket while it was backgrounded.
+            val field = PersonalRelay::class.java.getDeclaredField("client").apply { isAccessible = true }
+            (field.get(phone.relay) as com.securepass.vault.core.RelayConnection).disconnect()
+            val started = System.currentTimeMillis()
+            phone.foreground()
+            until(15_000) { phone.relay.state.value.status.contains("已连接") && phone.relay.state.value.error == null }
+            val reconnectMs = System.currentTimeMillis() - started
+            android.util.Log.w("PersonalRelayTest", "reconnected after ${reconnectMs}ms")
+            assertTrue("reconnect took ${reconnectMs}ms", reconnectMs < 10_000)
+
+            // Sync still flows both ways after the reconnect.
+            assertTrue(mac.save(VaultRepository.blank("secureNote").put("id", "from-mac").put("title", "From Mac")))
+            assertTrue(phone.save(VaultRepository.blank("secureNote").put("id", "from-phone").put("title", "From phone")))
+            mac.relay.syncNow(); phone.relay.syncNow()
+            until(60_000) { has(phone, "from-mac") && has(mac, "from-phone") }
+        } finally {
+            if (mac.relay.state.value.managed) { until { !mac.relay.state.value.busy }; mac.relay.leaveGroup(true) }
+            mac.close(); phone.close(); base.deleteRecursively()
+            for (name in listOf("mac", "phone")) {
+                val alias = "pv-relay-" + RelayCore.hex(java.security.MessageDigest.getInstance("SHA-256").digest(File(base, name).absolutePath.toByteArray())).take(32)
+                java.security.KeyStore.getInstance("AndroidKeyStore").apply { load(null); deleteEntry(alias) }
+            }
+            RelayLocalTest.enabled = false
+        }
+    }
     @Test fun legacyKeystoreMigratesToMasterPasswordFileAndRestartsWithoutLegacyKey() = runBlocking {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val base = File(context.cacheDir, "relay-migration-${UUID.randomUUID()}")

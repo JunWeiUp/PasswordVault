@@ -240,6 +240,22 @@ internal class PersonalRelay(private val directory: File, private val vault: Vau
         } else scope.launch { actions.withLock { stop(); loadCredentials(); start() } }
     }
     suspend fun close() { unlocked = false; stop(); scope.cancel() }
+    /**
+     * The app returned to the foreground. Aggressive OEM power managers (e.g. HyperOS) freeze
+     * backgrounded apps, so the relay drops the socket after missed pings; reconnect right away
+     * instead of waiting out the retry backoff with a "waiting to reconnect" banner.
+     */
+    fun resume() {
+        if (!unlocked) return
+        val connection = client
+        if (connection != null && !connection.isClosed() && loop?.isActive == true) return
+        scope.launch { actions.withLock {
+            if (!unlocked) return@withLock
+            val current = client
+            if (current != null && !current.isClosed() && loop?.isActive == true) return@withLock
+            stop(); start()
+        } }
+    }
     fun syncNow() {
         val current = mutable.value
         val blocked = when {
