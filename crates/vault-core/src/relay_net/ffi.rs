@@ -64,7 +64,7 @@ impl RelayConnection {
     pub fn connect(options: String) -> R<Arc<Self>> {
         let o = parse(&options)?;
         let journal = match o["journal"].as_str() {
-            Some(dir) => Some(Journal::open(Path::new(dir))?),
+            Some(dir) => Some(Journal::open(Path::new(dir)).map_err(super::code)?),
             None => None,
         };
         let inner = Connection::connect(
@@ -100,10 +100,6 @@ impl RelayConnection {
             .inner
             .message(&to, &data, offline, id.as_deref())?
             .to_string())
-    }
-
-    pub fn send_online(&self, to: String, data: Vec<u8>) -> R<()> {
-        Ok(self.inner.send_online(&to, &data)?)
     }
 
     pub fn acknowledge(&self, from: String, id: String, offline: bool) -> R<String> {

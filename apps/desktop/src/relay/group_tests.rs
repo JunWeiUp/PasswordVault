@@ -32,7 +32,7 @@ impl Drop for Fixture {
         let _ = std::net::TcpStream::connect(
             self.url
                 .trim_start_matches("ws://")
-                .trim_end_matches("/relay/v1/ws"),
+                .trim_end_matches("/v2/ws"),
         );
         self.thread.take().unwrap().join().unwrap();
     }
@@ -92,7 +92,7 @@ impl Fixture {
                 let path = first
                     .next()
                     .unwrap()
-                    .strip_prefix("/relay/v1")
+                    .strip_prefix("/v2")
                     .unwrap()
                     .to_owned();
                 let headers: BTreeMap<_, _> = lines
@@ -145,7 +145,7 @@ impl Fixture {
                     let accept = tungstenite::handshake::derive_accept_key(
                         headers["sec-websocket-key"].as_bytes(),
                     );
-                    write!(stream,"HTTP/1.1 101 Switching Protocols\r\nConnection: Upgrade\r\nUpgrade: websocket\r\nSec-WebSocket-Accept: {accept}\r\nSec-WebSocket-Protocol: common-relay.v1\r\n\r\n").unwrap();
+                    write!(stream,"HTTP/1.1 101 Switching Protocols\r\nConnection: Upgrade\r\nUpgrade: websocket\r\nSec-WebSocket-Accept: {accept}\r\n\r\n").unwrap();
                     let count = counts.fetch_add(1, Ordering::SeqCst);
                     let stop = flag.clone();
                     let polls = poll_count.clone();
@@ -170,12 +170,12 @@ impl Fixture {
                             None,
                         );
                         ws.send(tungstenite::Message::Text(
-                            json!({"version":1,"identity":identity}).to_string().into(),
+                            json!({"type":"hello","from":identity["device"]}).to_string().into(),
                         ))
                         .unwrap();
                         if count > 0 {
                             // Production sends the current roster revision on every connect.
-                            ws.send(tungstenite::Message::Text(json!({"type":"group.changed","revision":1}).to_string().into())).unwrap();
+                            ws.send(tungstenite::Message::Text(json!({"type":"group.changed","seq":1}).to_string().into())).unwrap();
                             while !stop.load(Ordering::SeqCst) {
                                 for event in rx.try_iter() {
                                     let _ = ws
@@ -184,9 +184,8 @@ impl Fixture {
                                 match ws.read() {
                                     Ok(tungstenite::Message::Text(t)) => {
                                         let e: Value = serde_json::from_str(&t).unwrap();
-                                        if e["type"] == "message" {
-                                            let mut out = e.clone();
-                                            out["from"] = json!(device);
+                                        if e["type"] == "msg" {
+                                            let mut out = json!({"type":"msg","id":e["id"],"from":device,"body":e["body"],"offline":e["offline"]});
                                             if e["offline"] == true {
                                                 let mut store = offline.lock().unwrap();
                                                 let saved = store
@@ -199,7 +198,7 @@ impl Fixture {
                                             }
                                             if e["offline"] == true {
                                                 let _ = ws.send(tungstenite::Message::Text(
-                                                    json!({"type":"stored","id":e["id"]})
+                                                    json!({"type":"ack","id":e["id"],"event":"stored"})
                                                         .to_string()
                                                         .into(),
                                                 ));
@@ -225,11 +224,11 @@ impl Fixture {
                                                 .get(e["from"].as_str().unwrap())
                                             {
                                                 let _ = sender
-                                                    .send(json!({"type":"received","id":e["id"]}));
+                                                    .send(json!({"type":"received","id":e["id"],"from":device}));
                                             }
-                                        } else if e["type"] == "peers" {
+                                        } else if e["type"] == "presence" {
                                             polls.fetch_add(1, Ordering::SeqCst);
-                                            if ws.send(tungstenite::Message::Text(json!({"type":"peers","id":e["id"],"devices":[]}).to_string().into())).is_err(){break;}
+                                            if ws.send(tungstenite::Message::Text(json!({"type":"presence","id":e["id"],"peers":[]}).to_string().into())).is_err(){break;}
                                         }
                                     }
                                     Err(tungstenite::Error::Io(ref e))
@@ -428,7 +427,7 @@ impl Fixture {
             }
         });
         Self {
-            url: format!("ws://{address}/relay/v1/ws"),
+            url: format!("ws://{address}/v2/ws"),
             connections,
             rejected,
             reject_exit,
@@ -495,8 +494,9 @@ fn group_local_http_auto_manual_lifecycle_and_failure_paths() {
     phone.rename("phone", "Renamed Phone").unwrap();
     assert!(phone.rename("mac", "Impostor").is_err());
     mac.refresh().unwrap();
+    // The spent invitation retires locally on its own; the relay keeps it for the joiner's replay.
+    assert!(mac.config.get("issued_invitation").is_none());
     mac.cancel().unwrap();
-    assert!(phone.resolve(&auto, None).is_err());
     let manual = mac.invite("manual").unwrap();
     let mut save_tablet = |_: &Value| Ok(());
     let mut tablet = Groups {

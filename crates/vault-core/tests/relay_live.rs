@@ -1,7 +1,6 @@
 //! End-to-end relay test against a real Common Relay server on loopback.
-//! Runs when `COMMON_RELAY_BIN` points at a built (protocol v2) `common-relay` binary, and
-//! also over `/relay/v1/ws` when `COMMON_RELAY_V1_BIN` points at a pre-v2-only build
-//! (`bash tool/test_relay_live.sh` builds both from a local source tree); skipped otherwise.
+//! Runs when `COMMON_RELAY_BIN` points at a built `common-relay` binary (protocol v2;
+//! `bash tool/test_relay_live.sh` builds one from a local source tree); skipped otherwise.
 #![cfg(feature = "native")]
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
@@ -161,14 +160,6 @@ fn protocol_v2_groups_messages_files_and_exit() {
     }
 }
 
-#[test]
-fn protocol_v1_groups_messages_files_and_exit() {
-    match server("COMMON_RELAY_V1_BIN", "/relay/v1/ws") {
-        Some(server) => run(&server),
-        None => eprintln!("COMMON_RELAY_V1_BIN not set; skipping v1 live relay test"),
-    }
-}
-
 fn run(server: &Server) {
     let (a, _) = groups(
         &device(&server.url, "mac"),
@@ -194,13 +185,18 @@ fn run(server: &Server) {
     assert_eq!(state["state"]["members"].as_array().unwrap().len(), 2);
     // Once a device joined with it, the inviter's invitation retires on its own.
     assert!(a.get("issued_invitation").is_none() && a.get("pending_link").is_none());
+    // The relay keeps the spent invitation (for the joiner's replay) but nobody else can use it.
+    let late = device(&server.url, "late");
+    let reused =
+        groups(&late, json!({"op":"resolve","link":link})).and_then(|(late, invitation)| {
+            groups(
+                &late,
+                json!({"op":"join","invitation":invitation,"name":"Late"}),
+            )
+        });
     assert!(
-        groups(
-            &device(&server.url, "late"),
-            json!({"op":"resolve","link":link})
-        )
-        .is_err(),
-        "a spent invitation is revoked on the relay too"
+        reused.is_err(),
+        "a spent invitation cannot admit another device"
     );
 
     let journals = tempfile::tempdir().unwrap();

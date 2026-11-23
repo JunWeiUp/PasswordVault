@@ -10,7 +10,7 @@ crate-type = ["lib", "cdylib", "staticlib"]
 
 [features]
 default = ["native"]
-native = ["dep:rusqlite", "dep:uniffi", "dep:tempfile", "dep:fs2", "dep:tungstenite", "dep:reqwest"]
+native = ["dep:rusqlite", "dep:uniffi", "dep:tempfile", "dep:fs2", "dep:tungstenite", "dep:reqwest", "dep:common-relay", "dep:tokio"]
 bindgen = ["native", "uniffi/cli"]
 browser = ["dep:wasm-bindgen", "getrandom/js"]
 
@@ -22,8 +22,6 @@ chrono = { version = "0.4", default-features = false, features = ["std"] }
 csv = "1.3"
 crypto_box = { version = "0.9.1", features = ["std"] }
 crypto_secretbox = "0.1.1"
-chacha20 = "0.9.1"
-poly1305 = "0.8.0"
 bip39 = { version = "2.2.0", features = ["zeroize"] }
 bip32 = { version = "0.5.3", default-features = false, features = ["std", "secp256k1"] }
 sha3 = "0.10.8"
@@ -54,6 +52,10 @@ fs2 = { version = "0.4", optional = true }
 # same code cross-compiles for Android and iOS.
 tungstenite = { version = "0.28", default-features = false, features = ["handshake", "rustls-tls-webpki-roots"], optional = true }
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls"], optional = true }
+# Official Common Relay SDK (WSS message client, journal, files, policy). default-features off:
+# its `serde_json/preserve_order` default would change JSON key order across vault-core.
+common-relay = { git = "https://github.com/JunWeiUp/common-relay", rev = "e5f76930b5e7efa55a878e319bf86a6846d05d3a", default-features = false, optional = true }
+tokio = { version = "1", features = ["rt-multi-thread"], optional = true }
 wasm-bindgen = { version = "0.2", optional = true }
 
 [[bin]]

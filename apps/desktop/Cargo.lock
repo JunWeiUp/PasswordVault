@@ -413,7 +413,7 @@ dependencies = [
  "maybe-owned",
  "rustix",
  "rustix-linux-procfs",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
  "winx",
 ]
 
@@ -532,6 +532,32 @@ name = "color_quant"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3d7b894f5411737b7867f4827955924d7c254fc9f4d91a6aad6b097804b1018b"
+
+[[package]]
+name = "common-relay"
+version = "0.1.7"
+source = "git+https://github.com/JunWeiUp/common-relay?rev=e5f76930b5e7efa55a878e319bf86a6846d05d3a#e5f76930b5e7efa55a878e319bf86a6846d05d3a"
+dependencies = [
+ "base64 0.22.1",
+ "chacha20 0.9.1",
+ "crypto_box",
+ "crypto_secretbox",
+ "ed25519-dalek",
+ "futures-util",
+ "getrandom 0.2.17",
+ "hex",
+ "poly1305",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror",
+ "tokio",
+ "tokio-tungstenite",
+ "url",
+ "x25519-dalek",
+ "zeroize",
+]
 
 [[package]]
 name = "comrak"
@@ -656,6 +682,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "16182b4f39a82ec8a6851155cc4c0cda3065bb1db33651726a29e1951de0f009"
 dependencies = [
  "aead",
+ "blake2",
  "crypto_secretbox",
  "curve25519-dalek",
  "salsa20",
@@ -914,7 +941,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -2532,7 +2559,7 @@ dependencies = [
  "once_cell",
  "socket2",
  "tracing",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -2895,7 +2922,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -3278,7 +3305,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c3d1e2c7f27f8d4cb10542a02c49005dbd6e93095799d6f3be745fae9f8fedd4"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -3434,7 +3461,7 @@ dependencies = [
  "getrandom 0.4.3",
  "once_cell",
  "rustix",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -3528,6 +3555,22 @@ checksum = "c9cc2678c2cdd569ef8215e2afd7954ada2ae20b4fdd2c5fe6139a3b02d105db"
 dependencies = [
  "rustls",
  "tokio",
+]
+
+[[package]]
+name = "tokio-tungstenite"
+version = "0.28.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d25a406cddcc431a75d3d9afc6a7c0f7428d4891dd973e4d54c56b46127bf857"
+dependencies = [
+ "futures-util",
+ "log",
+ "rustls",
+ "rustls-pki-types",
+ "tokio",
+ "tokio-rustls",
+ "tungstenite",
+ "webpki-roots 0.26.11",
 ]
 
 [[package]]
@@ -3950,8 +3993,8 @@ dependencies = [
  "base64 0.22.1",
  "bip32",
  "bip39",
- "chacha20 0.9.1",
  "chrono",
+ "common-relay",
  "crypto_box",
  "crypto_secretbox",
  "csv",
@@ -3963,7 +4006,6 @@ dependencies = [
  "hkdf",
  "hmac",
  "p256",
- "poly1305",
  "psl",
  "rand 0.8.8",
  "reqwest",
@@ -3975,6 +4017,7 @@ dependencies = [
  "sha3",
  "tempfile",
  "thiserror",
+ "tokio",
  "tungstenite",
  "uniffi",
  "url",
@@ -4171,7 +4214,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
