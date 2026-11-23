@@ -31,6 +31,12 @@ fn name(s: &str) -> Result<&str> {
     }
     Ok(s)
 }
+/// Unix seconds from an integer or fractional JSON number (older clients sent floats).
+fn seconds(v: &Value) -> u64 {
+    v.as_u64()
+        .or_else(|| v.as_f64().filter(|f| *f >= 0.0).map(|f| f as u64))
+        .unwrap_or(0)
+}
 fn erase(v: &mut Value, key: &str) {
     v.as_object_mut().unwrap().remove(key);
 }
@@ -296,7 +302,7 @@ impl<A: Api> Groups<'_, A> {
             || inv["url"] != url
             || inv["id"] != id
             || inv["app"] != self.config["app"]
-            || inv["expires"].as_u64().unwrap_or(0) <= now()
+            || seconds(&inv["expires"]) <= now()
         {
             return invalid();
         }
@@ -338,7 +344,7 @@ impl<A: Api> Groups<'_, A> {
         }
         if inv["version"] != 1
             || inv["app"] != self.config["app"]
-            || inv["expires"].as_u64().unwrap_or(0) <= now()
+            || seconds(&inv["expires"]) <= now()
         {
             return invalid();
         }
@@ -557,7 +563,7 @@ impl<A: Api> Groups<'_, A> {
         self.manager()?;
         let req = unpack(&self.config["join_request"])?;
         let inv = &self.config["issued_invitation"];
-        if inv["expires"].as_u64().unwrap_or(0) <= now() || req["invitation"] != inv["id"] {
+        if seconds(&inv["expires"]) <= now() || req["invitation"] != inv["id"] {
             return invalid();
         }
         verify(
@@ -676,6 +682,38 @@ impl<A: Api> Groups<'_, A> {
         state["request_hash"] = json!("");
         self.change(state)
     }
+    /// The signed exit (or disband) entry for the current verified state, checked against
+    /// the chain rules. Fails when the exit is not allowed (e.g. the last manager leaving
+    /// other members behind, or a non-manager disbanding).
+    fn exit_entry(&self, disband: bool) -> Result<Value> {
+        let mut state = self.state()?;
+        if disband {
+            self.manager()?;
+        }
+        let own = self.config["device"].clone();
+        let members = state["members"].as_array_mut().ok_or("InvalidData")?;
+        members.retain(|m| !disband && m["device"] != own);
+        if members.is_empty() {
+            state["closed"] = json!(true);
+        } else if !members.iter().any(|m| m["manager"] == true) {
+            return Err("LastManager".into());
+        }
+        state["invitation"] = json!("");
+        state["request_hash"] = json!("");
+        state["revision"] = json!(state["revision"].as_u64().ok_or("InvalidData")? + 1);
+        state["previous"] = json!(digest(&payload(&self.config["group_entry"])?));
+        let e = self.sign(&state)?;
+        advance(&self.config["group_entry"], &e)?;
+        Ok(e)
+    }
+    /// Offline pre-check so a client can clear local state first (owner policy) only when the
+    /// signed exit it will send afterwards is valid. Uses the locally verified state.
+    pub fn check_exit(&self, disband: bool) -> Result<()> {
+        if self.config["exit_completed"] == true || self.config.get("group_entry").is_none() {
+            return Ok(());
+        }
+        self.exit_entry(disband).map(|_| ())
+    }
     pub fn exit(&mut self, disband: bool) -> Result<()> {
         if self.config["exit_completed"] == true {
             return Ok(());
@@ -686,22 +724,7 @@ impl<A: Api> Groups<'_, A> {
             }
         } else {
             self.refresh()?;
-            let mut state = self.state()?;
-            if disband {
-                self.manager()?;
-            }
-            let own = self.config["device"].clone();
-            let members = state["members"].as_array_mut().ok_or("InvalidData")?;
-            members.retain(|m| !disband && m["device"] != own);
-            if members.is_empty() {
-                state["closed"] = json!(true);
-            }
-            state["invitation"] = json!("");
-            state["request_hash"] = json!("");
-            state["revision"] = json!(state["revision"].as_u64().ok_or("InvalidData")? + 1);
-            state["previous"] = json!(digest(&payload(&self.config["group_entry"])?));
-            let e = self.sign(&state)?;
-            advance(&self.config["group_entry"], &e)?;
+            let e = self.exit_entry(disband)?;
             self.config["pending_exit"] = e;
             self.config["exit_disband"] = json!(disband);
             self.persist()?;

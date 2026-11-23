@@ -1,7 +1,7 @@
 use super::{protocol::*, transport::*, *};
 fn vectors() -> Value {
     serde_json::from_str(include_str!(
-        "../../../../vendor/common-relay/protocol/group-vectors.json"
+        "../../../../crates/vault-core/tests/fixtures/relay-protocol/group-vectors.json"
     ))
     .unwrap()
 }
@@ -61,7 +61,7 @@ fn group_vectors_and_failure_paths() {
 fn invitation_vectors_and_tamper() {
     sodiumoxide::init().unwrap();
     let v: Value = serde_json::from_str(include_str!(
-        "../../../../vendor/common-relay/protocol/invitation-link-vectors.json"
+        "../../../../crates/vault-core/tests/fixtures/relay-protocol/invitation-link-vectors.json"
     ))
     .unwrap();
     let key = unhex(v["key"].as_str().unwrap()).unwrap();

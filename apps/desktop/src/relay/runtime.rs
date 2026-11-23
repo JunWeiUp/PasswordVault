@@ -138,7 +138,7 @@ pub fn request_blob(
 use vault_core::relay_protocol::policy;
 pub fn exit_local(s: &Arc<VaultSession>, directory: std::path::PathBuf, disband: bool, local: bool) -> Result<String> {
     stop(s);
-    let (display, remote) = service::exit_local(s)?;
+    let (display, remote) = service::exit_local(s, disband)?;
     let notice = Arc::new(Run {
         directory, stop: AtomicBool::new(true), socket: Mutex::new(None),
         view: Mutex::new(json!({"transport":"disconnected","online":[],"exit":{"disband":disband,"remote":"pending"}})),

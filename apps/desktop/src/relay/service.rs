@@ -235,11 +235,14 @@ pub fn execute(s: &VaultSession, request: Value, local: bool) -> Result<String> 
 
 /// Commit local departure without waiting for any remote request. The returned
 /// snapshot is only for a best-effort remote notification and must never be saved.
-pub fn exit_local(s: &VaultSession) -> Result<(String, Value)> {
+pub fn exit_local(s: &VaultSession, disband: bool) -> Result<(String, Value)> {
     let _commit = CONTROL.lock().map_err(|_| "Storage")?;
     sodiumoxide::init().map_err(|_| "Storage")?;
     let mut c = read(s)?;
     let remote = group(&c)?;
+    // Never orphan a group: validate the signed exit offline before clearing local state.
+    let mut discard = |_: &Value| Ok(());
+    Groups { config: remote.clone(), api: Http { local: false }, save: &mut discard, local: false }.check_exit(disband)?;
     clear_local(s, &mut c)?;
     Ok((display(&c)?.to_string(), remote))
 }

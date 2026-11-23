@@ -201,7 +201,7 @@ pub trait RelayGroupStore: Send + Sync {
 /// Request: `{config, allowLocal?, op, ...}` with ops `create{name, deviceName}`,
 /// `invite{mode}`, `publish`, `resolve{link, typed?, override?}`, `join{invitation, name}`,
 /// `finish-join`, `pending`, `code`, `approve{code, manager}`, `cancel`, `rename{device, name}`,
-/// `remove{device}`, `exit{disband}`, `refresh`, `member{name}`.
+/// `remove{device}`, `exit{disband}`, `check-exit{disband}` (offline), `refresh`, `member{name}`.
 #[uniffi::export]
 pub fn relay_groups(request: String, store: Arc<dyn RelayGroupStore>) -> R<String> {
     let r = parse(&request)?;
@@ -240,6 +240,9 @@ pub fn relay_groups(request: String, store: Arc<dyn RelayGroupStore>) -> R<Strin
             .map(|_| json!(true))?,
         "remove" => groups.remove(&s("device")?).map(|_| json!(true))?,
         "exit" => groups.exit(r["disband"] == true).map(|_| json!(true))?,
+        "check-exit" => groups
+            .check_exit(r["disband"] == true)
+            .map(|_| json!(true))?,
         "refresh" => groups.refresh()?,
         "member" => groups.member(&s("name")?)?,
         _ => return Err("InvalidData".to_owned().into()),

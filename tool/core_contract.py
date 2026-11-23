@@ -449,8 +449,6 @@ MATRIX_CLIENTS: list[tuple[str, tuple[str, ...], tuple[str, ...], list[re.Patter
      [*SCANS[0][2], re.compile(r'\bCoreRequest\.`?([A-Za-z0-9]+)`?\(')]),
     ("ios", ("apps/ios/Sources", "apps/ios/Autofill", "apps/shared/Relay", "apps/shared/Capabilities"), (".swift",),
      [*SCANS[1][2], re.compile(r'\bCoreRequest\.`?([A-Za-z0-9]+)`?\(')]),
-    ("relay-sdk", ("vendor/common-relay",), (".java", ".swift"),
-     [re.compile(r'CoreProtocol\.call\(\s*"([a-z0-9-]+)"')]),
     ("browser*", ("apps/browser/src",), (".ts", ".tsx"),
      [re.compile(r'\bop:\s*"([a-z0-9-]+)"'), re.compile(r'op\s*===?\s*"([a-z0-9-]+)"'),
       # core.ts forwards UI requests whose op is on a one-name-per-line allow-list.
@@ -471,8 +469,6 @@ def usage(commands: dict) -> dict[str, set[str]]:
                     for match in pattern.finditer(text):
                         for name in filter(None, match.groups()):
                             op = name if name in commands else by_camel.get(name)
-                            if client == "relay-sdk":
-                                op = f"relay-protocol-{name}"
                             if op in used:
                                 used[op].add(client)
     return used
@@ -493,7 +489,7 @@ def print_matrix(commands: dict, args: list[str]) -> int:
         who = used[op]
         if "--unused" in args and who:
             continue
-        native_users = who - {missing, "browser*", "relay-sdk"}
+        native_users = who - {missing, "browser*"}
         if missing and (missing in who or not native_users):
             continue
         rows.append((op, entry["group"], who))

@@ -9,7 +9,7 @@ The Android app is built with the following open-source components. Each retains
 - Markwon (Dimitry Ivanov): Apache License 2.0
 - Java Native Access (JNA): Apache License 2.0 or LGPL 2.1 (used under Apache License 2.0)
 - Android desugared JDK libraries (Google): GPL 2.0 with the Classpath Exception
-- common-relay (vendored in this repository): see vendor/common-relay/java/LICENSE
+- common-relay protocol (implemented in vault-core, MIT): see crates/vault-core/tests/fixtures/relay-protocol/LICENSE-common-relay
 - vault-core (shared Rust core in this repository): MIT; its Rust dependencies, including SQLCipher and SQLite, retain their own licenses
 
 Apache License 2.0: https://www.apache.org/licenses/LICENSE-2.0

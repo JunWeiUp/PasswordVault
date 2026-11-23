@@ -679,6 +679,8 @@ internal class PersonalRelay(private val directory: File, private val vault: Vau
                     val c = checkNotNull(config)
                     val groupsJson = c.optJSONObject("groups")
                     if (groupsJson?.has("group_entry") == true) {
+                        // Never orphan a group: validate the signed exit before clearing locally.
+                        withContext(Dispatchers.IO) { CoreGroups(JSONObject(groupsJson.toString()), { }, RelayLocalTest.active).checkExit(disband) }
                         remoteSnapshot = JSONObject(groupsJson.toString())
                     }
                     clearGroupAccess(c)

@@ -3,11 +3,11 @@ use super::*;
 
 fn vectors(name: &str) -> Value {
     let raw = match name {
-        "group" => include_str!("../../../../vendor/common-relay/protocol/group-vectors.json"),
+        "group" => include_str!("../../tests/fixtures/relay-protocol/group-vectors.json"),
         "invitation" => {
-            include_str!("../../../../vendor/common-relay/protocol/invitation-link-vectors.json")
+            include_str!("../../tests/fixtures/relay-protocol/invitation-link-vectors.json")
         }
-        _ => include_str!("../../../../vendor/common-relay/protocol/crypto-vectors.json"),
+        _ => include_str!("../../tests/fixtures/relay-protocol/crypto-vectors.json"),
     };
     serde_json::from_str(raw).unwrap()
 }

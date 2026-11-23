@@ -86,5 +86,7 @@ internal class CoreGroups(var config: JSONObject, private val persist: (JSONObje
     fun rename(device: String, name: String) { run("rename") { put("device", device).put("name", name) } }
     fun remove(device: String) { run("remove") { put("device", device) } }
     fun exit(disband: Boolean) { run("exit") { put("disband", disband) } }
+    /** Offline check that the signed exit is allowed (e.g. not the last manager leaving others). */
+    fun checkExit(disband: Boolean) { run("check-exit") { put("disband", disband) } }
     fun member(name: String): JSONObject = run("member") { put("name", name) } as JSONObject
 }

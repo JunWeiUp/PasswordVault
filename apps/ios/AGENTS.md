@@ -9,7 +9,7 @@ run `xcodegen generate --spec apps/ios/project.yml` after adding or removing fil
 - `Sources/MobileCore.swift` (session) and `Sources/MobileVaultStore.swift` (app state). Build
   core requests with the generated `CoreRequest.xxx(...)` (`Sources/CoreRequest.generated.swift`).
 - `../shared/Relay/` — personal relay (`VaultRelay.swift`) compiled into the app target; it
-  installs vault-core as the protocol backend of the vendored SDK (`vendor/common-relay/swift`).
+  uses vault-core's relay stack through `../shared/Relay/RelayCore.swift`.
 - `Autofill/` — the credential-provider extension; it compiles only the files listed for
   `PasswordVaultAutofill` in `project.yml` (add new shared files there when it needs them).
 - Tests: `Tests/` and `../shared/RelayTests/`.

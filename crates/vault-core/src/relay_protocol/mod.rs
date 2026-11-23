@@ -3,7 +3,7 @@
 //! Pure functions only (no sockets, files or OS keychains): canonical JSON, strict signed
 //! payload parsing, signed group-state verification (`advance`), encrypted invitation links
 //! and the per-peer message envelope. Byte-for-byte compatibility with the libsodium-based
-//! clients is pinned by `vendor/common-relay/protocol/*.json` vectors.
+//! clients is pinned by `tests/fixtures/relay-protocol/*.json` vectors (from upstream common-relay, MIT).
 //!
 //! Policy decisions (owner, 2026-11-23): a member's `signing_key` can never be added or
 //! changed without a full re-admission (only renames are allowed), matching the strict

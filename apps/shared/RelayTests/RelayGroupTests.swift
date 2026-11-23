@@ -1,10 +1,8 @@
 import XCTest
-import CommonRelay
 @testable import PasswordVault
 
 @MainActor
 final class RelayGroupTests: XCTestCase {
-  override func setUp() { super.setUp(); VaultRelay.installCoreProtocol() }
   private func fixture(_ role: String) async throws -> (RelayTestCore, VaultRelay, URL) {
     let path = FileManager.default.temporaryDirectory.appendingPathComponent("pv-groups-" + UUID().uuidString)
     let core = try RelayTestCore(directory: path)
@@ -62,7 +60,9 @@ final class RelayGroupTests: XCTestCase {
   func testSignedMembershipRejectsTamperingRollbackAndUnauthorizedChanges() throws {
     let file = try XCTUnwrap(Bundle(for: Self.self).url(forResource: "group-vectors", withExtension: "json"))
     let v = try JSONSerialization.jsonObject(with: Data(contentsOf: file)) as! [String: Any]
-    let groups = RelayGroups(config: v["config"] as! [String: Any])
+    // Chain rules run in vault-core (`relay-protocol-advance`); the app-scope check is the core's too.
+    enum Groups { static func advance(_ a: [String: Any], _ b: [String: Any]) throws -> [String: Any] { try RelayCodec.advance(a, b) } }
+    let groups = Groups.self
     let first = v["initial"] as! [String: Any], added = v["approved"] as! [String: Any], removed = v["removed"] as! [String: Any]
     _ = try groups.advance(first, added); _ = try groups.advance(added, removed)
     _ = try groups.advance(added, v["renamed"] as! [String: Any])
@@ -123,7 +123,8 @@ final class RelayGroupTests: XCTestCase {
     let original = phone.config.device, secret = phone.config.secret
     _ = try await phoneCore.call(CoreRequest.save(item: .object(["id": .string("local"), "type": .string("secureNote"), "title": .string("Local fixture")])))
     await phone.clearLocalGroup(); XCTAssertNil(phone.failure)
-    XCTAssertNotEqual(phone.config.device, original); XCTAssertEqual(phone.config.secret, secret)
+    // Owner policy: clearing access rotates the device ID and the X25519 transport key.
+    XCTAssertNotEqual(phone.config.device, original); XCTAssertNotEqual(phone.config.secret, secret)
     let retained = try await phoneCore.call(CoreRequest.list())
     XCTAssertTrue(retained.object["items"]?.array.contains { $0.object["id"]?.string == "local" } == true)
     try await eventually { !mac.groupBusy }; await mac.leaveGroup(disband: false); XCTAssertNil(mac.failure); XCTAssertFalse(mac.hasManagedGroup)
