@@ -1048,7 +1048,8 @@
         "peer": "string",
         "packet": "object"
       },
-      "result": "{ok:true,changed:bool,applied:number,conflictCount:number}"
+      "result": "{ok:true,changed:bool,applied:number,rejected:string[],conflictCount:number}",
+      "notes": "Invalid individual records are skipped (never applied) and listed by key in `rejected`; the rest of the packet applies."
     },
     "relay-mesh-resolve-conflict": {
       "group": "relay-mesh",

@@ -483,35 +483,54 @@ impl DiskVault {
                 )?;
                 let mut changed = false;
                 let mut applied = 0usize;
+                // One invalid record must not stall the whole sync forever: it is skipped
+                // (never applied) and reported by key, the rest of the packet still applies.
+                let mut rejected: Vec<String> = Vec::new();
                 for (key, record) in incoming {
-                    if !valid_key(key) {
-                        return Err(VaultError::InvalidData);
-                    }
-                    let stamp: Stamp = serde_json::from_value(record["stamp"].clone())
-                        .map_err(|_| VaultError::InvalidData)?;
-                    if stamp.0 > now.saturating_add(MAX_FUTURE_MS) || stamp.2.len() > 128 {
-                        return Err(VaultError::InvalidData);
-                    }
-                    if stamp.0 > now.saturating_add(SKEW_NOTICE_MS) {
-                        mesh.skew = true;
-                    }
-                    let value = record["value"].clone();
-                    if key.starts_with("category:") && !(value.is_null() || value == json!(true)) {
-                        return Err(VaultError::InvalidData);
-                    }
-                    if key.starts_with("item:") && !value.is_null() {
-                        if value["id"].as_str() != key.strip_prefix("item:") {
+                    let checked = (|| -> Result<(Stamp, Value)> {
+                        if !valid_key(key) {
                             return Err(VaultError::InvalidData);
                         }
-                        let mut proposed = Document {
-                            format_version: next.format_version,
-                            ..Document::default()
-                        };
-                        proposed.items.push(value.clone());
-                        let proposed = Document::parse(
-                            &serde_json::to_vec(&proposed).map_err(|_| VaultError::InvalidData)?,
-                        )?;
-                        validate_files(&tx, &proposed)?;
+                        let stamp: Stamp = serde_json::from_value(record["stamp"].clone())
+                            .map_err(|_| VaultError::InvalidData)?;
+                        if stamp.0 > now.saturating_add(MAX_FUTURE_MS) || stamp.2.len() > 128 {
+                            return Err(VaultError::InvalidData);
+                        }
+                        let value = record["value"].clone();
+                        if key.starts_with("category:")
+                            && !(value.is_null() || value == json!(true))
+                        {
+                            return Err(VaultError::InvalidData);
+                        }
+                        if key.starts_with("item:") && !value.is_null() {
+                            if value["id"].as_str() != key.strip_prefix("item:") {
+                                return Err(VaultError::InvalidData);
+                            }
+                            let mut proposed = Document {
+                                format_version: next.format_version,
+                                ..Document::default()
+                            };
+                            proposed.items.push(value.clone());
+                            let proposed = Document::parse(
+                                &serde_json::to_vec(&proposed)
+                                    .map_err(|_| VaultError::InvalidData)?,
+                            )?;
+                            validate_files(&tx, &proposed)?;
+                        }
+                        Ok((stamp, value))
+                    })();
+                    let (stamp, value) = match checked {
+                        Ok(checked) => checked,
+                        Err(VaultError::InvalidData | VaultError::Unsupported) => {
+                            if rejected.len() < 64 {
+                                rejected.push(key.chars().take(96).collect());
+                            }
+                            continue;
+                        }
+                        Err(other) => return Err(other),
+                    };
+                    if stamp.0 > now.saturating_add(SKEW_NOTICE_MS) {
+                        mesh.skew = true;
                     }
                     let mut local = working.get(key).cloned().unwrap_or(Value::Null);
                     if !local.is_null() && key.starts_with("item:") {
@@ -716,6 +735,7 @@ impl DiskVault {
                     "ok": true,
                     "changed": changed,
                     "applied": applied,
+                    "rejected": rejected,
                     "conflictCount": mesh.note_conflicts.len()
                 }))
             }

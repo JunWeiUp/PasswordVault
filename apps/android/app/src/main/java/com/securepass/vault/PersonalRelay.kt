@@ -432,6 +432,7 @@ internal class PersonalRelay(private val directory: File, private val vault: Vau
                 currentCoroutineContext().ensureActive()
                 if (error is CancellationException && error !is TimeoutCancellationException) throw error
                 failed = true
+                android.util.Log.w("PersonalRelay", "sync loop failed: ${RelayCore.code(error)}", error)
                 val decision = retryDecision(error, backoff, connectedAt)
                 rejected = decision.optBoolean("stop")
                 backoff = decision.optLong("delay", 30)
@@ -442,7 +443,7 @@ internal class PersonalRelay(private val directory: File, private val vault: Vau
                         error is java.net.SocketTimeoutException || error is TimeoutCancellationException || error is java.util.concurrent.TimeoutException -> "同步连接或传输超时，本地改动已保留 / Sync timed out; local changes retained"
                         error is javax.net.ssl.SSLException -> "无法验证同步服务器的安全连接 / Cannot verify the sync server's secure connection"
                         error.message.orEmpty().contains("(401)") -> "同步服务拒绝凭据，请检查服务器密码 / Sync access rejected; check server password"
-                        else -> "同步未完成，本地改动已保留，请检查网络及其他设备状态 / Sync incomplete; local changes retained. Check the network and your other devices"
+                        else -> "同步未完成，本地改动已保留，请检查网络及其他设备状态 / Sync incomplete; local changes retained. Check the network and your other devices (${RelayCore.code(error)})"
                     }
                     mutable.value = mutable.value.copy(status = "等待重连 / Waiting to reconnect", error = mutable.value.error ?: transportFailure,
                         sync = mutable.value.sync.copy(phase = RelaySyncPhase.FAILED, completed = 0, total = 0))
@@ -487,7 +488,10 @@ internal class PersonalRelay(private val directory: File, private val vault: Vau
         val packet = JSONObject(String(data))
         if (packet.optInt("version") != 3 || packet.optString("kind") != "mesh") return false
         progress(generation, RelaySyncPhase.RECEIVING)
-        val changed = vault.command(CoreRequest.relayMeshReceive(from, packet)).optBoolean("changed")
+        val result = vault.command(CoreRequest.relayMeshReceive(from, packet))
+        val changed = result.optBoolean("changed")
+        // Invalid individual records are skipped by vault-core; log their keys (ids only).
+        result.optJSONArray("rejected")?.takeIf { it.length() > 0 }?.let { android.util.Log.w("PersonalRelay", "mesh records skipped from $from: $it") }
         check(unlocked && generation == epoch)
         if (changed) vault.refresh()
         mutable.value = mutable.value.copy(lastReceived = System.currentTimeMillis(), pending = 0, conflicts = 0)

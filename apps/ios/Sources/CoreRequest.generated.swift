@@ -327,7 +327,7 @@ enum CoreRequest {
   /// relay-mesh · unlocked → `{ok:true,peers:string[]}`
   static func relayMeshPeers(peers: JSONValue) -> [String: JSONValue] { request("relay-mesh-peers", [("peers", peers)]) }
 
-  /// relay-mesh · unlocked → `{ok:true,changed:bool,applied:number,conflictCount:number}`
+  /// relay-mesh · unlocked → `{ok:true,changed:bool,applied:number,rejected:string[],conflictCount:number}`
   static func relayMeshReceive(peer: String, packet: JSONValue) -> [String: JSONValue] { request("relay-mesh-receive", [("peer", .string(peer)), ("packet", packet)]) }
 
   /// relay-mesh · unlocked → `{ok:true,item:Item,conflictCount:number}`

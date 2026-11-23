@@ -333,7 +333,7 @@ internal object CoreRequest {
     /** relay-mesh · unlocked → `{ok:true,peers:string[]}` */
     fun relayMeshPeers(peers: JSONArray): JSONObject = request("relay-mesh-peers", "peers" to peers)
 
-    /** relay-mesh · unlocked → `{ok:true,changed:bool,applied:number,conflictCount:number}` */
+    /** relay-mesh · unlocked → `{ok:true,changed:bool,applied:number,rejected:string[],conflictCount:number}` */
     fun relayMeshReceive(peer: String, packet: JSONObject): JSONObject = request("relay-mesh-receive", "peer" to peer, "packet" to packet)
 
     /** relay-mesh · unlocked → `{ok:true,item:Item,conflictCount:number}` */

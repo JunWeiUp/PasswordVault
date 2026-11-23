@@ -145,9 +145,11 @@ fn unknown_or_removed_peers_and_future_stamps_are_rejected() {
     ));
     let mut forged = packet.clone();
     forged["records"]["item:a1"]["stamp"] = json!([now_ms() + MAX_FUTURE_MS + 60_000, 0, "mac"]);
-    assert!(b
+    // A far-future stamp is never applied; it is reported instead of stalling the sync.
+    let result = b
         .relay_command(&json!({"op":"relay-mesh-receive","peer":"mac","packet":forged}))
-        .is_err());
+        .unwrap();
+    assert_eq!(result["rejected"], json!(["item:a1"]));
     assert!(titles(&mut b).is_empty());
     b.relay_command(&json!({"op":"relay-mesh-peers","peers":[]}))
         .unwrap();
@@ -292,4 +294,27 @@ fn legacy_hub_and_mobile_journals_migrate_without_losing_pending_edits() {
     let status = hub.relay_command(&json!({"op":"relay-status"})).unwrap();
     assert_eq!(status["conflictCount"], 0);
     assert_eq!(status["pending"], 0);
+}
+
+#[test]
+fn one_invalid_record_is_skipped_and_reported_instead_of_stalling_sync() {
+    let (da, db) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+    let mut a = replica(da.path(), "a", &["b"]);
+    let mut b = replica(db.path(), "b", &["a"]);
+    save(&mut a, "good", "Good");
+    let mut packet = a
+        .relay_command(&json!({"op":"relay-mesh-export","peer":"b"}))
+        .unwrap()["packet"]
+        .clone();
+    // A record whose value does not match its key can never be applied.
+    let stamp = packet["records"]["item:good"]["stamp"].clone();
+    packet["records"]["item:bad"] =
+        json!({"value":{"id":"other","type":"password","title":"x"},"stamp":stamp});
+    let result = b
+        .relay_command(&json!({"op":"relay-mesh-receive","peer":"a","packet":packet}))
+        .unwrap();
+    assert_eq!(result["rejected"], json!(["item:bad"]));
+    let titles = titles(&mut b);
+    assert_eq!(titles.get("good").map(String::as_str), Some("Good"));
+    assert!(!titles.contains_key("other") && !titles.contains_key("bad"));
 }

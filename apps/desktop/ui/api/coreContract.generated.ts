@@ -360,7 +360,7 @@ export interface CoreParams {
   "relay-mesh-init": { group: string; device: string };
   /** relay-mesh · unlocked → {ok:true,peers:string[]} */
   "relay-mesh-peers": { peers: readonly unknown[] };
-  /** relay-mesh · unlocked → {ok:true,changed:bool,applied:number,conflictCount:number} */
+  /** relay-mesh · unlocked → {ok:true,changed:bool,applied:number,rejected:string[],conflictCount:number} */
   "relay-mesh-receive": { peer: string; packet: object };
   /** relay-mesh · unlocked → {ok:true,item:Item,conflictCount:number} */
   "relay-mesh-resolve-conflict": { id: string; strategy?: string; item?: object };
@@ -556,7 +556,7 @@ export interface CoreResults {
   "relay-mesh-export": { packet: CoreMeshPacket | null };
   "relay-mesh-init": { ok: true; already?: true; migratedFrom?: unknown; archivedConflicts?: unknown };
   "relay-mesh-peers": { ok: true; peers: Array<string> };
-  "relay-mesh-receive": { ok: true; changed: boolean; applied: number; conflictCount: number };
+  "relay-mesh-receive": { ok: true; changed: boolean; applied: number; rejected: Array<string>; conflictCount: number };
   "relay-mesh-resolve-conflict": { ok: true; item: CoreItem; conflictCount: number };
   "relay-peer-authorize": CorePeerResult;
   "relay-peer-cancel-join": { ok: true };
