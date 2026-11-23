@@ -1,12 +1,10 @@
 package com.securepass.vault
 
-import com.securepass.vault.core.RelayConnection
-import com.securepass.vault.core.RelayFileClient
+import com.securepass.vault.core.RelayMeshSync
 import java.io.File
 import java.net.URI
 import java.security.KeyStore
 import java.security.MessageDigest
-import java.util.Base64
 import java.util.UUID
 import java.util.concurrent.TimeUnit
 import javax.crypto.Cipher
@@ -47,7 +45,7 @@ internal class PersonalRelay(private val directory: File, private val vault: Vau
     private val alias = "pv-relay-" + hex(hash(directory.absolutePath.toByteArray())).take(32)
     private var config: JSONObject? = null
     private var loop: Job? = null
-    @Volatile private var client: RelayConnection? = null
+    @Volatile private var client: RelayMeshSync? = null
     @Volatile private var unlocked = false
     @Volatile private var epoch = 0
     @Volatile private var wake = false
@@ -205,9 +203,8 @@ internal class PersonalRelay(private val directory: File, private val vault: Vau
         var backoff = 0L
         var connectedAt = 0L
         var rejected = false
-        val undecryptableSeen = mutableSetOf<String>()
         while (currentCoroutineContext().isActive && unlocked && generation == epoch) {
-            var connection: RelayConnection? = null
+            var connection: RelayMeshSync? = null
             var failed = false
             connectedAt = 0L
             try {
@@ -216,91 +213,35 @@ internal class PersonalRelay(private val directory: File, private val vault: Vau
                 mutable.value = mutable.value.copy(status = "正在连接 / Connecting")
                 progress(generation, RelaySyncPhase.CONNECTING)
                 val options = relayOptions(c, journal = true)
-                connection = runInterruptible(Dispatchers.IO) { RelayCore.connect(options) }
+                // The shared sync session in vault-core owns the sync rules (roster, delivery,
+                // dedup, undecryptable and group-change handling); this loop only drives it.
+                connection = runInterruptible(Dispatchers.IO) { RelayMeshSync.connect(vault.coreSession(), options) }
                 client = connection
                 val connected = if (meshRoster(c).isNullOrEmpty()) "中继已连接，等待组内其他设备 / Relay connected; waiting for other devices"
                     else "已连接 / Connected"
                 mutable.value = mutable.value.copy(status = connected,
                     error = mutable.value.error.takeUnless { it == transportFailure })
                 transportFailure = null; connectedAt = System.currentTimeMillis()
-                val fileClient = RelayCore.files(relayOptions(c, journal = false))
-                val peerSent = mutableMapOf<String, String>()
+                val groups = c.optJSONObject("groups")?.toString() ?: "{}"
                 while (currentCoroutineContext().isActive && unlocked && generation == epoch) {
-                    val meshPeers = meshRoster(c)?.also { ensureMesh(c, it) }
-                    while (true) {
-                        val event = runInterruptible(Dispatchers.IO) { connection.nextEvent(0u) }?.let(::JSONObject) ?: break
-                        if (event.optString("type") == "undecryptable") {
-                            // This connection could not open the envelope. A sender that is in the
-                            // current signed roster just joined after we connected: reconnect with the
-                            // new keys (the relay redelivers it). Anyone else, or a trusted sender whose
-                            // envelope is corrupt, is acknowledged so it is dropped for good.
-                            // An unknown sender may also be a member that joined before our roster refreshed:
-                            // reconnect (which refreshes the roster) once per message, and only drop it when
-                            // it comes back from a sender that is still not a member.
-                            val from = event.getString("from"); val id = event.getString("id")
-                            val roster = (meshPeers ?: emptySet()) + trustedPeers(c).keys
-                            if (!event.optBoolean("trusted") && (from in roster || undecryptableSeen.add("$from/$id"))) throw IllegalStateException("Roster changed; reconnect")
-                            ack(connection, event); continue
-                        }
-                        if (event.optString("type") == "message") {
-                            val data = Base64.getDecoder().decode(event.getString("data"))
-                            val from = event.getString("from")
-                            val payload = JSONObject(String(data))
-                            if (meshPeers != null) {
-                                // Membership in the signed roster is the only admission step;
-                                // old access/capability controls are ignored.
-                                val format = payload.optString("format")
-                                if (format != "passwordvault.capabilities.v1" && format != "passwordvault.access.v1" && from in meshPeers) {
-                                    receiveMesh(data, from, generation)
-                                }
-                            }
-                            ack(connection, event)
-                        } else if (event.optString("type") == "group.changed" && event.optInt("revision") >
-                            (c.optJSONObject("groups")?.optJSONObject("group_entry")?.let { RelayCore.unpack(it).optInt("revision") } ?: 0)) throw IllegalStateException("Membership changed")
-                        else if (event.optString("type") == "peer.up") peerSent.clear()
+                    val force = wake
+                    wake = false
+                    progress(generation, RelaySyncPhase.CHECKING)
+                    val round = JSONObject(runInterruptible(Dispatchers.IO) { connection.cycle(groups, force) })
+                    currentCoroutineContext().ensureActive(); check(unlocked && generation == epoch)
+                    val online = round.getJSONArray("online").let { a -> (0 until a.length()).map { a.getString(it) } }.toSet() + c.getString("device")
+                    if (round.optBoolean("changed")) applied(generation)
+                    val now = System.currentTimeMillis()
+                    mutable.value = mutable.value.copy(members = mutable.value.members.map { it.copy(online = it.id in online) }, pending = 0, conflicts = 0,
+                        sync = mutable.value.sync.copy(phase = RelaySyncPhase.CHECKED, completed = 0, total = 0, lastCheckedAt = now,
+                            lastSentAt = if (round.optInt("sent") > 0) now else mutable.value.sync.lastSentAt))
+                    // Handle relay events for ~5 s; a manual sync request ends the wait early.
+                    for (slice in 0 until 5) {
+                        val pumped = JSONObject(runInterruptible(Dispatchers.IO) { connection.pump(1000u) })
+                        if (pumped.optBoolean("changed")) applied(generation)
+                        if (!pumped.isNull("reconnect")) throw IllegalStateException("Relay asked to reconnect: ${pumped.getString("reconnect")}")
+                        if (syncRequests.tryReceive().isSuccess) break
                     }
-                    if (c.optJSONObject("groups")?.has("group_entry") == true) {
-                        val devices = JSONObject(runInterruptible(Dispatchers.IO) { connection.peers() }).getJSONArray("devices")
-                        currentCoroutineContext().ensureActive(); check(unlocked && generation == epoch)
-                        val online = (0 until devices.length()).map { devices.getJSONObject(it) }
-                            .filter { it.optString("app") == "passwordvault" && it.optString("group") == c.getString("group") }
-                            .map { it.getString("device") }.toSet() + c.getString("device")
-                        mutable.value = mutable.value.copy(members = mutable.value.members.map { it.copy(online = it.id in online) })
-                    }
-                    if (meshPeers != null) {
-                        val forceSend = wake
-                        wake = false
-                        val retryNonce = if (forceSend) UUID.randomUUID().toString() else ""
-                        progress(generation, RelaySyncPhase.CHECKING)
-                        for (peer in meshPeers) {
-                            val packet = vault.command(CoreRequest.relayMeshExport(peer)).optJSONObject("packet") ?: continue
-                            val bytes = packet.toString().toByteArray()
-                            val signature = hex(hash(bytes)) + ":" + System.currentTimeMillis()/3_600_000
-                            if (peerSent[peer] == signature && !forceSend) continue
-                            progress(generation, RelaySyncPhase.SENDING)
-                            if (bytes.size <= 128*1024) runInterruptible(Dispatchers.IO) { connection.message(peer, bytes, true, relayDeliveryId(peer, signature, retryNonce)) }
-                            else runInterruptible(Dispatchers.IO) { fileClient.send(peer, bytes) }
-                            peerSent[peer] = signature
-                            if (unlocked && generation == epoch) mutable.value = mutable.value.copy(sync = mutable.value.sync.copy(lastSentAt = System.currentTimeMillis()))
-                        }
-                        progress(generation, RelaySyncPhase.CHECKING)
-                        val inbox = org.json.JSONArray(runInterruptible(Dispatchers.IO) { fileClient.inbox() })
-                        for (index in 0 until inbox.length()) {
-                            val file = inbox.getJSONObject(index); val from = file.getString("from")
-                            // Files from devices outside the signed roster (e.g. a removed member) or
-                            // over the limit can never be applied: delete them instead of failing every cycle.
-                            if (from !in meshPeers || file.getLong("size") > 768L*1024*1024) {
-                                runInterruptible(Dispatchers.IO) { fileClient.acknowledge(file.getString("id")) }; continue
-                            }
-                            progress(generation, RelaySyncPhase.RECEIVING, index, inbox.length())
-                            receiveMesh(runInterruptible(Dispatchers.IO) { fileClient.receive(file.toString()) }, from, generation)
-                            runInterruptible(Dispatchers.IO) { fileClient.acknowledge(file.getString("id")) }
-                            progress(generation, RelaySyncPhase.RECEIVING, index + 1, inbox.length())
-                        }
-                        if (unlocked && generation == epoch) mutable.value = mutable.value.copy(pending = 0, conflicts = 0,
-                            sync = mutable.value.sync.copy(phase = RelaySyncPhase.CHECKED, completed = 0, total = 0, lastCheckedAt = System.currentTimeMillis()))
-                    }
-                    withTimeoutOrNull(5000) { syncRequests.receive() }
                 }
             } catch (error: Exception) {
                 currentCoroutineContext().ensureActive()
@@ -335,7 +276,7 @@ internal class PersonalRelay(private val directory: File, private val vault: Vau
     /** Shared retry policy from vault-core: 401/403 stop; otherwise 1 s doubling to 30 s, reset only after 120 s connected. */
     private fun retryDecision(error: Throwable?, previous: Long, connectedAt: Long): JSONObject {
         val connected = if (connectedAt == 0L) 0L else (System.currentTimeMillis() - connectedAt) / 1000
-        val request = CoreRequest.relayProtocolRetry(error?.message ?: error?.javaClass?.simpleName ?: "closed", previousDelay = previous, connectedSeconds = connected)
+        val request = CoreRequest.relayProtocolRetry(error?.let(RelayCore::code) ?: "closed", previousDelay = previous, connectedSeconds = connected)
         return runCatching { JSONObject(com.securepass.vault.core.relayProtocol(request.toString())) }
             .getOrElse { JSONObject().put("stop", false).put("delay", 30) }
     }
@@ -351,31 +292,11 @@ internal class PersonalRelay(private val directory: File, private val vault: Vau
         return (0 until members.length()).map { members.getJSONObject(it).getString("device") }
             .filter { it != c.getString("device") && trusted.optString(it).isNotEmpty() }
     }
-    private suspend fun ensureMesh(c: JSONObject, peers: List<String>) {
-        vault.command(CoreRequest.relayMeshInit(c.getString("group"), c.getString("device")))
-        vault.command(CoreRequest.relayMeshPeers(org.json.JSONArray(peers)))
-    }
-    /** Applies a symmetric-sync packet; older protocol packets are ignored until that device updates. */
-    private suspend fun receiveMesh(data: ByteArray, from: String, generation: Int): Boolean {
+    /** The sync session applied remote changes: reload the vault view. */
+    private suspend fun applied(generation: Int) {
         check(unlocked && generation == epoch)
-        val packet = JSONObject(String(data))
-        if (packet.optInt("version") != 3 || packet.optString("kind") != "mesh") return false
-        progress(generation, RelaySyncPhase.RECEIVING)
-        val result = try { vault.command(CoreRequest.relayMeshReceive(from, packet)) } catch (error: com.securepass.vault.core.VaultException) {
-            // Debug builds only, opt-in (instrumented probe): keep the rejected packet in app-private cache to reproduce it.
-            if (BuildConfig.DEBUG && RelayLocalTest.capturePackets) File(storage.parentFile, "mesh-rejected-${System.currentTimeMillis()}.json").writeText(packet.toString())
-            throw error
-        }
-        val changed = result.optBoolean("changed")
-        // Invalid individual records are skipped by vault-core; log their keys (ids only).
-        result.optJSONArray("rejected")?.takeIf { it.length() > 0 }?.let { android.util.Log.w("PersonalRelay", "mesh records skipped from $from: $it") }
-        check(unlocked && generation == epoch)
-        if (changed) vault.refresh()
-        mutable.value = mutable.value.copy(lastReceived = System.currentTimeMillis(), pending = 0, conflicts = 0)
-        return changed
-    }
-    private suspend fun ack(connection: RelayConnection, event: JSONObject) {
-        runInterruptible(Dispatchers.IO) { connection.acknowledge(event.getString("from"), event.getString("id"), event.optBoolean("offline")) }
+        vault.refresh()
+        mutable.value = mutable.value.copy(lastReceived = System.currentTimeMillis())
     }
     /** The vault-core group state machine; drafts persist into the relay credentials before each request. */
     private fun groups(c: JSONObject): CoreGroups {

@@ -1,9 +1,7 @@
 //! Relay orchestration, encrypted credentials, presence and symmetric group sync.
-mod files;
 #[cfg(test)]
 mod group_tests;
 mod groups;
-mod mesh;
 mod protocol;
 mod runtime;
 mod service;

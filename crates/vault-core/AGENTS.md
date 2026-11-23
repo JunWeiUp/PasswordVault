@@ -1,7 +1,7 @@
 # vault-core — agent notes
 
 Shared Rust core for every client: crypto, SQLCipher storage, notes/attachments, history,
-sync (mesh, peer, relay), backup/import and the common-relay protocol. Rust 1.98.0 (pinned).
+sync (mesh, relay), backup/import and the common-relay protocol. Rust 1.98.0 (pinned).
 
 ## Where things are
 - `contract/commands.json` — the JSON command API registry. Every `op` must be registered;
@@ -15,8 +15,9 @@ sync (mesh, peer, relay), backup/import and the common-relay protocol. Rust 1.98
   owner retry/exit `policy`. Mobile reaches the pure parts through `relay-protocol-*` ops.
 - `src/relay_net/` (native) — the relay transport for every client: thin wrappers over the
   `common-relay` Rust SDK (git dependency; `Pipe` for `connection`, `Journal`, `RelayFiles` for
-  `files`) plus HTTPS (`http`) and the UniFFI surface (`ffi`: `RelayConnection`,
-  `RelayFileClient`, `relay_groups`). Keep `default-features = false` on `common-relay`
+  `files`), the shared personal-sync session every client drives (`mesh_sync`: roster, delivery,
+  dedup, undecryptable and group-change rules), HTTPS (`http`) and the UniFFI surface (`ffi`:
+  `RelayMeshSync`, `RelayConnection`, `RelayFileClient`, `relay_groups`). Keep `default-features = false` on `common-relay`
   (its `preserve_order` would change JSON key order and mesh digests). Generic relay rules
   belong upstream in common-relay; product choices stay here.
 - `src/browser.rs` — the wasm dispatcher used by the browser extension. It is NOT gated by the

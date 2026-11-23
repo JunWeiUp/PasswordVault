@@ -109,6 +109,9 @@ class VaultRepository(
         }
     }
 
+    /** The open core session, for the relay's shared sync session (vault-core `RelayMeshSync`). */
+    internal fun coreSession(): VaultSession = checkNotNull(session) { "Locked" }
+
     /** Sends one typed [CoreRequest]; rich-note ops always carry `richNotes=true`. */
     private fun raw(request: JSONObject): JSONObject {
         if (request.getString("op") in listOf("export", "import", "create-from-backup", "remove", "save")) request.put("richNotes", true)

@@ -140,6 +140,27 @@ final class CoreRelayConnection: @unchecked Sendable {
   func close() async { inner.disconnect() }
 }
 
+/// The shared personal-sync session (vault-core `RelayMeshSync`): the client loop calls `cycle`
+/// every few seconds, `pump`s events in between and reconnects when asked.
+final class CoreMeshSync: @unchecked Sendable {
+  let inner: RelayMeshSync
+  private init(_ inner: RelayMeshSync) { self.inner = inner }
+  static func connect(vault: VaultSession, options: String) async throws -> CoreMeshSync {
+    CoreMeshSync(try await blocking { try RelayMeshSync.connect(vault: vault, options: options) })
+  }
+  /// `{changed, online, sent, received, peers}` for one round with the group config JSON.
+  func cycle(groups: String, force: Bool) async throws -> [String: Any] {
+    let inner = self.inner
+    return try RelayCodec.json(try await blocking { try inner.cycle(groups: groups, force: force) })
+  }
+  /// `{changed, reconnect: null|"roster"|"group"}` after handling events for `timeoutMs`.
+  func pump(timeoutMs: UInt64) async throws -> [String: Any] {
+    let inner = self.inner
+    return try RelayCodec.json(try await blocking { try inner.pump(timeoutMs: timeoutMs) })
+  }
+  func close() { inner.disconnect() }
+}
+
 /// Encrypted relay files (vault-core `RelayFileClient`; both encryption layers live in the core).
 final class CoreRelayFiles: @unchecked Sendable {
   let inner: RelayFileClient

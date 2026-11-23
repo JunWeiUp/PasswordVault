@@ -41,15 +41,12 @@ final class VaultRelay: ObservableObject {
   private let account: String
   private let call: ([String: JSONValue]) async throws -> JSONValue
   private let refresh: () async -> Void
+  /// The open core session for the shared sync session (vault-core `RelayMeshSync`).
+  private let session: (() async throws -> VaultSession)?
   private var loop: Task<Void, Never>?
-  private var reader: Task<Void, Never>?
-  private var client: CoreRelayConnection?
-  private var files: CoreRelayFiles?
-  /// Undecryptable messages already answered with a roster refresh (see the event handler).
-  private var undecryptableSeen: Set<String> = []
+  private var client: CoreMeshSync?
   private var active = false
   private var generation = UUID()
-  private var sent: [String: String] = [:]
   private var retryRequested = false
   private var transportFailure: String?
   private var credentialLoadTask: Task<Void, Never>?
@@ -58,12 +55,13 @@ final class VaultRelay: ObservableObject {
   init(directory: URL, role: String, allowLocalGroupTest: Bool = false,
        call: @escaping ([String: JSONValue]) async throws -> JSONValue,
        refresh: @escaping () async -> Void,
+       session: (() async throws -> VaultSession)? = nil,
        credentialReader: ((String, Bool) throws -> Data?)? = nil) {
     self.credentialReader = credentialReader ?? Self.load
     self.allowLocalGroupTest = allowLocalGroupTest
     self.directory = directory.appendingPathComponent("relay-private", isDirectory: true)
     account = SHA256.hash(data: Data(directory.standardizedFileURL.path.utf8)).map { String(format: "%02x", $0) }.joined()
-    self.call = call; self.refresh = refresh
+    self.call = call; self.refresh = refresh; self.session = session
     config = Config(role: role, secret: RelayIdentity.generateSecretKey())
     // No credential access before the vault is unlocked.
   }
@@ -161,11 +159,12 @@ final class VaultRelay: ObservableObject {
       config = Config(role: config.role, secret: Data(repeating: 0, count: 32))
     }
   }
-  func syncNow() { sent.removeAll(); retryRequested = true; if loop == nil { restart() } }
+  func syncNow() { forceSend = true; retryRequested = true; if loop == nil { restart() } }
+  private var forceSend = false
   private func stop() {
-    generation = UUID(); loop?.cancel(); loop = nil; reader?.cancel(); reader = nil
-    let old = client; let oldFiles = files; client = nil; files = nil
-    Task { await old?.close(); await oldFiles?.close() }
+    generation = UUID(); loop?.cancel(); loop = nil
+    let old = client; client = nil
+    old?.close()
     setGroupOnline([]); connected = false; connecting = false
     status = active ? "未连接 / Disconnected" : "已锁定 / Locked"
   }
@@ -189,102 +188,51 @@ final class VaultRelay: ObservableObject {
     // Delays follow the shared owner policy in vault-core (relay_protocol::policy).
     var backoff: UInt64 = 0
     while active && generation == epoch && !Task.isCancelled {
-      var ownedClient: CoreRelayConnection?
-      var ownedFiles: CoreRelayFiles?
+      var owned: CoreMeshSync?
       var connectedAt: Date?
       var failedError: String?
       do {
         try await refreshGroupForConnection(epoch)
         guard active, generation == epoch, !Task.isCancelled else { return }
+        guard let session else { throw RelayFault.invalid("no vault session") }
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
         status = "正在连接 / Connecting"; connecting = true
-        let connection = try await CoreRelayConnection.connect(options: try relayOptions(journal: true))
-        client = connection; ownedClient = connection
-        let fileClient = try CoreRelayFiles(options: try relayOptions(journal: false)); files = fileClient; ownedFiles = fileClient
-        let events = connection.events()
-        guard generation == epoch, active else { await connection.close(); return }
+        // The shared sync session in vault-core owns the sync rules (roster, delivery, dedup,
+        // undecryptable and group-change handling); this loop only drives it.
+        let sync = try await CoreMeshSync.connect(vault: try await session(), options: try relayOptions(journal: true))
+        client = sync; owned = sync
+        guard generation == epoch, active else { sync.close(); return }
         status = connectedStatus; connected = true; connecting = false
         if failure == transportFailure { failure = nil }; transportFailure = nil
-        connectedAt = Date(); sent.removeAll()
-        reader = Task { [weak self] in
-          do {
-            for try await event in events {
-              guard let self, self.active, self.generation == epoch else { return }
-              if event["type"] as? String == "undecryptable", let from = event["from"] as? String, let id = event["id"] as? String {
-                // This connection could not open the envelope. A sender in the current signed
-                // roster joined after we connected: reconnect with the new keys (the relay
-                // redelivers it). Anyone else, or a corrupt envelope, is acknowledged and dropped.
-                // An unknown sender may be a member that joined before our roster refreshed:
-                // reconnect (refreshing the roster) once per message; drop it only when it comes
-                // back from a sender that is still not a member.
-                let roster = Set(self.meshPeers ?? []).union(self.trustedPeers.keys)
-                if event["trusted"] as? Bool != true, roster.contains(from) || self.undecryptableSeen.insert(from + "/" + id).inserted {
-                  self.retryRequested = true
-                  await connection.close(); return
-                }
-                try await connection.acknowledge(id: id, from: from, offline: event["offline"] as? Bool ?? false)
-                continue
-              }
-              if event["type"] as? String == "message", let data = event["data"] as? Data,
-                 let from = event["from"] as? String, let id = event["id"] as? String {
-                if let peers = self.meshPeers, peers.contains(from) {
-                  try await self.receiveMesh(data, from: from, epoch: epoch)
-                }
-                try await connection.acknowledge(id: id, from: from, offline: event["offline"] as? Bool ?? false)
-              } else if event["type"] as? String == "group.changed",
-                        (event["revision"] as? Int ?? 0) > self.groupRevision {
-                self.retryRequested = true
-                await connection.close(); return
-              } else if event["type"] as? String == "peer.up" { self.sent.removeAll() }
-            }
-            self?.retryRequested = true
-          } catch { self?.retryRequested = true }
-        }
+        connectedAt = Date()
+        let groups = try RelayCodec.text(groupDictionary)
         retryRequested = false
-        while active && generation == epoch && !Task.isCancelled && !retryRequested {
-          if hasManagedGroup {
-            let devices = try await connection.peers()
-            guard active, generation == epoch, !Task.isCancelled else { return }
-            setGroupOnline(Set(devices.filter { $0.app == "passwordvault" && $0.group == config.group }.map(\.device)).union([config.device]))
+        while active && generation == epoch && !Task.isCancelled {
+          let force = forceSend; forceSend = false
+          let round = try await sync.cycle(groups: groups, force: force)
+          guard active, generation == epoch, !Task.isCancelled else { return }
+          setGroupOnline(Set(round["online"] as? [String] ?? []).union([config.device]))
+          if round["changed"] as? Bool == true { await refresh() }
+          lastSuccess = Date()
+          // Handle relay events for ~5 s; a manual sync request ends the wait early.
+          for _ in 0..<5 where !retryRequested {
+            let pumped = try await sync.pump(timeoutMs: 1000)
+            guard active, generation == epoch else { return }
+            if pumped["changed"] as? Bool == true { await refresh() }
+            if let reason = pumped["reconnect"] as? String { throw RelayFault.invalid("reconnect: " + reason) }
           }
-          if let peers = meshPeers {
-            _ = try await call(CoreRequest.relayMeshInit(group: config.group, device: config.device))
-            _ = try await call(CoreRequest.relayMeshPeers(peers: .array(peers.map { .string($0) })))
-            for peer in peers {
-              let result = try await call(CoreRequest.relayMeshExport(peer: peer)).object
-              guard let packet = result["packet"], packet.object["kind"]?.string == "mesh" else { continue }
-              let encoder = JSONEncoder(); encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
-              let data = try encoder.encode(packet)
-              let signature = Data(SHA256.hash(data: data)).relayHex + ":" + String(Int(Date().timeIntervalSince1970 / 3600))
-              guard sent[peer] != signature, generation == epoch, active else { continue }
-              if data.count <= 128 * 1024 {
-                let id = String(Data(SHA256.hash(data: Data((peer + signature).utf8))).relayHex.prefix(32))
-                _ = try await connection.message(to: peer, data: data, offline: true, id: id)
-              } else { try await fileClient.send(to: peer, data: data) }
-              sent[peer] = signature
-            }
-            for event in try await fileClient.inbox() {
-              guard let id = event["id"] as? String, let from = event["from"] as? String, peers.contains(from),
-                    let size = event["size"] as? NSNumber, size.int64Value <= 768 * 1024 * 1024 else { throw RelayFault.invalid("file sender or size") }
-              let bytes = try await fileClient.receive(event)
-              try await receiveMesh(bytes, from: from, epoch: epoch)
-              try await fileClient.acknowledge(id: id)
-            }
-            lastSuccess = Date()
-          }
-          try await Task.sleep(nanoseconds: 5_000_000_000)
+          retryRequested = false
         }
         if generation == epoch { setGroupOnline([]); connected = false }
-        reader?.cancel(); await connection.close(); await fileClient.close()
+        sync.close()
       } catch {
-        failedError = String(describing: error)
+        failedError = RelayCodec.code(error)
         if generation == epoch && active {
           setGroupOnline([]); connected = false; connecting = false; status = "等待重连 / Waiting to reconnect"
           transportFailure = "同步尚未完成，改动保留在本机 / Sync incomplete; local changes retained"
           if failure == nil { failure = transportFailure }
         }
-        if generation == epoch { reader?.cancel() }
-        await ownedClient?.close(); await ownedFiles?.close()
+        owned?.close()
       }
       if Task.isCancelled || generation != epoch { return }
       let connectedSeconds = connectedAt.map { UInt64(max(0, Date().timeIntervalSince($0))) } ?? 0
@@ -296,16 +244,6 @@ final class VaultRelay: ObservableObject {
       backoff = delay
       try? await Task.sleep(nanoseconds: backoff * 1_000_000_000)
     }
-  }
-  /// Applies a symmetric-sync packet. Older protocol packets are ignored until that device updates.
-  private func receiveMesh(_ data: Data, from: String, epoch: UUID) async throws {
-    guard active, generation == epoch else { throw RelayFault.closed }
-    let packet = try JSONDecoder().decode(JSONValue.self, from: data)
-    guard packet.object["version"]?.number == 3, packet.object["kind"]?.string == "mesh" else { return }
-    let result = try await call(CoreRequest.relayMeshReceive(peer: from, packet: packet)).object
-    guard active, generation == epoch else { throw RelayFault.closed }
-    lastSuccess = Date()
-    if result["changed"]?.bool == true { await refresh() }
   }
 
 }
@@ -422,10 +360,6 @@ extension VaultRelay {
   private func invalidateGroup() async throws {
     config.paused = true; groupFresh = false; groupMembers = []
     let g = try groups(); g.set("access_invalid", true); try await saveGroup(g)
-  }
-  var groupRevision: Int {
-    guard let entry = groupDictionary["group_entry"] as? [String: Any] else { return 0 }
-    return (try? RelayCodec.unpack(entry)["revision"] as? Int) ?? 0
   }
   var groupInvalid: Bool { groupDictionary["access_invalid"] as? Bool == true }
   private func groupAction(_ body: (CoreGroups) async throws -> Void) async {

@@ -256,7 +256,7 @@ class PersonalRelayTest {
 
             // Simulate the OS freeze: the relay closed the phone's socket while it was backgrounded.
             val field = PersonalRelay::class.java.getDeclaredField("client").apply { isAccessible = true }
-            (field.get(phone.relay) as com.securepass.vault.core.RelayConnection).disconnect()
+            (field.get(phone.relay) as com.securepass.vault.core.RelayMeshSync).disconnect()
             val started = System.currentTimeMillis()
             phone.foreground()
             until(15_000) { phone.relay.state.value.status.contains("已连接") && phone.relay.state.value.error == null }

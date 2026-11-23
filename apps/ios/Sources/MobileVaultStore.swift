@@ -37,7 +37,10 @@ final class MobileVaultStore: ObservableObject {
   lazy var relay = VaultRelay(directory: directory, role: "mobile", call: { [weak self] request in
     guard let self else { throw VaultError.Locked }
     return try await self.perform(request)
-  }, refresh: { [weak self] in try? await self?.refresh() })
+  }, refresh: { [weak self] in try? await self?.refresh() }, session: { [weak self] in
+    guard let core = await self?.core else { throw VaultError.Locked }
+    return try await core.coreSession()
+  })
   let directory: URL
   private(set) var core: MobileCore?
   private var epoch = 0

@@ -7,7 +7,7 @@ final class RelayGroupTests: XCTestCase {
     let path = FileManager.default.temporaryDirectory.appendingPathComponent("pv-groups-" + UUID().uuidString)
     let core = try RelayTestCore(directory: path)
     _ = try await core.call(CoreRequest.create(password: "fixture"))
-    let relay = VaultRelay(directory: path, role: role, allowLocalGroupTest: true, call: { try await core.call($0) }, refresh: {}, credentialReader: { _, _ in nil })
+    let relay = VaultRelay(directory: path, role: role, allowLocalGroupTest: true, call: { try await core.call($0) }, refresh: {}, session: { try await core.coreSession() }, credentialReader: { _, _ in nil })
     relay.setUnlocked(true)
     try await eventually { relay.credentialsReady && !relay.groupBusy }
     if let password = ProcessInfo.processInfo.environment["PV_GROUP_TEST_PASSWORD"] {
@@ -138,7 +138,6 @@ final class RelayGroupTests: XCTestCase {
     try await eventually { !phone.groupBusy }; await phone.inviteToGroup(automatic: false); try await eventually { !mac.groupBusy }; await mac.joinGroup(phone.groupInvite, deviceName: "Mac")
     try await eventually { !phone.groupBusy }; await phone.checkGroupRequest(); try await eventually { !phone.groupBusy }; await phone.approveGroupRequest(manager: true); try await eventually { !mac.groupBusy }; await mac.finishGroupJoin()
     XCTAssertNil(mac.failure); XCTAssertTrue(mac.groupManager)
-    XCTAssertEqual(mac.config.hub, mac.config.device)
     try await eventually { !phone.groupBusy }; await phone.leaveGroup(disband: true); XCTAssertNil(phone.failure)
     try await eventually { !mac.groupBusy }; await mac.refreshGroup(); XCTAssertFalse(mac.groupFresh); XCTAssertTrue(mac.hasManagedGroup); XCTAssertFalse(mac.groupManager)
     XCTAssertTrue(mac.groupInvite.isEmpty); XCTAssertTrue(mac.groupMembers.isEmpty)
@@ -199,7 +198,7 @@ final class RelayGroupTests: XCTestCase {
     XCTAssertNotNil(phone.failure); XCTAssertTrue(phone.joiningGroup); XCTAssertFalse(phone.groupCode.isEmpty)
     let old = phone.config.groupState, code = phone.groupCode
     phone.setUnlocked(false)
-    let reloaded = VaultRelay(directory: path, role: "mobile", allowLocalGroupTest: true, call: { try await core.call($0) }, refresh: {})
+    let reloaded = VaultRelay(directory: path, role: "mobile", allowLocalGroupTest: true, call: { try await core.call($0) }, refresh: {}, session: { try await core.coreSession() })
     reloaded.setUnlocked(true); try await eventually { reloaded.credentialsReady }
     XCTAssertEqual(reloaded.config.groupState, old); XCTAssertEqual(reloaded.groupCode, code)
     XCTAssertTrue(reloaded.config.token.isEmpty); XCTAssertTrue(reloaded.config.peers.isEmpty)

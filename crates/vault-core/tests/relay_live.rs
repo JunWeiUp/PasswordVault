@@ -302,6 +302,11 @@ fn run(server: &Server) {
     assert_eq!(next_message(&trusting)["data"], "c3RhbGU=");
     // Acknowledging an unwanted one drops it for good.
     trusting.disconnect();
+
+    // The shared personal-sync session: a change on one vault reaches the other.
+    ca.disconnect();
+    mesh_sync_round_trip(&a, &b, journals.path());
+
     let (b, _) = groups(&b, json!({"op":"exit","disband":false})).unwrap();
     assert_eq!(b["exit_completed"], true);
     let (_a, state) = groups(&a, json!({"op":"refresh"})).unwrap();
@@ -315,4 +320,67 @@ fn run(server: &Server) {
         vault_core::relay_protocol::policy::authentication_failure(&code),
         "{code}"
     );
+}
+
+fn vault(dir: &std::path::Path) -> Arc<vault_core::VaultSession> {
+    let vault = Arc::new(vault_core::VaultSession::new(dir.to_string_lossy().into()).unwrap());
+    vault
+        .command(json!({"op":"create","password":"Synthetic mesh fixture 24"}).to_string())
+        .unwrap();
+    vault
+}
+
+fn mesh_sync_round_trip(a: &Value, b: &Value, journals: &std::path::Path) {
+    use vault_core::relay_net::ffi::RelayMeshSync;
+    let (da, db) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+    let (va, vb) = (vault(da.path()), vault(db.path()));
+    va.command(
+        json!({"op":"save","item":{"id":"from-mac","type":"password","title":"Mac entry"}})
+            .to_string(),
+    )
+    .unwrap();
+    let sa = RelayMeshSync::connect(va.clone(), options(a, &[b], &journals.join("ma"))).unwrap();
+    let sb = RelayMeshSync::connect(vb.clone(), options(b, &[a], &journals.join("mb"))).unwrap();
+    let cycle: Value = serde_json::from_str(&sa.cycle(a.to_string(), false).unwrap()).unwrap();
+    assert_eq!(cycle["peers"], json!(["phone"]));
+    assert!(cycle["sent"].as_u64().unwrap() >= 1, "{cycle}");
+    let titles = |v: &vault_core::VaultSession| -> Vec<String> {
+        let list: Value =
+            serde_json::from_str(&v.command(json!({"op":"list"}).to_string()).unwrap()).unwrap();
+        list["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|i| i["title"].as_str().unwrap_or("").to_owned())
+            .collect()
+    };
+    let mut changed = false;
+    for _ in 0..20 {
+        sb.cycle(b.to_string(), false).unwrap();
+        let pumped: Value = serde_json::from_str(&sb.pump(500).unwrap()).unwrap();
+        assert!(pumped["reconnect"].is_null(), "{pumped}");
+        changed |= pumped["changed"] == true;
+        if titles(&vb).contains(&"Mac entry".to_owned()) {
+            break;
+        }
+    }
+    assert!(changed && titles(&vb).contains(&"Mac entry".to_owned()));
+    // And back: an edit on the phone reaches the Mac.
+    vb.command(
+        json!({"op":"save","item":{"id":"from-phone","type":"password","title":"Phone entry"}})
+            .to_string(),
+    )
+    .unwrap();
+    for _ in 0..20 {
+        sb.cycle(b.to_string(), false).unwrap();
+        sa.cycle(a.to_string(), false).unwrap();
+        sa.pump(500).unwrap();
+        if titles(&va).contains(&"Phone entry".to_owned()) {
+            break;
+        }
+    }
+    assert!(titles(&va).contains(&"Phone entry".to_owned()));
+    sa.disconnect();
+    sb.disconnect();
+    assert!(sa.is_closed() && sb.is_closed());
 }

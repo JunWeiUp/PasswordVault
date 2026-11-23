@@ -561,6 +561,7 @@ pub fn make_link_with(
 }
 
 /// Per-device envelope identity: seals messages for, and opens messages from, trusted peers.
+#[derive(Clone)]
 pub struct Identity {
     pub app: String,
     pub group: String,

@@ -1,11 +1,11 @@
 //! One cancellable relay owner per vault. Stop never waits for the network/control mutex.
 use super::{Result, protocol::*, service};
-use vault_core::relay_net::{Journal, connection::Connection};
+use vault_core::relay_net::mesh_sync::{MeshSync, MeshVault, Settings};
 use vault_core::relay_protocol::{BoxPublicKey, BoxSecretKey, Identity};
 use base64::{Engine, engine::general_purpose::STANDARD};
 use serde_json::{Value, json};
 use std::{
-    collections::{BTreeMap, HashMap, HashSet},
+    collections::{BTreeMap, HashMap},
     sync::{
         Arc, Mutex, OnceLock,
         atomic::{AtomicBool, Ordering},
@@ -16,8 +16,8 @@ use crate::session::VaultSession;
 pub struct Run {
     directory: std::path::PathBuf,
     stop: AtomicBool,
-    /// The open connection, so `disconnect` can close it without the control lock.
-    connection: Mutex<Option<Arc<Connection>>>,
+    /// The open sync session, so `disconnect` can close it without the control lock.
+    connection: Mutex<Option<Arc<MeshSync>>>,
     view: Mutex<Value>,
     blob_outbox: Mutex<std::collections::VecDeque<(String, Vec<u8>)>>,
 }
@@ -125,11 +125,7 @@ pub fn request_blob(
         s,
         json!({"op":"note-attachment-state","noteId":note_id,"id":attachment_id,"state":"downloading"}),
     )?;
-    let req = canonical(&json!({
-        "version": super::mesh::VERSION,
-        "kind": "mesh-blob-req",
-        "attachmentId": attachment_id,
-    }));
+    let req = vault_core::relay_net::mesh_sync::blob_request(attachment_id);
     if let Ok(mut outbox) = run.blob_outbox.lock() {
         outbox.push_back((peer.clone(), req));
     }
@@ -258,9 +254,17 @@ pub fn identity(c: &Value) -> Result<Identity> {
         trusted,
     })
 }
-/// Offline-message journal of the current device (the SDK's format, shared with mobile).
-fn journal(run: &Run) -> Result<Journal> {
-    Journal::open(&run.directory.join("vault/relay-private/sdk-journal")).map_err(|_| "Storage".into())
+/// The vault as seen by the shared sync session; mesh writes serialize with group actions.
+struct Vault(Arc<VaultSession>);
+impl MeshVault for Vault {
+    fn command(&self, request: Value) -> Result<Value> {
+        let _control = if request["op"].as_str().is_some_and(|op| op.starts_with("relay-mesh-")) {
+            Some(service::CONTROL.lock().map_err(|_| "Storage")?)
+        } else {
+            None
+        };
+        service::core(&self.0, request)
+    }
 }
 fn connected(s: &Arc<VaultSession>, run: &Run, local: bool) -> Result<()> {
     let c = service::read(s)?;
@@ -268,170 +272,54 @@ fn connected(s: &Arc<VaultSession>, run: &Run, local: bool) -> Result<()> {
         return Err("NotEnrolled".into());
     }
     service::execute(s, json!({"op":"refresh"}), local)?;
-    let journal = journal(run)?;
-    let _ = journal.cleanup();
     let mut c = service::read(s)?;
     if run.stopped() {
         return Err("Locked".into());
     }
     run.set("connecting", json!([]), "");
-    let connection = Arc::new(Connection::connect(
-        text(&c, "endpoint")?,
-        text(&c, "token")?,
-        super::protocol::configured_password(&c)?,
-        identity(&c)?,
-        local,
-        Some(journal),
+    let sync = Arc::new(MeshSync::connect(
+        Arc::new(Vault(s.clone())),
+        Settings {
+            url: text(&c, "endpoint")?.into(),
+            token: text(&c, "token")?.into(),
+            password: super::protocol::configured_password(&c)?.map(str::to_owned),
+            local,
+            identity: identity(&c)?,
+            journal: run.directory.join("vault/relay-private/sdk-journal"),
+        },
     )?);
-    *run.connection.lock().map_err(|_| "Storage")? = Some(connection.clone());
+    *run.connection.lock().map_err(|_| "Storage")? = Some(sync.clone());
     if run.stopped() {
         return Err("Locked".into());
     }
-    // File envelopes are sealed with the same identity as messages.
-    let sealing = identity(&c)?;
     run.set("connected", json!([]), "");
-    let check = || if run.stopped() { Err("Locked".to_owned()) } else { Ok(()) };
-    let mut next = Instant::now();
-    let mut sent = HashMap::<String, String>::new();
-    let mut undecryptable_seen = HashSet::<String>::new();
-    // Only members of a personal device group sync (symmetric mesh).
-    let mut mesh_peers: Vec<String> = Vec::new();
-    // Delivers one packet: small ones as journaled offline messages, the rest as files.
-    let deliver = |c: &Value, peer: &str, id: &str, data: &[u8]| -> Result<()> {
-        if data.len() <= 128 * 1024 {
-            connection.message(peer, data, true, Some(id))?;
-        } else {
-            let files = super::files::Files::new(
-                text(c, "endpoint")?,
-                text(c, "token")?,
-                super::protocol::configured_password(c)?,
-                local,
-                &check,
-            )?;
-            let (descriptor, cipher) = super::files::prepare(&sealing, peer, data)?;
-            files.upload(&descriptor, &cipher)?;
-        }
-        Ok(())
-    };
     while !run.stopped() {
-        if Instant::now() >= next {
-            if service::core(s, json!({"op":"status"}))?["unlocked"] != true {
-                return Err("Locked".into());
-            }
-            let old_group = service::group(&c)?;
-            service::execute(s, json!({"op":"refresh"}), local)?;
-            c = service::read(s)?;
-            if service::group(&c)?["group_entry"] != old_group["group_entry"] {
-                return Ok(());
-            }
-            let online: Vec<String> = connection.peers()?["devices"]
-                .as_array()
-                .ok_or("InvalidData")?
-                .iter()
-                .filter(|d| d["app"] == "passwordvault" && d["group"] == c["group"])
-                .filter_map(|d| d["device"].as_str().map(str::to_owned))
-                .collect();
-            run.set("connected", json!(online), "");
-            mesh_peers = super::mesh::ensure(s, &c)?.unwrap_or_default();
-            for (peer, data) in super::mesh::outgoing(s, &mesh_peers)? {
-                let data = zeroize::Zeroizing::new(data);
-                let signature = format!("{}:{}", digest(&data), super::groups::now() / 3600);
-                if sent.get(&peer) == Some(&signature) {
-                    continue;
-                }
-                let id = digest(format!("{peer}{signature}").as_bytes())[..32].to_string();
-                deliver(&c, &peer, &id, &data)?;
-                sent.insert(peer, signature);
-            }
-            let files = super::files::Files::new(
-                text(&c, "endpoint")?,
-                text(&c, "token")?,
-                super::protocol::configured_password(&c)?,
-                local,
-                &check,
-            )?;
-            for descriptor in files.inbox()? {
-                let from = text(&descriptor, "from")?;
-                // Files from outside the signed roster can never be applied: drop them.
-                if !mesh_peers.iter().any(|p| p == from) {
-                    files.acknowledge(text(&descriptor, "id")?)?;
-                    continue;
-                }
-                let cipher = files.download(&descriptor)?;
-                let plain = super::files::decrypt(&sealing, from, &descriptor, &cipher)?;
-                receive(s, run, from, &plain)?;
-                files.acknowledge(text(&descriptor, "id")?)?;
-            }
-            next = Instant::now() + Duration::from_secs(5);
+        if service::core(s, json!({"op":"status"}))?["unlocked"] != true {
+            return Err("Locked".into());
         }
-        let drained: Vec<(String, Vec<u8>)> = run
-            .blob_outbox
-            .lock()
-            .map(|mut q| q.drain(..).collect())
-            .unwrap_or_default();
+        let old_group = service::group(&c)?;
+        service::execute(s, json!({"op":"refresh"}), local)?;
+        c = service::read(s)?;
+        let groups = service::group(&c)?;
+        if groups["group_entry"] != old_group["group_entry"] {
+            return Ok(());
+        }
+        let drained: Vec<(String, Vec<u8>)> =
+            run.blob_outbox.lock().map(|mut q| q.drain(..).collect()).unwrap_or_default();
         for (peer, payload) in drained {
-            if mesh_peers.contains(&peer) {
-                let id = uuid::Uuid::new_v4().simple().to_string();
-                if let Err(e) = deliver(&c, &peer, &id, &payload) {
-                    if payload.len() <= 128 * 1024 { return Err(e); }
-                }
-            }
+            sync.queue(&peer, payload)?;
         }
-        let wait = next.saturating_duration_since(Instant::now()).min(Duration::from_millis(500));
-        let Some(event) = connection.next_event(wait)? else { continue };
-        match event["type"].as_str() {
-            Some("message") => {
-                let from = text(&event, "from")?;
-                let id = text(&event, "id")?;
-                let data = zeroize::Zeroizing::new(
-                    STANDARD.decode(text(&event, "data")?).map_err(|_| "InvalidData")?,
-                );
-                let value: Value = serde_json::from_slice(&data).unwrap_or(Value::Null);
-                // Obsolete access/capability controls from old clients are ignored.
-                let control = value["format"] == "passwordvault.access.v1"
-                    || value["format"] == "passwordvault.capabilities.v1";
-                if !control && mesh_peers.iter().any(|p| p == from) {
-                    receive(s, run, from, &data)?;
-                }
-                connection.acknowledge(from, id, event["offline"] == true)?;
-            }
-            Some("undecryptable") => {
-                // A sender that joined after we connected (or before our roster refreshed):
-                // reconnect once with fresh keys and the relay redelivers. Still not a
-                // member, or a corrupt envelope from a trusted one: drop it for good.
-                let from = text(&event, "from")?;
-                let id = text(&event, "id")?;
-                if event["trusted"] != true
-                    && (mesh_peers.iter().any(|p| p == from)
-                        || undecryptable_seen.insert(format!("{from}/{id}")))
-                {
-                    return Ok(());
-                }
-                connection.acknowledge(from, id, event["offline"] == true)?;
-            }
-            Some("group.changed") => {
-                // The relay announces its current revision after every hello; reconnect
-                // only for a newer roster, otherwise the hello loops forever.
-                let current = unpack(&service::group(&c)?["group_entry"])?;
-                if event["revision"].as_u64().unwrap_or(0) > current["revision"].as_u64().unwrap_or(0) {
-                    return Ok(());
-                }
-            }
-            Some("peer.up") => sent.clear(),
-            _ => {}
+        let round = sync.cycle(&groups, false)?;
+        run.set("connected", round["online"].clone(), "");
+        if round["changed"] == true {
+            run.changed();
         }
-    }
-    Ok(())
-}
-/// Applies a symmetric-sync packet and queues any on-demand attachment reply.
-fn receive(s: &Arc<VaultSession>, run: &Run, from: &str, data: &[u8]) -> Result<()> {
-    let (changed, reply) = super::mesh::receive_with_reply(s, from, data)?;
-    if changed {
-        run.changed();
-    }
-    if let Some(reply) = reply {
-        if let Ok(mut outbox) = run.blob_outbox.lock() {
-            outbox.push_back((from.to_string(), reply));
+        let pumped = sync.pump(Duration::from_secs(5))?;
+        if pumped["changed"] == true {
+            run.changed();
+        }
+        if !pumped["reconnect"].is_null() {
+            return Ok(());
         }
     }
     Ok(())
