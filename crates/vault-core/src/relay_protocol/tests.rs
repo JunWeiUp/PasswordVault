@@ -264,3 +264,133 @@ fn envelope_context_and_transport_policy() {
         "RelayPasswordInvalid"
     );
 }
+
+fn run(request: Value) -> Result<Value> {
+    command(&request)
+}
+
+#[test]
+fn stateless_commands_cover_the_mobile_protocol_surface() {
+    let v = vectors("group");
+    let secret = v["config"]["secret_key"].as_str().unwrap();
+    let keys = run(json!({"op":"relay-protocol-keys","secret":secret})).unwrap();
+    assert_eq!(
+        keys["signingKey"],
+        unpack(&v["initial"]).unwrap()["members"][0]["signing_key"]
+    );
+    assert_eq!(keys["publicKey"], v["config"]["public_key"]);
+    assert_eq!(
+        run(json!({"op":"relay-protocol-advance","current":v["initial"],"entry":v["approved"]}))
+            .unwrap()["entry"],
+        v["approved"]
+    );
+    assert!(run(json!({"op":"relay-protocol-advance","current":v["approved"],"entry":v["unauthorized_rename"]})).is_err());
+    let state =
+        run(json!({"op":"relay-protocol-unpack","entry":v["approved"]})).unwrap()["state"].clone();
+    let device = v["config"]["device"].as_str().unwrap();
+    let signed =
+        run(json!({"op":"relay-protocol-sign","value":state,"secret":secret,"device":device}))
+            .unwrap()["entry"]
+            .clone();
+    assert!(
+        run(json!({"op":"relay-protocol-verify","entry":signed,"key":keys["signingKey"]})).is_ok()
+    );
+    assert!(
+        run(json!({"op":"relay-protocol-verify","entry":signed,"key":"00".repeat(32)})).is_err()
+    );
+
+    let inv = vectors("invitation");
+    let key = inv["key"].as_str().unwrap();
+    let packet = run(json!({"op":"relay-protocol-seal-invitation","invitation":inv["invitation"],"key":key,"nonce":inv["nonce"]})).unwrap()["packet"].clone();
+    assert_eq!(
+        run(json!({"op":"relay-protocol-open-invitation","packet":packet,"key":key})).unwrap()
+            ["invitation"],
+        inv["invitation"]
+    );
+    assert_eq!(
+        run(json!({"op":"relay-protocol-read-token","key":key})).unwrap()["token"],
+        inv["read_token"]
+    );
+    let link = run(json!({"op":"relay-protocol-make-link","invitation":inv["invitation"],"key":key,"password":inv["access_password"]})).unwrap()["link"].clone();
+    assert_eq!(link, inv["link_with_password"]);
+    let parsed = run(json!({"op":"relay-protocol-parse-link","link":link})).unwrap();
+    assert_eq!(
+        (
+            parsed["url"].clone(),
+            parsed["key"].clone(),
+            parsed["password"].clone()
+        ),
+        (
+            inv["invitation"]["url"].clone(),
+            json!(key),
+            inv["access_password"].clone()
+        )
+    );
+    // Loopback relays are only accepted when a test explicitly allows them.
+    let local = json!({"id":inv["invitation"]["id"],"url":"ws://127.0.0.1:8080/relay/v1/ws"});
+    assert!(run(json!({"op":"relay-protocol-make-link","invitation":local,"key":key})).is_err());
+    let local_link = run(
+        json!({"op":"relay-protocol-make-link","invitation":local,"key":key,"allowLocal":true}),
+    )
+    .unwrap()["link"]
+        .clone();
+    assert_eq!(
+        run(json!({"op":"relay-protocol-parse-link","link":local_link,"allowLocal":true})).unwrap()
+            ["url"],
+        local["url"]
+    );
+    assert_eq!(
+        run(json!({"op":"relay-protocol-parse-link","link":local_link})).unwrap()["url"],
+        "wss://127.0.0.1:8080/relay/v1/ws"
+    );
+
+    let (ap, ask) = box_keypair();
+    let (bp, bsk) = box_keypair();
+    let scope = json!({"app":"passwordvault","group":"qa"});
+    let mut seal = json!({"op":"relay-protocol-envelope-seal","device":"a","secret":hex(&ask.0),"to":"b","peerKey":hex(&bp.0),"kind":"message","id":"m1","value":{"data":"hi"}});
+    let mut open = json!({"op":"relay-protocol-envelope-open","device":"b","secret":hex(&bsk.0),"from":"a","peerKey":hex(&ap.0),"kind":"message","id":"m1"});
+    for request in [&mut seal, &mut open] {
+        request["app"] = scope["app"].clone();
+        request["group"] = scope["group"].clone();
+    }
+    open["body"] = run(seal).unwrap()["body"].clone();
+    assert_eq!(run(open.clone()).unwrap()["value"]["data"], "hi");
+    let mut wrong = open.clone();
+    wrong["id"] = json!("m2");
+    assert_eq!(run(wrong).unwrap_err().0, "InvalidData");
+    let mut forged = open;
+    forged["peerKey"] = json!(hex(&box_keypair().0 .0));
+    assert_eq!(run(forged).unwrap_err().0, "Authentication");
+    assert!(run(json!({"op":"relay-protocol-unknown"})).is_err());
+}
+
+#[cfg(feature = "native")]
+#[test]
+fn session_serves_protocol_ops_without_unlocking() {
+    let dir = tempfile::tempdir().unwrap();
+    let session =
+        crate::VaultSession::new(dir.path().join("vault").to_string_lossy().into()).unwrap();
+    let v = vectors("group");
+    let request = json!({"op":"relay-protocol-keys","secret":v["config"]["secret_key"]});
+    let keys: Value = serde_json::from_str(&session.command(request.to_string()).unwrap()).unwrap();
+    assert_eq!(keys["publicKey"], v["config"]["public_key"]);
+    assert!(matches!(
+        session.command(json!({"op":"relay-protocol-not-registered"}).to_string()),
+        Err(crate::VaultError::Unsupported)
+    ));
+    // The session-free export used by the mobile clients behaves the same way.
+    let free: Value =
+        serde_json::from_str(&crate::relay_protocol(request.to_string()).unwrap()).unwrap();
+    assert_eq!(free, keys);
+    assert!(matches!(
+        crate::relay_protocol(json!({"op":"status"}).to_string()),
+        Err(crate::VaultError::Unsupported)
+    ));
+    assert!(matches!(
+        session.command(
+            json!({"op":"relay-protocol-verify","entry":v["approved"],"key":"00".repeat(32)})
+                .to_string()
+        ),
+        Err(crate::VaultError::InvalidData)
+    ));
+}

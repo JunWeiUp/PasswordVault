@@ -82,6 +82,7 @@ class SettingsGeneralTest {
             val config = JSONObject(fixture.command("relay-credentials-read").getString("data"))
             fixture.command("relay-init", JSONObject().put("role", "mobile").put("device", config.getString("device")).put("hub", "fixture-hub").put("group", "fixture-group"))
             fixture.command("relay-trust", JSONObject().put("peer", "fixture-hub"))
+            RelayProtocolBridge.install()
             val peerKey = io.github.junweiup.commonrelay.Crypto("passwordvault", "fixture-group", "fixture-hub", "01".repeat(32), emptyMap()).publicKey()
             config.put("group", "fixture-group").put("hub", "fixture-hub").put("paused", false)
                 .put("peers", JSONObject().put("fixture-hub", peerKey)).put("token", "q".repeat(48)).put("endpoint", "wss://127.0.0.1:1/relay/v1/ws")

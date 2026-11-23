@@ -8,6 +8,7 @@
 //! Policy decisions (owner, 2026-11-23): a member's `signing_key` can never be added or
 //! changed without a full re-admission (only renames are allowed), matching the strict
 //! desktop rule.
+mod command;
 mod strict;
 
 use base64::{
@@ -25,6 +26,7 @@ use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 use zeroize::{Zeroize, Zeroizing};
 
+pub use command::{command, OP_PREFIX};
 pub use strict::check as strict_check;
 
 /// Protocol error carrying the stable error code shown by clients.
@@ -445,6 +447,11 @@ pub type ParsedLink = (String, String, Vec<u8>, Option<String>);
 
 /// Returns relay URL, invitation ID, link key and the optional access password from `#key.password`.
 pub fn parse_link(link: &str) -> Result<ParsedLink> {
+    parse_link_with(link, false)
+}
+
+/// Like [`parse_link`]; `allow_local` maps `127.0.0.1` links to a loopback `ws://` relay for tests.
+pub fn parse_link_with(link: &str, allow_local: bool) -> Result<ParsedLink> {
     if link.len() > 2048 {
         return invalid();
     }
@@ -491,8 +498,13 @@ pub fn parse_link(link: &str) -> Result<ParsedLink> {
     let port = u.port().map(|p| format!(":{p}")).unwrap_or_default();
     u.set_fragment(None);
     let ws_path = if is_v2 { "/v2/ws" } else { "/relay/v1/ws" };
+    let scheme = if allow_local && host == "127.0.0.1" {
+        "ws"
+    } else {
+        "wss"
+    };
     Ok((
-        format!("wss://{host}{port}{ws_path}"),
+        format!("{scheme}://{host}{port}{ws_path}"),
         hex(&id),
         key,
         password,
@@ -510,10 +522,20 @@ pub fn read_token(key: &[u8]) -> Result<String> {
 
 /// Builds a compact URL; only the encrypted packet and read-token hash go to HTTP.
 pub fn make_link(invitation: &Value, key: &[u8], password: Option<&str>) -> Result<String> {
+    make_link_with(invitation, key, password, false)
+}
+
+/// Like [`make_link`]; `allow_local` accepts a loopback `ws://127.0.0.1` relay for tests.
+pub fn make_link_with(
+    invitation: &Value,
+    key: &[u8],
+    password: Option<&str>,
+    allow_local: bool,
+) -> Result<String> {
     if key.len() != 32 {
         return invalid();
     }
-    let endpoint = endpoint(text(invitation, "url")?, false)?;
+    let endpoint = endpoint(text(invitation, "url")?, allow_local)?;
     let id = unhex(text(invitation, "id")?)?;
     if id.len() != 16 {
         return invalid();

@@ -30,6 +30,7 @@ class PersonalRelayTest {
             val pending = vault.command("relay-status").getInt("pending")
             // One note plus the category-set record; these are not two unsaved edits.
             assertEquals(2, pending)
+            RelayProtocolBridge.install()
             val peerKey = io.github.junweiup.commonrelay.Crypto("passwordvault", "fixture-group", "fixture-hub", "01".repeat(32), emptyMap()).publicKey()
             config.put("group", "fixture-group").put("hub", "fixture-hub").put("paused", true)
                 .put("peers", JSONObject().put("fixture-hub", peerKey)).put("token", "")

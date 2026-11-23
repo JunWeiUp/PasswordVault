@@ -4,6 +4,7 @@ import CommonRelay
 
 @MainActor
 final class RelayCredentialTests: XCTestCase {
+  override func setUp() { super.setUp(); VaultRelay.installCoreProtocol() }
   private func wait(_ predicate: () -> Bool) async throws {
     for _ in 0..<100 {
       if predicate() { return }

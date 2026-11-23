@@ -128,6 +128,18 @@ export const CORE_OPS = [
   "relay-peer-status",
   "relay-peer-switch",
   "relay-peer-write",
+  "relay-protocol-keys",
+  "relay-protocol-unpack",
+  "relay-protocol-verify",
+  "relay-protocol-advance",
+  "relay-protocol-sign",
+  "relay-protocol-seal-invitation",
+  "relay-protocol-open-invitation",
+  "relay-protocol-read-token",
+  "relay-protocol-make-link",
+  "relay-protocol-parse-link",
+  "relay-protocol-envelope-seal",
+  "relay-protocol-envelope-open",
 ] as const;
 
 export type CoreOp = (typeof CORE_OPS)[number];
@@ -386,6 +398,30 @@ export interface CoreParams {
   "relay-peer-switch": { library: string };
   /** relay-peer · unlocked → PeerResult */
   "relay-peer-write": { library: string; key: string; value: unknown };
+  /** relay-protocol · none → {publicKey:string,signingKey:string} */
+  "relay-protocol-keys": { secret: string };
+  /** relay-protocol · none → {state:object} */
+  "relay-protocol-unpack": { entry: object };
+  /** relay-protocol · none → {ok:true} */
+  "relay-protocol-verify": { entry: object; key: string };
+  /** relay-protocol · none → {entry:object} */
+  "relay-protocol-advance": { current: object; entry: object };
+  /** relay-protocol · none → {entry:{payload,signature,signer}} */
+  "relay-protocol-sign": { value: object; secret: string; device: string };
+  /** relay-protocol · none → {packet:string} */
+  "relay-protocol-seal-invitation": { invitation: object; key: string; nonce: string };
+  /** relay-protocol · none → {invitation:object} */
+  "relay-protocol-open-invitation": { packet: string; key: string };
+  /** relay-protocol · none → {token:string} */
+  "relay-protocol-read-token": { key: string };
+  /** relay-protocol · none → {link:string} */
+  "relay-protocol-make-link": { invitation: object; key: string; password?: string; allowLocal?: boolean };
+  /** relay-protocol · none → {url:string,id:string,key:string,password:string|null} */
+  "relay-protocol-parse-link": { link: string; allowLocal?: boolean };
+  /** relay-protocol · none → {body:string} */
+  "relay-protocol-envelope-seal": { app: string; group: string; device: string; secret: string; to: string; peerKey: string; kind: string; id: string; value: object };
+  /** relay-protocol · none → {value:object} */
+  "relay-protocol-envelope-open": { app: string; group: string; device: string; secret: string; from: string; peerKey: string; kind: string; id: string; body: string };
 }
 
 /** A typed vault-core request: excess or misspelled fields fail type-checking. */

@@ -36,7 +36,7 @@ public actor RelayClient {
                 let dev = (object["from"] as? String) ?? (object["device"] as? String)
                 guard object["type"] as? String == "hello", dev == identity.device else { throw RelayError.invalid("identity mismatch") }
             } else {
-                guard object["version"] as? Int == 1, let own = object["identity"] as? [String: Any], own["app"] as? String == identity.app, own["group"] as? String == identity.group, own["device"] as? String == identity.device, own["public_key"] as? String == identity.publicKey.relayHex else { throw RelayError.invalid("identity mismatch") }
+                guard object["version"] as? Int == 1, let own = object["identity"] as? [String: Any], own["app"] as? String == identity.app, own["group"] as? String == identity.group, own["device"] as? String == identity.device, own["public_key"] as? String == (try identity.publicKey).relayHex else { throw RelayError.invalid("identity mismatch") }
             }
             let events = AsyncThrowingStream<RelayEvent, Error>(bufferingPolicy: .bufferingOldest(64)) { eventContinuation = $0 }
             reader = Task { [weak self] in

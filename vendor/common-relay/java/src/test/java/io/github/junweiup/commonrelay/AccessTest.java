@@ -11,6 +11,11 @@ import java.util.concurrent.*;
 import static org.junit.Assert.*;
 
 public class AccessTest {
+    /** Protocol work runs in vault-core; these SDK flow tests need the host app's backend
+     * (covered on device by the app's PersonalRelayTest and by vault-core's vector tests). */
+    @org.junit.BeforeClass public static void requireCoreBackend() {
+        org.junit.Assume.assumeTrue("vault-core relay protocol backend not installed", CoreProtocol.installed());
+    }
     private static final String PASSWORD="correct-horse-1";
     /** Records every request and answers 401 without touching the network. */
     private static OkHttpClient recording(List<Request> seen){

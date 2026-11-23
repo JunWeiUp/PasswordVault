@@ -17,14 +17,6 @@ import java.security.SecureRandom;
 public final class Crypto {
     interface Sodium extends Library {
         int sodium_init();
-        int crypto_secretbox_easy(byte[] out,byte[] message,long length,byte[] nonce,byte[] key);
-        int crypto_secretbox_open_easy(byte[] out,byte[] cipher,long length,byte[] nonce,byte[] key);
-        int crypto_sign_seed_keypair(byte[] pk, byte[] sk, byte[] seed);
-        int crypto_sign_detached(byte[] sig, LongByReference len, byte[] msg, long n, byte[] sk);
-        int crypto_sign_verify_detached(byte[] sig, byte[] msg, long n, byte[] pk);
-        int crypto_scalarmult_base(byte[] out, byte[] secret);
-        int crypto_box_easy(byte[] out, byte[] message, long length, byte[] nonce, byte[] peer, byte[] secret);
-        int crypto_box_open_easy(byte[] out, byte[] cipher, long length, byte[] nonce, byte[] peer, byte[] secret);
         com.sun.jna.NativeLong crypto_secretstream_xchacha20poly1305_statebytes();
         int crypto_secretstream_xchacha20poly1305_init_push(Pointer state, byte[] header, byte[] key);
         int crypto_secretstream_xchacha20poly1305_init_pull(Pointer state, byte[] header, byte[] key);
@@ -43,19 +35,19 @@ public final class Crypto {
     public static byte[] random(int count) { byte[] b=new byte[count];new SecureRandom().nextBytes(b);return b; }
     public static String hex(byte[] bytes) { StringBuilder s=new StringBuilder();for(byte b:bytes)s.append(String.format("%02x",b&255));return s.toString(); }
     public static byte[] unhex(String value) { if(value.length()%2!=0)throw new IllegalArgumentException("Invalid hex");byte[] b=new byte[value.length()/2];for(int i=0;i<b.length;i++)b[i]=(byte)Integer.parseInt(value.substring(i*2,i*2+2),16);return b; }
-    public String publicKey(){byte[] out=new byte[32];check(S.crypto_scalarmult_base(out,secret));return hex(out);}
-    private byte[] peer(String name){String key=trusted.get(name);if(key==null)throw new IllegalArgumentException("Untrusted peer");byte[] b=unhex(key);if(b.length!=32)throw new IllegalArgumentException("Invalid peer key");return b;}
+    private volatile String publicKey;
+    /** Envelope public key, derived in vault-core. */
+    public String publicKey()throws Exception{String k=publicKey;if(k==null)publicKey=k=CoreProtocol.call("keys",new JSONObject().put("secret",hex(secret))).getString("publicKey");return k;}
+    private String peer(String name){String key=trusted.get(name);if(key==null)throw new IllegalArgumentException("Untrusted peer");if(key.length()!=64)throw new IllegalArgumentException("Invalid peer key");return key;}
     private JSONArray context(String from,String to,String kind,String id) { return new JSONArray().put(1).put(app).put(group).put(from).put(to).put(kind).put(id); }
     public byte[] aad(String from,String to,String kind,String id,long sequence) { return context(from,to,kind,id).put(sequence).toString().getBytes(StandardCharsets.UTF_8); }
+    /** Envelope sealing/opening (context binding included) is implemented in vault-core. */
+    private JSONObject envelope(String peer)throws Exception{return new JSONObject().put("app",app).put("group",group).put("device",device).put("secret",hex(secret)).put("peerKey",peer(peer));}
     public String seal(String to,String kind,String id,JSONObject value) throws Exception {
-        byte[] plain=new JSONObject().put("context",context(device,to,kind,id)).put("value",value).toString().getBytes(StandardCharsets.UTF_8);
-        byte[] nonce=random(24),cipher=new byte[plain.length+16];check(S.crypto_box_easy(cipher,plain,plain.length,nonce,peer(to),secret));
-        byte[] result=new byte[24+cipher.length];System.arraycopy(nonce,0,result,0,24);System.arraycopy(cipher,0,result,24,cipher.length);return java.util.Base64.getEncoder().encodeToString(result);
+        return CoreProtocol.call("envelope-seal",envelope(to).put("to",to).put("kind",kind).put("id",id).put("value",value)).getString("body");
     }
     public JSONObject open(String from,String kind,String id,String envelope) throws Exception {
-        byte[] raw=CanonicalBase64.decode(envelope);if(raw.length<40)throw new IllegalArgumentException("Truncated envelope");byte[] nonce=Arrays.copyOf(raw,24),cipher=Arrays.copyOfRange(raw,24,raw.length),plain=new byte[cipher.length-16];
-        check(S.crypto_box_open_easy(plain,cipher,cipher.length,nonce,peer(from),secret));JSONObject parsed=new JSONObject(new String(plain,StandardCharsets.UTF_8));
-        if(!parsed.getJSONArray("context").toString().equals(context(from,device,kind,id).toString()))throw new IllegalArgumentException("Context mismatch");return parsed.getJSONObject("value");
+        return CoreProtocol.call("envelope-open",envelope(from).put("from",from).put("kind",kind).put("id",id).put("body",envelope)).getJSONObject("value");
     }
     static void check(int result){if(result!=0)throw new IllegalArgumentException("Cryptographic verification failed");}
     public static final class SecretStream implements AutoCloseable {

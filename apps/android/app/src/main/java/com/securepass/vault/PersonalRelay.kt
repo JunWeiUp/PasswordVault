@@ -55,6 +55,7 @@ internal class PersonalRelay(private val directory: File, private val vault: Vau
     @Volatile private var epoch = 0
     @Volatile private var wake = false
     private val syncRequests = Channel<Unit>(Channel.CONFLATED)
+    init { RelayProtocolBridge.install() }
     private fun progress(generation: Int, phase: RelaySyncPhase, completed: Int = 0, total: Int = 0) {
         if (unlocked && generation == epoch) mutable.value = mutable.value.copy(
             sync = mutable.value.sync.copy(phase = phase, completed = completed, total = total))

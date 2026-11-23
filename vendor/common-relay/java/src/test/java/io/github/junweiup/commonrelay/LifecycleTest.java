@@ -9,6 +9,11 @@ import java.util.concurrent.*;
 import static org.junit.Assert.*;
 
 public class LifecycleTest {
+    /** Protocol work runs in vault-core; these SDK flow tests need the host app's backend
+     * (covered on device by the app's PersonalRelayTest and by vault-core's vector tests). */
+    @org.junit.BeforeClass public static void requireCoreBackend() {
+        org.junit.Assume.assumeTrue("vault-core relay protocol backend not installed", CoreProtocol.installed());
+    }
     @Test public void forwardsGroupChangeWithoutTrustingItsContents() throws Exception {
         final JSONObject[] received = new JSONObject[1];
         Crypto crypto = new Crypto("example", "test", "alice", "01".repeat(32), Collections.emptyMap());

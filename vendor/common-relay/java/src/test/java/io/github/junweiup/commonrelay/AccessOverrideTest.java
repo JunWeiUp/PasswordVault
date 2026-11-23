@@ -8,6 +8,11 @@ import static org.junit.Assert.*;
 
 /** Consumer extension: explicit edits must win, including rejecting a cleared field before HTTP. */
 public class AccessOverrideTest {
+    /** Protocol work runs in vault-core; these SDK flow tests need the host app's backend
+     * (covered on device by the app's PersonalRelayTest and by vault-core's vector tests). */
+    @org.junit.BeforeClass public static void requireCoreBackend() {
+        org.junit.Assume.assumeTrue("vault-core relay protocol backend not installed", CoreProtocol.installed());
+    }
     @Test public void editedPasswordWinsAndEmptyNeverFallsBack() throws Exception {
         List<Request> requests=new ArrayList<>();
         OkHttpClient http=new OkHttpClient.Builder().addInterceptor(chain->{

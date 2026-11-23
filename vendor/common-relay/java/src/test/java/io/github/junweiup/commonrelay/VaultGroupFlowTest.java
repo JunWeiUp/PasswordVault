@@ -8,6 +8,11 @@ import java.util.UUID;
 
 /** Isolated loopback service only; never uses an installed app's configuration. */
 public class VaultGroupFlowTest {
+    /** Protocol work runs in vault-core; these SDK flow tests need the host app's backend
+     * (covered on device by the app's PersonalRelayTest and by vault-core's vector tests). */
+    @org.junit.BeforeClass public static void requireCoreBackend() {
+        org.junit.Assume.assumeTrue("vault-core relay protocol backend not installed", CoreProtocol.installed());
+    }
     private RelayGroups client(String url) throws Exception {
         return new RelayGroups(new JSONObject().put("app", "passwordvault").put("url", url)
             .put("device", UUID.randomUUID().toString()).put("secret_key", Crypto.hex(Crypto.random(32)))

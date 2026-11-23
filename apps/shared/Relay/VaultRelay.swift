@@ -77,6 +77,7 @@ final class VaultRelay: ObservableObject {
        call: @escaping ([String: JSONValue]) async throws -> JSONValue,
        refresh: @escaping () async -> Void,
        credentialReader: ((String, Bool) throws -> Data?)? = nil) {
+    Self.installCoreProtocol()
     self.credentialReader = credentialReader ?? Self.load
     self.allowLocalGroupTest = allowLocalGroupTest
     self.directory = directory.appendingPathComponent("relay-private", isDirectory: true)
@@ -84,6 +85,11 @@ final class VaultRelay: ObservableObject {
     self.call = call; self.refresh = refresh
     config = Config(role: role, secret: RelayIdentity.generateSecretKey())
     // No credential access before the vault is unlocked.
+  }
+  /// The common-relay SDK delegates group signing, strict payloads, invitation links and
+  /// envelopes to vault-core so iOS, Android and desktop share one protocol implementation.
+  nonisolated static func installCoreProtocol() {
+    if !RelayCoreProtocol.installed { RelayCoreProtocol.install { try relayProtocol(request: $0) } }
   }
   private static func query(_ account: String) -> [String: Any] {
     [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: "com.securepass.vault.personal-relay.v1", kSecAttrAccount as String: account]

@@ -4,6 +4,7 @@ import CommonRelay
 
 @MainActor
 final class RelayGroupTests: XCTestCase {
+  override func setUp() { super.setUp(); VaultRelay.installCoreProtocol() }
   private func fixture(_ role: String) async throws -> (RelayTestCore, VaultRelay, URL) {
     let path = FileManager.default.temporaryDirectory.appendingPathComponent("pv-groups-" + UUID().uuidString)
     let core = try RelayTestCore(directory: path)

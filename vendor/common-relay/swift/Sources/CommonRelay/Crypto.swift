@@ -35,24 +35,27 @@ public struct RelayIdentity: Sendable {
         self.app = app; self.group = group; self.device = device; secret = Array(secretKey); trusted = trustedPeers
     }
     public static func generateSecretKey() -> Data { var data = [UInt8](repeating: 0, count: 32); randombytes_buf(&data, 32); return Data(data) }
-    public var publicKey: Data { var out = [UInt8](repeating: 0, count: 32); crypto_scalarmult_base(&out, secret); return Data(out) }
+    /// Envelope public key, derived in vault-core.
+    public var publicKey: Data { get throws {
+        guard let key = try RelayCoreProtocol.call("keys", ["secret": Data(secret).relayHex])["publicKey"] as? String else { throw RelayError.invalid("key") }
+        return try Data(relayHex: key)
+    } }
     func context(from: String, to: String, kind: String, id: String) -> [Any] { [1, app, group, from, to, kind, id] }
     func aad(from: String, to: String, kind: String = "stream", id: String, sequence: UInt64) throws -> Data { try json(context(from: from, to: to, kind: kind, id: id) + [sequence]) }
+    /// Envelope sealing/opening (context binding included) is implemented in vault-core.
+    private func envelope(_ peer: String) throws -> [String: Any] {
+        guard let key = trusted[peer] else { throw RelayError.invalid("untrusted peer") }
+        return ["app": app, "group": group, "device": device, "secret": Data(secret).relayHex, "peerKey": key.relayHex]
+    }
     public func seal(to: String, kind: String, id: String, value: [String: Any]) throws -> String {
-        guard let peer = trusted[to] else { throw RelayError.invalid("untrusted peer") }
-        let plain = try json(["context": context(from: device, to: to, kind: kind, id: id), "value": value])
-        var nonce = [UInt8](repeating: 0, count: 24); randombytes_buf(&nonce, 24)
-        var cipher = [UInt8](repeating: 0, count: plain.count + 16)
-        try checked(crypto_box_easy(&cipher, Array(plain), UInt64(plain.count), nonce, Array(peer), secret))
-        return Data(nonce + cipher).base64EncodedString()
+        var request = try envelope(to); request["to"] = to; request["kind"] = kind; request["id"] = id; request["value"] = value
+        guard let body = try RelayCoreProtocol.call("envelope-seal", request)["body"] as? String else { throw RelayError.invalid("envelope") }
+        return body
     }
     public func open(from: String, kind: String, id: String, body: String) throws -> [String: Any] {
-        guard let peer = trusted[from], let raw = Data(base64Encoded: body), raw.count >= 40 else { throw RelayError.invalid("envelope") }
-        let cipher = Array(raw.dropFirst(24)); var plain = [UInt8](repeating: 0, count: cipher.count - 16)
-        try checked(crypto_box_open_easy(&plain, cipher, UInt64(cipher.count), Array(raw.prefix(24)), Array(peer), secret))
-        let value = try dictionary(Data(plain))
-        guard let bound = value["context"], try json(bound) == json(context(from: from, to: device, kind: kind, id: id)), let result = value["value"] as? [String: Any] else { throw RelayError.invalid("context mismatch") }
-        return result
+        var request = try envelope(from); request["from"] = from; request["kind"] = kind; request["id"] = id; request["body"] = body
+        guard let value = try RelayCoreProtocol.call("envelope-open", request)["value"] as? [String: Any] else { throw RelayError.invalid("context mismatch") }
+        return value
     }
 }
 

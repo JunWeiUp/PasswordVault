@@ -9,58 +9,34 @@ public final class RelayGroups: @unchecked Sendable {
     public init(config: [String: Any], allowLocalTest: Bool = false) { self.config = config; self.allowLocalTest = allowLocalTest }
     public static func digest(_ data: Data) -> String { var out = [UInt8](repeating: 0,count: 32); crypto_hash_sha256(&out, Array(data), UInt64(data.count)); return Data(out).relayHex }
     public static func payload(_ entry: [String: Any]) throws -> Data { guard let text = entry["payload"] as? String, let raw = Data(base64Encoded: text), raw.count <= 32768, raw.base64EncodedString() == text else { throw RelayError.invalid("membership payload") }; return raw }
-    /// Every signed payload is a state, join request or admission grant.
+    /// Every signed payload is a state, join request or admission grant (strict parse in vault-core).
     public static func unpack(_ entry: [String: Any]) throws -> [String: Any] {
-        let raw = try payload(entry)
-        guard StrictPayload.schemas.contains(where: { StrictPayload.check(raw, $0) }) else { throw RelayError.invalid("ambiguous signed payload") }
-        return try dictionary(raw)
-    }
-    private func signing() throws -> (publicKey: [UInt8], secretKey: [UInt8]) {
-        guard let text = config["secret_key"] as? String else { throw RelayError.invalid("identity") }
-        let secret = try Data(relayHex: text); guard secret.count == 32 else { throw RelayError.invalid("identity") }
-        let seed = try Data(relayHex: Self.digest(Data("common-relay/group-signing/v1\0".utf8) + secret))
-        var pk = [UInt8](repeating: 0,count: 32), sk = [UInt8](repeating: 0,count: 64); try checked(crypto_sign_seed_keypair(&pk,&sk,Array(seed))); return (pk,sk)
+        guard let state = try RelayCoreProtocol.call("unpack", ["entry": entry])["state"] as? [String: Any] else { throw RelayError.invalid("ambiguous signed payload") }
+        return state
     }
     public func sign(_ value: [String: Any]) throws -> [String: Any] {
-        var pair = try signing(); defer { pair.secretKey.withUnsafeMutableBytes { sodium_memzero($0.baseAddress,$0.count) } }
-        let bytes = try json(value); var signature = [UInt8](repeating: 0,count: 64)
-        try checked(crypto_sign_detached(&signature,nil,Array(bytes),UInt64(bytes.count),pair.secretKey))
-        return ["payload":bytes.base64EncodedString(),"signature":Data(signature).relayHex,"signer":config["device"] ?? ""]
+        guard let secret = config["secret_key"] as? String else { throw RelayError.invalid("identity") }
+        guard let entry = try RelayCoreProtocol.call("sign", ["value": value, "secret": secret, "device": config["device"] as? String ?? ""])["entry"] as? [String: Any] else { throw RelayError.invalid("signature") }
+        return entry
     }
     public static func verify(_ entry: [String: Any], key: String) throws {
-        let bytes = try payload(entry), pk = try Data(relayHex:key), sig = try Data(relayHex:entry["signature"] as? String ?? "")
-        guard pk.count == 32, sig.count == 64 else { throw RelayError.invalid("signature") }
-        try checked(crypto_sign_verify_detached(Array(sig),Array(bytes),UInt64(bytes.count),Array(pk)))
+        _ = try RelayCoreProtocol.call("verify", ["entry": entry, "key": key])
     }
     public func member(name: String) throws -> [String: Any] {
-        var pair = try signing(); defer { pair.secretKey.withUnsafeMutableBytes { sodium_memzero($0.baseAddress,$0.count) } }
-        let secret = try Data(relayHex:config["secret_key"] as? String ?? "")
-        let identity = try RelayIdentity(app: "",group: "",device: "",secretKey:secret,trustedPeers:[:])
-        return ["device":config["device"] ?? "","name":name,"public_key":identity.publicKey.relayHex,"signing_key":Data(pair.publicKey).relayHex,"manager":false]
+        guard let secret = config["secret_key"] as? String else { throw RelayError.invalid("identity") }
+        let keys = try RelayCoreProtocol.call("keys", ["secret": secret])
+        guard let publicKey = keys["publicKey"] as? String, let signingKey = keys["signingKey"] as? String else { throw RelayError.invalid("identity") }
+        return ["device":config["device"] ?? "","name":name,"public_key":publicKey,"signing_key":signingKey,"manager":false]
     }
     private func validate(_ g: [String: Any]) throws {
         guard g["version"] as? Int == 1, g["app"] as? String == config["app"] as? String, g["group"] as? String == config["group"] as? String,
               let members = g["members"] as? [[String:Any]], members.count <= 32, ((g["closed"] as? Bool == true) ? members.isEmpty : !members.isEmpty), Set(members.compactMap { $0["device"] as? String }).count == members.count, (g["closed"] as? Bool == true || members.contains(where: {$0["manager"] as? Bool == true})) else { throw RelayError.invalid("membership") }
     }
+    /// Chain rules live in vault-core; this adds the local app/group scope check.
     public func advance(_ oldEntry: [String:Any], _ entry: [String:Any]) throws -> [String:Any] {
-        let old = try Self.unpack(oldEntry), next = try Self.unpack(entry); try validate(next)
-        guard let before = old["members"] as? [[String:Any]], let after = next["members"] as? [[String:Any]],
-              let actor = before.first(where: {$0["device"] as? String == entry["signer"] as? String}), old["closed"] as? Bool != true,
-              let key = actor["signing_key"] as? String else { throw RelayError.invalid("untrusted manager") }
-        if entry["authorization"] == nil { try Self.verify(entry,key:key) }
-        guard (next["name"] as? String ?? "") == (old["name"] as? String ?? ""), next["revision"] as? Int == (old["revision"] as? Int ?? 0) + 1, next["previous"] as? String == Self.digest(try Self.payload(oldEntry)) else { throw RelayError.invalid("membership chain") }
-        if entry["authorization"] != nil { try advanceAuto(oldEntry,entry,old,next,actor);return entry }
-        var added = after.filter { m in !before.contains { $0["device"] as? String == m["device"] as? String } }
-        let removed = before.filter { m in !after.contains { $0["device"] as? String == m["device"] as? String } }
-        var renamed = [String]()
-        for m in after { if let prior = before.first(where: {$0["device"] as? String == m["device"] as? String}), !(NSDictionary(dictionary:m).isEqual(to:prior)) { var same = prior;same["name"] = m["name"];if NSDictionary(dictionary:m).isEqual(to:same) { renamed.append(m["device"] as? String ?? "");continue };if prior["signing_key"] as? String == "", m["signing_key"] as? String != "", prior["public_key"] as? String == m["public_key"] as? String { added.append(m) } else { throw RelayError.invalid("identity replacement") } } }
-        if !renamed.isEmpty {
-            guard renamed.count == 1, added.isEmpty, removed.isEmpty, next["invitation"] as? String == "", next["request_hash"] as? String == "", actor["manager"] as? Bool == true || renamed[0] == entry["signer"] as? String else { throw RelayError.invalid("rename permission") };return entry
-        }
-        let add = actor["manager"] as? Bool == true && added.count == 1 && removed.isEmpty && next["invitation"] as? String != "" && next["request_hash"] as? String != ""
-        let remove = removed.count == 1 && added.isEmpty && next["invitation"] as? String == "" && next["request_hash"] as? String == "" && (actor["manager"] as? Bool == true || removed[0]["device"] as? String == entry["signer"] as? String)
-        let close = next["closed"] as? Bool == true && actor["manager"] as? Bool == true && after.isEmpty && next["invitation"] as? String == "" && next["request_hash"] as? String == ""
-        guard add || remove || close else { throw RelayError.invalid("membership transition") }; return entry
+        try validate(Self.unpack(entry))
+        guard let result = try RelayCoreProtocol.call("advance", ["current": oldEntry, "entry": entry])["entry"] as? [String:Any] else { throw RelayError.invalid("membership chain") }
+        return result
     }
     /// Builds the HTTP request; `config["password"]` (server access password) is sent as `Relay-Access`.
     func makeRequest(_ method: String, _ path: String, value: [String:Any]? = nil, authorization: String? = nil) throws -> URLRequest {
@@ -200,14 +176,6 @@ public final class RelayGroups: @unchecked Sendable {
         for field in ["invitation","secret_hash","delegate_key","anchor_hash"] {
             guard let text = g[field] as? String, text.count == (field == "invitation" ? 32 : 64), text.allSatisfy({"0123456789abcdef".contains($0)}) else { throw RelayError.invalid("admission grant encoding") }
         };return g
-    }
-    private func advanceAuto(_ current: [String:Any], _ entry: [String:Any], _ old: [String:Any], _ next: [String:Any], _ actor: [String:Any]) throws {
-        guard let authorization = entry["authorization"] as? [String:Any] else { throw RelayError.invalid("admission grant") }
-        let grant = try validateGrant(authorization,owner:actor,state:old);try Self.verify(entry,key:grant["delegate_key"] as? String ?? "")
-        guard let before = old["members"] as? [[String:Any]], let after = next["members"] as? [[String:Any]] else { throw RelayError.invalid("membership") }
-        let added = after.filter { m in !before.contains(where: {$0["device"] as? String == m["device"] as? String}) }
-        guard next["closed"] as? Bool != true, next["invitation"] as? String == grant["invitation"] as? String, let hash = next["request_hash"] as? String, hash.count == 64, hash.allSatisfy({"0123456789abcdef".contains($0)}), after.count == before.count+1, added.count == 1, added[0]["manager"] as? Bool == false, before.allSatisfy({m in after.contains(where: {NSDictionary(dictionary:$0).isEqual(to:m)})}) else { throw RelayError.invalid("invalid automatic admission") }
-        if old["revision"] as? Int == grant["anchor_revision"] as? Int { guard Self.digest(try Self.payload(current)) == grant["anchor_hash"] as? String else { throw RelayError.invalid("admission anchor mismatch") } }
     }
     private func invitationGrant(_ inv: [String:Any]) throws -> [String:Any] {
         guard let e = inv["grant"] as? [String:Any], let manager = inv["manager"] as? [String:Any], let secret = inv["secret"] as? String, let delegate = inv["delegate_secret"] as? String else { throw RelayError.invalid("invitation grant missing") }

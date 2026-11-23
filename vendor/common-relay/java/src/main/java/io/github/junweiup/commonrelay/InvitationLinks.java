@@ -1,45 +1,30 @@
 package io.github.junweiup.commonrelay;
 
-import java.net.URI;
-import java.nio.charset.StandardCharsets;
-import java.util.Arrays;
 import java.util.Base64;
-import java.io.IOException;
 import org.json.JSONObject;
 
-/** The URL fragment key never goes to HTTP; only a domain-separated read token does. */
+/**
+ * The URL fragment key never goes to HTTP; only a domain-separated read token does.
+ * Sealing, opening, building and parsing are implemented in vault-core ({@link CoreProtocol}).
+ */
 public final class InvitationLinks {
     private InvitationLinks() {}
-    private static final String PURPOSE="common-relay/invitation-link/v1";
     public static String base64url(byte[] b){return Base64.getUrlEncoder().withoutPadding().encodeToString(b);}
-    private static byte[] decode(String s,int n)throws Exception{
-        if(s==null||!s.matches("[A-Za-z0-9_-]+"))throw new IOException("Invalid compact invitation");
-        byte[] raw=Base64.getUrlDecoder().decode(s);
-        if(raw.length!=n||!base64url(raw).equals(s))throw new IOException("Invalid compact invitation");return raw;
-    }
     public static String readToken(byte[] key)throws Exception{
-        if(key.length!=32)throw new IOException("Invitation key size");
-        byte[] prefix="common-relay/invitation-link/read/v1\0".getBytes(StandardCharsets.UTF_8),raw=Arrays.copyOf(prefix,prefix.length+key.length);System.arraycopy(key,0,raw,prefix.length,key.length);return RelayGroups.digest(raw);
+        return CoreProtocol.call("read-token",new JSONObject().put("key",Crypto.hex(key))).getString("token");
     }
     public static String seal(JSONObject invitation,byte[] key,byte[] nonce)throws Exception{
-        if(key.length!=32||nonce.length!=24)throw new IOException("Invitation key/nonce size");
-        byte[] raw=new JSONObject().put("version",1).put("purpose",PURPOSE).put("invitation",invitation).toString().getBytes(StandardCharsets.UTF_8),cipher=new byte[raw.length+16];
-        Crypto.check(Crypto.S.crypto_secretbox_easy(cipher,raw,raw.length,nonce,key));
-        byte[] packet=Arrays.copyOf(nonce,nonce.length+cipher.length);System.arraycopy(cipher,0,packet,nonce.length,cipher.length);return Base64.getEncoder().encodeToString(packet);
+        return CoreProtocol.call("seal-invitation",new JSONObject().put("invitation",invitation).put("key",Crypto.hex(key)).put("nonce",Crypto.hex(nonce))).getString("packet");
     }
     public static JSONObject open(String packet,byte[] key)throws Exception{
-        byte[] raw=CanonicalBase64.decode(packet);if(key.length!=32||raw.length<40||raw.length>16384)throw new IOException("Invitation packet size");
-        byte[] nonce=Arrays.copyOf(raw,24),cipher=Arrays.copyOfRange(raw,24,raw.length),plain=new byte[cipher.length-16];
-        Crypto.check(Crypto.S.crypto_secretbox_open_easy(plain,cipher,cipher.length,nonce,key));
-        JSONObject value=new JSONObject(new String(plain,StandardCharsets.UTF_8));
-        if(value.getInt("version")!=1||!value.getString("purpose").equals(PURPOSE))throw new IOException("Invitation packet scope");return value.getJSONObject("invitation");
+        return CoreProtocol.call("open-invitation",new JSONObject().put("packet",packet).put("key",Crypto.hex(key))).getJSONObject("invitation");
     }
     public static String make(JSONObject invitation,byte[] key)throws Exception{return make(invitation,key,null);}
     /** @param password optional server access password, appended to the fragment (never sent over HTTP) as ".base64url(ASCII)". */
     public static String make(JSONObject invitation,byte[] key,String password)throws Exception{
-        URI u=new URI(invitation.getString("url"));String suffix=password==null?"":"."+base64url(RelayAccess.validate(password).getBytes(StandardCharsets.US_ASCII));
-        String prefix="/v2/ws".equals(u.getPath())?"/v2/i/":"/i/";
-        return "common-relay://"+u.getRawAuthority()+prefix+base64url(Crypto.unhex(invitation.getString("id")))+"#"+base64url(key)+suffix;
+        JSONObject request=new JSONObject().put("invitation",invitation).put("key",Crypto.hex(key)).put("allowLocal",invitation.getString("url").startsWith("ws://127.0.0.1:"));
+        if(password!=null)request.put("password",password);
+        return CoreProtocol.call("make-link",request).getString("link");
     }
     public static final class Parsed {
         public final String url,id;public final byte[] key;
@@ -47,22 +32,8 @@ public final class InvitationLinks {
         public final String password;
         Parsed(String url,String id,byte[] key,String password){this.url=url;this.id=id;this.key=key;this.password=password;}
     }
-    private static String fragmentPassword(String s)throws Exception{
-        if(!s.matches("[A-Za-z0-9_-]+"))throw new IOException("Invalid compact invitation");
-        byte[] raw;try{raw=Base64.getUrlDecoder().decode(s);}catch(IllegalArgumentException e){throw new IOException("Invalid compact invitation");}
-        if(!base64url(raw).equals(s))throw new IOException("Invalid compact invitation");
-        for(byte b:raw)if(b<0)throw new IOException("Invalid compact invitation");
-        try{return RelayAccess.validate(new String(raw,StandardCharsets.US_ASCII));}catch(IllegalArgumentException e){throw new IOException("Invalid compact invitation");}
-    }
     public static Parsed parse(String text,boolean allowLocalTest)throws Exception{
-        if(text.length()>2048)throw new IOException("Invitation too long");URI u=new URI(text);
-        String rawPath=u.getRawPath();
-        boolean isV2=rawPath!=null&&rawPath.matches("/v2/i/[A-Za-z0-9_-]{22}");
-        if(!"common-relay".equals(u.getScheme())||u.getHost()==null||u.getRawUserInfo()!=null||u.getRawQuery()!=null||(!isV2&&(rawPath==null||!rawPath.matches("/i/[A-Za-z0-9_-]{22}"))))throw new IOException("Invalid compact invitation");
-        String scheme=allowLocalTest&&u.getHost().equals("127.0.0.1")?"ws":"wss";
-        String fragment=u.getRawFragment();if(fragment==null)throw new IOException("Invalid compact invitation");
-        int dot=fragment.indexOf('.');String key=dot<0?fragment:fragment.substring(0,dot);
-        String password=dot<0?null:fragmentPassword(fragment.substring(dot+1));
-        return new Parsed(scheme+"://"+u.getRawAuthority()+(isV2?"/v2/ws":"/relay/v1/ws"),Crypto.hex(decode(rawPath.substring(isV2?6:3),16)),decode(key,32),password);
+        JSONObject p=CoreProtocol.call("parse-link",new JSONObject().put("link",text).put("allowLocal",allowLocalTest));
+        return new Parsed(p.getString("url"),p.getString("id"),Crypto.unhex(p.getString("key")),p.isNull("password")?null:p.getString("password"));
     }
 }

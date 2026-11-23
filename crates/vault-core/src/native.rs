@@ -391,6 +391,9 @@ impl DiskVault {
         if !contract::is_registered(op) {
             return Err(VaultError::Unsupported);
         }
+        if op.starts_with(crate::relay_protocol::OP_PREFIX) {
+            return relay_protocol_command(request);
+        }
         let string = |key: &str| request[key].as_str().ok_or(VaultError::InvalidData);
         if matches!(op, "read-settings" | "matches" | "fill") {
             let open = self.unlocked.as_ref().ok_or(VaultError::Locked)?;
@@ -996,6 +999,34 @@ impl DiskVault {
     }
 }
 
+/// Stateless common-relay protocol ops (`relay-protocol-*`) for the mobile relay clients.
+/// Needs no vault or session; requests are wiped after use.
+#[uniffi::export]
+pub fn relay_protocol(request: String) -> Result<String> {
+    let input = Zeroizing::new(request);
+    if input.len() > 300_000 {
+        return Err(VaultError::InvalidData);
+    }
+    let mut parsed: Value = serde_json::from_str(&input).map_err(|_| VaultError::InvalidData)?;
+    let result = match parsed["op"].as_str() {
+        Some(op)
+            if op.starts_with(crate::relay_protocol::OP_PREFIX) && contract::is_registered(op) =>
+        {
+            relay_protocol_command(&parsed)
+        }
+        _ => Err(VaultError::Unsupported),
+    };
+    wipe_value(&mut parsed);
+    serde_json::to_string(&result?).map_err(|_| VaultError::InvalidData)
+}
+
+fn relay_protocol_command(request: &Value) -> Result<Value> {
+    crate::relay_protocol::command(request).map_err(|e| match e.0 {
+        "Authentication" => VaultError::Authentication,
+        _ => VaultError::InvalidData,
+    })
+}
+
 // A native-only Keychain capability. Never return this material through a browser message.
 // Bind it to both the password envelope and a revocation epoch; rotating either invalidates it.
 fn sync_fingerprint(base: &Path) -> Result<Vec<u8>> {
@@ -1207,11 +1238,22 @@ impl VaultSession {
         }
         let mut parsed: Value =
             serde_json::from_str(&input).map_err(|_| VaultError::InvalidData)?;
-        let result = self
-            .inner
-            .lock()
-            .map_err(|_| VaultError::Storage)?
-            .command(&parsed);
+        // Stateless relay protocol ops never wait for, or touch, the vault.
+        let result = if parsed["op"]
+            .as_str()
+            .is_some_and(|op| op.starts_with(crate::relay_protocol::OP_PREFIX))
+        {
+            if parsed["op"].as_str().is_some_and(contract::is_registered) {
+                relay_protocol_command(&parsed)
+            } else {
+                Err(VaultError::Unsupported)
+            }
+        } else {
+            self.inner
+                .lock()
+                .map_err(|_| VaultError::Storage)?
+                .command(&parsed)
+        };
         wipe_value(&mut parsed);
         serde_json::to_string(&result?).map_err(|_| VaultError::InvalidData)
     }

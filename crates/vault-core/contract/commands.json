@@ -1231,6 +1231,141 @@
       },
       "result": "PeerResult",
       "notes": "Blocked (DevicesSyncBlocked) when formatVersion>=7"
+    },
+    "relay-protocol-keys": {
+      "group": "relay-protocol",
+      "lock": "none",
+      "params": {
+        "secret": "string"
+      },
+      "result": "{publicKey:string,signingKey:string}",
+      "notes": "Envelope (X25519) public key and group-signing (Ed25519) key derived from a 32-byte device secret. Stateless; runs without the vault lock. Byte strings are lower-case hex."
+    },
+    "relay-protocol-unpack": {
+      "group": "relay-protocol",
+      "lock": "none",
+      "params": {
+        "entry": "object"
+      },
+      "result": "{state:object}",
+      "notes": "Strictly parsed payload of a signed entry. Stateless; runs without the vault lock. Byte strings are lower-case hex."
+    },
+    "relay-protocol-verify": {
+      "group": "relay-protocol",
+      "lock": "none",
+      "params": {
+        "entry": "object",
+        "key": "string"
+      },
+      "result": "{ok:true}",
+      "notes": "Detached Ed25519 signature check. Stateless; runs without the vault lock. Byte strings are lower-case hex."
+    },
+    "relay-protocol-advance": {
+      "group": "relay-protocol",
+      "lock": "none",
+      "params": {
+        "current": "object",
+        "entry": "object"
+      },
+      "result": "{entry:object}",
+      "notes": "Signed group-state transition check; signing_key can never be filled in or rotated in place. Stateless; runs without the vault lock. Byte strings are lower-case hex."
+    },
+    "relay-protocol-sign": {
+      "group": "relay-protocol",
+      "lock": "none",
+      "params": {
+        "value": "object",
+        "secret": "string",
+        "device": "string"
+      },
+      "result": "{entry:{payload,signature,signer}}",
+      "notes": "Canonical JSON signed with the device's group-signing key. Stateless; runs without the vault lock. Byte strings are lower-case hex."
+    },
+    "relay-protocol-seal-invitation": {
+      "group": "relay-protocol",
+      "lock": "none",
+      "params": {
+        "invitation": "object",
+        "key": "string",
+        "nonce": "string"
+      },
+      "result": "{packet:string}",
+      "notes": "Stateless; runs without the vault lock. Byte strings are lower-case hex."
+    },
+    "relay-protocol-open-invitation": {
+      "group": "relay-protocol",
+      "lock": "none",
+      "params": {
+        "packet": "string",
+        "key": "string"
+      },
+      "result": "{invitation:object}",
+      "notes": "Stateless; runs without the vault lock. Byte strings are lower-case hex."
+    },
+    "relay-protocol-read-token": {
+      "group": "relay-protocol",
+      "lock": "none",
+      "params": {
+        "key": "string"
+      },
+      "result": "{token:string}",
+      "notes": "Stateless; runs without the vault lock. Byte strings are lower-case hex."
+    },
+    "relay-protocol-make-link": {
+      "group": "relay-protocol",
+      "lock": "none",
+      "params": {
+        "invitation": "object",
+        "key": "string",
+        "password?": "string",
+        "allowLocal?": "bool"
+      },
+      "result": "{link:string}",
+      "notes": "allowLocal accepts a loopback ws://127.0.0.1 relay (tests). Stateless; runs without the vault lock. Byte strings are lower-case hex."
+    },
+    "relay-protocol-parse-link": {
+      "group": "relay-protocol",
+      "lock": "none",
+      "params": {
+        "link": "string",
+        "allowLocal?": "bool"
+      },
+      "result": "{url:string,id:string,key:string,password:string|null}",
+      "notes": "allowLocal maps 127.0.0.1 links to ws:// (tests). Stateless; runs without the vault lock. Byte strings are lower-case hex."
+    },
+    "relay-protocol-envelope-seal": {
+      "group": "relay-protocol",
+      "lock": "none",
+      "params": {
+        "app": "string",
+        "group": "string",
+        "device": "string",
+        "secret": "string",
+        "to": "string",
+        "peerKey": "string",
+        "kind": "string",
+        "id": "string",
+        "value": "object"
+      },
+      "result": "{body:string}",
+      "notes": "Stateless; runs without the vault lock. Byte strings are lower-case hex."
+    },
+    "relay-protocol-envelope-open": {
+      "group": "relay-protocol",
+      "lock": "none",
+      "params": {
+        "app": "string",
+        "group": "string",
+        "device": "string",
+        "secret": "string",
+        "from": "string",
+        "peerKey": "string",
+        "kind": "string",
+        "id": "string",
+        "body": "string"
+      },
+      "result": "{value:object}",
+      "notes": "Authentication on tamper/wrong key; InvalidData on context mismatch. Stateless; runs without the vault lock. Byte strings are lower-case hex."
     }
   }
 }
