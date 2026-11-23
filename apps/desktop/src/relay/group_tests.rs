@@ -735,7 +735,7 @@ fn remote_exit_and_admission_recovery_preserve_identity() {
         let failed = service::read(&session).unwrap();
         for key in ["device", "group", "token", "secret", "peers"] { assert_eq!(original[key], failed[key]); }
         assert_eq!(service::group(&original).unwrap()["group_entry"], service::group(&failed).unwrap()["group_entry"]);
-        let handshake = transport::Connection::connect(&server.url, protocol::text(&failed, "token").unwrap(), Some("incorrect-access"), runtime::identity(&failed).unwrap(), true);
+        let handshake = vault_core::relay_net::connection::Connection::connect(&server.url, protocol::text(&failed, "token").unwrap(), Some("incorrect-access"), runtime::identity(&failed).unwrap(), true, None);
         assert_eq!(handshake.err().unwrap(), "RelayHttp401");
         runtime::start(session.clone(), directory.clone(), true).unwrap();
         for _ in 0..100 {

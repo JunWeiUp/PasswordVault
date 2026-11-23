@@ -33,11 +33,10 @@ test group that was disbanded afterward; no real user vault was accessed.
   alone never permits export. A mobile-role configuration pins its unique verified
   manager as authority; messages cannot replace that pin.
 - Core `relay-*` routing. Small offline messages have
-  deterministic IDs and an encrypted durable delivery journal. Business changes
+  deterministic IDs and the SDK's durable delivery journal. Business changes
   commit before ACK. Replay, expiry, stale grants and identity mismatches cannot
-  restore access. Peer packets above 128 KiB use the existing 64 KiB chunk protocol,
-  bounded to 48 MiB per assembled packet.
-- Large legacy packets use CommonRelay secretstream file framing and encrypted
+  restore access.
+- Packets above 128 KiB use CommonRelay secretstream file framing and encrypted
   metadata, with the same inner AES-GCM combined format as CryptoKit. Uploads
   validate resumable offsets/descriptors; downloads use bounded ranges and verify
   hashes/final tags before decrypting. The ciphertext limit is 768 MiB. The current
@@ -69,13 +68,12 @@ or screen scanner; the current NSH runtime has no built-in camera scanning compo
 
 Identity secrets, tokens and group drafts remain in core
 `relay-private/credentials.v1.enc`; the Swift Codable base64 `groupState` is
-preserved. Replay records live in `relay-private/nsh-journal/*.enc`, separately
-secretbox-encrypted with a domain-separated key derived only while the credential
-store is unlocked. Filenames and encrypted envelopes bind group/device/sender/id.
-Writes use mode 0600, atomic replacement and fsync; the directory is mode 0700.
-Symlinks and corrupt records are rejected. Records retain seven-day receipt
-history; pending transport bodies expire after one day. No vault plaintext is
-written to staging files, logs or the journal. Outgoing plaintext queues are
+preserved. The WSS connection and offline delivery journal are vault-core's wrappers
+over the common-relay Rust SDK (`relay_net::connection`, `Journal`), the same code
+Android and iOS use; the journal lives in `vault/relay-private/sdk-journal/` and holds
+only sealed envelopes and message IDs (mode 0700 directory). Earlier builds' encrypted
+`relay-private/nsh-journal/` is no longer read. No vault plaintext is written to
+staging files, logs or the journal. Outgoing plaintext queues are
 zeroized when dropped on lock/reconnect.
 
 Only display state crosses to TSX. The issued invitation link is deliberately

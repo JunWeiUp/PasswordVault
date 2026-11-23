@@ -71,17 +71,19 @@ pub fn display(c: &Value) -> Result<Value> {
     };
     // No secret, token, pending signed grant or delegate key leaves Rust.
     Ok(
-        json!({"legacy":!c["token"].as_str().unwrap_or("").is_empty()&&g.as_object().is_some_and(|g|g.is_empty()),"endpoint":c["endpoint"],"device":c["device"],"role":c["role"],"peerLibrary":c["peerLibrary"],"paused":c["paused"],"state":state,"transport":"not-connected","joining":g["pending_join"].is_object(),"creating":g["pending_create"].is_object(),"code":code,"applicant":unpack(&g["join_request"]).ok().map(|r|r["member"]["name"].clone()),"invitationLink":link,"hasPassword":super::protocol::configured_password(&c).ok().flatten().is_some(),"invitationMode":inv["mode"],"invitationExpires":inv["expires"]}),
+        json!({"legacy":!c["token"].as_str().unwrap_or("").is_empty()&&g.as_object().is_some_and(|g|g.is_empty()),"endpoint":c["endpoint"],"device":c["device"],"role":c["role"],"state":state,"transport":"not-connected","joining":g["pending_join"].is_object(),"creating":g["pending_create"].is_object(),"code":code,"applicant":unpack(&g["join_request"]).ok().map(|r|r["member"]["name"].clone()),"invitationLink":link,"hasPassword":super::protocol::configured_password(&c).ok().flatten().is_some(),"invitationMode":inv["mode"],"invitationExpires":inv["expires"]}),
     )
 }
 pub fn execute(s: &VaultSession, request: Value, local: bool) -> Result<String> {
     let _network = NETWORK.lock().map_err(|_| "Storage")?;
     let guard = CONTROL.lock().map_err(|_| "Storage")?;
-    sodiumoxide::init().map_err(|_| "Storage")?;
     let mut c = read(s)?;
     let op = text(&request, "op")?;
     if c.as_object().ok_or("InvalidData")?.is_empty() {
-        c = json!({"endpoint":"","role":"hub","group":"","device":uuid::Uuid::new_v4().to_string(),"hub":"","secret":STANDARD.encode(sodiumoxide::randombytes::randombytes(32)),"token":"","peers":{},"paused":true});
+        // Fresh device identity from the shared core policy (random device ID and X25519 secret).
+        let fresh = vault_core::relay_protocol::policy::exit_identity().map_err(String::from)?;
+        let secret = zeroize::Zeroizing::new(super::protocol::unhex(text(&fresh, "secret")?)?);
+        c = json!({"endpoint":"","role":"hub","group":"","device":fresh["device"],"hub":"","secret":STANDARD.encode(&*secret),"token":"","peers":{},"paused":true});
         write(s, &c)?;
     }
     if op == "clear-local" {
@@ -91,7 +93,7 @@ pub fn execute(s: &VaultSession, request: Value, local: bool) -> Result<String> 
     let mut g = group(&c)?;
     if op == "update-endpoint" {
         let ep = text(&request, "endpoint")?.trim().to_owned();
-        super::transport::endpoint(&ep, local)?;
+        vault_core::relay_protocol::endpoint(&ep, local)?;
         if g.as_object().ok_or("InvalidData")?.is_empty() {
             return Err("NotEnrolled".into());
         }
@@ -141,7 +143,7 @@ pub fn execute(s: &VaultSession, request: Value, local: bool) -> Result<String> 
     match op {
         "create" => {
             if groups.config["pending_create"].is_null() {
-                super::transport::endpoint(text(&request, "endpoint")?, local)?;
+                vault_core::relay_protocol::endpoint(text(&request, "endpoint")?, local)?;
                 // Creating a group always requires the relay's access password.
                 let password = super::protocol::access_password(text(&request, "relayPassword")?)?;
                 groups.config["url"] = request["endpoint"].clone();
@@ -236,7 +238,6 @@ pub fn execute(s: &VaultSession, request: Value, local: bool) -> Result<String> 
 /// snapshot is only for a best-effort remote notification and must never be saved.
 pub fn exit_local(s: &VaultSession, disband: bool) -> Result<(String, Value)> {
     let _commit = CONTROL.lock().map_err(|_| "Storage")?;
-    sodiumoxide::init().map_err(|_| "Storage")?;
     let mut c = read(s)?;
     let remote = group(&c)?;
     // Never orphan a group: validate the signed exit offline before clearing local state.

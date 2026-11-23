@@ -48,6 +48,7 @@ pub(crate) fn open_regular_readonly(path: &Path) -> io::Result<File> {
     Ok(file)
 }
 
+#[cfg(test)]
 pub(crate) use vault_core::native_file_ops::replace_synced;
 
 #[cfg(test)]

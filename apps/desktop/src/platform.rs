@@ -65,7 +65,7 @@ pub(crate) use windows_files::{panel, pick_device_paths};
 
 #[path = "platform_files.rs"]
 mod safe_files;
-pub(crate) use safe_files::{open_regular_readonly, replace_synced};
+pub(crate) use safe_files::open_regular_readonly;
 
 #[cfg(target_os = "windows")]
 #[path = "windows/signals.rs"]

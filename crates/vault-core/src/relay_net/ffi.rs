@@ -1,4 +1,5 @@
-//! UniFFI surface of the relay transport for Android and iOS (desktop uses the Rust types).
+//! UniFFI surface of the relay transport for Android and iOS (desktop calls `connection`,
+//! `files` and `Journal` directly).
 use super::{connection::Connection, files, http::Http, journal::Journal};
 use crate::relay_protocol::{groups::Groups, text, unhex, BoxPublicKey, BoxSecretKey, Identity};
 use serde_json::{json, Value};

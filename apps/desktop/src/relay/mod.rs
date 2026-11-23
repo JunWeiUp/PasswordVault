@@ -1,17 +1,14 @@
 //! Relay orchestration, encrypted credentials, presence and symmetric group sync.
-#![allow(dead_code)]
 mod files;
 #[cfg(test)]
 mod group_tests;
 mod groups;
-mod journal;
 mod mesh;
 mod protocol;
 mod runtime;
 mod service;
 #[cfg(test)]
 mod tests;
-mod transport;
 #[cfg(feature = "ui")]
 use nsh_core::prelude::*;
 use serde_json::Value;

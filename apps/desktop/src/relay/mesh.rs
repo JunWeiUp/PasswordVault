@@ -107,13 +107,6 @@ pub fn receive_with_reply(
     }
 }
 
-/// Applies a peer packet. Returns whether visible vault content changed. Packets
-/// from older protocol versions are ignored so a not-yet-updated device cannot
-/// stall the connection; it resumes once that device is updated.
-pub fn receive(s: &VaultSession, from: &str, data: &[u8]) -> Result<bool> {
-    Ok(receive_with_reply(s, from, data)?.0)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

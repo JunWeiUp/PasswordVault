@@ -10,7 +10,7 @@ OS services and IPC policy.
 - `ui/api/core.ts` — `coreApi` facade; `ui/api/coreContract.generated.ts` is generated
   (`python3 tool/core_contract.py generate`), never edit it by hand.
 - `ui/api/nativeBridge.ts` — typed wrappers for Rust modules (attachments, relay, markdown).
-- `src/relay/` — desktop relay runtime (groups, transport, journal, files).
+- `src/relay/` — desktop relay runtime: sync loop and credentials over vault-core's relay (SDK connection, journal, files, groups).
 - `src/ai/`, `helpers/pv-mcp`, `helpers/pv-browser-host` — MCP and browser-host helpers.
 - `tests/*.test.tsx` — NSH UI tests with harnesses in `ui/**/TestHarness.tsx`.
 
@@ -20,7 +20,7 @@ OS services and IPC policy.
   policy already live there (`vault_core::relay_protocol`).
 - Desktop-only behaviour → TypeScript in `ui/` first; Rust in `src/` only for OS services, file
   streaming, crypto/storage access or IPC policy. Existing desktop-only Rust (`markdown.rs`,
-  `text_extract.rs`, `backup.rs`, `src/relay/journal.rs`, ...) stays here until a second client
+  `text_extract.rs`, `backup.rs`, ...) stays here until a second client
   needs it — move it into the core then, with its tests, instead of porting it.
 
 ## Checks
