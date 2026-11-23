@@ -55,9 +55,7 @@ struct MobileWebDAVView: View {
         SecureField(store.t("新备份的文件密码", "Password for new backup"), text: $filePassword)
         Button(transferring ? store.t("传输中…", "Transferring…") : store.t("创建并上传加密备份", "Create & upload encrypted backup")) {
           run(isList: false) { client in
-            let result = try await store.perform([
-              "op": .string("export"), "password": .string(filePassword),
-            ])
+            let result = try await store.perform(CoreRequest.export(password: filePassword))
             try await client.upload(Data((result.object["content"]?.string ?? "").utf8))
             files = try await client.list()
             filePassword = ""
@@ -111,10 +109,7 @@ struct MobileWebDAVView: View {
             guard let content = String(data: data, encoding: .utf8) else {
               throw VaultError.InvalidData
             }
-            let result = try await store.perform([
-              "op": .string("import"), "content": .string(content), "password": .string(secret),
-              "kind": .string("json"),
-            ])
+            let result = try await store.perform(CoreRequest.`import`(content: content, password: secret, kind: "json"))
             try await store.refresh()
             filePassword = ""
             return "\(store.t("已合并", "Merged")): \(Int(result.object["imported"]?.number ?? 0))"

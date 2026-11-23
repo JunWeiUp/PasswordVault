@@ -73,7 +73,7 @@ internal fun VaultWorkspace(
         codeCamera = false
         scope.launch {
             try {
-                val parsed = vault.command("parse-totp", JSONObject().put("uri", uri))
+                val parsed = vault.command(CoreRequest.parseTotp(uri))
                 editingRestored = false
                 editing = VaultRepository.blank("totp").apply {
                     put("title", parsed.optString("issuer").ifBlank { parsed.optString("account") })

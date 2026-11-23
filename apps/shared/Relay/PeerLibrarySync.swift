@@ -17,7 +17,7 @@ final class PeerLibrarySync {
   }
 
   func status() async throws -> [String: JSONValue] {
-    try await command(["op": .string("relay-peer-status"), "library": .string(library)]).object
+    try await command(CoreRequest.relayPeerStatus(library: library)).object
   }
 
   /// Sends only to members authorized by the signed library control chain, never
@@ -27,7 +27,7 @@ final class PeerLibrarySync {
     guard state["frozen"]?.bool != true else { throw PeerSyncError.authorization }
     for (peer, value) in state["members"]?.object ?? [:] where peer != device {
       guard let key = value.object["transportKey"]?.string, !key.isEmpty else { continue }
-      let packet = try await command(["op": .string("relay-peer-export"), "library": .string(library), "peer": .string(peer)])
+      let packet = try await command(CoreRequest.relayPeerExport(library: library, peer: peer))
       let encoder = JSONEncoder(); encoder.outputFormatting = [.sortedKeys]
       let data = try encoder.encode(packet)
       guard appliedDigests[peer] != data else { continue }
@@ -45,23 +45,23 @@ final class PeerLibrarySync {
       member.object["transportKey"]?.string == authenticatedTransportKey,
       !authenticatedTransportKey.isEmpty else { throw PeerSyncError.authorization }
     let envelope = try JSONDecoder().decode(JSONValue.self, from: data)
-    _ = try await command(["op": .string("relay-peer-receive"), "library": .string(library), "envelope": envelope])
+    _ = try await command(CoreRequest.relayPeerReceive(library: library, envelope: envelope))
   }
 
   func resolve(key: String, value: JSONValue) async throws {
-    _ = try await command(["op": .string("relay-peer-resolve"), "library": .string(library), "key": .string(key), "value": value])
+    _ = try await command(CoreRequest.relayPeerResolve(library: library, key: key, value: value))
     resetDeliveryCache()
   }
 
   func authorize(device: String, signingKey: String, transportKey: String, role: String) async throws {
     guard ["admin", "editor", "reader"].contains(role), !transportKey.isEmpty else { throw PeerSyncError.authorization }
-    _ = try await command(["op": .string("relay-peer-authorize"), "library": .string(library), "peer": .string(device),
-                          "member": .object(["publicKey": .string(signingKey), "transportKey": .string(transportKey), "role": .string(role)])])
+    _ = try await command(CoreRequest.relayPeerAuthorize(library: library, peer: device,
+      member: .object(["publicKey": .string(signingKey), "transportKey": .string(transportKey), "role": .string(role)])))
     resetDeliveryCache()
   }
 
   func revoke(device: String) async throws {
-    _ = try await command(["op": .string("relay-peer-authorize"), "library": .string(library), "peer": .string(device), "member": .null])
+    _ = try await command(CoreRequest.relayPeerAuthorize(library: library, peer: device, member: .null))
     resetDeliveryCache()
   }
 

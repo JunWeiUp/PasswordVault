@@ -219,8 +219,8 @@ class DesignAuxiliaryTest {
             fixture.authenticate("1", true)
             assertTrue(fixture.state.value.unlocked)
             val theme = InstrumentationRegistry.getArguments().getString("designTheme") ?: "light"
-            assertTrue(fixture.mutate("settings", JSONObject().put("settings", JSONObject().put("theme", theme))))
-            fixture.command("history-enable")
+            assertTrue(fixture.mutate(CoreRequest.settings(JSONObject().put("theme", theme))))
+            fixture.command(CoreRequest.historyEnable())
             val account = VaultRepository.blank("password").put("title", ACCOUNT)
                 .put("username", "aux@example.test").put("url", "https://example.test")
                 .put("password", OLD_PASSWORD)
@@ -230,7 +230,7 @@ class DesignAuxiliaryTest {
             assertTrue(fixture.save(VaultRepository.blank("secureNote").put("title", NOTE).put("note", "仅用于隔离测试，不包含真实资料。")))
             assertTrue(fixture.save(VaultRepository.blank("crypto").put("title", WALLET).put("network", "Ethereum").put("mnemonic", "abandon ".repeat(11) + "about")))
             if (devices) {
-                fixture.command("devices-enable", JSONObject().put("confirm", true).put("currentPassword", "1"))
+                fixture.command(CoreRequest.devicesEnable(true, "1"))
                 val payload = JSONObject().put("version", 1).put("host", "fixture.example.test").put("port", 22)
                     .put("username", "fixture").put("authMethod", "password").put("password", DEVICE_PASSWORD)
                     .put("privateKey", "").put("notes", "仅复制，不执行")

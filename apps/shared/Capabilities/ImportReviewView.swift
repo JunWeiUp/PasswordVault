@@ -208,20 +208,18 @@ struct ImportReviewView: View {
     }.frame(minWidth: 640, idealWidth: 700, minHeight: 560, idealHeight: 660)
   }
   #endif
-  private func request(_ op: String) -> [String: JSONValue] {
-    ["op": .string(op), "format": .string(format), "data": .string(source), "mapping": .object(mapping.filter { !$0.value.isEmpty }.mapValues(JSONValue.string)), "choices": .object(choices.mapValues(JSONValue.string))]
-  }
+  private var mappingValue: JSONValue { .object(mapping.filter { !$0.value.isEmpty }.mapValues(JSONValue.string)) }
   @MainActor private func inspect() async {
     guard !busy, !source.isEmpty else { return }
     busy = true; defer { busy = false }
     let submitted = mapping
-    do { preview = try await perform(request("import-preview")); checkedMapping = submitted; message = ""; choices = [:] }
+    do { preview = try await perform(CoreRequest.importPreview(format: format, data: source, mapping: mappingValue)); checkedMapping = submitted; message = ""; choices = [:] }
     catch { preview = .object([:]); message = t("预检失败；未更改资料库", "Preview failed; vault unchanged") }
   }
   @MainActor private func commit() async {
     guard !busy, !source.isEmpty, mapping == checkedMapping else { return }
     busy = true; defer { busy = false }
-    do { let result = try await perform(request("import-commit")).object; message = "\(t("已导入", "Imported")): \(Int(result["added"]?.number ?? 0)); \(t("跳过", "Skipped")): \(Int(result["skipped"]?.number ?? 0))"; source = ""; fileName = ""; preview = .object([:]) }
+    do { let result = try await perform(CoreRequest.importCommit(format: format, data: source, mapping: mappingValue, choices: .object(choices.mapValues(JSONValue.string)))).object; message = "\(t("已导入", "Imported")): \(Int(result["added"]?.number ?? 0)); \(t("跳过", "Skipped")): \(Int(result["skipped"]?.number ?? 0))"; source = ""; fileName = ""; preview = .object([:]) }
     catch { message = t("导入失败；原有数据已保留", "Import failed; existing data retained") }
   }
 }

@@ -395,7 +395,7 @@ struct MobileSyncDevicesView: View {
   private func loadMeshConflicts() async {
     guard store.unlocked else { meshConflicts = []; return }
     do {
-      let res = try await store.perform(["op": .string("relay-mesh-conflicts")])
+      let res = try await store.perform(CoreRequest.relayMeshConflicts())
       let list = res.object["conflicts"]?.array ?? []
       meshConflicts = list.compactMap { entry in
         let obj = entry.object
@@ -415,11 +415,7 @@ struct MobileSyncDevicesView: View {
 
   private func resolveMeshConflict(_ cf: MeshNoteConflict, strategy: String) async {
     do {
-      _ = try await store.perform([
-        "op": .string("relay-mesh-resolve-conflict"),
-        "id": .string(cf.noteId),
-        "strategy": .string(strategy),
-      ])
+      _ = try await store.perform(CoreRequest.relayMeshResolveConflict(id: cf.noteId, strategy: strategy))
       try? await store.refresh()
       await loadMeshConflicts()
     } catch {

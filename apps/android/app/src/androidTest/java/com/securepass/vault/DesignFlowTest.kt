@@ -29,14 +29,11 @@ class DesignFlowTest {
         val theme = InstrumentationRegistry.getArguments().getString("designTheme") ?: "light"
         assertTrue(
             fixture.mutate(
-                "settings",
-                JSONObject()
-                    .put(
-                        "settings",
-                        JSONObject()
-                            .put("theme", theme)
-                            .put("noteCategories", JSONArray(listOf("个人", "家庭", "工作"))),
-                    ),
+                CoreRequest.settings(
+                    JSONObject()
+                        .put("theme", theme)
+                        .put("noteCategories", JSONArray(listOf("个人", "家庭", "工作")))
+                )
             )
         )
         listOf("Northstar", "Paper & ink", "Sunday studio", "Atlas mail")

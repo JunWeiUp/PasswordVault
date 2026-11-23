@@ -72,4 +72,12 @@ final class RelayProtocolBridgeTests: XCTestCase {
     XCTAssertThrowsError(try RelayInvitationLinks.open(packet, key: RelayIdentity.generateSecretKey()))
     XCTAssertEqual(try RelayInvitationLinks.readToken(key).count, 64)
   }
+
+  func testOwnerRetryPolicyComesFromCore() {
+    XCTAssertNil(VaultRelay.retryDelay("group HTTP 401", previous: 4, connected: 0))
+    XCTAssertNil(VaultRelay.retryDelay("Group request failed (403)", previous: 4, connected: 0))
+    XCTAssertEqual(VaultRelay.retryDelay("timeout", previous: 0, connected: 0), 1)
+    XCTAssertEqual(VaultRelay.retryDelay("timeout", previous: 4, connected: 10), 8)
+    XCTAssertEqual(VaultRelay.retryDelay("timeout", previous: 30, connected: 120), 1)
+  }
 }

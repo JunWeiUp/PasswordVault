@@ -103,11 +103,9 @@ fun EntryEditor(
             deriving = true
             val result =
                 vault.command(
-                    "wallet",
-                    JSONObject()
-                        .put("generate", false)
-                        .put(
-                            "mnemonic",
+                    CoreRequest.wallet(
+                        generate = false,
+                        mnemonic =
                             if (source == "mnemonic")
                                 current
                                     .optString("mnemonic")
@@ -115,8 +113,8 @@ fun EntryEditor(
                                     .split(Regex("\\s+"))
                                     .joinToString(" ")
                             else "",
-                        )
-                        .put("privateKey", current.optString("privateKey")),
+                        privateKey = current.optString("privateKey"),
+                    )
                 )
             if (walletRequests.owns(revision) && !saving && !working) {
                 val next = JSONObject(draftText)
@@ -189,11 +187,11 @@ fun EntryEditor(
                         (secret.isNotBlank() && secret != original.optString("secret"))
                 ) {
                     vault.command(
-                        "totp",
-                        JSONObject()
-                            .put("secret", secret)
-                            .put("period", submitted.optInt("period", 30))
-                            .put("time", System.currentTimeMillis() / 1000),
+                        CoreRequest.totp(
+                            secret,
+                            time = System.currentTimeMillis() / 1000,
+                            period = submitted.optInt("period", 30),
+                        )
                     )
                 }
                 if (vault.save(prepareEntrySave(submitted, vault.state.value.entries))) {
@@ -246,15 +244,13 @@ fun EntryEditor(
                 val current = JSONObject(draftText)
                 val result =
                     vault.command(
-                        "wallet",
-                        JSONObject()
-                            .put("generate", generate)
-                            .put(
-                                "mnemonic",
+                        CoreRequest.wallet(
+                            generate = generate,
+                            mnemonic =
                                 if (source == "mnemonic" || generate) current.optString("mnemonic")
                                 else "",
-                            )
-                            .put("privateKey", current.optString("privateKey")),
+                            privateKey = current.optString("privateKey"),
+                        )
                     )
                 val next = JSONObject(draftText).apply { remove("_walletEditSource") }
                 (if (!generate && source == "privateKey") listOf("network", "address")

@@ -117,7 +117,7 @@ final class MobileVaultStore: ObservableObject {
   func start() async {
     do {
       exists =
-        try await connection().call(["op": .string("status")]).object["exists"]?.bool ?? false
+        try await connection().call(CoreRequest.status()).object["exists"]?.bool ?? false
     } catch { report(error) }
     legacyAvailable = !exists && FileManager.default.fileExists(atPath: legacySource.path)
     ready = true
@@ -140,15 +140,11 @@ final class MobileVaultStore: ObservableObject {
         guard let salt = UserDefaults.standard.string(forKey: "flutter.master_key_salt"),
           !salt.isEmpty
         else { throw VaultError.Unsupported }
-        _ = try await core.call([
-          "op": .string("create-migrated"), "source": .string(legacySource.path),
-          "salt": .string(salt), "legacyPassword": .string(legacyPassword),
-          "password": .string(password),
-        ])
+        _ = try await core.call(CoreRequest.createMigrated(
+          source: legacySource.path, legacyPassword: legacyPassword, salt: salt, password: password))
       } else {
-        _ = try await core.call([
-          "op": .string(create ? "create" : "unlock"), "password": .string(password),
-        ])
+        _ = try await core.call(
+          create ? CoreRequest.create(password: password) : CoreRequest.unlock(password: password))
       }
       guard generation == epoch else {
         await core.close()
@@ -194,11 +190,8 @@ final class MobileVaultStore: ObservableObject {
     do {
       await closing?.value
       let core = try connection()
-      _ = try await core.call([
-        "op": .string("create-from-backup"), "content": .string(content),
-        "backupPassword": .string(filePassword), "password": .string(password),
-        "kind": .string(kind),
-      ])
+      _ = try await core.call(CoreRequest.createFromBackup(
+        content: content, password: password, backupPassword: filePassword, kind: kind))
       guard generation == epoch else {
         await core.close()
         return
@@ -226,11 +219,8 @@ final class MobileVaultStore: ObservableObject {
     do {
       await closing?.value
       let core = try connection()
-      var request: [String: JSONValue] = [
-        "op": .string(archive == nil ? "recovery-reset-password" : "recovery-restore-backup"),
-        "key": .string(key), "newPassword": .string(newPassword),
-      ]
-      if let archive { request["content"] = .string(archive) }
+      let request = archive.map { CoreRequest.recoveryRestoreBackup(key: key, content: $0, newPassword: newPassword) }
+        ?? CoreRequest.recoveryResetPassword(key: key, newPassword: newPassword)
       _ = try await core.call(request)
       guard generation == epoch else { await core.close(); return }
       let document = try await core.document()
@@ -258,9 +248,7 @@ final class MobileVaultStore: ObservableObject {
         directory.lastPathComponent.hasPrefix("UI-Test-")
       else { return }
       do {
-        _ = try await perform([
-          "op": .string("devices-enable"), "confirm": .bool(true), "currentPassword": .string(password),
-        ])
+        _ = try await perform(CoreRequest.devicesEnable(confirm: true, currentPassword: password))
         var item = VaultItem.blank(type: "device", title: "Fixture server")
         item.fields["device"] = .object([
           "version": .number(1), "host": .string("server.example.test"), "port": .number(2222),
@@ -277,7 +265,7 @@ final class MobileVaultStore: ObservableObject {
           ])]),
         ])
         item.set("updatedAt", ISO8601DateFormatter().string(from: Date()))
-        _ = try await perform(["op": .string("save"), "item": try .from(item)])
+        _ = try await perform(CoreRequest.save(item: try .from(item)))
         try await refresh()
       } catch { report(error) }
     }
@@ -306,9 +294,7 @@ final class MobileVaultStore: ObservableObject {
       let pending = await capturedRichDraft?.value ?? pending
       if let previous, let pending {
         do {
-          let sealed = try await previous.call([
-            "op": .string("seal-drafts"), "items": try .from([pending]),
-          ])
+          let sealed = try await previous.call(CoreRequest.sealDrafts(items: try .from([pending])))
           volatileRecovery = sealed
           try JSONEncoder().encode(sealed).write(
             to: directory.appendingPathComponent("mobile-draft.sealed"),
@@ -383,9 +369,7 @@ final class MobileVaultStore: ObservableObject {
     do {
       let sealed =
         try volatileRecovery ?? JSONDecoder().decode(JSONValue.self, from: Data(contentsOf: url))
-      let result = try await core.call([
-        "op": .string("open-drafts"), "payload": sealed.object["payload"] ?? .null,
-      ])
+      let result = try await core.call(CoreRequest.openDrafts(payload: sealed.object["payload"] ?? .null))
       guard unlocked else { return }
       if let value = result.object["items"]?.array.first {
         recoveredDraft = try JSONDecoder().decode(VaultItem.self, from: JSONEncoder().encode(value))
@@ -426,7 +410,7 @@ final class MobileVaultStore: ObservableObject {
     sharedMembers = document.sharedMembers
     var passkeys: [JSONValue] = []
     if #available(iOS 17.0, *) {
-      let index = try await core.call(["op": .string("passkey-index")])
+      let index = try await core.call(CoreRequest.passkeyIndex())
       guard generation == epoch, unlocked else { throw VaultError.Locked }
       passkeys = index.object["passkeys"]?.array ?? []
     }
@@ -522,7 +506,7 @@ final class MobileVaultStore: ObservableObject {
       if item.string("createdAt").isEmpty && !items.contains(where: { $0.id == item.id }) {
         item.set("createdAt", time)
       }
-      _ = try await perform(["op": .string("save"), "item": try .from(item)])
+      _ = try await perform(CoreRequest.save(item: try .from(item)))
       try await refresh()
       activity()
       return true
@@ -568,7 +552,7 @@ final class MobileVaultStore: ObservableObject {
         var item = try await materializeForSave(rawItem)
         change(&item)
         item.set("updatedAt", time)
-        _ = try await perform(["op": .string("save"), "item": try .from(item)])
+        _ = try await perform(CoreRequest.save(item: try .from(item)))
         saved += 1
       }
     } catch { report(error) }
@@ -620,7 +604,7 @@ final class MobileVaultStore: ObservableObject {
     var removed = 0
     do {
       for item in removable {
-        _ = try await perform(["op": .string("remove"), "id": .string(item.id)])
+        _ = try await perform(CoreRequest.remove(id: item.id))
         removed += 1
       }
     } catch { report(error) }
@@ -631,13 +615,13 @@ final class MobileVaultStore: ObservableObject {
   func remove(_ item: VaultItem) async {
     guard item.isDeleted else { return }
     do {
-      _ = try await perform(["op": .string("remove"), "id": .string(item.id)])
+      _ = try await perform(CoreRequest.remove(id: item.id))
       try await refresh()
     } catch { report(error) }
   }
   func saveSettings(_ changes: [String: JSONValue]) async {
     do {
-      _ = try await perform(["op": .string("settings"), "settings": .object(changes)])
+      _ = try await perform(CoreRequest.settings(settings: .object(changes)))
       try await refresh()
     } catch { report(error) }
   }

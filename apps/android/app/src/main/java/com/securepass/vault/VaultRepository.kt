@@ -91,9 +91,9 @@ class VaultRepository(
                     mutable.value =
                         mutable.value.copy(
                             ready = true,
-                            exists = raw("status").optBoolean("exists"),
+                            exists = raw(CoreRequest.status()).optBoolean("exists"),
                             legacyAvailable =
-                                !raw("status").optBoolean("exists") && legacySource.exists(),
+                                !raw(CoreRequest.status()).optBoolean("exists") && legacySource.exists(),
                         )
                 } catch (_: Exception) {
                     mutable.value =
@@ -109,10 +109,10 @@ class VaultRepository(
         }
     }
 
-    private fun raw(op: String, values: JSONObject = JSONObject()): JSONObject {
-        values.put("op", op)
-        if (op in listOf("export", "import", "create-from-backup", "remove", "save")) values.put("richNotes", true)
-        return JSONObject(session!!.command(values.toString()))
+    /** Sends one typed [CoreRequest]; rich-note ops always carry `richNotes=true`. */
+    private fun raw(request: JSONObject): JSONObject {
+        if (request.getString("op") in listOf("export", "import", "create-from-backup", "remove", "save")) request.put("richNotes", true)
+        return JSONObject(session!!.command(request.toString()))
     }
 
     /** Body-only and transient fields; all other fields must match before a hydrated note is
@@ -128,7 +128,7 @@ class VaultRepository(
 
     private fun reload() {
         val generation = epoch
-        val data = raw("list", JSONObject().put("summaries", true))
+        val data = raw(CoreRequest.list(summaries = true))
         val incoming = data.getJSONArray("items").objects()
         mutable.update { previous ->
             if (generation == epoch) {
@@ -163,7 +163,7 @@ class VaultRepository(
             if (!mutable.value.unlocked) return@withLock null
             val generation = epoch
             val full = runCatching {
-                withContext(Dispatchers.IO) { raw("get", JSONObject().put("id", id)) }
+                withContext(Dispatchers.IO) { raw(CoreRequest.get(id)) }
             }.getOrNull() ?: return@withLock null
             if (generation == epoch && mutable.value.unlocked) {
                 mutable.update { prev ->
@@ -175,11 +175,11 @@ class VaultRepository(
     }
 
     suspend fun meshConflicts(): List<JSONObject> = runCatching {
-        command("relay-mesh-conflicts").optJSONArray("conflicts")?.objects().orEmpty()
+        command(CoreRequest.relayMeshConflicts()).optJSONArray("conflicts")?.objects().orEmpty()
     }.getOrDefault(emptyList())
 
     suspend fun resolveMeshConflict(noteId: String, strategy: String): Boolean =
-        mutate("relay-mesh-resolve-conflict", JSONObject().put("id", noteId).put("strategy", strategy))
+        mutate(CoreRequest.relayMeshResolveConflict(noteId, strategy = strategy))
 
     suspend fun close() {
         relay.close()
@@ -187,7 +187,7 @@ class VaultRepository(
         mutex.withLock {
             try {
                 session?.let {
-                    raw("lock")
+                    raw(CoreRequest.lock())
                     it.close()
                 }
             } finally {
@@ -255,7 +255,7 @@ class VaultRepository(
 
     private fun persistDraft(pending: String) {
         val sealed =
-            raw("seal-drafts", JSONObject().put("items", JSONArray().put(JSONObject(pending))))
+            raw(CoreRequest.sealDrafts(JSONArray().put(JSONObject(pending))))
         volatileRecovery = sealed.toString()
         val atomic = android.util.AtomicFile(File(directory, "mobile-draft.sealed"))
         val stream = atomic.startWrite()
@@ -303,22 +303,19 @@ class VaultRepository(
                                 .getString("flutter.master_key_salt", null)
                                 ?: error("Missing legacy salt")
                         raw(
-                            "create-migrated",
-                            JSONObject()
-                                .put("source", legacySource.absolutePath)
-                                .put("salt", salt)
-                                .put("legacyPassword", legacyPassword)
-                                .put("password", password),
+                            CoreRequest.createMigrated(
+                                source = legacySource.absolutePath,
+                                legacyPassword = legacyPassword,
+                                salt = salt,
+                                password = password,
+                            )
                         )
                     } else
-                        raw(
-                            if (create) "create" else "unlock",
-                            JSONObject().put("password", password),
-                        )
+                        raw(if (create) CoreRequest.create(password) else CoreRequest.unlock(password))
                     if (generation == epoch) {
                         reload()
                         recoverDraft()
-                    } else raw("lock")
+                    } else raw(CoreRequest.lock())
                 }
                 if (generation == epoch) {
                     mutable.value =
@@ -350,14 +347,14 @@ class VaultRepository(
             try {
                 withContext(Dispatchers.IO) {
                     raw(
-                        "create-from-backup",
-                        JSONObject()
-                            .put("content", content)
-                            .put("backupPassword", backupPassword)
-                            .put("password", password)
-                            .put("kind", kind),
+                        CoreRequest.createFromBackup(
+                            content = content,
+                            password = password,
+                            backupPassword = backupPassword,
+                            kind = kind,
+                        )
                     )
-                    if (generation == epoch) reload() else raw("lock")
+                    if (generation == epoch) reload() else raw(CoreRequest.lock())
                 }
                 if (generation == epoch) {
                     mutable.value =
@@ -384,10 +381,12 @@ class VaultRepository(
             mutable.value = mutable.value.copy(busy = true, error = null)
             try {
                 withContext(Dispatchers.IO) {
-                    raw(if (archive == null) "recovery-reset-password" else "recovery-restore-backup",
-                        JSONObject().put("key", key).put("newPassword", newPassword).apply { if (archive != null) put("content", archive) })
+                    raw(
+                        if (archive == null) CoreRequest.recoveryResetPassword(key, newPassword)
+                        else CoreRequest.recoveryRestoreBackup(key, archive, newPassword)
+                    )
                     if (!BiometricVault.clearAfterRecovery(context)) mutable.value = mutable.value.copy(notice = "恢复成功，请手动关闭并重新设置生物识别 / Recovered; manually disable and re-enroll biometrics")
-                    if (generation == epoch) { reload(); if (archive == null) recoverDraft() } else raw("lock")
+                    if (generation == epoch) { reload(); if (archive == null) recoverDraft() } else raw(CoreRequest.lock())
                 }
                 if (generation == epoch) {
                     mutable.value = mutable.value.copy(exists = true, legacyAvailable = false, unlocked = true)
@@ -395,7 +394,7 @@ class VaultRepository(
                 }
             } catch (_: Exception) {
                 if (generation == epoch) {
-                    runCatching { withContext(Dispatchers.IO) { raw("lock") } }
+                    runCatching { withContext(Dispatchers.IO) { raw(CoreRequest.lock()) } }
                     mutable.value = mutable.value.copy(unlocked = false, exists = File(directory, "vault").exists(), error = "恢复未完成，请检查密钥和备份 / Recovery failed; check the key and backup")
                 }
             } finally { mutable.value = mutable.value.copy(busy = false) }
@@ -434,7 +433,7 @@ class VaultRepository(
                             )
                     } finally {
                         try {
-                            raw("lock")
+                            raw(CoreRequest.lock())
                         } catch (_: Exception) {}
                     }
                 }
@@ -447,7 +446,7 @@ class VaultRepository(
         try {
             val sealed = JSONObject(volatileRecovery ?: file.readText())
             val restored =
-                raw("open-drafts", JSONObject().put("payload", sealed.get("payload")))
+                raw(CoreRequest.openDrafts(sealed.getJSONObject("payload")))
                     .getJSONArray("items")
             val draft = if (restored.length() > 0) restored.getJSONObject(0).toString() else null
             pendingDraft = draft
@@ -479,12 +478,13 @@ class VaultRepository(
         check(mutable.value.unlocked); session!!.discardNoteAttachment(noteId, id)
     }
 
-    suspend fun command(op: String, values: JSONObject = JSONObject()): JSONObject =
+    suspend fun command(request: JSONObject): JSONObject =
         mutex.withLock {
+            val op = request.getString("op")
             check(mutable.value.unlocked) { "Locked" }
             check(pendingDraft == null || op !in listOf("relay-peer-switch", "relay-peer-create", "relay-peer-rekey", "relay-init", "relay-receive", "recovery-export", "history-enable", "history-restore", "history-prune", "share-seal")) { "Save or discard the current draft first" }
             val generation = epoch
-            val result = withContext(Dispatchers.IO) { raw(op, values) }
+            val result = withContext(Dispatchers.IO) { raw(request) }
             check(generation == epoch && mutable.value.unlocked) { "Locked" }
             if (!op.startsWith("relay-") && op !in listOf("totp", "status", "matches", "sync-respond")) activity()
             result
@@ -497,7 +497,7 @@ class VaultRepository(
         mutex.withLock {
             check(mutable.value.unlocked)
             withContext(Dispatchers.IO) {
-                JSONArray(session!!.command(JSONObject().put("op", "audit").toString()))
+                JSONArray(session!!.command(CoreRequest.audit().toString()))
             }
         }
 
@@ -513,19 +513,12 @@ class VaultRepository(
                 val k = keys.next()
                 if (k !in skip && !k.startsWith("_")) merged.put(k, payload.get(k))
             }
-            return mutate(
-                "save",
-                JSONObject().put("item", merged.put("updatedAt", Instant.now().toString())),
-            )
+            return mutate(CoreRequest.save(merged.put("updatedAt", Instant.now().toString())))
         }
-        return mutate(
-            "save",
-            JSONObject()
-                .put("item", payload.put("updatedAt", Instant.now().toString())),
-        )
+        return mutate(CoreRequest.save(payload.put("updatedAt", Instant.now().toString())))
     }
 
-    suspend fun mutate(op: String, values: JSONObject): Boolean =
+    suspend fun mutate(request: JSONObject): Boolean =
         mutex.withLock {
             if (!mutable.value.unlocked || mutable.value.busy) {
                 lastFailureKind = if (!mutable.value.unlocked) "Locked" else "Busy"
@@ -536,7 +529,7 @@ class VaultRepository(
             lastFailureKind = null
             try {
                 withContext(Dispatchers.IO) {
-                    raw(op, values)
+                    raw(request)
                     if (generation == epoch) reload()
                 }
                 generation == epoch && mutable.value.unlocked
@@ -564,7 +557,7 @@ class VaultRepository(
 
     suspend fun remove(item: JSONObject): Boolean =
         item.optBoolean("isDeleted") &&
-            mutate("remove", JSONObject().put("id", item.getString("id")))
+            mutate(CoreRequest.remove(item.getString("id")))
 
     /**
      * Re-checks the master password against the on-disk header without unlocking, writing or
@@ -599,7 +592,7 @@ class VaultRepository(
                     if (generation == epoch) {
                         reload()
                         recoverDraft()
-                    } else raw("lock")
+                    } else raw(CoreRequest.lock())
                 }
                 if (generation == epoch) {
                     mutable.value = mutable.value.copy(unlocked = true)

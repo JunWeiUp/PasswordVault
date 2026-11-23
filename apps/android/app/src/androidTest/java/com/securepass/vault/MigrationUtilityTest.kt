@@ -78,7 +78,7 @@ class MigrationUtilityTest {
             }
             bytes.fill(255.toByte())
             assertNull(decodeQrLuma(bytes, 480, 480))
-            val parsed = repo.command("parse-totp", JSONObject().put("uri", uri))
+            val parsed = repo.command(CoreRequest.parseTotp(uri))
             assertEquals("JBSWY3DPEHPK3PXP", parsed.getString("secret"))
             listOf(
                     GeneratorOptions(4, true, false, false, false) to Regex("[A-Z]{4}"),
@@ -89,7 +89,7 @@ class MigrationUtilityTest {
                 .forEach { (options, pattern) ->
                     assertTrue(
                         pattern.matches(
-                            repo.command("generate", options.request()).getString("password")
+                            repo.command(options.request()).getString("password")
                         )
                     )
                 }
@@ -103,13 +103,13 @@ class MigrationUtilityTest {
                         Regex("[a-z]+[0-9]?(\\.[a-z]+[0-9]?){9}"),
                 )
                 .forEach { (options, pattern) ->
-                    val phrase = repo.command("generate", options.request()).getString("password")
+                    val phrase = repo.command(options.request()).getString("password")
                     assertTrue(phrase, pattern.matches(phrase))
                     if (options.number) assertEquals(phrase, 1, phrase.count { it.isDigit() })
                 }
             assertTrue(
                 runCatching {
-                        repo.command("generate", GeneratorOptions(passphrase = true, words = 11).request())
+                        repo.command(GeneratorOptions(passphrase = true, words = 11).request())
                     }
                     .isFailure
             )

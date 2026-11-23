@@ -55,7 +55,7 @@ struct MobileRecoveryView: View {
           Button(store.t("生成 / 更换密钥", "Generate / replace key")) {
             run {
               key =
-                try await store.perform(["op": .string("recovery-generate")]).object["key"]?.string
+                try await store.perform(CoreRequest.recoveryGenerate()).object["key"]?.string
                 ?? ""
               generated = true
               saved = false
@@ -66,10 +66,7 @@ struct MobileRecoveryView: View {
           if generated {
             Button(store.t("确认启用", "Confirm and enable")) {
               run {
-                _ = try await store.perform([
-                  "op": .string("recovery-enable"), "key": .string(key),
-                  "currentPassword": .string(password),
-                ])
+                _ = try await store.perform(CoreRequest.recoveryEnable(currentPassword: password, key: key))
                 enabled = true
                 generated = false
                 password = ""
@@ -81,9 +78,7 @@ struct MobileRecoveryView: View {
           } else if enabled {
             Button(store.t("导出应急备份", "Export emergency backup")) {
               run {
-                let result = try await store.perform([
-                  "op": .string("recovery-export"), "key": .string(key),
-                ])
+                let result = try await store.perform(CoreRequest.recoveryExport(key: key))
                 guard let content = result.object["content"]?.string else {
                   throw VaultError.InvalidData
                 }
@@ -93,9 +88,7 @@ struct MobileRecoveryView: View {
             }.disabled(key.isEmpty)
             Button(store.t("停用恢复密钥", "Disable recovery key"), role: .destructive) {
               run {
-                _ = try await store.perform([
-                  "op": .string("recovery-disable"), "currentPassword": .string(password),
-                ])
+                _ = try await store.perform(CoreRequest.recoveryDisable(currentPassword: password))
                 enabled = false
                 key = ""
                 password = ""
@@ -143,7 +136,7 @@ struct MobileRecoveryView: View {
         if store.unlocked {
           do {
             enabled =
-              try await store.perform(["op": .string("recovery-status")]).object["enabled"]?.bool
+              try await store.perform(CoreRequest.recoveryStatus()).object["enabled"]?.bool
               ?? false
           } catch { store.report(error) }
         }

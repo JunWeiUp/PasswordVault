@@ -15,7 +15,7 @@ final class RelayCredentialTests: XCTestCase {
   private func fixture() async throws -> (URL, RelayTestCore, Data) {
     let path = FileManager.default.temporaryDirectory.appendingPathComponent("relay-credential-" + UUID().uuidString)
     let core = try RelayTestCore(directory: path)
-    _ = try await core.call(["op": .string("create"), "password": .string("fixture")])
+    _ = try await core.call(CoreRequest.create(password: "fixture"))
     var config = VaultRelay.Config(role: "hub", secret: RelayIdentity.generateSecretKey())
     config.device = "existing-device"; config.group = "existing-group"
     config.token = "FICTIONAL-CREDENTIAL-CANARY"
@@ -33,11 +33,11 @@ final class RelayCredentialTests: XCTestCase {
     let file = path.appendingPathComponent("vault/relay-private/credentials.v1.enc")
     XCTAssertFalse(String(decoding: try Data(contentsOf: file), as: UTF8.self).contains("FICTIONAL-CREDENTIAL-CANARY"))
     relay.setUnlocked(false); XCTAssertTrue(relay.config.token.isEmpty)
-    _ = try await core.call(["op": .string("lock")])
+    _ = try await core.call(CoreRequest.lock())
     let reloaded = VaultRelay(directory: path, role: "hub", call: { try await core.call($0) }, refresh: {},
       credentialReader: { _, _ in XCTFail("Migrated files must not read Keychain again"); return nil })
     XCTAssertFalse(reloaded.credentialsReady)
-    _ = try await core.call(["op": .string("unlock"), "password": .string("fixture")])
+    _ = try await core.call(CoreRequest.unlock(password: "fixture"))
     reloaded.setUnlocked(true); try await wait { reloaded.credentialsReady }
     XCTAssertEqual(reloaded.config.device, "existing-device"); XCTAssertEqual(reloaded.config.token, "FICTIONAL-CREDENTIAL-CANARY")
     reloaded.setUnlocked(false)
@@ -137,7 +137,7 @@ final class RelayCredentialTests: XCTestCase {
     let (path, core, legacy) = try await fixture()
     defer { try? FileManager.default.removeItem(at: path) }
     let file = path.appendingPathComponent("vault/relay-private/credentials.v1.enc")
-    _ = try await core.call(["op": .string("relay-credentials-write"), "data": .string(String(decoding: legacy, as: UTF8.self))])
+    _ = try await core.call(CoreRequest.relayCredentialsWrite(data: String(decoding: legacy, as: UTF8.self)))
     let corrupted = Data("corrupt-encrypted-fixture".utf8); try corrupted.write(to: file)
     let relay = VaultRelay(directory: path, role: "hub", call: { try await core.call($0) }, refresh: {},
       credentialReader: { _, _ in XCTFail("Do not fall back on corrupt files"); return legacy })

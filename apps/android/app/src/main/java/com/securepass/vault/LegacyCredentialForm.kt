@@ -68,7 +68,7 @@ internal fun LegacyCredentialForm(
         busyChanged(true)
         scope.launch {
             try {
-                val parsed = vault.command("parse-totp", JSONObject().put("uri", value))
+                val parsed = vault.command(CoreRequest.parseTotp(value))
                 listOf("title", "username", "secret", "period").forEach {
                     if (parsed.has(it)) set(it, parsed.get(it))
                 }
@@ -456,7 +456,7 @@ internal fun LegacyCredentialForm(
                 busyChanged(true)
                 scope.launch {
                     try {
-                        val parsed = vault.command("parse-totp", JSONObject().put("uri", uri))
+                        val parsed = vault.command(CoreRequest.parseTotp(uri))
                         secretInput = parsed.getString("secret")
                         if (parsed.has("period")) set("period", parsed.get("period"))
                     } catch (_: Exception) { report(t("设置链接无效，输入已保留。", "Invalid setup link; your input is preserved.")) }

@@ -155,10 +155,7 @@ struct MobileSecuritySettings: View {
             Task {
               defer { changing = false }
               do {
-                _ = try await store.perform([
-                  "op": .string("change-password"), "currentPassword": .string(currentPassword),
-                  "newPassword": .string(newPassword),
-                ])
+                _ = try await store.perform(CoreRequest.changePassword(currentPassword: currentPassword, newPassword: newPassword))
                 MobileBiometrics.remove()
                 UserDefaults.standard.set(false, forKey: "biometricEnabled")
                 currentPassword = ""
@@ -198,10 +195,7 @@ struct MobileCategorySettings: View {
               Button(role: .destructive) {
                 Task {
                   do {
-                    _ = try await store.perform([
-                      "op": .string("category-remove"), "name": .string(name),
-                      "time": .string(ISO8601DateFormatter().string(from: Date())),
-                    ])
+                    _ = try await store.perform(CoreRequest.categoryRemove(name: name, time: ISO8601DateFormatter().string(from: Date())))
                     try await store.refresh()
                   } catch { store.report(error) }
                 }
@@ -214,9 +208,7 @@ struct MobileCategorySettings: View {
           Button(store.t("添加分类", "Add category")) {
             Task {
               do {
-                _ = try await store.perform([
-                  "op": .string("category-add"), "name": .string(category),
-                ])
+                _ = try await store.perform(CoreRequest.categoryAdd(name: category))
                 try await store.refresh()
                 category = ""
               } catch { store.report(error) }
@@ -259,9 +251,7 @@ struct MobileBackupView: View {
             working = true
             defer { working = false }
             do {
-              let value = try await store.perform([
-                "op": .string("export"), "password": .string(password),
-              ])
+              let value = try await store.perform(CoreRequest.export(password: password))
               document = .init(data: Data((value.object["content"]?.string ?? "").utf8))
               exporting = true
             } catch { store.report(error) }
@@ -308,10 +298,8 @@ struct MobileBackupView: View {
           let data = try Data(contentsOf: url)
           guard data.count <= 64 * 1024 * 1024, let content = String(data: data, encoding: .utf8)
           else { throw VaultError.InvalidData }
-          let value = try await store.perform([
-            "op": .string("import"), "content": .string(content), "password": .string(password),
-            "kind": .string(url.pathExtension.lowercased() == "csv" ? "csv" : "json"),
-          ])
+          let value = try await store.perform(CoreRequest.`import`(
+            content: content, password: password, kind: url.pathExtension.lowercased() == "csv" ? "csv" : "json"))
           try await store.refresh()
           password = ""
           result =
@@ -425,11 +413,10 @@ struct GeneratorOptions: Equatable {
   var request: [String: JSONValue] {
     switch mode {
     case .characters:
-      return ["op": .string("generate"), "length": .number(Double(length)), "upper": .bool(upper),
-              "lower": .bool(lower), "digits": .bool(digits), "symbols": .bool(symbols)]
+      return CoreRequest.generate(length: Double(length), upper: upper, lower: lower, digits: digits, symbols: symbols)
     case .passphrase:
-      return ["op": .string("generate"), "mode": .string("passphrase"), "words": .number(Double(words)),
-              "separator": .string(separator), "capitalize": .bool(capitalize), "number": .bool(number)]
+      return CoreRequest.generate(
+        mode: "passphrase", words: Double(words), separator: separator, capitalize: capitalize, number: number)
     }
   }
 }
@@ -504,7 +491,7 @@ struct MobileAuditView: View {
     .navigationDestination(isPresented: $breachCheck) { MobileSecurityCenter() }
     .sheet(item: $selected) { item in NavigationStack { MobileEntryDetail(id: item.id) } }
     .task(id: store.items) {
-      do { results = try await store.perform(["op": .string("audit")]).array } catch {
+      do { results = try await store.perform(CoreRequest.audit()).array } catch {
         store.report(error)
       }
     }

@@ -58,10 +58,7 @@ struct MobileCodeRow: View {
         let now = Date().timeIntervalSince1970
         remaining = period - now.truncatingRemainder(dividingBy: period)
         code =
-          (try? await store.perform([
-            "op": .string("totp"), "secret": .string(item.string("secret")),
-            "period": .number(period), "time": .number(now.rounded(.down)),
-          ]).object["code"]?.string) ?? ""
+          (try? await store.perform(CoreRequest.totp(secret: item.string("secret"), time: now.rounded(.down), period: period)).object["code"]?.string) ?? ""
         do { try await Task.sleep(nanoseconds: 1_000_000_000) } catch { break }
       }
     }

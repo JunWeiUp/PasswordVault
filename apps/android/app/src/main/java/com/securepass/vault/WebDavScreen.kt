@@ -77,20 +77,17 @@ fun WebDavScreen(vault: VaultRepository, state: VaultState, t: (String, String) 
                     try {
                         if (
                             vault.mutate(
-                                "settings",
-                                JSONObject()
-                                    .put(
-                                        "settings",
-                                        JSONObject()
-                                            .put(
-                                                "webdav",
-                                                JSONObject()
-                                                    .put("url", url)
-                                                    .put("username", username)
-                                                    .put("password", password)
-                                                    .put("folder", folder),
-                                            ),
-                                    ),
+                                CoreRequest.settings(
+                                    JSONObject()
+                                        .put(
+                                            "webdav",
+                                            JSONObject()
+                                                .put("url", url)
+                                                .put("username", username)
+                                                .put("password", password)
+                                                .put("folder", folder),
+                                        ),
+                                ),
                             )
                         )
                             message = t("设置已保存", "Settings saved")
@@ -127,7 +124,7 @@ fun WebDavScreen(vault: VaultRepository, state: VaultState, t: (String, String) 
                 run(false) { client ->
                     val content =
                         vault
-                            .command("export", JSONObject().put("password", secret))
+                            .command(CoreRequest.export(secret))
                             .getString("content")
                     withContext(Dispatchers.IO) { client.upload(content.toByteArray()) }
                     files = withContext(Dispatchers.IO) { client.list() }
@@ -203,11 +200,7 @@ fun WebDavScreen(vault: VaultRepository, state: VaultState, t: (String, String) 
                                 }
                             if (
                                 !vault.mutate(
-                                    "import",
-                                    JSONObject()
-                                        .put("content", content)
-                                        .put("password", inputPassword)
-                                        .put("kind", "json"),
+                                    CoreRequest.import(content, password = inputPassword, kind = "json")
                                 )
                             )
                                 error("Import failed")

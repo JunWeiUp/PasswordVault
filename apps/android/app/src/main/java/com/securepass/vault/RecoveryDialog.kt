@@ -45,7 +45,7 @@ internal fun RecoveryDialog(vault: VaultRepository, state: VaultState, t: (Strin
             finally { bytes.fill(0) }
         } else bytes?.fill(0)
     }
-    LaunchedEffect(Unit) { if (state.unlocked) run { enabled = vault.command("recovery-status").getBoolean("enabled") } }
+    LaunchedEffect(Unit) { if (state.unlocked) run { enabled = vault.command(CoreRequest.recoveryStatus()).getBoolean("enabled") } }
     DisposableEffect(Unit) { onDispose { backup?.fill(0); key = ""; confirmation = ""; password = ""; nextPassword = ""; nextConfirmation = "" } }
     VaultActionSheet(
         when {
@@ -78,15 +78,15 @@ internal fun RecoveryDialog(vault: VaultRepository, state: VaultState, t: (Strin
                         TextButton(enabled = !working, onClick = { confirmingKey = false; revealKey = false }) { Text(t("返回查看", "Back to key")) }
                     } else if (!generated && enabled) Input(t("恢复密钥", "Recovery key"), key, { key = it }, secret = true, enabled = !working && !state.busy)
                     if (!generated || confirmingKey) Input(t("当前主密码", "Current master password"), password, { password = it }, secret = true, enabled = !working && !state.busy)
-                    if (!generated) Button(enabled = !working && !state.busy, onClick = { run { key = vault.command("recovery-generate").getString("key"); generated = true; revealKey = false; confirmingKey = false; confirmation = ""; saved = false } }) { Text(if (enabled) t("重新生成", "Regenerate") else t("生成恢复密钥", "Generate recovery key")) }
+                    if (!generated) Button(enabled = !working && !state.busy, onClick = { run { key = vault.command(CoreRequest.recoveryGenerate()).getString("key"); generated = true; revealKey = false; confirmingKey = false; confirmation = ""; saved = false } }) { Text(if (enabled) t("重新生成", "Regenerate") else t("生成恢复密钥", "Generate recovery key")) }
                     if (generated && confirmingKey) {
                         fun normalize(value: String) = value.lowercase().filter { !it.isWhitespace() && it != '-' }
                         Button(enabled = !working && saved && password.isNotEmpty() && normalize(key) == normalize(confirmation), onClick = { run {
-                            vault.command("recovery-enable", JSONObject().put("key", key).put("currentPassword", password)); enabled = true; generated = false; password = ""; confirmation = ""
+                            vault.command(CoreRequest.recoveryEnable(password, key)); enabled = true; generated = false; password = ""; confirmation = ""
                             message = t("已启用，请导出应急备份。", "Enabled. Export an emergency backup now.")
                         } }) { Text(t("确认启用", "Confirm and enable")) }
                     } else if (!generated && enabled) {
-                        Button(enabled = !working && key.isNotEmpty(), onClick = { run { backup = vault.command("recovery-export", JSONObject().put("key", key)).getString("content").toByteArray(); exporter.launch("PasswordVault-emergency.pvbackup") } }) { Text(t("导出应急备份", "Export emergency backup")) }
+                        Button(enabled = !working && key.isNotEmpty(), onClick = { run { backup = vault.command(CoreRequest.recoveryExport(key)).getString("content").toByteArray(); exporter.launch("PasswordVault-emergency.pvbackup") } }) { Text(t("导出应急备份", "Export emergency backup")) }
                         TextButton(enabled = !working && !state.busy && password.isNotEmpty(), onClick = { confirmDisable = true }) { Text(t("停用恢复密钥", "Disable recovery key"), color = MaterialTheme.colorScheme.error) }
                     }
                 } else {
@@ -109,7 +109,7 @@ internal fun RecoveryDialog(vault: VaultRepository, state: VaultState, t: (Strin
     if (confirmDisable) AlertDialog(onDismissRequest = { if (!working) confirmDisable = false },
         title = { Text(t("停用恢复密钥？", "Disable recovery key?")) },
         text = { Text(t("停用后忘记主密码将无法通过当前密钥恢复。旧应急备份仍可使用其原密钥，无法撤销。", "The current key will no longer reset this vault. Old emergency backups remain usable with their original keys and cannot be revoked.")) },
-        confirmButton = { TextButton(enabled = !working && !state.busy, onClick = { run { vault.command("recovery-disable", JSONObject().put("currentPassword", password)); enabled = false; key = ""; password = ""; confirmDisable = false } }) { Text(t("停用", "Disable"), color = MaterialTheme.colorScheme.error) } },
+        confirmButton = { TextButton(enabled = !working && !state.busy, onClick = { run { vault.command(CoreRequest.recoveryDisable(password)); enabled = false; key = ""; password = ""; confirmDisable = false } }) { Text(t("停用", "Disable"), color = MaterialTheme.colorScheme.error) } },
         dismissButton = { TextButton(enabled = !working, onClick = { confirmDisable = false }) { Text(t("取消", "Cancel")) } })
 }
 

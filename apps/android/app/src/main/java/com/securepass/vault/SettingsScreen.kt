@@ -113,7 +113,7 @@ fun SettingsScreen(
     LaunchedEffect(page, recovery) {
         if (page == "recovery" && !recovery) {
             recoveryEnabled = null
-            try { recoveryEnabled = vault.command("recovery-status").getBoolean("enabled") }
+            try { recoveryEnabled = vault.command(CoreRequest.recoveryStatus()).getBoolean("enabled") }
             catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
             catch (_: Exception) { vault.report() }
         }
@@ -180,12 +180,10 @@ fun SettingsScreen(
                         // JSON readers also recognize encrypted native and legacy envelopes.
                         if (
                             vault.mutate(
-                                "import",
-                                JSONObject()
-                                    .put("content", converted)
-                                    .put("password", selectedPassword)
-                                    .put(
-                                        "kind",
+                                CoreRequest.import(
+                                    converted,
+                                    password = selectedPassword,
+                                    kind =
                                         if (selectedFormat == "encrypted-csv") "encrypted-csv"
                                         else if (
                                             converted.trimStart().startsWith("{") ||
@@ -193,7 +191,7 @@ fun SettingsScreen(
                                         )
                                             "json"
                                         else "csv",
-                                    ),
+                                )
                             )
                         ) {
                             backupPassword = ""
@@ -229,7 +227,7 @@ fun SettingsScreen(
                             try {
                                 backup =
                                     vault
-                                        .command("export-plain", JSONObject().put("kind", kind))
+                                        .command(CoreRequest.exportPlain(kind))
                                         .getString("content")
                                         .toByteArray()
                                 exportWasPlain = true
@@ -330,7 +328,7 @@ fun SettingsScreen(
                                 options = themes.values.toList(),
                             ) { label ->
                                 val selected = themes.entries.first { it.value == label }.key
-                                scope.launch { vault.mutate("settings", JSONObject().put("settings", JSONObject().put("theme", selected))) }
+                                scope.launch { vault.mutate(CoreRequest.settings(JSONObject().put("theme", selected))) }
                             }
                             SettingsRule()
                             SettingsOption(t("动态取色", "Dynamic color"), t("当前使用品牌蓝", "Currently using brand blue"))
@@ -371,13 +369,13 @@ fun SettingsScreen(
                                 val name = categories.optString(index)
                                 SettingsOption(name) {
                                     TextButton(onClick = { scope.launch {
-                                        vault.mutate("category-remove", JSONObject().put("name", name).put("time", java.time.Instant.now().toString()))
+                                        vault.mutate(CoreRequest.categoryRemove(name, java.time.Instant.now().toString()))
                                     } }) { Text(t("移除", "Remove")) }
                                 }
                             }
                             Input(t("新分类", "New category"), category, { category = it })
                             TextButton(enabled = category.isNotBlank(), onClick = { scope.launch {
-                                if (vault.mutate("category-add", JSONObject().put("name", category.trim()))) category = ""
+                                if (vault.mutate(CoreRequest.categoryAdd(category.trim()))) category = ""
                             } }) { Text(t("添加分类", "Add category")) }
                         }
                         SettingsHint(t("删除分类只会清空归类，不会删除笔记。", "Removing a category keeps its notes."))
@@ -399,7 +397,7 @@ fun SettingsScreen(
                                 options = minutes.map { t("$it 分钟", "$it min") },
                             ) { label ->
                                 val value = minutes.first { t("$it 分钟", "$it min") == label }
-                                scope.launch { vault.mutate("settings", JSONObject().put("settings", JSONObject().put("autoLockMinutes", value))) }
+                                scope.launch { vault.mutate(CoreRequest.settings(JSONObject().put("autoLockMinutes", value))) }
                             }
                             SettingsRule()
                             SettingsOption(t("切到后台", "In background"), t("在闲置期限内返回无需重新解锁", "Return before the idle timeout without unlocking"))
@@ -434,7 +432,7 @@ fun SettingsScreen(
                                         try {
                                             backup =
                                                 vault
-                                                    .command("export", JSONObject().put("password", backupPassword))
+                                                    .command(CoreRequest.export(backupPassword))
                                                     .getString("content")
                                                     .toByteArray()
                                             exportWasPlain = false
@@ -457,10 +455,7 @@ fun SettingsScreen(
                                         try {
                                             backup =
                                                 vault
-                                                    .command(
-                                                        "export-csv-backup",
-                                                        JSONObject().put("password", backupPassword),
-                                                    )
+                                                    .command(CoreRequest.exportCsvBackup(backupPassword))
                                                     .getString("content")
                                                     .toByteArray()
                                             exportWasPlain = false
@@ -655,12 +650,7 @@ fun SettingsScreen(
                         working = true
                         scope.launch {
                             try {
-                                vault.command(
-                                    "change-password",
-                                    JSONObject()
-                                        .put("currentPassword", currentPassword)
-                                        .put("newPassword", nextPassword),
-                                )
+                                vault.command(CoreRequest.changePassword(currentPassword, nextPassword))
                                 biometric.disable()
                                 currentPassword = ""
                                 nextPassword = ""

@@ -7,11 +7,11 @@ import org.json.JSONObject
 internal class PeerLibrarySync(
     val library: String,
     private val device: String,
-    private val command: suspend (String, JSONObject) -> JSONObject,
+    private val command: suspend (JSONObject) -> JSONObject,
     private val deliver: suspend (String, String, ByteArray) -> Unit,
 ) {
     private val sent = mutableMapOf<String, String>()
-    suspend fun status(): JSONObject = command("relay-peer-status", JSONObject().put("library", library))
+    suspend fun status(): JSONObject = command(CoreRequest.relayPeerStatus(library))
 
     suspend fun synchronize() {
         val state = status()
@@ -21,7 +21,7 @@ internal class PeerLibrarySync(
             if (peer == device) continue
             val transportKey = members.getJSONObject(peer).optString("transportKey")
             if (transportKey.isEmpty()) continue
-            val packet = command("relay-peer-export", JSONObject().put("library", library).put("peer", peer)).toString()
+            val packet = command(CoreRequest.relayPeerExport(library, peer)).toString()
             if (sent[peer] == packet) continue
             deliver(peer, transportKey, packet.toByteArray(Charsets.UTF_8))
             // Only a delivery cache: it does not claim remote application or all-device sync.
@@ -34,23 +34,24 @@ internal class PeerLibrarySync(
         check(!state.optBoolean("frozen"))
         val member = state.optJSONObject("members")?.optJSONObject(from)
         check(authenticatedTransportKey.isNotEmpty() && member?.optString("transportKey") == authenticatedTransportKey)
-        command("relay-peer-receive", JSONObject().put("library", library).put("envelope", JSONObject(String(data, Charsets.UTF_8))))
+        command(CoreRequest.relayPeerReceive(library, JSONObject(String(data, Charsets.UTF_8))))
     }
 
     suspend fun resolve(key: String, value: Any) {
-        command("relay-peer-resolve", JSONObject().put("library", library).put("key", key).put("value", value))
+        command(CoreRequest.relayPeerResolve(library, key, value))
         resetDeliveryCache()
     }
 
     suspend fun authorize(peer: String, signingKey: String, transportKey: String, role: String) {
         require(role in setOf("admin", "editor", "reader") && transportKey.isNotEmpty())
-        command("relay-peer-authorize", JSONObject().put("library", library).put("peer", peer).put("member",
+        command(CoreRequest.relayPeerAuthorize(library, peer, member =
             JSONObject().put("publicKey", signingKey).put("transportKey", transportKey).put("role", role)))
         resetDeliveryCache()
     }
 
     suspend fun revoke(peer: String) {
-        command("relay-peer-authorize", JSONObject().put("library", library).put("peer", peer).put("member", JSONObject.NULL))
+        // Omitting `member` is the registry's revoke form (core treats missing and null alike).
+        command(CoreRequest.relayPeerAuthorize(library, peer))
         resetDeliveryCache()
     }
 

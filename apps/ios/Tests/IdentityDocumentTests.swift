@@ -64,7 +64,7 @@ final class IdentityDocumentTests: XCTestCase {
     let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     defer { try? FileManager.default.removeItem(at: directory) }
     let core = try MobileCore(directory: directory)
-    _ = try await core.call(["op": .string("create"), "password": .string("Synthetic identity test 123!")])
+    _ = try await core.call(CoreRequest.create(password: "Synthetic identity test 123!"))
     var person = VaultItem.blank(type: "identity", title: "QA identity")
     person.fields["identity"] = .object(["firstName": .string("Alex"), "lastName": .string("Example")])
     let foreign: JSONValue = .object([
@@ -74,7 +74,7 @@ final class IdentityDocumentTests: XCTestCase {
     fields = IdentityDocument.setting(fields, "document.number", "E7654321-CANARY")
     fields = IdentityDocument.setting(fields, "document.expiryDate", "2031-02-28")
     person.fields["customFields"] = .array(fields)
-    _ = try await core.call(["op": .string("save"), "item": try .from(person)])
+    _ = try await core.call(CoreRequest.save(item: try .from(person)))
     let saved = try await core.document().items.first { $0.id == person.id }
     let stored = saved?.fields["customFields"]?.array ?? []
     XCTAssertEqual(stored.first, foreign)
@@ -86,7 +86,7 @@ final class IdentityDocumentTests: XCTestCase {
     var invalid = person
     invalid.fields["identity"] = .object(["firstName": .string("Alex"), "documentNumber": .string("X")])
     do {
-      _ = try await core.call(["op": .string("save"), "item": try .from(invalid)])
+      _ = try await core.call(CoreRequest.save(item: try .from(invalid)))
       XCTFail("Unknown identity keys must be rejected")
     } catch {}
     let after = try await core.document().items.first { $0.id == person.id }

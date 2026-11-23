@@ -42,7 +42,7 @@ class WorkspaceNavigationTest {
             withTimeout(10_000) { while (!vault.state.value.ready) delay(10) }
             vault.authenticate("1", true)
             val theme = InstrumentationRegistry.getArguments().getString("designTheme") ?: "light"
-            assertTrue(vault.mutate("settings", JSONObject().put("settings", JSONObject().put("theme", theme))))
+            assertTrue(vault.mutate(CoreRequest.settings(JSONObject().put("theme", theme))))
             for ((type, title) in listOf("secureNote" to "Navigation note", "password" to "Navigation account", "creditCard" to "Navigation card", "identity" to "Navigation identity")) {
                 val record = VaultRepository.blank(type).put("title", title).put("isFavorite", true)
                 if (type == "secureNote") record.put("note", "Synthetic navigation fixture")
@@ -140,7 +140,7 @@ class WorkspaceNavigationTest {
         try {
             withTimeout(10_000) { while (!vault.state.value.ready) delay(10) }
             vault.authenticate("1", true)
-            vault.command("devices-enable", JSONObject().put("confirm", true).put("currentPassword", "1"))
+            vault.command(CoreRequest.devicesEnable(true, "1"))
             val payload = JSONObject()
                 .put("version", 1).put("host", "fixture.example.test").put("port", 22)
                 .put("username", "fixture").put("authMethod", "password")
@@ -151,7 +151,7 @@ class WorkspaceNavigationTest {
             val entry = VaultRepository.blank("device").put("title", "Navigation device").put("device", payload)
             assertTrue(vault.save(entry))
             try {
-                vault.command("devices-file-read", JSONObject().put("id", entry.getString("id")).put("attachmentId", "missing-fixture-file"))
+                vault.command(CoreRequest.devicesFileRead(entry.getString("id"), "missing-fixture-file"))
                 fail("Missing file must never return a document")
             } catch (_: Exception) { }
             vault.close()

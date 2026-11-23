@@ -9,9 +9,11 @@ actor MobileCore {
     if ["export", "import", "create-from-backup", "remove", "save"].contains(request["op"]?.string ?? "") {
       request["richNotes"] = .bool(true)
     }
-    let data = try JSONEncoder().encode(request)
-    let response = try session.command(request: String(decoding: data, as: UTF8.self))
+    let response = try session.command(request: Self.encode(request))
     return try JSONDecoder().decode(JSONValue.self, from: Data(response.utf8))
+  }
+  private static func encode(_ request: [String: JSONValue]) throws -> String {
+    String(decoding: try JSONEncoder().encode(request), as: UTF8.self)
   }
   func importAttachment(noteID: String, name: String, mime: String, data: Data) throws -> JSONValue {
     guard let session else { throw VaultError.Locked }
@@ -26,12 +28,11 @@ actor MobileCore {
   func document() throws -> VaultDocument {
     guard let session else { throw VaultError.Locked }
     return try JSONDecoder().decode(
-      VaultDocument.self, from: Data(session.command(request: "{\"op\":\"list\",\"summaries\":true}").utf8))
+      VaultDocument.self, from: Data(session.command(request: Self.encode(CoreRequest.list(summaries: true))).utf8))
   }
   func getItem(id: String) throws -> VaultItem {
     guard let session else { throw VaultError.Locked }
-    let data = try JSONEncoder().encode(["op": JSONValue.string("get"), "id": JSONValue.string(id)])
-    let response = try session.command(request: String(decoding: data, as: UTF8.self))
+    let response = try session.command(request: Self.encode(CoreRequest.get(id: id)))
     return try JSONDecoder().decode(VaultItem.self, from: Data(response.utf8))
   }
   func biometricKey() throws -> Data {
@@ -43,7 +44,7 @@ actor MobileCore {
     try session.unlockBiometric(key: key)
   }
   func close() {
-    _ = try? session?.command(request: "{\"op\":\"lock\"}")
+    if let request = try? Self.encode(CoreRequest.lock()) { _ = try? session?.command(request: request) }
     session = nil
   }
 }

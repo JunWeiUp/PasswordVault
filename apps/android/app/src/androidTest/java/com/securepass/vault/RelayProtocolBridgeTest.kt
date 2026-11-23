@@ -104,4 +104,16 @@ class RelayProtocolBridgeTest {
             assertFalse("core must reject, not be missing", error is IllegalStateException)
         }
     }
+
+    @Test fun ownerRetryAndExitPolicyComesFromCore() {
+        fun call(request: JSONObject) = JSONObject(com.securepass.vault.core.relayProtocol(request.toString()))
+        assertTrue(call(CoreRequest.relayProtocolRetry("Group request failed (401)", 4, 0)).getBoolean("stop"))
+        assertTrue(call(CoreRequest.relayProtocolRetry("Expected HTTP 101 response but was '403 Forbidden'")).getBoolean("stop"))
+        assertEquals(8, call(CoreRequest.relayProtocolRetry("timeout", 4, 10)).getInt("delay"))
+        assertEquals(1, call(CoreRequest.relayProtocolRetry("timeout", 30, 120)).getInt("delay"))
+        val a = call(CoreRequest.relayProtocolExitIdentity()); val b = call(CoreRequest.relayProtocolExitIdentity())
+        assertNotEquals(a.getString("secret"), b.getString("secret"))
+        assertEquals(64, a.getString("secret").length)
+        assertFalse(a.getJSONArray("cleared").toString().contains("endpoint"))
+    }
 }

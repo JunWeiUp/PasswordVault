@@ -20,7 +20,7 @@ struct MobileHistoryView: View {
           ))
         Button(store.t("启用完整历史", "Enable complete history")) {
           run {
-            _ = try await store.perform(["op": .string("history-enable")])
+            _ = try await store.perform(CoreRequest.historyEnable())
             try await store.refresh()
             try await load()
           }
@@ -77,7 +77,7 @@ struct MobileHistoryView: View {
           action = nil
           run {
             if operation == "prune" {
-              _ = try await store.perform(["op": .string("history-prune"), "id": .string(id)])
+              _ = try await store.perform(CoreRequest.historyPrune(id: id))
             } else if let selected {
               _ = try await store.perform([
                 "op": .string("history-restore"), "id": .string(id),
@@ -110,11 +110,8 @@ struct MobileHistoryView: View {
   }
   private func load(append: Bool = false) async throws {
     enabled =
-      try await store.perform(["op": .string("history-status")]).object["enabled"]?.bool ?? false
-    let value = try await store.perform([
-      "op": .string("history-list"), "id": .string(id),
-      "offset": .number(Double(append ? rows.count : 0)),
-    ])
+      try await store.perform(CoreRequest.historyStatus()).object["enabled"]?.bool ?? false
+    let value = try await store.perform(CoreRequest.historyList(id: id, offset: Double(append ? rows.count : 0)))
     total = Int(value.object["total"]?.number ?? 0)
     let page = value.object["revisions"]?.array ?? []
     if append { rows += page } else { rows = page }

@@ -96,21 +96,25 @@ class PasskeyProviderActivity : FragmentActivity() {
         val browser = origin.startsWith("https://")
         val hash = if (browser) suppliedHash?.also { check(it.size == 32) } ?: error("Missing browser hash")
           else { check(suppliedHash == null); MessageDigest.getInstance("SHA-256").digest(clientData.toByteArray()) }
-        val query=JSONObject().put("rpId",rp).put("clientDataHash",encode(hash)).put("currentPassword",secret)
+        val clientDataHash=encode(hash)
+        val buildQuery: () -> JSONObject
         if(creating) {
-            query.put("library", "")
             check(json.getJSONArray("pubKeyCredParams").objects().any{it.optInt("alg")==-7 && it.optString("type")=="public-key"})
             check(json.optString("attestation","none")=="none")
-            query.put("userHandle",json.getJSONObject("user").getString("id")).put("userName",json.getJSONObject("user").getString("name"))
-            query.put("excluded",JSONArray(json.optJSONArray("excludeCredentials")?.objects()?.map{it.getString("id")}?:emptyList<String>()))
+            val userHandle=json.getJSONObject("user").getString("id"); val userName=json.getJSONObject("user").getString("name")
+            val excluded=JSONArray(json.optJSONArray("excludeCredentials")?.objects()?.map{it.getString("id")}?:emptyList<String>())
+            buildQuery={ CoreRequest.passkeySystemCreate(secret,rp,userHandle,userName,clientDataHash,excluded=excluded,library="") }
         } else {
             val id=intent.getStringExtra("credentialId") ?: error("No selected credential")
-            query.put("itemId",intent.getStringExtra("itemId")).put("credentialId",id).put("library",intent.getStringExtra("library") ?: "")
-            query.put("allowed",JSONArray(json.optJSONArray("allowCredentials")?.objects()?.map{it.getString("id")}?:emptyList<String>()))
+            val itemId=intent.getStringExtra("itemId"); val library=intent.getStringExtra("library") ?: ""
+            val allowed=JSONArray(json.optJSONArray("allowCredentials")?.objects()?.map{it.getString("id")}?:emptyList<String>())
+            // A missing itemId used to be omitted and rejected by core; it now fails here under the same message.
+            buildQuery={ CoreRequest.passkeySystemAssert(secret,itemId ?: error("No selected item"),id,rp,clientDataHash,allowed=allowed,library=library) }
         }
         check(generation==own && !isFinishing)
         failureContext="无法验证主密码或处理此凭证 / Could not verify the master password or process this credential"
-        val response=vault.command(if(creating)"passkey-system-create" else "passkey-system-assert",query)
+        val query=buildQuery()
+        val response=vault.command(query)
         query.remove("currentPassword")
         check(generation==own && !isFinishing)
         val body=JSONObject().put("clientDataJSON",encode((if(browser) "{}" else clientData).toByteArray()))
@@ -129,7 +133,7 @@ class PasskeyProviderActivity : FragmentActivity() {
             val rp=JSONObject(option.requestJson).getString("rpId")
             failureContext="应用与网站关联验证失败 / App-to-site association could not be verified"
             verifyCaller(request.callingAppInfo ?: error("Missing authenticated caller"),rp)
-            val keys=vault.command("passkey-index").getJSONArray("passkeys").objects()
+            val keys=vault.command(CoreRequest.passkeyIndex()).getJSONArray("passkeys").objects()
             for(key in keys) {
                 if(key.optString("rpId")!=rp)continue
                 val next=Intent(this,PasskeyProviderActivity::class.java).putExtra("mode","get").putExtra("itemId",key.getString("itemId")).putExtra("credentialId",key.getString("id")).putExtra("library",key.optString("library"))

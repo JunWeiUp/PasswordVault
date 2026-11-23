@@ -40,7 +40,7 @@ class RichNoteBridgeTest {
         try {
             withTimeout(20_000) { while (!vault.state.value.ready) delay(20) }
             vault.authenticate("synthetic rich screenshot fixture", true)
-            assertTrue(vault.mutate("settings", JSONObject().put("settings", JSONObject().put("theme", "light"))))
+            assertTrue(vault.mutate(CoreRequest.settings(JSONObject().put("theme", "light"))))
             val note = VaultRepository.blank("secureNote").put("title", "Weekend plans · synthetic fixture")
                 .put("noteFormat", "rich-v1").put("note", "Fictional rich editor screenshot")
                 .put("noteDocument", JSONObject("""{"type":"doc","content":[{"type":"heading","attrs":{"level":2},"content":[{"type":"text","text":"A quiet weekend"}]},{"type":"paragraph","content":[{"type":"text","text":"Walk by the river, "},{"type":"text","text":"read a new book","marks":[{"type":"bold"}]},{"type":"text","text":" and leave room for small ideas."}]},{"type":"bulletList","content":[{"type":"listItem","content":[{"type":"paragraph","content":[{"type":"text","text":"Visit the local library"}]}]},{"type":"listItem","content":[{"type":"paragraph","content":[{"type":"text","text":"Sketch a simple garden plan"}]}]}]}]}"""))

@@ -36,7 +36,7 @@ internal fun PasskeyRecordsPanel(item: JSONObject, vault: VaultRepository, t: (S
         }
     }, confirmButton = { TextButton(enabled = !busy && currentPassword.isNotEmpty(), onClick = { scope.launch {
         busy = true
-        try { vault.command("passkey-remove", JSONObject().put("itemId", item.getString("id")).put("credentialId", selected).put("currentPassword", currentPassword)); vault.refresh(); selected?.let(onRemoved); selected = null }
+        try { vault.command(CoreRequest.passkeyRemove(currentPassword, item.getString("id"), selected ?: error("No selected passkey"))); vault.refresh(); selected?.let(onRemoved); selected = null }
         catch (_: Exception) { error = t("未能删除，请检查主密码后重试", "Could not delete; verify the master password and retry") }
         finally { busy = false; currentPassword = "" }
     } }) { Text(t("确认删除", "Delete")) } }, dismissButton = { TextButton(enabled = !busy, onClick = { selected = null; currentPassword = "" }) { Text(t("取消", "Cancel")) } })

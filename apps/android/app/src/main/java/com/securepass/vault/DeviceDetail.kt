@@ -190,7 +190,7 @@ private fun DeviceFileDetail(item: JSONObject, file: JSONObject, vault: VaultRep
                 scope.launch {
                     loading = true; failed = false
                     try {
-                        val result = vault.command("devices-file-read", JSONObject().put("id", item.getString("id")).put("attachmentId", file.getString("attachmentId")))
+                        val result = vault.command(CoreRequest.devicesFileRead(item.getString("id"), file.getString("attachmentId")))
                         check(result.has("text"))
                         text = result.getString("text")
                     } catch (cancelled: CancellationException) { throw cancelled }

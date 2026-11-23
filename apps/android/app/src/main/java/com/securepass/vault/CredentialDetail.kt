@@ -74,19 +74,13 @@ private fun EntryDetailContent(
                 code =
                     try {
                         vault
-                            .command(
-                                "totp",
-                                JSONObject()
-                                    .put("secret", totpSource.first)
-                                    .put("period", period)
-                                    .put("time", now),
-                            )
+                            .command(CoreRequest.totp(totpSource.first, time = now, period = period))
                             .optString("code")
                     } catch (_: Exception) {
                         ""
                     }
                 if (type == "totp" && (nextCode.isEmpty() || remaining == period)) {
-                    nextCode = try { vault.command("totp", JSONObject().put("secret", totpSource.first).put("period", period).put("time", now + period)).optString("code") } catch (_: Exception) { "" }
+                    nextCode = try { vault.command(CoreRequest.totp(totpSource.first, time = now + period, period = period)).optString("code") } catch (_: Exception) { "" }
                 }
                 delay(1000)
             }

@@ -29,10 +29,7 @@ class BackgroundSessionTest {
             withTimeout(10_000) { while (!vault.state.value.ready) delay(10) }
             vault.authenticate("Fixture background", true)
             assertTrue(
-                vault.mutate(
-                    "settings",
-                    JSONObject().put("settings", JSONObject().put("autoLockMinutes", 1)),
-                )
+                vault.mutate(CoreRequest.settings(JSONObject().put("autoLockMinutes", 1)))
             )
             now = 30_000
             vault.background().join()

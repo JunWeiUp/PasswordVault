@@ -46,10 +46,10 @@ final class MobileRichNoteTests: XCTestCase {
   func testAttachmentReadIsBoundToOwningNote() async throws {
     let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     let core = try MobileCore(directory: directory)
-    _ = try await core.call(["op":.string("create"),"password":.string("synthetic attachment fixture")])
+    _ = try await core.call(CoreRequest.create(password: "synthetic attachment fixture"))
     let first = VaultItem.blank(type: "secureNote", title: "First")
     let second = VaultItem.blank(type: "secureNote", title: "Second")
-    for item in [first, second] { _ = try await core.call(["op":.string("save"),"item":try .from(item)]) }
+    for item in [first, second] { _ = try await core.call(CoreRequest.save(item: try .from(item))) }
     let meta = try await core.importAttachment(noteID: first.id, name: "fixture.txt", mime: "text/plain", data: Data("synthetic attachment".utf8))
     let id = meta.object["id"]!.string
     let bytes = try await core.readAttachment(noteID: first.id, id: id)

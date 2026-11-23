@@ -30,7 +30,7 @@ final class MobileInteractionTests: XCTestCase {
       XCTAssertTrue(store.unlocked, "Continuous editing must not lock")
     }
     time = time.addingTimeInterval(59)
-    _ = try await store.perform(["op": .string("status")])
+    _ = try await store.perform(CoreRequest.status())
     store.checkIdle()
     XCTAssertTrue(store.unlocked)
     time = time.addingTimeInterval(2)

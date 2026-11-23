@@ -68,14 +68,14 @@ final class CredentialProvider: ASCredentialProviderViewController {
           value = try MobileCore(directory: location)
           self.core = value
         }
-        _ = try await value.call(["op": .string("unlock"), "password": .string(password)])
+        _ = try await value.call(CoreRequest.unlock(password: password))
         guard self.requests.isCurrent(requestGeneration) else {
           await value.close()
           throw VaultError.Locked
         }
         var matches: [CredentialChoice] = []
         for origin in origins {
-          let response = try await value.call(["op": .string("matches"), "origin": .string(origin)])
+          let response = try await value.call(CoreRequest.matches(origin: origin))
           for entry in response.array {
             matches.append(CredentialChoice(origin: origin, fields: entry.object))
           }
@@ -254,10 +254,10 @@ extension CredentialProvider {
       let value: MobileCore
       if let existing = self.core { value = existing }
       else { value = try MobileCore(directory: container.appendingPathComponent("PasswordVaultNative")); self.core = value }
-      _ = try await value.call(["op": .string("unlock"), "password": .string(secret)])
+      _ = try await value.call(CoreRequest.unlock(password: secret))
       guard self.requests.isCurrent(generation) else { await value.close(); throw VaultError.Locked }
       if registration != nil { return [] }
-      let result = try await value.call(["op": .string("passkey-matches"), "rpId": .string(rp)])
+      let result = try await value.call(CoreRequest.passkeyMatches(rpId: rp))
       return result.array.filter { allowed.isEmpty || allowed.map(encode).contains($0.object["id"]?.string ?? "") }
     }, choose: { [weak self] selected, secret, backupSecret in
       guard let self, self.requests.isCurrent(generation), let core = self.core else { throw VaultError.Locked }
@@ -280,7 +280,7 @@ extension CredentialProvider {
       guard authenticator.count > 32 else { throw VaultError.InvalidData }
       if authenticator[32] & 16 == 0 {
         guard backupSecret.count >= 10, backupSecret != secret else { throw VaultError.InvalidData }
-        let index = try await core.call(["op": .string("passkey-index")])
+        let index = try await core.call(CoreRequest.passkeyIndex())
         let expectedLibrary = registration == nil ? selected?.object["library"] : result.object["library"]
         let expectedItem = registration == nil ? selected?.object["itemId"] : result.object["itemId"]
         guard let expectedLibrary, let expectedItem,
