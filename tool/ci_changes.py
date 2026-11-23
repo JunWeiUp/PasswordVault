@@ -28,9 +28,17 @@ def classify(paths):
         elif path.startswith(('apps/shared/Relay/', 'apps/shared/RelayTests/', 'apps/shared/Capabilities/')):
             selected |= {'ios'}  # Swift sources compiled only by apps/ios/project.yml.
         elif path.startswith('apps/shared/note-editor/'):
-            selected |= {'macos', 'ios', 'android', 'browser'}
+            selected |= {'ios', 'android', 'browser'}  # Desktop uses NSH's own editor.
         elif path.startswith('apps/desktop/'):
             selected |= {'macos', 'windows'}
+        elif path.startswith(('tool/macos-nsh/', 'tool/nsh-cargo/')) or path in {'tool/nsh_mac.sh', 'tool/test_background_service.py', 'tool/test_desktop_search.mjs', 'tool/test_ui_polling.mjs'}:
+            selected |= {'macos'}
+        elif path.startswith('tool/windows-desktop/') or path == 'tool/nsh_windows.ps1':
+            selected |= {'windows'}
+        elif path in {'tool/test_relay_live.sh', 'tool/core_contract.py', 'tool/new_op.py', 'tool/test_core_contract.py'}:
+            selected |= {'core'}
+        elif path == 'tool/select_ios_simulator.py':
+            selected |= {'ios'}
         elif path == 'apps/browser/identity.json':
             selected |= {'macos', 'browser'}  # The Mac bundle embeds it as BrowserIdentity.json.
         elif path.startswith('apps/'):

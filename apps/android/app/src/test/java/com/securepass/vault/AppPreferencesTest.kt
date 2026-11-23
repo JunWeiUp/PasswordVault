@@ -40,7 +40,6 @@ class AppPreferencesTest {
         assertTrue("Retry after a failure stays offline", relayOffline(RelayUi(mesh = true, error = "x", sync = RelaySyncProgress(RelaySyncPhase.CONNECTING))))
         assertFalse("First connection attempt is not offline", relayOffline(RelayUi(managed = true, sync = RelaySyncProgress(RelaySyncPhase.CONNECTING))))
         assertFalse(relayOffline(RelayUi(managed = true, sync = RelaySyncProgress(RelaySyncPhase.CHECKED))))
-        assertFalse(relayOffline(RelayUi(managed = true, sync = RelaySyncProgress(RelaySyncPhase.PAUSED))))
         assertFalse("Credential problems have their own message", relayOffline(RelayUi(managed = true, credentialsBlocked = true, sync = failed)))
     }
 }

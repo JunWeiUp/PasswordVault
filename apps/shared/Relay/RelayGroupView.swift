@@ -127,7 +127,7 @@ struct RelayGroupView: View {
     }
     .disabled(relay.groupBusy)
     .onAppear {
-      if deviceName.isEmpty { deviceName = relay.config.role == "hub" ? t("我的 Mac", "My Mac") : t("我的手机", "My phone") }
+      if deviceName.isEmpty { deviceName = t("我的手机", "My phone") }
       if name.isEmpty { name = t("我的设备", "My devices") }
       if !relay.config.endpoint.isEmpty { endpoint = relay.config.endpoint }
     }
@@ -145,7 +145,7 @@ struct RelayGroupView: View {
       Text(confirmation == "disband"
         ? t("解散会撤销全组中继访问。各设备已下载的资料不会被远程删除。", "Disbanding revokes relay access for all members. Downloaded vault data cannot be remotely erased.")
         : confirmation?.hasPrefix("remove:") == true
-          ? t("将撤销该设备的中继访问与本机同步授权；已下载资料无法远程删除。", "Revoke this device’s relay access and local vault authorization. Downloaded data remains on the device.")
+          ? t("将把该设备移出设备组并撤销其中继访问；已下载资料无法远程删除。", "Remove this device from the group and revoke its relay access. Downloaded data remains on the device.")
           : confirmation == "clear"
             ? t("仅清除本机接入，不能代替远端撤销。保留本地资料，并加密归档旧同步记录；新接入使用新设备 ID。", "Clear local access only; this does not revoke remote access. Keep local data, archive encrypted sync history and rotate the device ID.")
             : t("退出后本机停止中继同步，其他成员继续使用。保留本地资料，并加密归档旧同步记录。最后一名管理员需先指定其他管理员或解散。", "Stop local relay sync and retain local data and encrypted sync history. Other members stay connected. The last manager must add another manager or disband."))

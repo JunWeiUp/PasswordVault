@@ -30,7 +30,7 @@ internal data class RelayUi(
     val members: List<RelayMember> = emptyList(), val groupInvite: String = "", val groupInviteExpires: Long = 0L, val groupCode: String = "", val applicant: String = "",
     val status: String = "未连接 / Disconnected", val error: String? = null,
     val publicKey: String = "", val device: String = "", val group: String = "", val endpoint: String = "",
-    val paired: Boolean = false, val paused: Boolean = true, val pending: Int = 0, val conflicts: Int = 0,
+    val paired: Boolean = false, val pending: Int = 0, val conflicts: Int = 0,
     val reply: String = "", val code: String = "", val lastReceived: Long? = null,
     val sync: RelaySyncProgress = RelaySyncProgress(),
     /** Symmetric sync: every member of the signed group syncs; no grant or primary confirmation. */
@@ -131,8 +131,7 @@ internal class PersonalRelay(private val directory: File, private val vault: Vau
         mutable.value = mutable.value.copy(publicKey = publicKey(c), device = c.getString("device"),
             group = c.getString("group"), endpoint = if (creation != null) g.getString("url") else c.getString("endpoint"))
         val mesh = runCatching { meshRoster(c) != null }.getOrDefault(false)
-        mutable.value = mutable.value.copy(mesh = mesh, paired = mesh || c.getJSONObject("peers").length() > 0,
-            paused = if (mesh) false else c.getBoolean("paused"))
+        mutable.value = mutable.value.copy(mesh = mesh, paired = mesh)
     }
     private fun action(block: suspend (JSONObject) -> Unit) { scope.launch {
         actions.withLock {
@@ -172,7 +171,6 @@ internal class PersonalRelay(private val directory: File, private val vault: Vau
         val current = mutable.value
         val blocked = when {
             !unlocked || !current.paired || current.invalid || current.credentialsBlocked -> RelaySyncPhase.BLOCKED
-            current.paused -> RelaySyncPhase.PAUSED
             else -> null
         }
         if (blocked != null) {

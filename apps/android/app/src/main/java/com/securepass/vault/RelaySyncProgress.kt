@@ -2,10 +2,10 @@ package com.securepass.vault
 
 internal enum class RelaySyncPhase {
     IDLE, REQUESTED, CONNECTING, CHECKING, SENDING, RECEIVING,
-    WAITING_FOR_PRIMARY, WAITING_FOR_CAPABILITY, CHECKED, FAILED, PAUSED, BLOCKED,
+    WAITING_FOR_CAPABILITY, CHECKED, FAILED, BLOCKED,
 }
 
-/** In-memory transport progress. Delivery never stands in for the primary's acknowledgement. */
+/** In-memory transport progress of the symmetric sync loop. */
 internal data class RelaySyncProgress(
     val phase: RelaySyncPhase = RelaySyncPhase.IDLE,
     val completed: Int = 0,

@@ -451,7 +451,7 @@ MATRIX_CLIENTS: list[tuple[str, tuple[str, ...], tuple[str, ...], list[re.Patter
      [*SCANS[1][2], re.compile(r'\bCoreRequest\.`?([A-Za-z0-9]+)`?\(')]),
     ("browser*", ("apps/browser/src",), (".ts", ".tsx"),
      [re.compile(r'\bop:\s*"([a-z0-9-]+)"'), re.compile(r'op\s*===?\s*"([a-z0-9-]+)"'),
-      # core.ts forwards UI requests whose op is on a one-name-per-line allow-list.
+      # core.ts lists read-only ops (no snapshot save) one name per line.
       re.compile(r'^\s*"([a-z0-9-]+)",\s*$', re.MULTILINE)]),
 ]
 

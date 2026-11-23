@@ -87,7 +87,7 @@ async function execute(request: Request): Promise<any> {
   }
   const current = engine;
   const epoch = generation;
-  // A different standalone Web tab may have committed a newer document. Never overwrite it.
+  // Another extension page may have committed a newer document. Never overwrite it.
   if ((await readStorage()) !== checkpoint) {
     lock();
     throw new Error("stale-storage");

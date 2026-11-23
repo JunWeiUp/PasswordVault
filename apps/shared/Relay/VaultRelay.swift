@@ -71,19 +71,8 @@ final class VaultRelay: ObservableObject {
     [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: "com.securepass.vault.personal-relay.v1", kSecAttrAccount as String: account]
   }
   private enum CredentialError: Error { case status(OSStatus), unavailable }
-  // Legacy macOS login-Keychain ACL prompts do not reliably honor LAContext.
-  // Scope the legacy switch to a synchronous MainActor operation and restore it
-  // immediately; never disable interaction for unrelated biometric operations.
   private static func credentialOperation<T>(allowInteraction: Bool, _ operation: () throws -> T) throws -> T {
-    #if os(macOS)
-    var previous = DarwinBoolean(true)
-    let readStatus = SecKeychainGetUserInteractionAllowed(&previous)
-    guard readStatus == errSecSuccess else { throw CredentialError.status(readStatus) }
-    let setStatus = SecKeychainSetUserInteractionAllowed(allowInteraction)
-    guard setStatus == errSecSuccess else { throw CredentialError.status(setStatus) }
-    defer { SecKeychainSetUserInteractionAllowed(previous.boolValue) }
-    #endif
-    return try operation()
+    try operation()
   }
   private static func load(_ account: String, _ allowInteraction: Bool) throws -> Data? {
     try credentialOperation(allowInteraction: allowInteraction) {
@@ -119,9 +108,7 @@ final class VaultRelay: ObservableObject {
           loaded = try JSONDecoder().decode(Config.self, from: legacy)
           migratedLegacy = true
         } else {
-          var fresh = Config(role: config.role, secret: RelayIdentity.generateSecretKey())
-          if fresh.role == "hub" { fresh.group = UUID().uuidString.lowercased(); fresh.hub = fresh.device }
-          loaded = fresh
+          loaded = Config(role: config.role, secret: RelayIdentity.generateSecretKey())
         }
         let encoded = String(decoding: try JSONEncoder().encode(loaded), as: UTF8.self)
         _ = try await call(CoreRequest.relayCredentialsWrite(data: encoded))
@@ -419,11 +406,9 @@ extension VaultRelay {
     config.endpoint = groups.config["url"] as? String ?? ""
     config.group = groups.config["group"] as? String ?? ""
     config.token = groups.config["token"] as? String ?? ""
-    if config.role == "hub" { config.hub = config.device }
     let trusted = groups.config["trusted_peers"] as? [String: String] ?? [:]
-    // Revoked or changed identities lose business authorization before reconnect.
+    // Symmetric sync reads the signed roster each cycle; legacy pinned keys are pruned.
     for (id, key) in config.peers where trusted[id] != key {
-      // Symmetric sync reads the signed roster each cycle; only peer-library keys are pruned.
       config.peers.removeValue(forKey: id)
     }
     try await persist()
@@ -522,7 +507,7 @@ extension VaultRelay {
       _ = try Self.validateEndpoint(endpoint, allowLocalTest: allowLocalGroupTest)
       g.set("url", endpoint)
       try await g.create(name: name, deviceName: deviceName); try await applyGroup(g)
-      status = "设备组已创建，请授权密码库同步 / Group created; authorize vault sync next"
+      status = "设备组已创建，可邀请设备加入 / Group created; invite your devices"
     }
   }
   func joinGroup(_ text: String, deviceName: String, password: String? = nil) async {
@@ -545,7 +530,7 @@ extension VaultRelay {
       if inv["mode"] as? String == "auto" {
         guard try await (joined ? true : g.finishJoin()) else { throw RelayFault.invalid("automatic join incomplete") }
         try await applyGroup(g)
-        status = "已加入设备组，密码库同步尚未授权 / Joined; vault sync needs separate authorization"
+        status = "已加入设备组，开始自动双向同步 / Joined; syncing both ways"
       } else { status = "请核对双方配对码，再由邀请方批准 / Compare codes before approval" }
     }
   }
@@ -562,7 +547,7 @@ extension VaultRelay {
     await groupAction { g in
       guard try await g.finishJoin() else { status = "等待邀请方批准 / Waiting for approval"; return }
       try await applyGroup(g)
-      status = "已加入设备组，密码库同步尚未授权 / Joined; vault sync needs separate authorization"
+      status = "已加入设备组，开始自动双向同步 / Joined; syncing both ways"
     }
   }
   func refreshGroup() async {

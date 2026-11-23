@@ -10,7 +10,7 @@ crate-type = ["lib", "cdylib", "staticlib"]
 
 [features]
 default = ["native"]
-native = ["dep:rusqlite", "dep:uniffi", "dep:tempfile", "dep:fs2", "dep:tungstenite", "dep:reqwest", "dep:common-relay", "dep:tokio"]
+native = ["dep:rusqlite", "dep:uniffi", "dep:tempfile", "dep:fs2", "dep:reqwest", "dep:common-relay", "dep:tokio"]
 bindgen = ["native", "uniffi/cli"]
 browser = ["dep:wasm-bindgen", "getrandom/js"]
 
@@ -50,7 +50,6 @@ tempfile = { version = "3", optional = true }
 fs2 = { version = "0.4", optional = true }
 # Relay transport (WSS + HTTPS) for every native client; ring + bundled webpki roots so the
 # same code cross-compiles for Android and iOS.
-tungstenite = { version = "0.28", default-features = false, features = ["handshake", "rustls-tls-webpki-roots"], optional = true }
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls"], optional = true }
 # Official Common Relay SDK (WSS message client, journal, files, policy). default-features off:
 # its `serde_json/preserve_order` default would change JSON key order across vault-core.

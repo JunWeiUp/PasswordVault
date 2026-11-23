@@ -15,7 +15,7 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class PersonalRelayTest {
-    @Test fun pendingRecordsSurvivePausedAndUnavailableManualSync() = runBlocking {
+    @Test fun pendingRecordsSurviveUnavailableManualSync() = runBlocking {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val directory = File(context.cacheDir, "sync-progress-${UUID.randomUUID()}")
         val vault = VaultRepository(context, directory)
@@ -30,26 +30,16 @@ class PersonalRelayTest {
             val pending = vault.command(CoreRequest.relayStatus()).getInt("pending")
             // One note plus the category-set record; these are not two unsaved edits.
             assertEquals(2, pending)
+            // Without a personal device group nothing syncs: manual sync reports BLOCKED and the
+            // pending records stay intact, even with legacy pinned peers in the credentials.
             val peerKey = RelayCore.publicKey("01".repeat(32))
-            config.put("group", "fixture-group").put("hub", "fixture-hub").put("paused", true)
-                .put("peers", JSONObject().put("fixture-hub", peerKey)).put("token", "")
+            config.put("group", "fixture-group").put("hub", "fixture-hub").put("paused", false)
+                .put("peers", JSONObject().put("fixture-hub", peerKey)).put("token", "q".repeat(48))
+                .put("endpoint", "wss://127.0.0.1:1/v2/ws")
             vault.command(CoreRequest.relayCredentialsWrite(config.toString()))
             vault.relay.setUnlocked(false); vault.relay.setUnlocked(true); loaded()
             vault.relay.syncNow()
-            assertEquals(RelaySyncPhase.PAUSED, vault.relay.state.value.sync.phase)
-            assertEquals(pending, vault.command(CoreRequest.relayStatus()).getInt("pending"))
-            config.put("paused", false)
-            vault.command(CoreRequest.relayCredentialsWrite(config.toString()))
-            vault.relay.setUnlocked(false); vault.relay.setUnlocked(true); loaded()
-            vault.relay.syncNow()
-            withTimeout(15_000) { while (vault.relay.state.value.sync.phase != RelaySyncPhase.BLOCKED) delay(25) }
-            assertEquals(pending, vault.command(CoreRequest.relayStatus()).getInt("pending"))
-            // A closed loopback port exercises transport failure without any external service.
-            config.put("paused", false).put("token", "q".repeat(48)).put("endpoint", "wss://127.0.0.1:1/relay/v1/ws")
-            vault.command(CoreRequest.relayCredentialsWrite(config.toString()))
-            vault.relay.setUnlocked(false); vault.relay.setUnlocked(true); loaded()
-            withTimeout(15_000) { while (vault.relay.state.value.sync.phase != RelaySyncPhase.FAILED) delay(25) }
-            assertNotNull(vault.relay.state.value.error)
+            assertEquals(RelaySyncPhase.BLOCKED, vault.relay.state.value.sync.phase)
             assertNull(vault.relay.state.value.sync.lastSentAt)
             assertEquals(pending, vault.command(CoreRequest.relayStatus()).getInt("pending"))
             vault.relay.setUnlocked(false)

@@ -19,9 +19,7 @@ core() {
   "${cargo_cmd[@]}" clippy -p vault-core --all-targets -- -D warnings
 }
 macos() {
-  # The NSH desktop client (Mac and Windows share apps/desktop).
-  npm --prefix apps/shared/note-editor ci --ignore-scripts
-  npm --prefix apps/shared/note-editor run build
+  # The NSH desktop client (Mac and Windows share apps/desktop; it uses NSH's own editor).
   bash tool/nsh_mac.sh check
 }
 browser() {

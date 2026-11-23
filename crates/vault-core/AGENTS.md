@@ -33,7 +33,7 @@ sync (mesh, peer, relay), backup/import and the common-relay protocol. Rust 1.98
 ## Checks
 - `bash tool/check_native.sh core` — contract check, fmt, release tests, clippy `-D warnings`.
 - Single test: `cargo test -p vault-core --release <filter>`.
-- Relay end to end against real Common Relay servers (v2 + v1, loopback):
+- Relay end to end against real Common Relay servers (protocol v2, loopback):
   `bash tool/test_relay_live.sh` (needs Go and a local common-relay source tree).
 - Changing UniFFI exports or ops used by mobile: `bash tool/build_mobile_core.sh android|ios`
   (generated bindings are ignored by Git) — `python3 tool/check_changed.py` does this for you.

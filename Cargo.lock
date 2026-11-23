@@ -2326,7 +2326,6 @@ dependencies = [
  "sha1",
  "thiserror",
  "utf-8",
- "webpki-roots 0.26.11",
 ]
 
 [[package]]
@@ -2551,7 +2550,6 @@ dependencies = [
  "tempfile",
  "thiserror",
  "tokio",
- "tungstenite",
  "uniffi",
  "url",
  "wasm-bindgen",

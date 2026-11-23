@@ -382,7 +382,7 @@ final class MobileVaultStore: ObservableObject {
   }
   func perform(_ request: [String: JSONValue]) async throws -> JSONValue {
     guard unlocked, let core else { throw VaultError.Locked }
-    if pendingDraft != nil, ["relay-peer-switch", "relay-peer-create", "relay-peer-rekey", "relay-init", "relay-receive", "recovery-export", "history-enable", "history-restore", "history-prune", "share-seal"].contains(request["op"]?.string ?? "") { throw VaultError.InUse }
+    if pendingDraft != nil, ["relay-init", "relay-receive", "recovery-export", "history-enable", "history-restore", "history-prune", "share-seal"].contains(request["op"]?.string ?? "") { throw VaultError.InUse }
     let generation = epoch
     let value = try await core.call(request)
     guard generation == epoch, unlocked else { throw VaultError.Locked }

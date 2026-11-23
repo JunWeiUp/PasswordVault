@@ -12,7 +12,7 @@
     <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-1e7e52?style=flat-square" alt="MIT 许可证"></a>
     <a href="#架构"><img src="https://img.shields.io/badge/Rust_Core-1.98.0-1f2937?style=flat-square&logo=rust&logoColor=white" alt="Rust 核心 1.98.0"></a>
     <a href="#下载"><img src="https://img.shields.io/badge/macOS_%7C_Windows_%7C_iOS_%7C_Android_%7C_Chromium-2a57c2?style=flat-square" alt="支持平台"></a>
-    <a href="#本机-ai-mcp"><img src="https://img.shields.io/badge/Local_MCP-11_Tools-0f766e?style=flat-square" alt="本机 MCP"></a>
+    <a href="#本机-ai-mcp"><img src="https://img.shields.io/badge/Local_MCP-5_Tools-0f766e?style=flat-square" alt="本机 MCP"></a>
   </p>
 
   <p><a href="README.md">English</a> · <strong>简体中文</strong></p>
@@ -87,12 +87,12 @@
 | 分级 | 策略 |
 | --- | --- |
 | **普通字段** | 已开启分类（`accounts` / `profiles` / `devices` / `notes`）直接可读 |
-| **白名单笔记目录** | 支持免弹窗更新（`note_update`）与 ≤ 100 MB 加密归档（`note_attach`），自动留存历史 |
-| **密码、私钥、卡号与私密命令** | 逐次原生弹窗审批（`get_secret`）· **默认仅剪贴板 30 秒清除** |
-| **钱包、助记词、TOTP、删除与改凭据** | **永久禁止** |
+| **写入** | `create` / `update` / `delete` 无需审批，每个客户端每分钟最多 10 次；每次写入都留加密历史，`delete` 只移入回收站 |
+| **密码、私钥、卡号与私密命令** | 逐次原生弹窗审批（`read` 带 `field`）· **默认仅剪贴板 30 秒清除** |
+| **钱包、助记词与 TOTP** | **永不开放** |
 
 <details>
-<summary><strong>一键 MCP 配置与 11 个内置工具</strong></summary>
+<summary><strong>一键 MCP 配置与 5 个内置工具</strong></summary>
 
 ```json
 {
@@ -108,7 +108,7 @@
 }
 ```
 
-`search` · `get` · `get_secret` · `add` · `ask_user` · `note_list` · `note_read` · `note_update` · `note_attach` · `note_read_asset` · `note_history` — 详见 [apps/desktop/src/ai/README.md](apps/desktop/src/ai/README.md)。
+`find` · `read` · `create` · `update` · `delete`（定义见 `apps/desktop/src/ai/tools.schema.json`）— 详见 [apps/desktop/src/ai/README.md](apps/desktop/src/ai/README.md)。
 
 </details>
 

@@ -5,7 +5,8 @@
   (`content.ts`, `login-observer.ts`, `inline-fields.ts`), `src/core.ts` (wasm vault-core).
 - The core runs as wasm (`wasm/`, built from `crates/vault-core` with `--features browser`).
   Its dispatcher is `crates/vault-core/src/browser.rs`, separate from the native registry;
-  `src/core.ts` lists the ops the UI may forward.
+  `src/core.ts` serializes UI requests and lists the read-only ops that skip the encrypted
+  snapshot save.
 
 ## Checks
 - `bash tool/check_native.sh browser` — wasm build, clippy, typecheck, build and tests.
