@@ -78,8 +78,10 @@ impl RelayConnection {
         Ok(Arc::new(Self { inner }))
     }
 
-    /// Next `message` (with base64 `data`), `peer.up`, `peer.down` or `group.changed` event as
-    /// JSON; `None` after `timeout_ms`; an error once the connection is closed.
+    /// Next `message` (with base64 `data`), `peer.up`, `peer.down`, `group.changed` or
+    /// `undecryptable` (`{from, id, offline, trusted}`: reconnect if the sender is in the current
+    /// roster, else `acknowledge` to drop it) event as JSON; `None` after `timeout_ms`; an
+    /// error once the connection is closed.
     pub fn next_event(&self, timeout_ms: u64) -> R<Option<String>> {
         Ok(self
             .inner

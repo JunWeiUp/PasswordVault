@@ -117,6 +117,10 @@ impl<A: Api> Groups<'_, A> {
                 if self.config["pending_approval"]["entry"] == *e {
                     self.config["pending_approval"]["committed"] = json!(true);
                 }
+                if let Some(id) = self.retire_used_invitation(&unpack(e)?) {
+                    // Best effort: also revoke it on the relay so the link cannot be reused.
+                    let _ = self.call("DELETE", &format!("/group/invitations/{id}"), None, None);
+                }
             }
             let revision = unpack(&current)?["revision"]
                 .as_u64()
@@ -131,6 +135,22 @@ impl<A: Api> Groups<'_, A> {
             }
         }
         invalid()
+    }
+    /// A device has joined with our issued invitation (its id is on a verified committed
+    /// entry): the invitation is spent, so return to the normal state without the user
+    /// cancelling it. Returns the retired id. An approval in progress finishes via `approve`.
+    fn retire_used_invitation(&mut self, state: &Value) -> Option<String> {
+        let issued = self.config["issued_invitation"]["id"].as_str()?.to_owned();
+        if issued.is_empty()
+            || state["invitation"] != issued
+            || self.config["pending_approval"].is_object()
+        {
+            return None;
+        }
+        for key in ["issued_invitation", "pending_link", "join_request"] {
+            erase(&mut self.config, key);
+        }
+        Some(issued)
     }
     pub fn create(&mut self, title: &str, device_name: &str) -> Result<()> {
         if self.config.get("group_entry").is_some() || self.config.get("pending_join").is_some() {

@@ -261,6 +261,8 @@ class PersonalRelayTest {
             until { mac.relay.state.value.groupInvite.isNotEmpty() && !mac.relay.state.value.busy }
             phone.relay.joinGroup(mac.relay.state.value.groupInvite, "Phone", access)
             until { online(mac) && online(phone) && mac.relay.state.value.mesh && phone.relay.state.value.mesh }
+            // A spent invitation retires on its own: no manual "cancel invitation" after the scan.
+            until { mac.relay.state.value.groupInvite.isEmpty() }
 
             // Simulate the OS freeze: the relay closed the phone's socket while it was backgrounded.
             val field = PersonalRelay::class.java.getDeclaredField("client").apply { isAccessible = true }

@@ -63,6 +63,8 @@ final class VaultRelay: ObservableObject {
   private var reader: Task<Void, Never>?
   private var client: CoreRelayConnection?
   private var files: CoreRelayFiles?
+  /// Undecryptable messages already answered with a roster refresh (see the event handler).
+  private var undecryptableSeen: Set<String> = []
   private var active = false
   private var generation = UUID()
   private var sent: [String: String] = [:]
@@ -339,6 +341,21 @@ final class VaultRelay: ObservableObject {
           do {
             for try await event in events {
               guard let self, self.active, self.generation == epoch else { return }
+              if event["type"] as? String == "undecryptable", let from = event["from"] as? String, let id = event["id"] as? String {
+                // This connection could not open the envelope. A sender in the current signed
+                // roster joined after we connected: reconnect with the new keys (the relay
+                // redelivers it). Anyone else, or a corrupt envelope, is acknowledged and dropped.
+                // An unknown sender may be a member that joined before our roster refreshed:
+                // reconnect (refreshing the roster) once per message; drop it only when it comes
+                // back from a sender that is still not a member.
+                let roster = Set(self.meshPeers ?? []).union(self.trustedPeers.keys)
+                if event["trusted"] as? Bool != true, roster.contains(from) || self.undecryptableSeen.insert(from + "/" + id).inserted {
+                  self.retryRequested = true
+                  await connection.close(); return
+                }
+                try await connection.acknowledge(id: id, from: from, offline: event["offline"] as? Bool ?? false)
+                continue
+              }
               if event["type"] as? String == "message", let data = event["data"] as? Data,
                  let from = event["from"] as? String, let id = event["id"] as? String {
                 if let peers = self.meshPeers {

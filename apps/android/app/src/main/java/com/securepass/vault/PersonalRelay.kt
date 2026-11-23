@@ -295,6 +295,7 @@ internal class PersonalRelay(private val directory: File, private val vault: Vau
         var backoff = 0L
         var connectedAt = 0L
         var rejected = false
+        val undecryptableSeen = mutableSetOf<String>()
         while (currentCoroutineContext().isActive && unlocked && generation == epoch) {
             var connection: RelayConnection? = null
             var failed = false
@@ -321,6 +322,19 @@ internal class PersonalRelay(private val directory: File, private val vault: Vau
                     val meshPeers = meshRoster(c)?.also { ensureMesh(c, it) }
                     while (true) {
                         val event = runInterruptible(Dispatchers.IO) { connection.nextEvent(0u) }?.let(::JSONObject) ?: break
+                        if (event.optString("type") == "undecryptable") {
+                            // This connection could not open the envelope. A sender that is in the
+                            // current signed roster just joined after we connected: reconnect with the
+                            // new keys (the relay redelivers it). Anyone else, or a trusted sender whose
+                            // envelope is corrupt, is acknowledged so it is dropped for good.
+                            // An unknown sender may also be a member that joined before our roster refreshed:
+                            // reconnect (which refreshes the roster) once per message, and only drop it when
+                            // it comes back from a sender that is still not a member.
+                            val from = event.getString("from"); val id = event.getString("id")
+                            val roster = (meshPeers ?: emptySet()) + trustedPeers(c).keys
+                            if (!event.optBoolean("trusted") && (from in roster || undecryptableSeen.add("$from/$id"))) throw IllegalStateException("Roster changed; reconnect")
+                            ack(connection, event); continue
+                        }
                         if (event.optString("type") == "message") {
                             val data = Base64.getDecoder().decode(event.getString("data"))
                             val from = event.getString("from")

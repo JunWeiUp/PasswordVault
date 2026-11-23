@@ -186,8 +186,22 @@ fn run(server: &Server) {
     )
     .unwrap();
     assert_eq!(joined, true);
+    assert!(
+        a["issued_invitation"].is_object(),
+        "the invitation is pending before the join"
+    );
     let (a, state) = groups(&a, json!({"op":"refresh"})).unwrap();
     assert_eq!(state["state"]["members"].as_array().unwrap().len(), 2);
+    // Once a device joined with it, the inviter's invitation retires on its own.
+    assert!(a.get("issued_invitation").is_none() && a.get("pending_link").is_none());
+    assert!(
+        groups(
+            &device(&server.url, "late"),
+            json!({"op":"resolve","link":link})
+        )
+        .is_err(),
+        "a spent invitation is revoked on the relay too"
+    );
 
     let journals = tempfile::tempdir().unwrap();
     let ca = RelayConnection::connect(options(&a, &[&b], &journals.path().join("a"))).unwrap();
@@ -257,8 +271,8 @@ fn run(server: &Server) {
     cb.disconnect();
     assert!(cb.is_closed());
 
-    // A message from a sender the receiver no longer trusts (e.g. a removed member) is
-    // acknowledged and dropped; it must not fail the connection or be redelivered forever.
+    // A message from a sender this connection does not trust is surfaced (not fatal): the app
+    // reconnects when the sender is in its current roster, or acknowledges it to drop it.
     ca.message(
         "phone".into(),
         b"stale".to_vec(),
@@ -268,25 +282,29 @@ fn run(server: &Server) {
     .unwrap();
     let untrusting =
         RelayConnection::connect(options(&b, &[], &journals.path().join("b"))).unwrap();
-    std::thread::sleep(Duration::from_millis(1500));
+    let event = loop {
+        let event: Value =
+            serde_json::from_str(&untrusting.next_event(5000).unwrap().expect("event")).unwrap();
+        if !matches!(
+            event["type"].as_str(),
+            Some("peer.up" | "peer.down" | "group.changed")
+        ) {
+            break event;
+        }
+    };
+    assert_eq!(event["type"], "undecryptable");
+    assert_eq!(event["from"], "mac");
+    assert_eq!(event["trusted"], false);
     assert!(
         !untrusting.is_closed(),
         "an undecryptable message must not close the connection"
     );
-    assert!(untrusting.peers().is_ok());
     untrusting.disconnect();
+    // Not acknowledged: a connection that trusts the sender receives it after reconnecting.
     let trusting =
         RelayConnection::connect(options(&b, &[&a], &journals.path().join("b2"))).unwrap();
-    let deadline = std::time::Instant::now() + Duration::from_millis(1500);
-    while std::time::Instant::now() < deadline {
-        if let Some(event) = trusting.next_event(100).unwrap() {
-            let event: Value = serde_json::from_str(&event).unwrap();
-            assert_ne!(
-                event["type"], "message",
-                "a dropped message must not be redelivered"
-            );
-        }
-    }
+    assert_eq!(next_message(&trusting)["data"], "c3RhbGU=");
+    // Acknowledging an unwanted one drops it for good.
     trusting.disconnect();
     let (b, _) = groups(&b, json!({"op":"exit","disband":false})).unwrap();
     assert_eq!(b["exit_completed"], true);

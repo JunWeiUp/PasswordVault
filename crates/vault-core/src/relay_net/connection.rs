@@ -196,18 +196,18 @@ impl Shared {
                 return Err("PersistentJournalRequired".into());
             }
             let from = text(&event, "from")?.to_owned();
-            // A message we can never open (sender no longer trusted, e.g. a removed member, or a
-            // corrupt envelope) is acknowledged and dropped. Failing the connection instead
-            // would make the relay redeliver it on every reconnect, forever.
+            // An envelope we cannot open is handed to the app instead of failing the connection:
+            // the sender may have just joined (this connection's trusted keys predate the
+            // roster change, so reconnect and it is redelivered) or have left / sent garbage
+            // (acknowledge to drop it). Only the app knows the current signed roster.
             let value = match self
                 .identity
                 .open(&from, "message", &id, text(&event, "body")?)
             {
                 Ok(value) => value,
                 Err(_) => {
-                    if offline {
-                        self.send(json!({"type":"ack","id":id,"from":from}))?;
-                    }
+                    let trusted = self.identity.trusted.contains_key(&from);
+                    let _ = self.events.send(json!({"type":"undecryptable","id":id,"from":from,"offline":offline,"trusted":trusted}));
                     return Ok(());
                 }
             };
