@@ -3,6 +3,7 @@ mod capabilities;
 mod contract;
 mod devices;
 mod history;
+mod legacy_peer;
 mod note_blobs;
 mod note_bodies;
 mod notes;
@@ -66,11 +67,6 @@ impl OpenVault {
         }
         self.hydrated_notes.clear();
     }
-    /// Installs the persisted (`_bodySplit`-stripped) document and wipes the hydrated note LRU cache.
-    fn commit_persisted(&mut self, persisted: Document) {
-        self.document = persisted;
-        self.clear_hydrated_cache();
-    }
 }
 pub struct DiskVault {
     directory: PathBuf,
@@ -131,7 +127,7 @@ fn open_database(path: &Path, root: &[u8; 32], create: bool) -> Result<Connectio
     }
     Ok(conn)
 }
-#[must_use = "assign the returned stripped Document to open.document via commit_persisted()"]
+#[must_use = "assign the returned stripped Document to open.document"]
 fn save_document(
     conn: &mut Connection,
     root: &[u8; 32],
@@ -140,7 +136,7 @@ fn save_document(
 ) -> Result<Document> {
     save_document_with_history(conn, root, vault_id, None, doc, None)
 }
-#[must_use = "assign the returned stripped Document to open.document via commit_persisted()"]
+#[must_use = "assign the returned stripped Document to open.document"]
 fn save_document_with_history(
     conn: &mut Connection,
     root: &[u8; 32],
@@ -154,16 +150,7 @@ fn save_document_with_history(
     storage(tx.commit())?;
     Ok(persisted)
 }
-#[must_use = "assign the returned stripped Document to open.document via commit_persisted()"]
-fn save_document_row(
-    conn: &Connection,
-    root: &[u8; 32],
-    vault_id: &str,
-    doc: &Document,
-) -> Result<Document> {
-    save_document_row_with_prev(conn, root, vault_id, None, doc, None)
-}
-#[must_use = "assign the returned stripped Document to open.document via commit_persisted()"]
+#[must_use = "assign the returned stripped Document to open.document"]
 fn save_document_row_with_prev(
     conn: &Connection,
     root: &[u8; 32],
@@ -283,6 +270,10 @@ impl DiskVault {
     }
     fn unlock_key(&mut self, root: Secret, header: Header) -> Result<()> {
         let mut connection = open_database(&self.directory.join("vault.sqlite"), &root, false)?;
+        if legacy_peer::possible(&connection)? {
+            let document = load_document_raw(&connection, &root, &header.vault_id)?;
+            legacy_peer::leave(&mut connection, &root, &header.vault_id, document)?;
+        }
         let (document, document_loaded) = if queries::current(&connection, &root, &header.vault_id)?
         {
             (Document::default(), false)

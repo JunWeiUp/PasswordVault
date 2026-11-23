@@ -19,12 +19,7 @@ impl DiskVault {
             .as_str()
             .ok_or(VaultError::InvalidData)?;
         let open = self.open()?;
-        let documents = relay::peer::readable_documents(
-            &open.connection,
-            &open.root,
-            &open.header.vault_id,
-            &open.document,
-        )?;
+        let documents = [(String::new(), open.document.clone())];
         for (library, doc) in documents {
             if request["library"]
                 .as_str()

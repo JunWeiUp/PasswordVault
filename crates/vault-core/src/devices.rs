@@ -129,17 +129,12 @@ pub fn device_search_text(item: &Value) -> String {
 /// No unauthenticated caller-supplied capability flag may bypass this gate.
 pub fn guard_device_sync(format: u32, op: &str) -> Result<()> {
     if format >= DEVICES_FORMAT
-        && (op.starts_with("relay-")
-            || op.starts_with("peer-transport-")
-            || op.starts_with("sync-"))
+        && (op.starts_with("relay-") || op.starts_with("sync-"))
         && !matches!(
             op,
             "relay-status"
-                | "relay-peer-status"
-                | "relay-peer-list"
                 | "relay-credentials-read"
                 | "relay-credentials-write"
-                | "peer-transport-status"
                 // Access-reducing local operations stay available: revoking a
                 // device and detaching (archiving the journal) export nothing.
                 | "relay-revoke"
@@ -174,7 +169,6 @@ mod device_sync_gate_tests {
             "relay-init",
             "relay-receive",
             "relay-resolve",
-            "relay-peer-export",
             "sync-apply",
         ] {
             assert!(

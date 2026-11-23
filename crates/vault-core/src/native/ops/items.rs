@@ -12,12 +12,7 @@ impl DiskVault {
                 // in `vault_state` without decrypting `note_bodies`.
                 if request["summaries"] == true {
                     let summary = summary_document(&open.document);
-                    Ok(json!(relay::peer::editable_document(
-                        &open.connection,
-                        &open.root,
-                        &open.header.vault_id,
-                        &summary
-                    )?))
+                    Ok(json!(summary))
                 } else {
                     let hydrated = note_bodies::hydrate(
                         &open.connection,
@@ -25,18 +20,13 @@ impl DiskVault {
                         &open.header.vault_id,
                         open.document.clone(),
                     )?;
-                    Ok(json!(relay::peer::editable_document(
-                        &open.connection,
-                        &open.root,
-                        &open.header.vault_id,
-                        &hydrated
-                    )?))
+                    Ok(json!(hydrated))
                 }
             }
             "get" => {
                 let open = self.open()?;
                 let id = string("id")?;
-                let mut item = if let Some(cached) = open.get_hydrated(id) {
+                let item = if let Some(cached) = open.get_hydrated(id) {
                     cached
                 } else {
                     let mut found = open
@@ -56,13 +46,6 @@ impl DiskVault {
                     }
                     found
                 };
-                item = relay::peer::editable_item(
-                    &open.connection,
-                    &open.root,
-                    &open.header.vault_id,
-                    &open.document,
-                    item,
-                )?;
                 Ok(item)
             }
             "save" => {
@@ -71,13 +54,7 @@ impl DiskVault {
                     return Err(VaultError::InvalidData);
                 }
                 let open = self.open()?;
-                let mut item = relay::peer::prepare_save(
-                    &open.connection,
-                    &open.root,
-                    &open.header.vault_id,
-                    &open.document,
-                    &request["item"],
-                )?;
+                let mut item = request["item"].clone();
                 note_bodies::strip_internal_markers(&mut item);
                 preserve_passkeys_for_edit(&open.document, &mut item)?;
                 let item_id = item["id"]
@@ -118,15 +95,8 @@ impl DiskVault {
                     doc.upsert(item.clone())?;
                     Ok(json!({"ok":true}))
                 })?;
-                let open = self.open()?;
-                open.invalidate_hydrated(&item_id);
-                relay::peer::save_result(
-                    &open.connection,
-                    &open.root,
-                    &open.header.vault_id,
-                    &open.document,
-                    &item_id,
-                )
+                self.open()?.invalidate_hydrated(&item_id);
+                Ok(json!({"ok":true}))
             }
             "remove" => self.remove_note_record(string("id")?),
             "seal-drafts" => {
@@ -162,18 +132,6 @@ impl DiskVault {
                 )?;
                 let items: Vec<Value> =
                     serde_json::from_slice(&bytes).map_err(|_| VaultError::InvalidData)?;
-                let items = items
-                    .iter()
-                    .map(|item| {
-                        relay::peer::prepare_save(
-                            &open.connection,
-                            &open.root,
-                            &open.header.vault_id,
-                            &open.document,
-                            item,
-                        )
-                    })
-                    .collect::<Result<Vec<_>>>()?;
                 for item in &items {
                     self.validate_note_save(
                         &json!({"item":item,"richNotes":request["richNotes"]}),

@@ -8,8 +8,9 @@ pub(super) struct BrowserExtras {
     pub enabled: bool,
     pub history: Vec<HistoryRevision>,
     pub attachments: Vec<AttachmentMeta>,
-    #[serde(default)]
-    pub peers: super::peer::BrowserPeerState,
+    /// State of the removed peer libraries; read once to leave one, never written.
+    #[serde(default, skip_serializing)]
+    pub peers: super::peer::LegacyPeers,
     #[serde(default)]
     pub draft: Option<Value>,
 }
@@ -47,7 +48,6 @@ impl BrowserVault {
                 .filter(|r| !r.item.is_null())
                 .map(|r| r.item.clone()),
         );
-        all.items.extend(self.peer_retained_items());
         if let Some(draft) = &self.extras.draft {
             all.items.push(draft.clone());
         }
@@ -98,12 +98,8 @@ impl BrowserVault {
         Ok(data)
     }
     pub(super) fn capture_history(&mut self, before: &Document) -> Result<()> {
-        if !self.extras.enabled
-            || self.document.settings["activePeerLibrary"]
-                .as_str()
-                .is_some_and(|s| !s.is_empty())
-            || before.settings["activePeerLibrary"] != self.document.settings["activePeerLibrary"]
-        {
+        let _ = before;
+        if !self.extras.enabled {
             return Ok(());
         }
         self.document.format_version = self.document.format_version.max(5);
@@ -140,7 +136,7 @@ impl BrowserVault {
     }
     pub(super) fn full_archive(&self, password: &str) -> Result<String> {
         archive::encode_archive(
-            &self.peer_backup_document()?,
+            &self.document,
             self.extras.attachments.clone(),
             self.extras.history.clone(),
             self.extras.enabled,
@@ -150,13 +146,6 @@ impl BrowserVault {
     }
     pub(super) fn import_full_archive(&mut self, input: &str, password: &str) -> Result<usize> {
         let decoded = archive::decode_archive(input, password)?;
-        if self.document.settings["activePeerLibrary"]
-            .as_str()
-            .is_some_and(|s| !s.is_empty())
-        {
-            return Err(VaultError::Unsupported);
-        }
-        self.peer_restore_snapshots(&decoded.manifest.document.settings["peerLibrarySnapshots"])?;
         let mut next = self.document.clone();
         let count = next.merge(decoded.manifest.document)?;
         for revision in decoded.manifest.history {
@@ -182,7 +171,6 @@ impl BrowserVault {
                     .ok_or(VaultError::InvalidData)?,
                 &archive::attachment_aad(&decoded.archive.header.vault_id, &meta)?,
             )?;
-            self.peer_register_local_attachment(&meta.id)?;
             if let Some(old) = self.extras.attachments.iter().find(|m| m.id == meta.id) {
                 if serde_json::to_value(old).ok() != serde_json::to_value(&meta).ok()
                     || self.read_file(old)?.as_slice() != bytes.as_slice()
@@ -204,9 +192,6 @@ impl BrowserVault {
         Ok(count)
     }
     pub(super) fn forget_entry_extras(&mut self, id: &str) {
-        if !self.extras.peers.libraries.is_empty() {
-            return;
-        }
         self.extras.history.retain(|r| r.item_id != id);
         let removed: Vec<_> = self
             .extras
@@ -224,16 +209,6 @@ impl BrowserVault {
         let mut used = HashSet::new();
         for item in self.document_with_history().items {
             crate::archive::item_attachment_refs(&item, &mut used)?;
-        }
-        let removed: Vec<_> = self
-            .extras
-            .attachments
-            .iter()
-            .filter(|meta| !used.contains(&meta.id))
-            .map(|meta| meta.id.clone())
-            .collect();
-        for id in removed {
-            self.peer_forget_local_attachment(&id);
         }
         self.extras.attachments.retain(|m| used.contains(&m.id));
         Arc::make_mut(&mut self.files).retain(|id, _| used.contains(id));
@@ -391,7 +366,6 @@ impl BrowserVault {
                     &data,
                     &archive::attachment_aad(&self.header.vault_id, &meta)?,
                 )?;
-                self.peer_register_local_attachment(&meta.id)?;
                 Arc::make_mut(&mut self.files).insert(meta.id.clone(), sealed);
                 self.extras.attachments.push(meta.clone());
                 self.document.format_version = self.document.format_version.max(3);

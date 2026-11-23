@@ -563,6 +563,7 @@ pub fn update_settings(doc: &mut Document, settings: &Value) -> Result<()> {
     }
     for (key, value) in input {
         // Core-owned identity and replay state must not be overwritten by stale UI snapshots.
+        // The peer-library keys are retired; stale clients or backups still cannot set them.
         if [
             "sharingIdentity",
             "syncSeen",

@@ -8,8 +8,6 @@
     "AttachmentMeta": "object",
     "MeshPacket": "object",
     "MeshStatus": "object",
-    "PeerPacket": "object",
-    "PeerResult": "object",
     "RelayPacket": "object",
     "SystemAssertionResponse": "object",
     "SystemRegistrationResponse": "object",
@@ -97,7 +95,7 @@
         "id": "string"
       },
       "result": "Item",
-      "notes": "Hydrated item (split note bodies restored) with peer-library editability annotations"
+      "notes": "Hydrated item (split note bodies restored)"
     },
     "list": {
       "group": "items",
@@ -106,7 +104,7 @@
         "summaries?": "bool"
       },
       "result": "{formatVersion:number,items:Item[],sharedVaults:object[],sharedMembers:object[],settings:object}",
-      "notes": "summaries=true returns zero-hydration note summaries (noteSummary items); settings gets _peerLibrary* annotations"
+      "notes": "summaries=true returns zero-hydration note summaries (noteSummary items)"
     },
     "open-drafts": {
       "group": "items",
@@ -145,7 +143,7 @@
         "expectedUpdatedAt?": "string",
         "historyMeta?": "object"
       },
-      "result": "{ok:true,peerBaseHeads?:string[],peerLibrary?:string}",
+      "result": "{ok:true}",
       "notes": "Rejects item.noteSummary=true; StaleEdit if expectedUpdatedAt mismatches; historyMeta {actorType?:user|ai|milestone|restore|sync,actor?,summary?,milestone?,coalesce?} (ai/milestone auto-enable history); rich-v1 notes need richNotes=true; creditCard/identity/customFields/importSource trigger format-6 upgrade"
     },
     "seal-drafts": {
@@ -265,8 +263,7 @@
       "group": "history",
       "lock": "unlocked",
       "params": {},
-      "result": "{ok:true}",
-      "notes": "When a peer library is active, rerouted to relay-peer-history-* with library injected"
+      "result": "{ok:true}"
     },
     "history-list": {
       "group": "history",
@@ -277,7 +274,7 @@
         "limit?": "number"
       },
       "result": "{total:number,revisions:Revision[]}",
-      "notes": "limit default 100 clamp 1..500; Revision {id,itemId,capturedAt,item,actorType?,actor?,summary?,milestone?}. When a peer library is active, rerouted to relay-peer-history-* with library injected"
+      "notes": "limit default 100 clamp 1..500; Revision {id,itemId,capturedAt,item,actorType?,actor?,summary?,milestone?}"
     },
     "history-milestone": {
       "group": "history",
@@ -287,7 +284,7 @@
         "summary": "string"
       },
       "result": "{ok:true,revision:Revision}",
-      "notes": "summary 1..240 chars; auto-enables history. Returns Unsupported when a peer library is active (no relay-peer-history-milestone)"
+      "notes": "summary 1..240 chars; auto-enables history"
     },
     "history-prune": {
       "group": "history",
@@ -296,8 +293,7 @@
         "id": "string",
         "keepMilestones?": "bool"
       },
-      "result": "{ok:true}",
-      "notes": "Peer-library variant returns {ok:true,retainedForSync:true}. When a peer library is active, rerouted to relay-peer-history-* with library injected"
+      "result": "{ok:true}"
     },
     "history-restore": {
       "group": "history",
@@ -308,14 +304,13 @@
         "time": "string"
       },
       "result": "{ok:true}",
-      "notes": "time must be RFC3339. When a peer library is active, rerouted to relay-peer-history-* with library injected"
+      "notes": "time must be RFC3339"
     },
     "history-status": {
       "group": "history",
       "lock": "unlocked",
       "params": {},
-      "result": "{enabled:bool}",
-      "notes": "When a peer library is active, rerouted to relay-peer-history-* with library injected (then returns {enabled:true,ok:true})"
+      "result": "{enabled:bool}"
     },
     "recovery-disable": {
       "group": "recovery",
@@ -784,7 +779,7 @@
         "currentPassword": "string"
       },
       "result": "{ok:true}",
-      "notes": "confirm must be true; snapshots to before-devices-format7 and upgrades to format 7 (blocks most sync); Unsupported while a peer library is active"
+      "notes": "confirm must be true; snapshots to before-devices-format7 and upgrades to format 7 (blocks most sync)"
     },
     "devices-file-read": {
       "group": "devices",
@@ -1061,192 +1056,6 @@
       },
       "result": "{ok:true,item:Item,conflictCount:number}",
       "notes": "strategy local(default)|remote|both|custom; custom requires item with matching id"
-    },
-    "relay-peer-authorize": {
-      "group": "relay-peer",
-      "lock": "unlocked",
-      "params": {
-        "library": "string",
-        "peer": "string",
-        "member?": "object"
-      },
-      "result": "PeerResult",
-      "notes": "member {publicKey,transportKey,role} or null to revoke. PeerResult={ok:true,library,generation,publicKey,device,personal}; Blocked (DevicesSyncBlocked) when formatVersion>=7"
-    },
-    "relay-peer-cancel-join": {
-      "group": "relay-peer",
-      "lock": "unlocked",
-      "params": {
-        "library": "string"
-      },
-      "result": "{ok:true}",
-      "notes": "Only for not-yet-joined identities; Blocked (DevicesSyncBlocked) when formatVersion>=7"
-    },
-    "relay-peer-create": {
-      "group": "relay-peer",
-      "lock": "unlocked",
-      "params": {
-        "device": "string",
-        "personal?": "bool",
-        "transportKey?": "string",
-        "name?": "string",
-        "migrateLegacy?": "bool"
-      },
-      "result": "{library:string,device:string,publicKey:string}",
-      "notes": "name default 'Family library' (non-personal, <=128); migrateLegacy=true required for personal when legacy relay enabled; Blocked (DevicesSyncBlocked) when formatVersion>=7"
-    },
-    "relay-peer-export": {
-      "group": "relay-peer",
-      "lock": "unlocked",
-      "params": {
-        "library": "string",
-        "peer": "string"
-      },
-      "result": "{protocol:'peer-v2',packet:PeerPacket,files:object[]}",
-      "notes": "Blocked (DevicesSyncBlocked) when formatVersion>=7"
-    },
-    "relay-peer-history-enable": {
-      "group": "relay-peer",
-      "lock": "unlocked",
-      "params": {
-        "library": "string"
-      },
-      "result": "{enabled:true,ok:true}",
-      "notes": "Blocked (DevicesSyncBlocked) when formatVersion>=7"
-    },
-    "relay-peer-history-list": {
-      "group": "relay-peer",
-      "lock": "unlocked",
-      "params": {
-        "library": "string",
-        "id": "string",
-        "offset?": "number",
-        "limit?": "number"
-      },
-      "result": "{total:number,revisions:Revision[]}",
-      "notes": "Blocked (DevicesSyncBlocked) when formatVersion>=7"
-    },
-    "relay-peer-history-prune": {
-      "group": "relay-peer",
-      "lock": "unlocked",
-      "params": {
-        "library": "string",
-        "id": "string"
-      },
-      "result": "{ok:true,retainedForSync:true}",
-      "notes": "Blocked (DevicesSyncBlocked) when formatVersion>=7"
-    },
-    "relay-peer-history-restore": {
-      "group": "relay-peer",
-      "lock": "unlocked",
-      "params": {
-        "library": "string",
-        "id": "string",
-        "revisionId": "string",
-        "time": "string"
-      },
-      "result": "PeerResult",
-      "notes": "time RFC3339; Blocked (DevicesSyncBlocked) when formatVersion>=7"
-    },
-    "relay-peer-history-status": {
-      "group": "relay-peer",
-      "lock": "unlocked",
-      "params": {
-        "library": "string"
-      },
-      "result": "{enabled:true,ok:true}",
-      "notes": "Blocked (DevicesSyncBlocked) when formatVersion>=7"
-    },
-    "relay-peer-identity": {
-      "group": "relay-peer",
-      "lock": "unlocked",
-      "params": {
-        "device": "string",
-        "personal?": "bool",
-        "confirmPersonalSync?": "bool"
-      },
-      "result": "{library:string,device:string,publicKey:string}",
-      "notes": "Joiner identity with pending- library id; personal requires confirmPersonalSync=true; Blocked (DevicesSyncBlocked) when formatVersion>=7"
-    },
-    "relay-peer-join": {
-      "group": "relay-peer",
-      "lock": "unlocked",
-      "params": {
-        "library": "string",
-        "envelope": "object",
-        "expectedLibrary": "string",
-        "founderKey": "string",
-        "sender?": "string"
-      },
-      "result": "PeerResult|{ok:true,partial:true}",
-      "notes": "envelope {packet,files}; envelope.protocol 'peer-v2-chunk' requires sender and is reassembled; Blocked (DevicesSyncBlocked) when formatVersion>=7"
-    },
-    "relay-peer-list": {
-      "group": "relay-peer",
-      "lock": "unlocked",
-      "params": {},
-      "result": "{libraries:{id,personal,name,role}[],active:string|null}"
-    },
-    "relay-peer-receive": {
-      "group": "relay-peer",
-      "lock": "unlocked",
-      "params": {
-        "library": "string",
-        "envelope": "object",
-        "sender?": "string"
-      },
-      "result": "PeerResult|{ok:true,partial:true}",
-      "notes": "Chunked envelopes (protocol 'peer-v2-chunk') require sender; Blocked (DevicesSyncBlocked) when formatVersion>=7"
-    },
-    "relay-peer-rekey": {
-      "group": "relay-peer",
-      "lock": "unlocked",
-      "params": {
-        "library": "string",
-        "device": "string",
-        "transportKey": "string"
-      },
-      "result": "PeerResult",
-      "notes": "Admin only; recovers a copy under a new library id; Blocked (DevicesSyncBlocked) when formatVersion>=7"
-    },
-    "relay-peer-resolve": {
-      "group": "relay-peer",
-      "lock": "unlocked",
-      "params": {
-        "library": "string",
-        "key": "string",
-        "value": "any"
-      },
-      "result": "PeerResult",
-      "notes": "key must have >=2 heads; Blocked (DevicesSyncBlocked) when formatVersion>=7"
-    },
-    "relay-peer-status": {
-      "group": "relay-peer",
-      "lock": "unlocked",
-      "params": {
-        "library": "string"
-      },
-      "result": "{library,device,publicKey,personal,generation,frozen,members,conflicts,records,history}"
-    },
-    "relay-peer-switch": {
-      "group": "relay-peer",
-      "lock": "unlocked",
-      "params": {
-        "library": "string"
-      },
-      "result": "{ok:true}",
-      "notes": "\"\" switches back to personal; Blocked (DevicesSyncBlocked) when formatVersion>=7"
-    },
-    "relay-peer-write": {
-      "group": "relay-peer",
-      "lock": "unlocked",
-      "params": {
-        "library": "string",
-        "key": "string",
-        "value": "any"
-      },
-      "result": "PeerResult",
-      "notes": "Blocked (DevicesSyncBlocked) when formatVersion>=7"
     },
     "relay-protocol-keys": {
       "group": "relay-protocol",

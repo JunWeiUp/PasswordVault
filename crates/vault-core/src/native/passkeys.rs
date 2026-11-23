@@ -10,12 +10,7 @@ impl DiskVault {
         }
         if ["passkey-index", "passkey-matches"].contains(&op) {
             let open = self.open()?;
-            let documents = relay::peer::readable_documents(
-                &open.connection,
-                &open.root,
-                &open.header.vault_id,
-                &open.document,
-            )?;
+            let documents = vec![(String::new(), open.document.clone())];
             let index = passkey_identity_index(&documents);
             return if op == "passkey-index" {
                 Ok(index)
@@ -130,12 +125,7 @@ impl DiskVault {
             let rp = text("rpId")?;
             // Exclusion applies to all credentials available to this authenticator, not just the target item.
             let open = self.open()?;
-            let readable = relay::peer::readable_documents(
-                &open.connection,
-                &open.root,
-                &open.header.vault_id,
-                &open.document,
-            )?;
+            let readable = [(String::new(), open.document.clone())];
             if readable
                 .iter()
                 .flat_map(|(_, doc)| doc.items.iter())
@@ -156,7 +146,7 @@ impl DiskVault {
                 return Err(VaultError::AlreadyExists);
             }
             self.prepare_capability_upgrade()?;
-            self.mutate_personal_passkey(|doc| {
+            self.mutate(|doc| {
                 let mut item=if let Some(id)=request["itemId"].as_str() {
                     doc.items.iter().find(|item|item["id"]==id).cloned().ok_or(VaultError::InvalidData)?
                 } else {
@@ -186,21 +176,11 @@ impl DiskVault {
             })
         } else {
             let allowed = list("allowed")?;
-            let document = if let Some(library) = request["library"].as_str() {
-                let open = self.open()?;
-                relay::peer::readable_documents(
-                    &open.connection,
-                    &open.root,
-                    &open.header.vault_id,
-                    &open.document,
-                )?
-                .into_iter()
-                .find(|(id, _)| id == library)
-                .map(|(_, doc)| doc)
-                .ok_or(VaultError::Authentication)?
-            } else {
-                self.open()?.document.clone()
-            };
+            // Only the personal library exists; a stale library scope cannot match.
+            if request["library"].as_str().is_some_and(|l| !l.is_empty()) {
+                return Err(VaultError::Authentication);
+            }
+            let document = self.open()?.document.clone();
             let item = document
                 .items
                 .iter()
@@ -250,25 +230,21 @@ impl DiskVault {
 mod tests {
     use super::*;
     #[test]
-    fn passkey_creation_is_personal_and_excludes_all_readable_libraries() {
+    fn passkey_creation_rejects_stale_library_scopes_and_honours_exclusions() {
         let dir = tempfile::tempdir().unwrap();
         let mut vault = DiskVault::new(dir.path()).unwrap();
         let secret = "Synthetic scope fixture 2026!";
         vault.create(secret).unwrap();
-        let family = vault.command(&json!({"op":"relay-peer-create","device":"phone","personal":false,"name":"Family"})).unwrap()["library"].clone();
-        vault
-            .command(&json!({"op":"relay-peer-switch","library":family}))
-            .unwrap();
         let mut request = json!({"op":"passkey-system-create","rpId":"example.com","userHandle":URL_SAFE_NO_PAD.encode(b"alice"),"userName":"Alice","clientDataHash":URL_SAFE_NO_PAD.encode([8;32]),"currentPassword":secret});
         let created = vault.command(&request).unwrap();
         assert_eq!(created["library"], "");
         assert!(vault.open().unwrap().document.format_version >= 6);
         assert!(created["itemId"].is_string());
-        assert!(vault.open().unwrap().document.items.is_empty());
         let index = vault.command(&json!({"op":"passkey-index"})).unwrap();
         assert_eq!(index["passkeys"][0]["library"], "");
         assert_eq!(index["passkeys"][0]["itemId"], created["itemId"]);
-        request["library"] = family.clone();
+        // Peer libraries were removed: a stale library scope can never match.
+        request["library"] = json!("family");
         assert!(matches!(
             vault.command(&request),
             Err(VaultError::Authentication)
@@ -276,22 +252,19 @@ mod tests {
         request["library"] = json!("");
         request["clientDataHash"] = json!("bad");
         assert!(vault.command(&request).is_err());
-        assert!(vault.open().unwrap().document.items.is_empty());
+        assert_eq!(vault.open().unwrap().document.items.len(), 1);
         request["clientDataHash"] = json!(URL_SAFE_NO_PAD.encode([8; 32]));
-        // Seed a distinct family credential through the internal mutation path;
-        // ordinary editor saves deliberately cannot inject private key records.
-        let (key, _) = passkey_create_system("example.com", b"family", "Family", &[9; 32]).unwrap();
+        // Seed a second credential through the internal mutation path; ordinary editor saves
+        // deliberately cannot inject private key records.
+        let (key, _) = passkey_create_system("example.com", b"other", "Other", &[9; 32]).unwrap();
         let excluded = key.credential_id.clone();
-        vault.mutate(|doc| { doc.upsert(json!({"id":"family-key","type":concat!("pass","word"),"title":"Shared","passkeys":[serde_json::to_value(&key).unwrap()]}))?; Ok(json!({})) }).unwrap();
-        vault
-            .command(&json!({"op":"relay-peer-switch","library":""}))
-            .unwrap();
+        vault.mutate(|doc| { doc.upsert(json!({"id":"other-key","type":concat!("pass","word"),"title":"Other","passkeys":[serde_json::to_value(&key).unwrap()]}))?; Ok(json!({})) }).unwrap();
         request["excluded"] = json!([excluded]);
         assert!(matches!(
             vault.command(&request),
             Err(VaultError::AlreadyExists)
         ));
-        assert_eq!(vault.open().unwrap().document.items.len(), 1);
+        assert_eq!(vault.open().unwrap().document.items.len(), 2);
         vault.lock();
         vault.unlock(secret).unwrap();
         assert_eq!(

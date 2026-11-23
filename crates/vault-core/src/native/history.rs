@@ -263,11 +263,7 @@ pub(super) fn capture_with_meta(
     next: &Document,
     meta: Option<&HistoryMeta>,
 ) -> Result<()> {
-    if !enabled(conn)?
-        || next.settings["activePeerLibrary"]
-            .as_str()
-            .is_some_and(|s| !s.is_empty())
-    {
+    if !enabled(conn)? {
         return Ok(());
     }
     let exists: bool = storage(conn.query_row("SELECT count(*) FROM vault_state", [], |r| {
@@ -437,17 +433,8 @@ impl DiskVault {
         Ok(())
     }
     pub(super) fn history_command(&mut self, request: &Value) -> Result<Value> {
+        self.open()?;
         let text = |key: &str| request[key].as_str().ok_or(VaultError::InvalidData);
-        if let Some(library) = self.open()?.document.settings["activePeerLibrary"]
-            .as_str()
-            .filter(|s| !s.is_empty())
-            .map(str::to_owned)
-        {
-            let mut scoped = request.clone();
-            scoped["library"] = json!(library);
-            scoped["op"] = json!(text("op")?.replacen("history-", "relay-peer-history-", 1));
-            return self.relay_command(&scoped);
-        }
         match text("op")? {
             "history-enable" => {
                 self.ensure_history_enabled()?;

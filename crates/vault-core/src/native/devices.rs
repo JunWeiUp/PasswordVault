@@ -50,12 +50,6 @@ impl DiskVault {
             .as_str()
             .ok_or(VaultError::InvalidData)?;
         self.open()?.header.unlock(password)?;
-        if self.open()?.document.settings["activePeerLibrary"]
-            .as_str()
-            .is_some_and(|s| !s.is_empty())
-        {
-            return Err(VaultError::Unsupported);
-        }
         if format >= DEVICES_FORMAT {
             return Ok(json!({"ok":true}));
         }

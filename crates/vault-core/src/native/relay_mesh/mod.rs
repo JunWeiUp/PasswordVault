@@ -282,12 +282,6 @@ pub(super) fn capture(
     if !enabled(conn)? {
         return Ok(false);
     }
-    if doc.settings["activePeerLibrary"]
-        .as_str()
-        .is_some_and(|s| !s.is_empty())
-    {
-        return Ok(true);
-    }
     let mut mesh = load(conn, root, vault)?;
     let migrated_legacy = !mesh.baseline.is_empty();
     mesh.ensure_digests();

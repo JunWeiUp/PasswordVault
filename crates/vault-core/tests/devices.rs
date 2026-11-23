@@ -191,13 +191,7 @@ fn sync_gate_cannot_be_bypassed_by_claimed_peer_capabilities() {
     enable(&s);
     // Registered sync ops reach the devices gate; unregistered names are already rejected
     // earlier by the command registry, but the gate itself still covers them.
-    for op in [
-        "relay-peer-export",
-        "sync-respond",
-        "sync-apply",
-        "sync-request",
-        "relay-peer-receive",
-    ] {
+    for op in ["sync-respond", "sync-apply", "sync-request"] {
         assert!(
             matches!(
                 run(&s, json!({"op":op,"peerFormat":7})),
