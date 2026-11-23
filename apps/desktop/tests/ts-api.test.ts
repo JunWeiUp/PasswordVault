@@ -3,6 +3,7 @@
 import { expect, test } from "nsh/test";
 import { MCP_INSTRUCTIONS, MCP_TOOLS, MCP_TOOL_BY_NAME } from "../ui/api/mcpTools";
 import { AI_ERRORS, AI_OPS, aiError } from "../ui/api/aiAccess";
+import { CORE_OPS, type CoreRequest } from "../ui/api/coreContract.generated";
 import {
   buildAiClientViews,
   clientStateLabel,
@@ -175,4 +176,21 @@ test("AI paired client view-model distinguishes duplicate names, aggregates tele
   expect(filterAiClients(views, "all", "主开发").map((v) => v.id)).toEqual(["c-a1"]);
   expect(aiError("Error: ClientPaused")).toBe(AI_ERRORS.ClientPaused);
   expect(pruneClientNotes({ "c-a1": "主开发终端", "c-revoked": "gone" }, ["c-a1"])).toEqual({ "c-a1": "主开发终端" });
+});
+
+test("vault-core command contract types every core request", () => {
+  expect(CORE_OPS.length).toBeGreaterThan(100);
+  expect(new Set(CORE_OPS).size).toBe(CORE_OPS.length);
+  const ok: CoreRequest[] = [
+    { op: "status" },
+    { op: "history-prune", id: "n1", keepMilestones: true },
+    { op: "relay-mesh-resolve-conflict", id: "n1", strategy: "remote" },
+  ];
+  // @ts-expect-error unknown ops are rejected at compile time (and by the core gate at runtime)
+  const unknownOp: CoreRequest = { op: "not-a-core-op" };
+  // @ts-expect-error misspelled params are rejected
+  const misspelled: CoreRequest = { op: "relay-mesh-resolve-conflict", noteId: "n1", resolution: "keep-local" };
+  // @ts-expect-error required params cannot be omitted
+  const missing: CoreRequest = { op: "history-restore", id: "n1", revisionId: "r1" };
+  expect(ok.length + [unknownOp, misspelled, missing].length).toBe(6);
 });

@@ -13,6 +13,7 @@ cargo_cmd=("$CARGO")
 export MACOSX_DEPLOYMENT_TARGET=13.0
 
 core() {
+  python3 tool/core_contract.py check
   "${cargo_cmd[@]}" fmt --all --check
   "${cargo_cmd[@]}" test -p vault-core --release --locked
   "${cargo_cmd[@]}" clippy -p vault-core --all-targets -- -D warnings

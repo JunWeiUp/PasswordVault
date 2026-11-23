@@ -3,6 +3,9 @@
 // stay checked by TypeScript and easy for both humans and AI tools to navigate.
 import type { Vault } from "passwordvault/native";
 import type { Item } from "./vaultMeta";
+import type { CoreRequest } from "./coreContract.generated";
+
+export type { CoreOp, CoreParams, CoreRequest } from "./coreContract.generated";
 
 export type VaultStatus = { exists: boolean; unlocked: boolean };
 export type VaultListResult = { items: Item[]; settings: Record<string, any> };
@@ -49,7 +52,8 @@ export type MeshNoteConflictDto = {
 };
 
 export function createCoreApi(vault: Vault) {
-  const exec = async <T = any>(request: Record<string, unknown>): Promise<T> =>
+  // Requests are checked against crates/vault-core/contract/commands.json (see tool/core_contract.py).
+  const exec = async <T = any>(request: CoreRequest): Promise<T> =>
     JSON.parse(await vault.command(JSON.stringify(request))) as T;
 
   return {
@@ -83,13 +87,14 @@ export function createCoreApi(vault: Vault) {
 
     historyStatus: () => exec<HistoryStatus>({ op: "history-status" }),
     historyEnable: () => exec<{ ok?: boolean }>({ op: "history-enable" }),
-    historyMilestone: (id: string, summary: string, actor = "手动里程碑") =>
-      exec<{ ok?: boolean }>({ op: "history-milestone", id, summary, actor }),
-    historyList: (id: string) => exec<{ revisions?: any[]; enabled?: boolean }>({ op: "history-list", id }),
-    historyRestore: (id: string, revisionId: string) =>
-      exec<{ ok?: boolean }>({ op: "history-restore", id, revisionId }),
-    historyPrune: (id: string, keep: number) =>
-      exec<{ ok?: boolean }>({ op: "history-prune", id, keep }),
+    historyMilestone: (id: string, summary: string) =>
+      exec<{ ok?: boolean }>({ op: "history-milestone", id, summary }),
+    historyList: (id: string, offset?: number, limit?: number) =>
+      exec<{ revisions?: any[]; total?: number }>({ op: "history-list", id, offset, limit }),
+    historyRestore: (id: string, revisionId: string, time = new Date().toISOString()) =>
+      exec<{ ok?: boolean }>({ op: "history-restore", id, revisionId, time }),
+    historyPrune: (id: string, keepMilestones = false) =>
+      exec<{ ok?: boolean }>({ op: "history-prune", id, keepMilestones }),
 
     recoveryStatus: () => exec<RecoveryStatus>({ op: "recovery-status" }),
     recoveryGenerate: () => exec<{ key: string }>({ op: "recovery-generate" }),
@@ -111,11 +116,9 @@ export function createCoreApi(vault: Vault) {
     relayPeerResolve: (library: string, key: string, value: unknown) =>
       exec<{ ok?: boolean }>({ op: "relay-peer-resolve", library, key, value }),
     relayMeshConflicts: () => exec<{ conflicts?: MeshNoteConflictDto[] }>({ op: "relay-mesh-conflicts" }),
-    relayMeshResolveConflict: (noteId: string, resolution: "keep-local" | "keep-remote" | "keep-merged", mergedItem?: Item) =>
-      exec<{ ok?: boolean }>(
-        mergedItem
-          ? { op: "relay-mesh-resolve-conflict", noteId, resolution, mergedItem }
-          : { op: "relay-mesh-resolve-conflict", noteId, resolution },
+    relayMeshResolveConflict: (id: string, strategy: "local" | "remote" | "both" | "custom", item?: Item) =>
+      exec<{ ok?: boolean; item?: Item; conflictCount?: number }>(
+        item ? { op: "relay-mesh-resolve-conflict", id, strategy, item } : { op: "relay-mesh-resolve-conflict", id, strategy },
       ),
   };
 }

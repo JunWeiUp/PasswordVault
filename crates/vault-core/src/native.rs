@@ -1,5 +1,6 @@
 use crate::*;
 mod capabilities;
+mod contract;
 mod devices;
 mod history;
 mod note_blobs;
@@ -387,6 +388,9 @@ impl DiskVault {
     }
     fn command(&mut self, request: &Value) -> Result<Value> {
         let op = request["op"].as_str().ok_or(VaultError::InvalidData)?;
+        if !contract::is_registered(op) {
+            return Err(VaultError::Unsupported);
+        }
         let string = |key: &str| request[key].as_str().ok_or(VaultError::InvalidData);
         if matches!(op, "read-settings" | "matches" | "fill") {
             let open = self.unlocked.as_ref().ok_or(VaultError::Locked)?;

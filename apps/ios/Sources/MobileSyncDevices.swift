@@ -253,15 +253,15 @@ struct MobileSyncDevicesView: View {
       if let cf = resolvingConflict {
         Button(t("保留本机版本", "Keep local version")) {
           resolvingConflict = nil
-          Task { await resolveMeshConflict(cf, resolution: "keep-local") }
+          Task { await resolveMeshConflict(cf, strategy: "local") }
         }
         Button(t("采用远端版本", "Use remote version")) {
           resolvingConflict = nil
-          Task { await resolveMeshConflict(cf, resolution: "keep-remote") }
+          Task { await resolveMeshConflict(cf, strategy: "remote") }
         }
-        Button(t("保留自动合并结果", "Keep auto-merged")) {
+        Button(t("合并两版", "Keep both")) {
           resolvingConflict = nil
-          Task { await resolveMeshConflict(cf, resolution: "keep-merged") }
+          Task { await resolveMeshConflict(cf, strategy: "both") }
         }
         Button(t("取消", "Cancel"), role: .cancel) { resolvingConflict = nil }
       }
@@ -413,12 +413,12 @@ struct MobileSyncDevicesView: View {
     }
   }
 
-  private func resolveMeshConflict(_ cf: MeshNoteConflict, resolution: String) async {
+  private func resolveMeshConflict(_ cf: MeshNoteConflict, strategy: String) async {
     do {
       _ = try await store.perform([
         "op": .string("relay-mesh-resolve-conflict"),
-        "noteId": .string(cf.noteId),
-        "resolution": .string(resolution),
+        "id": .string(cf.noteId),
+        "strategy": .string(strategy),
       ])
       try? await store.refresh()
       await loadMeshConflicts()

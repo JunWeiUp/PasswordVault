@@ -183,7 +183,7 @@ internal class PersonalRelay(private val directory: File, private val vault: Vau
         require(invitation.opt("personal") is Boolean)
         val personal=invitation.getBoolean("personal")
         require((!personal||confirmPersonal)&&!c.has("peerExpectedLibrary")&&invitation.getString("kind")=="peer-v2-invite"&&invitation.getString("group")==c.getString("group")&&invitation.getString("endpoint")==c.getString("endpoint"))
-        val result=vault.command("relay-peer-identity",JSONObject().put("device",c.getString("device")).put("personal",personal).put("confirmPersonalSync",confirmPersonal).put("migrateLegacy",true))
+        val result=vault.command("relay-peer-identity",JSONObject().put("device",c.getString("device")).put("personal",personal).put("confirmPersonalSync",confirmPersonal))
         c.put("peerPreviousLibrary",c.optString("peerLibrary")).put("peerPreviousPeers",JSONObject(c.getJSONObject("peers").toString())).put("peerPreviousPaused",c.optBoolean("paused",true))
         c.put("peerLibrary",result.getString("library")).put("peerPendingLocalLibrary",result.getString("library")).put("peerExpectedLibrary",invitation.getString("library")).put("peerFounderKey",invitation.getString("founderKey")).put("paused",false)
         c.getJSONObject("peers").put(invitation.getString("device"),invitation.getString("transportKey"))

@@ -8,7 +8,7 @@ import { bindNativeVault } from "./native";
 import { clearSearchIndex, searchItems } from "./search";
 import { catMatches, isAiActor } from "./notes/knowledge";
 import { sortMode } from "./preferences";
-import { createCoreApi, type MeshNoteConflictDto } from "./api/core";
+import { createCoreApi, type CoreRequest, type MeshNoteConflictDto } from "./api/core";
 import { attachmentsNative } from "./api/nativeBridge";
 import {
   DEST_NAME,
@@ -34,7 +34,7 @@ export const vaultDirectory = vault.directory;
 /** Strongly-typed facade for `vault.command` JSON-RPC calls into `crates/vault-core`. */
 export const coreApi = createCoreApi(vault);
 
-export async function call<T = any>(request: Record<string, unknown>): Promise<T> {
+export async function call<T = any>(request: CoreRequest): Promise<T> {
   return coreApi.raw<T>(request);
 }
 
@@ -578,7 +578,7 @@ export async function saveMilestone(id: string, summary: string) {
   try {
     const clean = summary.trim();
     if (!clean) return false;
-    await coreApi.historyMilestone(id, clean, "手动里程碑");
+    await coreApi.historyMilestone(id, clean);
     await refreshItems();
     toast(`已保存里程碑版本「${clean}」`);
     return true;

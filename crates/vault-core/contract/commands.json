@@ -1,0 +1,1236 @@
+{
+  "$comment": "Single source of truth for the vault-core JSON command API (Vault::command). Ops not listed here are rejected with Unsupported. Edit this file, then run `python3 tool/core_contract.py generate`. Param names ending in '?' are optional; types: string|number|bool|object|array|any. `result` is documentation only.",
+  "version": 1,
+  "commands": {
+    "change-password": {
+      "group": "vault",
+      "lock": "unlocked",
+      "params": {
+        "currentPassword": "string",
+        "newPassword": "string"
+      },
+      "result": "{ok:true}"
+    },
+    "create": {
+      "group": "vault",
+      "lock": "none",
+      "params": {
+        "password": "string"
+      },
+      "result": "{ok:true}",
+      "notes": "Fails AlreadyExists if vault directory exists; leaves vault unlocked"
+    },
+    "create-migrated": {
+      "group": "vault",
+      "lock": "none",
+      "params": {
+        "source": "string",
+        "legacyPassword": "string",
+        "salt": "string",
+        "password": "string"
+      },
+      "result": "{imported:number}",
+      "notes": "Reads legacy (Flutter) SQLite DB at absolute path `source`; vault must not exist"
+    },
+    "lock": {
+      "group": "vault",
+      "lock": "none",
+      "params": {},
+      "result": "{ok:true}"
+    },
+    "read-settings": {
+      "group": "vault",
+      "lock": "unlocked",
+      "params": {},
+      "result": "object",
+      "notes": "Settings from browser query projection; served without loading the document (fast path before all other gates)"
+    },
+    "revoke-background": {
+      "group": "vault",
+      "lock": "unlocked",
+      "params": {},
+      "result": "{ok:true}",
+      "notes": "Rotates background-sync epoch, invalidating native background/browser grants"
+    },
+    "settings": {
+      "group": "vault",
+      "lock": "unlocked",
+      "params": {
+        "settings": "object"
+      },
+      "result": "{ok:true}",
+      "notes": "Partial merge; core-owned keys (sharingIdentity, syncSeen, noteCategories, activePeerLibrary, ...) are ignored/rejected; autoLockMinutes 1..120"
+    },
+    "status": {
+      "group": "vault",
+      "lock": "none",
+      "params": {},
+      "result": "{exists:bool,unlocked:bool,version:2}"
+    },
+    "unlock": {
+      "group": "vault",
+      "lock": "none",
+      "params": {
+        "password": "string"
+      },
+      "result": "{ok:true}"
+    },
+    "get": {
+      "group": "items",
+      "lock": "unlocked",
+      "params": {
+        "id": "string"
+      },
+      "result": "Item",
+      "notes": "Hydrated item (split note bodies restored) with peer-library editability annotations"
+    },
+    "list": {
+      "group": "items",
+      "lock": "unlocked",
+      "params": {
+        "summaries?": "bool"
+      },
+      "result": "{formatVersion:number,items:Item[],sharedVaults:object[],sharedMembers:object[],settings:object}",
+      "notes": "summaries=true returns zero-hydration note summaries (noteSummary items); settings gets _peerLibrary* annotations"
+    },
+    "open-drafts": {
+      "group": "items",
+      "lock": "unlocked",
+      "params": {
+        "payload": "object"
+      },
+      "result": "{items:Item[]}"
+    },
+    "remove": {
+      "group": "items",
+      "lock": "unlocked",
+      "params": {
+        "id": "string",
+        "richNotes?": "bool"
+      },
+      "result": "{ok:true}",
+      "notes": "Permanent delete incl. attachments and history; requires richNotes=true once formatVersion>=3"
+    },
+    "restore-drafts": {
+      "group": "items",
+      "lock": "unlocked",
+      "params": {
+        "payload": "object",
+        "richNotes?": "bool"
+      },
+      "result": "{ok:true}",
+      "notes": "Requires richNotes=true once formatVersion>=3"
+    },
+    "save": {
+      "group": "items",
+      "lock": "unlocked",
+      "params": {
+        "item": "object",
+        "richNotes?": "bool",
+        "expectedUpdatedAt?": "string",
+        "historyMeta?": "object"
+      },
+      "result": "{ok:true,peerBaseHeads?:string[],peerLibrary?:string}",
+      "notes": "Rejects item.noteSummary=true; StaleEdit if expectedUpdatedAt mismatches; historyMeta {actorType?:user|ai|milestone|restore|sync,actor?,summary?,milestone?,coalesce?} (ai/milestone auto-enable history); rich-v1 notes need richNotes=true; creditCard/identity/customFields/importSource trigger format-6 upgrade"
+    },
+    "seal-drafts": {
+      "group": "items",
+      "lock": "unlocked",
+      "params": {
+        "items": "array"
+      },
+      "result": "{payload:Sealed}",
+      "notes": "Seals arbitrary JSON (normally Item[]) with draft-recovery subkey"
+    },
+    "update-login": {
+      "group": "items",
+      "lock": "unlocked",
+      "params": {
+        "origin": "string",
+        "id": "string",
+        "accountId?": "string",
+        "username": "string",
+        "password": "string",
+        "time": "string"
+      },
+      "result": "{saved:true,updated:true}",
+      "notes": "Origin-bound credential update; old secret pushed to passwordHistory"
+    },
+    "collect-note-attachments": {
+      "group": "notes",
+      "lock": "unlocked",
+      "params": {
+        "richNotes": "bool"
+      },
+      "result": "{ok:true}",
+      "notes": "Only matches when richNotes=true (else Unsupported); GC of unreferenced attachments, no-op when relay retains attachments"
+    },
+    "note-attachment-cache-get": {
+      "group": "notes",
+      "lock": "unlocked",
+      "params": {
+        "noteId": "string",
+        "id": "string"
+      },
+      "result": "{excerpt:any|null,thumb:any|null}"
+    },
+    "note-attachment-cache-put": {
+      "group": "notes",
+      "lock": "unlocked",
+      "params": {
+        "noteId": "string",
+        "id": "string",
+        "excerpt?": "any",
+        "thumb?": "object"
+      },
+      "result": "{ok:true}",
+      "notes": "null/absent values keep existing cache; thumb.width/height stored as dimensions"
+    },
+    "note-attachment-state": {
+      "group": "notes",
+      "lock": "unlocked",
+      "params": {
+        "noteId": "string",
+        "id": "string",
+        "state": "string",
+        "sourceDevice?": "string",
+        "errorReason?": "string"
+      },
+      "result": "{ok:true}",
+      "notes": "state: ready|remote|downloading|failed"
+    },
+    "note-attachments-list": {
+      "group": "notes",
+      "lock": "unlocked",
+      "params": {
+        "noteId": "string"
+      },
+      "result": "{attachments:{id,noteId,name,mime,size,storage,blobId,chunks,state,sourceDevice,errorReason,hasCachedExcerpt,hasThumb,thumbWidth,thumbHeight}[]}"
+    },
+    "note-attachments-status": {
+      "group": "notes",
+      "lock": "unlocked",
+      "params": {},
+      "result": "{enabled:true,chunkSize:number,maxFileSize:number,count:number,blobAttachments:number,uniqueBlobs:number,diskFiles:number,totalBytes:number}"
+    },
+    "note-bodies-status": {
+      "group": "notes",
+      "lock": "unlocked",
+      "params": {},
+      "result": "{enabled:bool,count:number}"
+    },
+    "category-add": {
+      "group": "categories",
+      "lock": "unlocked",
+      "params": {
+        "name": "string"
+      },
+      "result": "{name:string}"
+    },
+    "category-remove": {
+      "group": "categories",
+      "lock": "unlocked",
+      "params": {
+        "name": "string",
+        "time": "string"
+      },
+      "result": "{updated:number}"
+    },
+    "category-rename": {
+      "group": "categories",
+      "lock": "unlocked",
+      "params": {
+        "name": "string",
+        "to": "string",
+        "time": "string"
+      },
+      "result": "{updated:number}"
+    },
+    "history-enable": {
+      "group": "history",
+      "lock": "unlocked",
+      "params": {},
+      "result": "{ok:true}",
+      "notes": "When a peer library is active, rerouted to relay-peer-history-* with library injected"
+    },
+    "history-list": {
+      "group": "history",
+      "lock": "unlocked",
+      "params": {
+        "id": "string",
+        "offset?": "number",
+        "limit?": "number"
+      },
+      "result": "{total:number,revisions:Revision[]}",
+      "notes": "limit default 100 clamp 1..500; Revision {id,itemId,capturedAt,item,actorType?,actor?,summary?,milestone?}. When a peer library is active, rerouted to relay-peer-history-* with library injected"
+    },
+    "history-milestone": {
+      "group": "history",
+      "lock": "unlocked",
+      "params": {
+        "id": "string",
+        "summary": "string"
+      },
+      "result": "{ok:true,revision:Revision}",
+      "notes": "summary 1..240 chars; auto-enables history. Returns Unsupported when a peer library is active (no relay-peer-history-milestone)"
+    },
+    "history-prune": {
+      "group": "history",
+      "lock": "unlocked",
+      "params": {
+        "id": "string",
+        "keepMilestones?": "bool"
+      },
+      "result": "{ok:true}",
+      "notes": "Peer-library variant returns {ok:true,retainedForSync:true}. When a peer library is active, rerouted to relay-peer-history-* with library injected"
+    },
+    "history-restore": {
+      "group": "history",
+      "lock": "unlocked",
+      "params": {
+        "id": "string",
+        "revisionId": "string",
+        "time": "string"
+      },
+      "result": "{ok:true}",
+      "notes": "time must be RFC3339. When a peer library is active, rerouted to relay-peer-history-* with library injected"
+    },
+    "history-status": {
+      "group": "history",
+      "lock": "unlocked",
+      "params": {},
+      "result": "{enabled:bool}",
+      "notes": "When a peer library is active, rerouted to relay-peer-history-* with library injected (then returns {enabled:true,ok:true})"
+    },
+    "recovery-disable": {
+      "group": "recovery",
+      "lock": "unlocked",
+      "params": {
+        "currentPassword": "string"
+      },
+      "result": "{ok:true}"
+    },
+    "recovery-enable": {
+      "group": "recovery",
+      "lock": "unlocked",
+      "params": {
+        "currentPassword": "string",
+        "key": "string"
+      },
+      "result": "{ok:true}"
+    },
+    "recovery-export": {
+      "group": "recovery",
+      "lock": "unlocked",
+      "params": {
+        "key": "string"
+      },
+      "result": "{content:string}",
+      "notes": "Archive encrypted with normalized recovery key"
+    },
+    "recovery-generate": {
+      "group": "recovery",
+      "lock": "unlocked",
+      "params": {},
+      "result": "{key:string}"
+    },
+    "recovery-reset-password": {
+      "group": "recovery",
+      "lock": "none",
+      "params": {
+        "key": "string",
+        "newPassword": "string"
+      },
+      "result": "{ok:true}",
+      "notes": "Must be locked (InvalidData if unlocked); leaves vault unlocked"
+    },
+    "recovery-restore-backup": {
+      "group": "recovery",
+      "lock": "none",
+      "params": {
+        "key": "string",
+        "content": "string",
+        "newPassword": "string"
+      },
+      "result": "{imported:number}",
+      "notes": "Vault directory must not exist; creates vault from archive"
+    },
+    "recovery-status": {
+      "group": "recovery",
+      "lock": "unlocked",
+      "params": {},
+      "result": "{enabled:bool}"
+    },
+    "create-from-backup": {
+      "group": "backup",
+      "lock": "none",
+      "params": {
+        "content": "string",
+        "password": "string",
+        "backupPassword?": "string",
+        "kind?": "string",
+        "richNotes?": "bool"
+      },
+      "result": "{imported:number}",
+      "notes": "Vault must not exist. kind: json(default)|csv|encrypted-csv. PasswordVaultArchive content requires richNotes=true; legacy backups with formatVersion>=3 rejected"
+    },
+    "export": {
+      "group": "backup",
+      "lock": "unlocked",
+      "params": {
+        "password": "string",
+        "richNotes?": "bool"
+      },
+      "result": "{content:string}",
+      "notes": "formatVersion>=3 requires richNotes=true and produces a PasswordVaultArchive; else encrypted JSON backup"
+    },
+    "export-csv-backup": {
+      "group": "backup",
+      "lock": "unlocked",
+      "params": {
+        "password": "string"
+      },
+      "result": "{content:string}",
+      "notes": "Unsupported when formatVersion>=3"
+    },
+    "export-cxf": {
+      "group": "backup",
+      "lock": "unlocked",
+      "params": {
+        "currentPassword": "string"
+      },
+      "result": "{content:string,skipped:any}",
+      "notes": "Reauthenticates; exports personal library only, incl. plaintext passkey keys"
+    },
+    "export-plain": {
+      "group": "backup",
+      "lock": "unlocked",
+      "params": {
+        "kind?": "string"
+      },
+      "result": "{content:string}",
+      "notes": "kind csv|json(default); Unsupported when formatVersion>=3"
+    },
+    "import": {
+      "group": "backup",
+      "lock": "unlocked",
+      "params": {
+        "content": "string",
+        "password?": "string",
+        "kind?": "string",
+        "richNotes?": "bool"
+      },
+      "result": "{imported:number}",
+      "notes": "Archive content and any formatVersion>=3 vault require richNotes=true; kind json(default)|csv|encrypted-csv"
+    },
+    "import-commit": {
+      "group": "backup",
+      "lock": "unlocked",
+      "params": {
+        "format": "string",
+        "data": "string",
+        "mapping?": "object",
+        "choices?": "object"
+      },
+      "result": "{added:number,skipped:number,failures:object[]}",
+      "notes": "choices {rowIndex: 'add'|'skip'}; may snapshot + upgrade to format 6"
+    },
+    "import-preview": {
+      "group": "backup",
+      "lock": "unlocked",
+      "params": {
+        "format": "string",
+        "data": "string",
+        "mapping?": "object"
+      },
+      "result": "{rows:{index,item,duplicateIds,warnings}[],failures:object[],columns:string[]}",
+      "notes": "format csv|1pux|cxf; data is base64; mapping {string:string} for csv; preview redacts private keys"
+    },
+    "audit": {
+      "group": "tools",
+      "lock": "unlocked",
+      "params": {},
+      "result": "{id,title,weak,reused,expired}[]"
+    },
+    "fill": {
+      "group": "tools",
+      "lock": "unlocked",
+      "params": {
+        "origin": "string",
+        "id": "string",
+        "accountId?": "string"
+      },
+      "result": "{username:string,password:string}",
+      "notes": "Served from browser query projection (match-arm branch is dead code)"
+    },
+    "generate": {
+      "group": "tools",
+      "lock": "unlocked",
+      "params": {
+        "mode?": "string",
+        "length?": "number",
+        "upper?": "bool",
+        "lower?": "bool",
+        "digits?": "bool",
+        "symbols?": "bool",
+        "words?": "number",
+        "separator?": "string",
+        "capitalize?": "bool",
+        "number?": "bool"
+      },
+      "result": "{password:string}",
+      "notes": "mode characters(default, length 4..128 default 20)|passphrase"
+    },
+    "matches": {
+      "group": "tools",
+      "lock": "unlocked",
+      "params": {
+        "origin": "string"
+      },
+      "result": "{id,title,username,accountId?}[]",
+      "notes": "Served from browser query projection before other dispatch (match-arm branch is dead code)"
+    },
+    "otp-fill": {
+      "group": "tools",
+      "lock": "unlocked",
+      "params": {
+        "origin": "string",
+        "id": "string",
+        "time": "number"
+      },
+      "result": "{code:string}"
+    },
+    "otp-matches": {
+      "group": "tools",
+      "lock": "unlocked",
+      "params": {
+        "origin": "string"
+      },
+      "result": "{id,title,username,accountId?}[]"
+    },
+    "parse-totp": {
+      "group": "tools",
+      "lock": "unlocked",
+      "params": {
+        "uri": "string"
+      },
+      "result": "{id,type:'totp',title,username,secret,period}"
+    },
+    "structured-fill": {
+      "group": "tools",
+      "lock": "unlocked",
+      "params": {
+        "origin": "string",
+        "id": "string",
+        "includeSecurityCode?": "bool"
+      },
+      "result": "Record<string,string>",
+      "notes": "https exact origin only; autocomplete-token keyed fields (cc-*, given-name, ...)"
+    },
+    "structured-list": {
+      "group": "tools",
+      "lock": "unlocked",
+      "params": {},
+      "result": "{id,title,type}[]",
+      "notes": "creditCard/identity items"
+    },
+    "totp": {
+      "group": "tools",
+      "lock": "unlocked",
+      "params": {
+        "secret": "string",
+        "time": "number",
+        "period?": "number"
+      },
+      "result": "{code:string}",
+      "notes": "period default 30"
+    },
+    "wallet": {
+      "group": "tools",
+      "lock": "unlocked",
+      "params": {
+        "generate?": "bool",
+        "mnemonic?": "string",
+        "privateKey?": "string"
+      },
+      "result": "{privateKey:string,address:string,mnemonic:string|null,network:'ETH'}",
+      "notes": "generate=true creates mnemonic; else mnemonic or hex privateKey"
+    },
+    "breach-request": {
+      "group": "capabilities",
+      "lock": "unlocked",
+      "params": {
+        "password": "string"
+      },
+      "result": "{prefix:string,suffix:string}",
+      "notes": "Pure SHA-1 k-anonymity split but still requires unlocked vault"
+    },
+    "breach-response": {
+      "group": "capabilities",
+      "lock": "unlocked",
+      "params": {
+        "suffix": "string",
+        "response": "string"
+      },
+      "result": "{count:number}",
+      "notes": "Requires unlocked vault"
+    },
+    "relay-capabilities-accept": {
+      "group": "capabilities",
+      "lock": "unlocked",
+      "params": {
+        "peer": "string",
+        "proof": "object"
+      },
+      "result": "{ok:true}",
+      "notes": "proof {nonce,ciphertext} base64"
+    },
+    "relay-capabilities-challenge": {
+      "group": "capabilities",
+      "lock": "unlocked",
+      "params": {
+        "peer": "string"
+      },
+      "result": "{challenge:string}",
+      "notes": "Requires relay credentials identity (relay-credentials-write)"
+    },
+    "relay-capabilities-prove": {
+      "group": "capabilities",
+      "lock": "unlocked",
+      "params": {
+        "peer": "string",
+        "challenge": "string"
+      },
+      "result": "{proof:{nonce:string,ciphertext:string}}",
+      "notes": "Requires relay credentials identity"
+    },
+    "security-audit": {
+      "group": "capabilities",
+      "lock": "unlocked",
+      "params": {},
+      "result": "{findings:object[],catalogUpdatedAt,catalogCoverage,catalogSources,catalogLicense,catalogLicenseText:string,networkBreachStatus:'notChecked',siteCoverageStatus:string}"
+    },
+    "security-catalog": {
+      "group": "capabilities",
+      "lock": "unlocked",
+      "params": {
+        "catalog": "object"
+      },
+      "result": "{ok:true}",
+      "notes": "<=8 MiB, validated; stored in settings.securityCatalog"
+    },
+    "security-ignore": {
+      "group": "capabilities",
+      "lock": "unlocked",
+      "params": {
+        "key": "string",
+        "ignored": "bool"
+      },
+      "result": "{ok:true}"
+    },
+    "passkey-assert": {
+      "group": "passkeys",
+      "lock": "unlocked",
+      "params": {
+        "currentPassword": "string",
+        "itemId": "string",
+        "credentialId": "string",
+        "origin": "string",
+        "clientDataJSON": "string",
+        "allowed?": "array",
+        "library?": "string",
+        "prf?": "object",
+        "prfByCredential?": "object"
+      },
+      "result": "WebAuthnAssertionResponse & {prf?:object}",
+      "notes": "rpId is not read on this path (bound via origin/item)"
+    },
+    "passkey-backup-confirm": {
+      "group": "passkeys",
+      "lock": "unlocked",
+      "params": {
+        "currentPassword": "string",
+        "receipt": "object",
+        "credentialId": "string",
+        "library": "string",
+        "itemId": "string",
+        "actualArchiveHash": "string"
+      },
+      "result": "{confirmed:true}",
+      "notes": "Fields must equal sealed claim; nonce single-use"
+    },
+    "passkey-backup-export": {
+      "group": "passkeys",
+      "lock": "unlocked",
+      "params": {
+        "currentPassword": "string",
+        "backupPassword": "string",
+        "credentialId": "string",
+        "library?": "string",
+        "itemId?": "string"
+      },
+      "result": "{content:string,receipt:Sealed}",
+      "notes": "backupPassword >=10 chars and != currentPassword; receipt valid 15 min"
+    },
+    "passkey-create": {
+      "group": "passkeys",
+      "lock": "unlocked",
+      "params": {
+        "currentPassword": "string",
+        "origin": "string",
+        "rpId": "string",
+        "userHandle": "string",
+        "userName": "string",
+        "clientDataJSON": "string",
+        "excluded?": "array",
+        "itemId?": "string",
+        "library?": "string",
+        "prf?": "object",
+        "prfByCredential?": "object"
+      },
+      "result": "WebAuthnRegistrationResponse & {library:'',itemId:string,prf?:object}",
+      "notes": "Reauthenticates; userHandle base64url; library must be absent or \"\"; excluded string[]; upgrades to format 6"
+    },
+    "passkey-index": {
+      "group": "passkeys",
+      "lock": "unlocked",
+      "params": {},
+      "result": "{passkeys:{library,itemId,id,rpId,userName,userHandle}[],passwords:{library,itemId,url,username}[]}",
+      "notes": "Across all readable libraries"
+    },
+    "passkey-matches": {
+      "group": "passkeys",
+      "lock": "unlocked",
+      "params": {
+        "rpId?": "string"
+      },
+      "result": "{library,itemId,id,rpId,userName,userHandle}[]",
+      "notes": "rpId unwrap_or(\"\")"
+    },
+    "passkey-remove": {
+      "group": "passkeys",
+      "lock": "unlocked",
+      "params": {
+        "currentPassword": "string",
+        "itemId": "string",
+        "credentialId": "string"
+      },
+      "result": "{removed:true}"
+    },
+    "passkey-system-assert": {
+      "group": "passkeys",
+      "lock": "unlocked",
+      "params": {
+        "currentPassword": "string",
+        "itemId": "string",
+        "credentialId": "string",
+        "rpId": "string",
+        "clientDataHash": "string",
+        "allowed?": "array",
+        "library?": "string"
+      },
+      "result": "SystemAssertionResponse"
+    },
+    "passkey-system-create": {
+      "group": "passkeys",
+      "lock": "unlocked",
+      "params": {
+        "currentPassword": "string",
+        "rpId": "string",
+        "userHandle": "string",
+        "userName": "string",
+        "clientDataHash": "string",
+        "excluded?": "array",
+        "itemId?": "string",
+        "library?": "string"
+      },
+      "result": "SystemRegistrationResponse & {library:'',itemId:string}",
+      "notes": "clientDataHash base64url; library must be absent or \"\""
+    },
+    "passkey-system-registration-response": {
+      "group": "passkeys",
+      "lock": "unlocked",
+      "params": {
+        "currentPassword": "string",
+        "credentialId": "string",
+        "rpId": "string",
+        "clientDataHash": "string",
+        "library?": "string",
+        "itemId?": "string"
+      },
+      "result": "SystemRegistrationResponse",
+      "notes": "Only for credentials with confirmed backup"
+    },
+    "devices-enable": {
+      "group": "devices",
+      "lock": "unlocked",
+      "params": {
+        "confirm": "bool",
+        "currentPassword": "string"
+      },
+      "result": "{ok:true}",
+      "notes": "confirm must be true; snapshots to before-devices-format7 and upgrades to format 7 (blocks most sync); Unsupported while a peer library is active"
+    },
+    "devices-file-read": {
+      "group": "devices",
+      "lock": "unlocked",
+      "params": {
+        "id": "string",
+        "attachmentId": "string"
+      },
+      "result": "{text:string}",
+      "notes": "id = device item id; file <=256 KiB UTF-8"
+    },
+    "devices-status": {
+      "group": "devices",
+      "lock": "unlocked",
+      "params": {},
+      "result": "{enabled:bool,formatVersion:number,syncBlocked:bool}"
+    },
+    "add-member": {
+      "group": "sharing",
+      "lock": "unlocked",
+      "params": {
+        "vaultId": "string",
+        "publicKey": "string",
+        "role?": "string",
+        "name?": "string"
+      },
+      "result": "{id,vaultId,userPublicKey,encryptedVaultKey,role,name}",
+      "notes": "role default viewer"
+    },
+    "create-shared": {
+      "group": "sharing",
+      "lock": "unlocked",
+      "params": {
+        "name": "string",
+        "time": "string"
+      },
+      "result": "{id,name,encryptedVaultKey,createdAt,updatedAt,isDiscoverable:false}"
+    },
+    "identity": {
+      "group": "sharing",
+      "lock": "unlocked",
+      "params": {},
+      "result": "{publicKey:string}",
+      "notes": "Creates and persists sharing identity on first call"
+    },
+    "remove-member": {
+      "group": "sharing",
+      "lock": "unlocked",
+      "params": {
+        "vaultId": "string",
+        "publicKey": "string"
+      },
+      "result": "{ok:true}"
+    },
+    "share-options": {
+      "group": "sharing",
+      "lock": "unlocked",
+      "params": {
+        "id": "string"
+      },
+      "result": "{fields:string[],attachments:AttachmentMeta[]}",
+      "notes": "id read with unwrap_or(\"\"): effectively required"
+    },
+    "share-seal": {
+      "group": "sharing",
+      "lock": "unlocked",
+      "params": {
+        "id": "string",
+        "fields": "array",
+        "attachmentIds?": "array"
+      },
+      "result": "{version:1,id:string,nonce:string,ciphertext:string,key:string}",
+      "notes": "fields: string[]; attachmentIds: string[] (max 50, total <=24 MiB)"
+    },
+    "sync-apply": {
+      "group": "sharing",
+      "lock": "unlocked",
+      "params": {
+        "packet": "object",
+        "peerKey": "string",
+        "vaultId": "string"
+      },
+      "result": "{imported:number}",
+      "notes": "Blocked when formatVersion>=7"
+    },
+    "sync-request": {
+      "group": "sharing",
+      "lock": "unlocked",
+      "params": {
+        "peerKey": "string",
+        "vaultId": "string"
+      },
+      "result": "{context:object,payload:Sealed}",
+      "notes": "Blocked (DevicesSyncBlocked) when formatVersion>=7"
+    },
+    "sync-respond": {
+      "group": "sharing",
+      "lock": "unlocked",
+      "params": {
+        "packet": "object"
+      },
+      "result": "{context:object,payload:Sealed}",
+      "notes": "Blocked when formatVersion>=7"
+    },
+    "relay-credentials-read": {
+      "group": "relay",
+      "lock": "unlocked",
+      "params": {},
+      "result": "{data:string|null}",
+      "notes": "Dispatched first; needs only the key (no document load)"
+    },
+    "relay-credentials-write": {
+      "group": "relay",
+      "lock": "unlocked",
+      "params": {
+        "data": "string"
+      },
+      "result": "{ok:true}",
+      "notes": "data: JSON object text <=1 MiB; invalidates changed capability bindings"
+    },
+    "relay-detach": {
+      "group": "relay",
+      "lock": "unlocked",
+      "params": {
+        "group": "string",
+        "device": "string"
+      },
+      "result": "{ok:true}",
+      "notes": "Also detaches mesh mode when mesh is enabled"
+    },
+    "relay-export": {
+      "group": "relay",
+      "lock": "unlocked",
+      "params": {
+        "peer": "string"
+      },
+      "result": "RelayPacket",
+      "notes": "snapshot (hub) or changes (mobile) packet with files; at format>=7 requires proven capabilities"
+    },
+    "relay-init": {
+      "group": "relay",
+      "lock": "unlocked",
+      "params": {
+        "role": "string",
+        "group": "string",
+        "device": "string",
+        "hub": "string"
+      },
+      "result": "{ok:true}",
+      "notes": "role hub|mobile; hub must equal device for hub role; snapshots before-personal-relay"
+    },
+    "relay-receive": {
+      "group": "relay",
+      "lock": "unlocked",
+      "params": {
+        "peer": "string",
+        "packet": "object"
+      },
+      "result": "{ok:true,stale?:true}"
+    },
+    "relay-resolve": {
+      "group": "relay",
+      "lock": "unlocked",
+      "params": {
+        "conflict": "string",
+        "choice": "string"
+      },
+      "result": "{ok:true}",
+      "notes": "Hub only; choice local|remote|both"
+    },
+    "relay-resolve-batch": {
+      "group": "relay",
+      "lock": "unlocked",
+      "params": {
+        "conflicts": "array",
+        "choice": "string"
+      },
+      "result": "{ok:true}",
+      "notes": "Hub only; conflicts string[] 1..4096 unique; choice local|remote"
+    },
+    "relay-revoke": {
+      "group": "relay",
+      "lock": "unlocked",
+      "params": {
+        "peer": "string"
+      },
+      "result": "{ok:true}"
+    },
+    "relay-status": {
+      "group": "relay",
+      "lock": "unlocked",
+      "params": {},
+      "result": "{enabled:false}|{enabled:true,role,group,device,hub,peers,revision,cursor,pending,conflictCount,conflicts,capabilities}|MeshStatus",
+      "notes": "Returns mesh status {enabled,mode:'mesh',group,device,peers,pending,conflictCount,noteConflicts,remoteAssetCount,skew,migratedFrom,archivedConflicts} when mesh is enabled"
+    },
+    "relay-trust": {
+      "group": "relay",
+      "lock": "unlocked",
+      "params": {
+        "peer": "string"
+      },
+      "result": "{ok:true}"
+    },
+    "relay-mesh-blob-export": {
+      "group": "relay-mesh",
+      "lock": "unlocked",
+      "params": {
+        "peer": "string",
+        "attachmentId": "string"
+      },
+      "result": "{meta:AttachmentMeta,data:string}",
+      "notes": "data base64"
+    },
+    "relay-mesh-blob-receive": {
+      "group": "relay-mesh",
+      "lock": "unlocked",
+      "params": {
+        "peer": "string",
+        "meta": "object",
+        "data": "string"
+      },
+      "result": "{ok:true,id:string,state:'ready'}"
+    },
+    "relay-mesh-conflicts": {
+      "group": "relay-mesh",
+      "lock": "unlocked",
+      "params": {},
+      "result": "{conflicts:{noteId,title,localDevice,remoteDevice,revisionId,capturedAt,section,autoMerged,assetGuard,retentionDays,localItem,remoteItem}[]}"
+    },
+    "relay-mesh-export": {
+      "group": "relay-mesh",
+      "lock": "unlocked",
+      "params": {
+        "peer": "string"
+      },
+      "result": "{packet:MeshPacket|null}",
+      "notes": "MeshPacket {version,kind:'mesh',group,from,to,formatVersion,upto,ack,records,files,remoteFiles?}"
+    },
+    "relay-mesh-init": {
+      "group": "relay-mesh",
+      "lock": "unlocked",
+      "params": {
+        "group": "string",
+        "device": "string"
+      },
+      "result": "{ok:true,already?:true,migratedFrom?:any,archivedConflicts?:any}"
+    },
+    "relay-mesh-peers": {
+      "group": "relay-mesh",
+      "lock": "unlocked",
+      "params": {
+        "peers": "array"
+      },
+      "result": "{ok:true,peers:string[]}",
+      "notes": "Replaces peer set; <=256 valid names"
+    },
+    "relay-mesh-receive": {
+      "group": "relay-mesh",
+      "lock": "unlocked",
+      "params": {
+        "peer": "string",
+        "packet": "object"
+      },
+      "result": "{ok:true,changed:bool,applied:number,conflictCount:number}"
+    },
+    "relay-mesh-resolve-conflict": {
+      "group": "relay-mesh",
+      "lock": "unlocked",
+      "params": {
+        "id": "string",
+        "strategy?": "string",
+        "item?": "object"
+      },
+      "result": "{ok:true,item:Item,conflictCount:number}",
+      "notes": "strategy local(default)|remote|both|custom; custom requires item with matching id"
+    },
+    "relay-peer-authorize": {
+      "group": "relay-peer",
+      "lock": "unlocked",
+      "params": {
+        "library": "string",
+        "peer": "string",
+        "member?": "object"
+      },
+      "result": "PeerResult",
+      "notes": "member {publicKey,transportKey,role} or null to revoke. PeerResult={ok:true,library,generation,publicKey,device,personal}; Blocked (DevicesSyncBlocked) when formatVersion>=7"
+    },
+    "relay-peer-cancel-join": {
+      "group": "relay-peer",
+      "lock": "unlocked",
+      "params": {
+        "library": "string"
+      },
+      "result": "{ok:true}",
+      "notes": "Only for not-yet-joined identities; Blocked (DevicesSyncBlocked) when formatVersion>=7"
+    },
+    "relay-peer-create": {
+      "group": "relay-peer",
+      "lock": "unlocked",
+      "params": {
+        "device": "string",
+        "personal?": "bool",
+        "transportKey?": "string",
+        "name?": "string",
+        "migrateLegacy?": "bool"
+      },
+      "result": "{library:string,device:string,publicKey:string}",
+      "notes": "name default 'Family library' (non-personal, <=128); migrateLegacy=true required for personal when legacy relay enabled; Blocked (DevicesSyncBlocked) when formatVersion>=7"
+    },
+    "relay-peer-export": {
+      "group": "relay-peer",
+      "lock": "unlocked",
+      "params": {
+        "library": "string",
+        "peer": "string"
+      },
+      "result": "{protocol:'peer-v2',packet:PeerPacket,files:object[]}",
+      "notes": "Blocked (DevicesSyncBlocked) when formatVersion>=7"
+    },
+    "relay-peer-history-enable": {
+      "group": "relay-peer",
+      "lock": "unlocked",
+      "params": {
+        "library": "string"
+      },
+      "result": "{enabled:true,ok:true}",
+      "notes": "Blocked (DevicesSyncBlocked) when formatVersion>=7"
+    },
+    "relay-peer-history-list": {
+      "group": "relay-peer",
+      "lock": "unlocked",
+      "params": {
+        "library": "string",
+        "id": "string",
+        "offset?": "number",
+        "limit?": "number"
+      },
+      "result": "{total:number,revisions:Revision[]}",
+      "notes": "Blocked (DevicesSyncBlocked) when formatVersion>=7"
+    },
+    "relay-peer-history-prune": {
+      "group": "relay-peer",
+      "lock": "unlocked",
+      "params": {
+        "library": "string",
+        "id": "string"
+      },
+      "result": "{ok:true,retainedForSync:true}",
+      "notes": "Blocked (DevicesSyncBlocked) when formatVersion>=7"
+    },
+    "relay-peer-history-restore": {
+      "group": "relay-peer",
+      "lock": "unlocked",
+      "params": {
+        "library": "string",
+        "id": "string",
+        "revisionId": "string",
+        "time": "string"
+      },
+      "result": "PeerResult",
+      "notes": "time RFC3339; Blocked (DevicesSyncBlocked) when formatVersion>=7"
+    },
+    "relay-peer-history-status": {
+      "group": "relay-peer",
+      "lock": "unlocked",
+      "params": {
+        "library": "string"
+      },
+      "result": "{enabled:true,ok:true}",
+      "notes": "Blocked (DevicesSyncBlocked) when formatVersion>=7"
+    },
+    "relay-peer-identity": {
+      "group": "relay-peer",
+      "lock": "unlocked",
+      "params": {
+        "device": "string",
+        "personal?": "bool",
+        "confirmPersonalSync?": "bool"
+      },
+      "result": "{library:string,device:string,publicKey:string}",
+      "notes": "Joiner identity with pending- library id; personal requires confirmPersonalSync=true; Blocked (DevicesSyncBlocked) when formatVersion>=7"
+    },
+    "relay-peer-join": {
+      "group": "relay-peer",
+      "lock": "unlocked",
+      "params": {
+        "library": "string",
+        "envelope": "object",
+        "expectedLibrary": "string",
+        "founderKey": "string",
+        "sender?": "string"
+      },
+      "result": "PeerResult|{ok:true,partial:true}",
+      "notes": "envelope {packet,files}; envelope.protocol 'peer-v2-chunk' requires sender and is reassembled; Blocked (DevicesSyncBlocked) when formatVersion>=7"
+    },
+    "relay-peer-list": {
+      "group": "relay-peer",
+      "lock": "unlocked",
+      "params": {},
+      "result": "{libraries:{id,personal,name,role}[],active:string|null}"
+    },
+    "relay-peer-receive": {
+      "group": "relay-peer",
+      "lock": "unlocked",
+      "params": {
+        "library": "string",
+        "envelope": "object",
+        "sender?": "string"
+      },
+      "result": "PeerResult|{ok:true,partial:true}",
+      "notes": "Chunked envelopes (protocol 'peer-v2-chunk') require sender; Blocked (DevicesSyncBlocked) when formatVersion>=7"
+    },
+    "relay-peer-rekey": {
+      "group": "relay-peer",
+      "lock": "unlocked",
+      "params": {
+        "library": "string",
+        "device": "string",
+        "transportKey": "string"
+      },
+      "result": "PeerResult",
+      "notes": "Admin only; recovers a copy under a new library id; Blocked (DevicesSyncBlocked) when formatVersion>=7"
+    },
+    "relay-peer-resolve": {
+      "group": "relay-peer",
+      "lock": "unlocked",
+      "params": {
+        "library": "string",
+        "key": "string",
+        "value": "any"
+      },
+      "result": "PeerResult",
+      "notes": "key must have >=2 heads; Blocked (DevicesSyncBlocked) when formatVersion>=7"
+    },
+    "relay-peer-status": {
+      "group": "relay-peer",
+      "lock": "unlocked",
+      "params": {
+        "library": "string"
+      },
+      "result": "{library,device,publicKey,personal,generation,frozen,members,conflicts,records,history}"
+    },
+    "relay-peer-switch": {
+      "group": "relay-peer",
+      "lock": "unlocked",
+      "params": {
+        "library": "string"
+      },
+      "result": "{ok:true}",
+      "notes": "\"\" switches back to personal; Blocked (DevicesSyncBlocked) when formatVersion>=7"
+    },
+    "relay-peer-write": {
+      "group": "relay-peer",
+      "lock": "unlocked",
+      "params": {
+        "library": "string",
+        "key": "string",
+        "value": "any"
+      },
+      "result": "PeerResult",
+      "notes": "Blocked (DevicesSyncBlocked) when formatVersion>=7"
+    }
+  }
+}

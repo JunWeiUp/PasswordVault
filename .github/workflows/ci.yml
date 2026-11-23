@@ -31,6 +31,8 @@ jobs:
           persist-credentials: false
       - name: Lightweight repository checks
         run: python3 tool/check_repository.py
+      - name: Check vault-core command contract
+        run: python3 tool/core_contract.py check
       - uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2
         env:
           GITLEAKS_VERSION: 8.30.1

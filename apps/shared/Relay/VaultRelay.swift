@@ -259,7 +259,7 @@ final class VaultRelay: ObservableObject {
         let personal = invitation["personal"] as? Bool, (!personal || confirmPersonal),
         let library = invitation["library"] as? String, let founder = invitation["founderKey"] as? String, let from = invitation["device"] as? String, let transport = invitation["transportKey"] as? String, from != config.device else { throw RelayError.invalid("invalid invitation scope or missing personal-sharing confirmation") }
       _ = try Data(relayHex: transport)
-      let result = try await call(["op": .string("relay-peer-identity"), "device": .string(config.device), "personal": .bool(personal), "confirmPersonalSync": .bool(confirmPersonal), "migrateLegacy": .bool(true)]).object
+      let result = try await call(["op": .string("relay-peer-identity"), "device": .string(config.device), "personal": .bool(personal), "confirmPersonalSync": .bool(confirmPersonal)]).object
       config.peerPreviousLibrary = config.peerLibrary; config.peerPreviousPeers = config.peers; config.peerPreviousPaused = config.paused
       config.peerLibrary = result["library"]?.string; config.peerPendingLocalLibrary = result["library"]?.string; config.peerExpectedLibrary = library; config.peerFounderKey = founder
       config.peers[from] = transport; config.paused = false
