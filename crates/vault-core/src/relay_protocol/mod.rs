@@ -11,6 +11,7 @@
 mod command;
 pub mod groups;
 pub mod policy;
+pub mod secretstream;
 mod strict;
 
 use base64::{

@@ -74,3 +74,5 @@ pub use wallet::*;
 
 #[cfg(feature = "native")]
 pub mod native_file_ops;
+#[cfg(feature = "native")]
+pub mod relay_net;

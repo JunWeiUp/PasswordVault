@@ -216,7 +216,8 @@ impl<A: Api> Groups<'_, A> {
         self.persist()?;
         self.publish()
     }
-    fn publish(&mut self) -> Result<String> {
+    /// Publishes (or returns) the short link for the issued invitation; idempotent.
+    pub fn publish(&mut self) -> Result<String> {
         let inv = &self.config["issued_invitation"];
         if let Some(link) = inv["short_link"].as_str() {
             return Ok(link.into());
@@ -249,7 +250,20 @@ impl<A: Api> Groups<'_, A> {
     /// password, else our own password only for our own relay; an explicit one is returned
     /// in the invitation so `join` can keep it.
     pub fn resolve(&self, link: &str, typed: Option<&str>) -> Result<Value> {
-        let (mut url, id, key, link_password) = parse_link(link.trim())?;
+        self.resolve_with(link, typed, None)
+    }
+    /// Like [`Self::resolve`]; an explicit `override_password` (the user corrected it) wins
+    /// over the link's password, and an empty override is rejected before any request.
+    pub fn resolve_with(
+        &self,
+        link: &str,
+        typed: Option<&str>,
+        override_password: Option<&str>,
+    ) -> Result<Value> {
+        let (mut url, id, key, mut link_password) = parse_link(link.trim())?;
+        if let Some(p) = override_password {
+            link_password = Some(access_password(p)?.to_owned());
+        }
         if self.local
             && url::Url::parse(&url).map_err(|_| "InvalidData")?.host_str() == Some("127.0.0.1")
         {

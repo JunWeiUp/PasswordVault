@@ -351,3 +351,28 @@ fn core_protocol_interoperates_with_libsodium() {
         sign::Seed::from_slice(&sodiumoxide::crypto::hash::sha256::hash(&seed_input).0).unwrap();
     assert_eq!(sign::keypair_from_seed(&seed).0.0, public.0);
 }
+#[test]
+fn core_secretstream_interoperates_with_libsodium() {
+    use sodiumoxide::crypto::secretstream::xchacha20poly1305 as sodium;
+    use vault_core::relay_protocol::secretstream as core;
+    sodiumoxide::init().unwrap();
+    let parts: Vec<Vec<u8>> = vec![b"a".to_vec(), vec![3; 17], vec![4; 65519], vec![], b"x".repeat(1000), vec![]];
+    let core_tags = [core::TAG_MESSAGE, core::TAG_PUSH, core::TAG_MESSAGE, core::TAG_REKEY, core::TAG_MESSAGE, core::TAG_FINAL];
+    let sodium_tags = [sodium::Tag::Message, sodium::Tag::Push, sodium::Tag::Message, sodium::Tag::Rekey, sodium::Tag::Message, sodium::Tag::Final];
+    // core → libsodium
+    let key = sodium::gen_key();
+    let (mut push, header) = core::State::init_push(&key.0).unwrap();
+    let mut pull = sodium::Stream::init_pull(&sodium::Header::from_slice(&header).unwrap(), &key).unwrap();
+    for (i, part) in parts.iter().enumerate() {
+        let block = push.push(part, b"aad", core_tags[i]);
+        let (plain, tag) = pull.pull(&block, Some(b"aad")).unwrap();
+        assert_eq!((&plain, tag), (part, sodium_tags[i]));
+    }
+    // libsodium → core
+    let (mut push, header) = sodium::Stream::init_push(&key).unwrap();
+    let mut pull = core::State::init_pull(&key.0, &header.0).unwrap();
+    for (i, part) in parts.iter().enumerate() {
+        let block = push.push(part, Some(b"aad"), sodium_tags[i]).unwrap();
+        assert_eq!(pull.pull(&block, b"aad").unwrap(), (part.clone(), core_tags[i]));
+    }
+}
