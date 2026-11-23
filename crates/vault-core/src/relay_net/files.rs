@@ -311,4 +311,187 @@ mod tests {
         assert!(decrypt(&bob, "a", &descriptor, &tampered).is_err());
         assert!(decrypt(&alice, "b", &descriptor, &cipher).is_err());
     }
+
+    mod http_resume {
+        use super::super::*;
+        use serde_json::{json, Value};
+        use std::time::Duration;
+
+        use std::{
+            io::{Read, Write},
+            net::TcpListener,
+            sync::{
+                atomic::{AtomicBool, Ordering},
+                Arc,
+            },
+        };
+        fn identities() -> (Identity, Identity) {
+            let (ap, a) = crate::relay_protocol::box_keypair();
+            let (bp, b) = crate::relay_protocol::box_keypair();
+            (
+                Identity {
+                    app: "passwordvault".into(),
+                    group: "qa".into(),
+                    device: "a".into(),
+                    secret: a,
+                    trusted: [("b".into(), bp)].into(),
+                },
+                Identity {
+                    app: "passwordvault".into(),
+                    group: "qa".into(),
+                    device: "b".into(),
+                    secret: b,
+                    trusted: [("a".into(), ap)].into(),
+                },
+            )
+        }
+        #[test]
+        fn relay_file_secretstream_context_truncation_and_local_http_resume() {
+            let (a, b) = identities();
+            let plain = vec![b'x'; 1_100_000];
+            let (descriptor, cipher) = prepare(&a, "b", &plain).unwrap();
+            assert_eq!(&*decrypt(&b, "a", &descriptor, &cipher).unwrap(), &plain);
+            assert!(decrypt(&b, "a", &descriptor, &cipher[..cipher.len() - 1]).is_err());
+            let mut corrupted = cipher.clone();
+            corrupted[40] ^= 1;
+            assert!(decrypt(&b, "a", &descriptor, &corrupted).is_err());
+            let mut wrong = descriptor.clone();
+            wrong["id"] = json!("00".repeat(16));
+            assert!(decrypt(&b, "a", &wrong, &cipher).is_err());
+            let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+            let address = listener.local_addr().unwrap();
+            let stop = Arc::new(AtomicBool::new(false));
+            let flag = stop.clone();
+            let server = std::thread::spawn(move || {
+                let mut meta = Value::Null;
+                let mut data = vec![];
+                let mut committed = false;
+                for socket in listener.incoming() {
+                    if flag.load(Ordering::SeqCst) {
+                        break;
+                    }
+                    let mut socket = socket.unwrap();
+                    socket
+                        .set_read_timeout(Some(Duration::from_secs(3)))
+                        .unwrap();
+                    let mut header = vec![];
+                    let mut one = [0];
+                    while !header.ends_with(b"\r\n\r\n") {
+                        socket.read_exact(&mut one).unwrap();
+                        header.push(one[0]);
+                    }
+                    let header = String::from_utf8(header).unwrap();
+                    let mut lines = header.lines();
+                    let mut first = lines.next().unwrap().split_whitespace();
+                    let method = first.next().unwrap();
+                    let path = first
+                        .next()
+                        .unwrap()
+                        .strip_prefix("/relay/v1/files")
+                        .unwrap();
+                    let headers: std::collections::BTreeMap<_, _> = lines
+                        .filter_map(|l| l.split_once(':'))
+                        .map(|(k, v)| (k.to_ascii_lowercase(), v.trim().to_owned()))
+                        .collect();
+                    assert_eq!(headers["authorization"], "Bearer synthetic-file-token");
+                    assert_eq!(headers["relay-access"], "synthetic-access");
+                    let len = headers
+                        .get("content-length")
+                        .and_then(|s| s.parse().ok())
+                        .unwrap_or(0);
+                    let mut body = vec![0; len];
+                    socket.read_exact(&mut body).unwrap();
+                    let (status, reply) = if method == "POST" && path.is_empty() {
+                        if meta.is_null() {
+                            meta = serde_json::from_slice(&body).unwrap();
+                            meta["offset"] = json!(0);
+                            (201, canonical(&meta))
+                        } else {
+                            (409, vec![])
+                        }
+                    } else if method == "PUT" && path.ends_with("/data") {
+                        assert_eq!(
+                            headers["upload-offset"].parse::<usize>().unwrap(),
+                            data.len()
+                        );
+                        data.extend(body);
+                        meta["offset"] = json!(data.len());
+                        (200, canonical(&json!({"offset":data.len()})))
+                    } else if method == "POST" && path.ends_with("/commit") {
+                        assert_eq!(meta["size"], data.len());
+                        committed = true;
+                        (200, canonical(&meta))
+                    } else if method == "GET" && path.ends_with("/data") {
+                        let range = headers["range"].trim_start_matches("bytes=");
+                        let (a, b) = range.split_once('-').unwrap();
+                        let (a, b): (usize, usize) = (a.parse().unwrap(), b.parse().unwrap());
+                        (206, data[a..=b].to_vec())
+                    } else if method == "GET" && path.is_empty() {
+                        let mut item = meta.clone();
+                        item["from"] = json!("a");
+                        (
+                            200,
+                            canonical(&if committed { json!([item]) } else { json!([]) }),
+                        )
+                    } else if method == "GET" {
+                        (200, canonical(&meta))
+                    } else if method == "DELETE" {
+                        committed = false;
+                        (204, vec![])
+                    } else {
+                        (404, vec![])
+                    };
+                    write!(
+                        socket,
+                        "HTTP/1.1 {status} Fixture\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                        reply.len()
+                    )
+                    .unwrap();
+                    socket.write_all(&reply).unwrap();
+                }
+            });
+            let check = || Ok(());
+            let files = Files::new(
+                &format!("ws://{address}/relay/v1/ws"),
+                "synthetic-file-token",
+                Some("synthetic-access"),
+                true,
+                &check,
+            )
+            .unwrap();
+            files
+                .request("POST", "", canonical(&descriptor), &[])
+                .unwrap();
+            let id = text(&descriptor, "id").unwrap();
+            files
+                .request(
+                    "PUT",
+                    &format!("{id}/data"),
+                    cipher[..1000].to_vec(),
+                    &[("Upload-Offset", "0".into())],
+                )
+                .unwrap();
+            files.upload(&descriptor, &cipher).unwrap();
+            let inbox = files.inbox().unwrap();
+            assert_eq!(inbox.len(), 1);
+            let downloaded = files.download(&inbox[0]).unwrap();
+            assert_eq!(downloaded, cipher);
+            assert_eq!(&*decrypt(&b, "a", &inbox[0], &downloaded).unwrap(), &plain);
+            files.acknowledge(id).unwrap();
+            assert!(files.inbox().unwrap().is_empty());
+            let denied = || Err("Locked".into());
+            let locked = Files::new(
+                &format!("ws://{address}/relay/v1/ws"),
+                "synthetic-file-token",
+                Some("synthetic-access"),
+                true,
+                &denied,
+            )
+            .unwrap();
+            assert!(locked.upload(&descriptor, &cipher).is_err());
+            stop.store(true, Ordering::SeqCst);
+            let _ = std::net::TcpStream::connect(address);
+            server.join().unwrap();
+        }
+    }
 }
