@@ -89,4 +89,19 @@ class RelayProtocolBridgeTest {
         assertThrows(Exception::class.java) { InvitationLinks.open(packet, Crypto.random(32)) }
         assertEquals(64, InvitationLinks.readToken(key).length)
     }
+
+    @Test fun invitationPreviewReadsCompactLinksThroughCore() {
+        val encode = { b: ByteArray -> java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(b) }
+        val link = "common-relay://relay.example.test/i/${encode(ByteArray(16) { 2 })}#${encode(ByteArray(32) { 1 })}"
+        val access = "fixture-access-123"
+        val preview = RelayInvitationPreview.read("$link.${encode(access.toByteArray())}")
+        assertEquals("wss://relay.example.test/relay/v1/ws", preview.endpoint)
+        assertEquals(access, preview.password)
+        assertEquals("", RelayInvitationPreview.read(link).password)
+        for (input in listOf("$link.", "$link.%%%")) {
+            val error = runCatching { RelayInvitationPreview.read(input) }.exceptionOrNull()
+            assertNotNull(error)
+            assertFalse("core must reject, not be missing", error is IllegalStateException)
+        }
+    }
 }

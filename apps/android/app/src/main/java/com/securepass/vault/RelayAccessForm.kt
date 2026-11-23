@@ -12,6 +12,7 @@ internal data class RelayInvitationPreview(val input: String, val endpoint: Stri
             val input = text.trim()
             require(input.toByteArray().size <= 16384) { "邀请过长 / Invitation too long" }
             if (input.startsWith("common-relay:")) {
+                RelayProtocolBridge.install()
                 val parsed = InvitationLinks.parse(input, false)
                 try { return RelayInvitationPreview(input, validateRelayEndpoint(parsed.url), parsed.password.orEmpty()) }
                 finally { parsed.key.fill(0) }

@@ -417,7 +417,7 @@ final class MobileVaultStore: ObservableObject {
     )
     items = document.items.map { incoming in
       if incoming.bool("noteSummary"), let cached = hydratedByID[incoming.id],
-         cached.string("updatedAt") == incoming.string("updatedAt") {
+         Self.summaryKey(cached) == Self.summaryKey(incoming) {
         return cached
       }
       return incoming
@@ -432,6 +432,14 @@ final class MobileVaultStore: ObservableObject {
     }
     lastPasskeyIndex = passkeys
     syncCredentialIndex()
+  }
+  /// Body-only and transient fields; everything else must match before a hydrated note is
+  /// reused for an incoming summary (same rule as the desktop `summaryKey`). `updatedAt`
+  /// alone has one-second resolution, so a favourite/move/trash in the same second as the
+  /// last save would otherwise keep showing the stale copy.
+  private static let summaryOnly: Set<String> = ["noteDocument", "noteOriginal", "noteSummary", "__noteSearchText"]
+  static func summaryKey(_ item: VaultItem) -> [String: JSONValue] {
+    item.fields.filter { !summaryOnly.contains($0.key) && !$0.key.hasPrefix("_") }
   }
   /// Hydrates a single lazy `secureNote` summary on demand via `op: "get"`.
   @discardableResult

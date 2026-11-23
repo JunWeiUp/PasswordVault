@@ -115,6 +115,17 @@ class VaultRepository(
         return JSONObject(session!!.command(values.toString()))
     }
 
+    /** Body-only and transient fields; all other fields must match before a hydrated note is
+     *  reused for an incoming summary (same rule as desktop `summaryKey`). `updatedAt` alone
+     *  has one-second resolution, so same-second favourite/move/trash would show stale data. */
+    private fun summaryKey(item: JSONObject): String {
+        val fields = java.util.TreeMap<String, String>()
+        for (key in item.keys()) {
+            if (key !in SUMMARY_ONLY && !key.startsWith("_")) fields[key] = item.get(key).toString()
+        }
+        return fields.toString()
+    }
+
     private fun reload() {
         val generation = epoch
         val data = raw("list", JSONObject().put("summaries", true))
@@ -127,7 +138,7 @@ class VaultRepository(
                 val merged = incoming.map { item ->
                     val id = item.optString("id")
                     val cached = hydratedById[id]
-                    if (cached != null && item.optBoolean("noteSummary") && cached.optString("updatedAt") == item.optString("updatedAt")) {
+                    if (cached != null && item.optBoolean("noteSummary") && summaryKey(cached) == summaryKey(item)) {
                         cached
                     } else {
                         item
@@ -639,6 +650,7 @@ class VaultRepository(
     }
 
     companion object {
+        private val SUMMARY_ONLY = setOf("noteDocument", "noteOriginal", "noteSummary", "__noteSearchText")
         fun blank(type: String) =
             JSONObject()
                 .put("id", UUID.randomUUID().toString())

@@ -73,8 +73,8 @@ test("colored rich note opens without saving or losing its color", async () => {
   await app.waitFor("id:note-rich-editor");
   expect(app.texts()).toContain("saves:0");
   await app.type("id:note-rich-editor", "追加");
-  await app.wait(200);
-  expect(app.texts().some(t => t.includes("#ff0000") && t.includes("追加"))).toBe(true);
+  // The editor saves on a debounce: wait for the save instead of a fixed sleep.
+  await app.waitUntil(() => app.texts().some(t => t.includes("#ff0000") && t.includes("追加")));
 });
 
 test("legacy blank paragraphs stay intact on opening", async () => {
@@ -85,8 +85,8 @@ test("legacy blank paragraphs stay intact on opening", async () => {
   await app.waitFor("id:note-rich-editor");
   expect(app.texts()).toContain("saves:0");
   await app.type("id:note-rich-editor", "追加");
-  await app.wait(200);
-  expect(app.texts().some(t => t.includes('"id":"legacy"') && t.includes("追加"))).toBe(true);
+  // The editor saves on a debounce: wait for the save instead of a fixed sleep.
+  await app.waitUntil(() => app.texts().some(t => t.includes('"id":"legacy"') && t.includes("追加")));
 });
 
 import { createNoteSession, equivalent, storedDocument } from "../ui/notes/rich-session";
@@ -274,7 +274,5 @@ test("RichNoteEditor shows line numbers and toggles them off and on cleanly", as
 
   // Narrow viewport forces re-wrap; gutter and all line numbers stay rendered cleanly.
   await app.setViewport(480, 900);
-  await app.wait(120);
-  expect(app.shows("id:note-line-gutter")).toBe(true);
-  expect(app.shows("id:note-line-num-5")).toBe(true);
+  await app.waitUntil(() => app.shows("id:note-line-gutter") && app.shows("id:note-line-num-5"));
 });

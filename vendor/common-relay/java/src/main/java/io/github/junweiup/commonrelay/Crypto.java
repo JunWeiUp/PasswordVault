@@ -23,8 +23,11 @@ public final class Crypto {
         int crypto_secretstream_xchacha20poly1305_push(Pointer state, byte[] out, LongByReference len, byte[] plain, long plainLen, byte[] aad, long aadLen, byte tag);
         int crypto_secretstream_xchacha20poly1305_pull(Pointer state, byte[] out, LongByReference len, byte[] tag, byte[] cipher, long cipherLen, byte[] aad, long aadLen);
     }
-    static final Sodium S = Native.load("sodium",Sodium.class);
-    static { if(S.sodium_init()<0) throw new IllegalStateException("Sodium initialization failed"); }
+    /** libsodium is loaded only when a file stream is used, so hex/random/journal helpers work without it. */
+    static final class Lib {
+        static final Sodium S = Native.load("sodium",Sodium.class);
+        static { if(S.sodium_init()<0) throw new IllegalStateException("Sodium initialization failed"); }
+    }
     public final String app, group, device;
     private final byte[] secret;
     private final Map<String,String> trusted;
@@ -51,15 +54,15 @@ public final class Crypto {
     }
     static void check(int result){if(result!=0)throw new IllegalArgumentException("Cryptographic verification failed");}
     public static final class SecretStream implements AutoCloseable {
-        private final Memory state=new Memory(S.crypto_secretstream_xchacha20poly1305_statebytes().longValue());
+        private final Memory state=new Memory(Lib.S.crypto_secretstream_xchacha20poly1305_statebytes().longValue());
         private final byte[] key,header;
         public volatile boolean finished=false; private boolean closed=false;
         private final boolean writer;
-        public SecretStream(){writer=true;key=random(32);header=new byte[24];check(S.crypto_secretstream_xchacha20poly1305_init_push(state,header,key));}
-        public SecretStream(JSONObject descriptor)throws Exception{writer=false;key=unhex(descriptor.getString("key"));header=unhex(descriptor.getString("header"));if(key.length!=32||header.length!=24)throw new IllegalArgumentException("Invalid descriptor");check(S.crypto_secretstream_xchacha20poly1305_init_pull(state,header,key));}
+        public SecretStream(){writer=true;key=random(32);header=new byte[24];check(Lib.S.crypto_secretstream_xchacha20poly1305_init_push(state,header,key));}
+        public SecretStream(JSONObject descriptor)throws Exception{writer=false;key=unhex(descriptor.getString("key"));header=unhex(descriptor.getString("header"));if(key.length!=32||header.length!=24)throw new IllegalArgumentException("Invalid descriptor");check(Lib.S.crypto_secretstream_xchacha20poly1305_init_pull(state,header,key));}
         public JSONObject descriptor()throws Exception{return new JSONObject().put("key",hex(key)).put("header",hex(header));}
-        public synchronized byte[] push(byte[] plain,byte[] aad,boolean last){if(closed||!writer||finished||plain.length>65519)throw new IllegalStateException("Invalid stream state");byte[] out=new byte[plain.length+17];check(S.crypto_secretstream_xchacha20poly1305_push(state,out,new LongByReference(),plain,plain.length,aad,aad.length,(byte)(last?3:0)));finished=last;return out;}
-        public synchronized byte[] pull(byte[] cipher,byte[] aad){if(closed||writer||finished||cipher.length<17||cipher.length>65536)throw new IllegalStateException("Invalid stream state");byte[] out=new byte[cipher.length-17],tag=new byte[1];check(S.crypto_secretstream_xchacha20poly1305_pull(state,out,new LongByReference(),tag,cipher,cipher.length,aad,aad.length));if(tag[0]!=0&&tag[0]!=3)throw new IllegalArgumentException("Unexpected tag");finished=tag[0]==3;return out;}
+        public synchronized byte[] push(byte[] plain,byte[] aad,boolean last){if(closed||!writer||finished||plain.length>65519)throw new IllegalStateException("Invalid stream state");byte[] out=new byte[plain.length+17];check(Lib.S.crypto_secretstream_xchacha20poly1305_push(state,out,new LongByReference(),plain,plain.length,aad,aad.length,(byte)(last?3:0)));finished=last;return out;}
+        public synchronized byte[] pull(byte[] cipher,byte[] aad){if(closed||writer||finished||cipher.length<17||cipher.length>65536)throw new IllegalStateException("Invalid stream state");byte[] out=new byte[cipher.length-17],tag=new byte[1];check(Lib.S.crypto_secretstream_xchacha20poly1305_pull(state,out,new LongByReference(),tag,cipher,cipher.length,aad,aad.length));if(tag[0]!=0&&tag[0]!=3)throw new IllegalArgumentException("Unexpected tag");finished=tag[0]==3;return out;}
         public synchronized void close(){if(closed)return;closed=true;state.clear();state.close();Arrays.fill(key,(byte)0);}
     }
 }
