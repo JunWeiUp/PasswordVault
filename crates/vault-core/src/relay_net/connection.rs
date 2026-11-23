@@ -196,9 +196,21 @@ impl Shared {
                 return Err("PersistentJournalRequired".into());
             }
             let from = text(&event, "from")?.to_owned();
-            let value = self
+            // A message we can never open (sender no longer trusted, e.g. a removed member, or a
+            // corrupt envelope) is acknowledged and dropped. Failing the connection instead
+            // would make the relay redeliver it on every reconnect, forever.
+            let value = match self
                 .identity
-                .open(&from, "message", &id, text(&event, "body")?)?;
+                .open(&from, "message", &id, text(&event, "body")?)
+            {
+                Ok(value) => value,
+                Err(_) => {
+                    if offline {
+                        self.send(json!({"type":"ack","id":id,"from":from}))?;
+                    }
+                    return Ok(());
+                }
+            };
             let expired = value["expires"].as_u64().is_some_and(|e| e <= now());
             let replay = match &self.journal {
                 Some(journal) => journal.contains(&self.scope(), &from, &id)?,

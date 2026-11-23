@@ -256,6 +256,38 @@ fn run(server: &Server) {
 
     cb.disconnect();
     assert!(cb.is_closed());
+
+    // A message from a sender the receiver no longer trusts (e.g. a removed member) is
+    // acknowledged and dropped; it must not fail the connection or be redelivered forever.
+    ca.message(
+        "phone".into(),
+        b"stale".to_vec(),
+        true,
+        Some("fedcba9876543210fedcba9876543210".into()),
+    )
+    .unwrap();
+    let untrusting =
+        RelayConnection::connect(options(&b, &[], &journals.path().join("b"))).unwrap();
+    std::thread::sleep(Duration::from_millis(1500));
+    assert!(
+        !untrusting.is_closed(),
+        "an undecryptable message must not close the connection"
+    );
+    assert!(untrusting.peers().is_ok());
+    untrusting.disconnect();
+    let trusting =
+        RelayConnection::connect(options(&b, &[&a], &journals.path().join("b2"))).unwrap();
+    let deadline = std::time::Instant::now() + Duration::from_millis(1500);
+    while std::time::Instant::now() < deadline {
+        if let Some(event) = trusting.next_event(100).unwrap() {
+            let event: Value = serde_json::from_str(&event).unwrap();
+            assert_ne!(
+                event["type"], "message",
+                "a dropped message must not be redelivered"
+            );
+        }
+    }
+    trusting.disconnect();
     let (b, _) = groups(&b, json!({"op":"exit","disband":false})).unwrap();
     assert_eq!(b["exit_completed"], true);
     let (_a, state) = groups(&a, json!({"op":"refresh"})).unwrap();

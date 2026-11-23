@@ -373,7 +373,11 @@ internal class PersonalRelay(private val directory: File, private val vault: Vau
                         val inbox = org.json.JSONArray(runInterruptible(Dispatchers.IO) { fileClient.inbox() })
                         for (index in 0 until inbox.length()) {
                             val file = inbox.getJSONObject(index); val from = file.getString("from")
-                            require(from in meshPeers && file.getLong("size") <= 768L*1024*1024)
+                            // Files from devices outside the signed roster (e.g. a removed member) or
+                            // over the limit can never be applied: delete them instead of failing every cycle.
+                            if (from !in meshPeers || file.getLong("size") > 768L*1024*1024) {
+                                runInterruptible(Dispatchers.IO) { fileClient.acknowledge(file.getString("id")) }; continue
+                            }
                             progress(generation, RelaySyncPhase.RECEIVING, index, inbox.length())
                             receiveMesh(runInterruptible(Dispatchers.IO) { fileClient.receive(file.toString()) }, from, generation)
                             runInterruptible(Dispatchers.IO) { fileClient.acknowledge(file.getString("id")) }
@@ -422,7 +426,9 @@ internal class PersonalRelay(private val directory: File, private val vault: Vau
                         val inbox = org.json.JSONArray(runInterruptible(Dispatchers.IO) { fileClient.inbox() })
                         for (index in 0 until inbox.length()) {
                             val file = inbox.getJSONObject(index); val from = file.getString("from")
-                            require(c.getJSONObject("peers").has(from) && (peerMode || from == c.getString("hub")) && file.getLong("size") <= 768L*1024*1024)
+                            if (!(c.getJSONObject("peers").has(from) && (peerMode || from == c.getString("hub")) && file.getLong("size") <= 768L*1024*1024)) {
+                                runInterruptible(Dispatchers.IO) { fileClient.acknowledge(file.getString("id")) }; continue
+                            }
                             try {
                                 progress(generation, RelaySyncPhase.RECEIVING, index, inbox.length())
                                 receive(runInterruptible(Dispatchers.IO) { fileClient.receive(file.toString()) }, from, generation, c)
