@@ -80,9 +80,7 @@ final class MobileVaultStore: ObservableObject {
     await closing?.value
   }
   var canWriteLibrary: Bool {
-    if settings["_peerLibraryReadOnly"]?.bool == true { return false }
-    if !(settings["activePeerLibrary"]?.string ?? "").isEmpty { return ["admin", "editor"].contains(settings["_peerLibraryRole"]?.string ?? "") }
-    return true
+    true
   }
   func canEdit(_ item: VaultItem) -> Bool {
     guard canWriteLibrary else { return false }

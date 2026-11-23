@@ -75,8 +75,7 @@ struct MobileEntryList: View {
   var body: some View {
     List(selection: $selection) {
       RelayOfflineBanner(relay: store.relay, t: store.t)
-      let family = !(store.settings["activePeerLibrary"]?.string ?? "").isEmpty
-      Label(family ? store.t("家庭库：", "Family: ") + (store.settings["_peerLibraryName"]?.string ?? store.t("家庭资料库", "Family library")) : store.t("个人资料库", "Personal library"), systemImage: family ? "person.2" : "person.crop.circle")
+      Label(store.t("个人资料库", "Personal library"), systemImage: "person.crop.circle")
         .font(.caption.weight(.medium)).foregroundStyle(.secondary).accessibilityIdentifier("current-library")
       if destination == .wallets {
         Picker(store.t("类型", "Type"), selection: $walletKind) {

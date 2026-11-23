@@ -19,13 +19,6 @@ final class VaultRelay: ObservableObject {
     var peers: [String: String] = [:]
     var paused = true
     var groupState: Data?
-    var peerLibrary: String?
-    var peerExpectedLibrary: String?
-    var peerPendingLocalLibrary: String?
-    var peerFounderKey: String?
-    var peerPreviousLibrary: String?
-    var peerPreviousPeers: [String:String]?
-    var peerPreviousPaused: Bool?
   }
   @Published private(set) var credentialsReady = false
   @Published private(set) var credentialAccessBlocked = false
@@ -39,18 +32,7 @@ final class VaultRelay: ObservableObject {
   @Published private(set) var connected = false
   @Published private(set) var connecting = false
   @Published var summary: [String: JSONValue] = [:]
-  var peerLibraryRole: String {
-    let device = summary["device"]?.string ?? ""
-    let member = summary["members"]?.object[device]?.object ?? [:]
-    guard member["publicKey"]?.string == summary["publicKey"]?.string else { return "blocked" }
-    return member["role"]?.string ?? "blocked"
-  }
-  var canManagePeerLibrary: Bool { peerLibraryRole == "admin" && summary["frozen"]?.bool != true }
-  var canWritePeerLibrary: Bool { ["admin", "editor"].contains(peerLibraryRole) && summary["frozen"]?.bool != true }
   @Published var pairingText = ""
-  @Published var peerLibraries: [JSONValue] = []
-  @Published var activePeerLibrary = ""
-  private var peerRosters: [String: [String: JSONValue]] = [:]
   @Published var lastSuccess: Date?
   @Published var failure: String?
   private let allowLocalGroupTest: Bool
@@ -181,14 +163,6 @@ final class VaultRelay: ObservableObject {
   private func encode(_ value: [String: Any]) throws -> String {
     String(decoding: try JSONSerialization.data(withJSONObject: value, options: [.sortedKeys, .withoutEscapingSlashes]), as: UTF8.self)
   }
-  func revoke(_ peer: String) async {
-    if let library = config.peerLibrary {
-      await action {
-        _ = try await call(CoreRequest.relayPeerAuthorize(library: library, peer: peer, member: .null))
-        try await updateSummary(); restart()
-      }; return
-    }
-  }
   func setUnlocked(_ unlocked: Bool) {
     guard active != unlocked else { return }; active = unlocked
     credentialLoadGeneration = UUID(); credentialLoadTask?.cancel(); credentialLoadTask = nil
@@ -209,108 +183,16 @@ final class VaultRelay: ObservableObject {
     status = active ? "未连接 / Disconnected" : "已锁定 / Locked"
   }
   private func restart() {
+    // Only members of a personal device group sync (symmetric mesh).
     stop(); guard active, credentialsReady, !credentialAccessBlocked, !groupInvalid, !config.token.isEmpty,
-      hasManagedGroup || (!config.paused && !config.peers.isEmpty) else { return }
+      hasManagedGroup else { return }
     let epoch = generation
     loop = Task { [weak self] in await self?.run(epoch) }
   }
   private func updateSummary() async throws {
-    if let listing = try? await call(CoreRequest.relayPeerList()).object {
-      peerLibraries = listing["libraries"]?.array ?? []; activePeerLibrary = listing["active"]?.string ?? ""
-    }
-    if let library = config.peerLibrary {
-      summary = try await call(CoreRequest.relayPeerStatus(library: library)).object
-      var peers: [String: String] = config.peerExpectedLibrary == nil ? [:] : config.peers
-      peerRosters = [:]
-      for descriptor in peerLibraries {
-        guard let id = descriptor.object["id"]?.string, !id.hasPrefix("pending-") else { continue }
-        let state = try await call(CoreRequest.relayPeerStatus(library: id)).object
-        if state["frozen"]?.bool == true { continue }
-        let roster = state["members"]?.object ?? [:]
-        guard roster[config.device] != nil else { continue }
-        peerRosters[id] = roster
-        for (peer, member) in roster where peer != config.device {
-          if let key = member.object["transportKey"]?.string, !key.isEmpty, !hasManagedGroup || (groupDictionary["trusted_peers"] as? [String: String])?[peer] == key { peers[peer] = key }
-        }
-      }
-      if peers != config.peers { config.peers = peers; sent.removeAll(); retryRequested = true; try await persist() }
-    } else { summary = try await call(CoreRequest.relayStatus()).object }
+    summary = try await call(CoreRequest.relayStatus()).object
   }
 
-  func switchPeerLibrary(_ id: String) async {
-    await action {
-      _ = try await call(CoreRequest.relayPeerSwitch(library: id))
-      if !id.isEmpty { config.peerLibrary = id }
-      try await persist(); try await updateSummary(); await refresh(); restart()
-    }
-  }
-
-  /// Public enrollment text contains only keys and identifiers; vault contents travel over E2EE.
-  func createPeerLibrary(personal: Bool = true, name: String = "Family library") async {
-    await action {
-      guard !config.group.isEmpty, !personal || config.peerLibrary == nil else { throw RelayFault.invalid("already enrolled or no group") }
-      let result = try await call(CoreRequest.relayPeerCreate(device: config.device, personal: personal, transportKey: publicKey, name: name, migrateLegacy: true)).object
-      config.peerLibrary = result["library"]?.string; config.peers = [:]; config.paused = false
-      pairingText = try encode(["kind": "peer-v2-invite", "personal": personal, "library": config.peerLibrary ?? "", "founderKey": result["publicKey"]?.string ?? "", "device": config.device, "transportKey": publicKey, "group": config.group, "endpoint": config.endpoint])
-      if !personal { _ = try await call(CoreRequest.relayPeerSwitch(library: config.peerLibrary ?? "")); await refresh() }
-      try await persist(); try await updateSummary(); restart()
-    }
-  }
-
-  func preparePeerJoin(_ invitationText: String, confirmPersonal: Bool = false) async {
-    await action {
-      guard config.peerExpectedLibrary == nil, let data = invitationText.data(using: .utf8), let invitation = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-        invitation["kind"] as? String == "peer-v2-invite", invitation["group"] as? String == config.group, invitation["endpoint"] as? String == config.endpoint,
-        let personal = invitation["personal"] as? Bool, (!personal || confirmPersonal),
-        let library = invitation["library"] as? String, let founder = invitation["founderKey"] as? String, let from = invitation["device"] as? String, let transport = invitation["transportKey"] as? String, from != config.device else { throw RelayFault.invalid("invalid invitation scope or missing personal-sharing confirmation") }
-      _ = try Data(relayHex: transport)
-      let result = try await call(CoreRequest.relayPeerIdentity(device: config.device, personal: personal, confirmPersonalSync: confirmPersonal)).object
-      config.peerPreviousLibrary = config.peerLibrary; config.peerPreviousPeers = config.peers; config.peerPreviousPaused = config.paused
-      config.peerLibrary = result["library"]?.string; config.peerPendingLocalLibrary = result["library"]?.string; config.peerExpectedLibrary = library; config.peerFounderKey = founder
-      config.peers[from] = transport; config.paused = false
-      pairingText = try encode(["kind": "peer-v2-request", "personal": personal, "library": library, "device": config.device, "publicKey": result["publicKey"]?.string ?? "", "transportKey": publicKey, "group": config.group])
-      try await persist(); restart()
-    }
-  }
-
-  func cancelPeerJoin() async {
-    await action {
-      guard config.peerExpectedLibrary != nil, let pending = config.peerPendingLocalLibrary ?? config.peerLibrary else { return }
-      _ = try await call(CoreRequest.relayPeerCancelJoin(library: pending))
-      config.peerLibrary = config.peerPreviousLibrary; config.peers = config.peerPreviousPeers ?? [:]; config.paused = config.peerPreviousPaused ?? true
-      config.peerExpectedLibrary = nil; config.peerPendingLocalLibrary = nil; config.peerFounderKey = nil; config.peerPreviousLibrary = nil; config.peerPreviousPeers = nil; config.peerPreviousPaused = nil; pairingText = ""
-      try await persist(); try await updateSummary(); restart()
-    }
-  }
-
-  func authorizePeerRequest(_ requestText: String, role: String = "editor") async {
-    await action {
-      guard ["admin", "editor", "reader"].contains(role), let library = config.peerLibrary,
-        let data = requestText.data(using: .utf8), let request = try JSONSerialization.jsonObject(with: data) as? [String: Any], request["kind"] as? String == "peer-v2-request", request["library"] as? String == library, request["group"] as? String == config.group,
-        let peer = request["device"] as? String, let signing = request["publicKey"] as? String, let transport = request["transportKey"] as? String else { throw RelayFault.invalid("invalid enrollment request") }
-      _ = try Data(relayHex: transport)
-      _ = try await call(CoreRequest.relayPeerAuthorize(library: library, peer: peer, member: .object(["publicKey": .string(signing), "transportKey": .string(transport), "role": .string(role)])))
-      try await updateSummary(); try await persist(); restart()
-    }
-  }
-
-  func rekeyPeerLibrary() async {
-    await action {
-      guard let library = config.peerLibrary, !config.group.isEmpty else { throw RelayFault.invalid("missing library or relay group") }
-      let result = try await call(CoreRequest.relayPeerRekey(library: library, device: config.device, transportKey: publicKey)).object
-      config.peerLibrary = result["library"]?.string
-      pairingText = try encode(["kind":"peer-v2-invite","personal":result["personal"]?.bool ?? false,"library":config.peerLibrary ?? "","founderKey":result["publicKey"]?.string ?? "","device":config.device,"transportKey":publicKey,"group":config.group,"endpoint":config.endpoint])
-      try await persist(); try await updateSummary(); await refresh(); restart()
-    }
-  }
-
-  func resolvePeer(key: String, value: JSONValue) async {
-    await action {
-      guard let library = config.peerLibrary else { return }
-      _ = try await call(CoreRequest.relayPeerResolve(library: library, key: key, value: value))
-      try await updateSummary(); await refresh(); sent.removeAll()
-    }
-  }
   private func action(_ body: () async throws -> Void) async {
     guard active, credentialsReady, !credentialAccessBlocked else { return }
     failure = nil
@@ -358,11 +240,8 @@ final class VaultRelay: ObservableObject {
               }
               if event["type"] as? String == "message", let data = event["data"] as? Data,
                  let from = event["from"] as? String, let id = event["id"] as? String {
-                if let peers = self.meshPeers {
-                  if peers.contains(from) { try await self.receiveMesh(data, from: from, epoch: epoch) }
-                } else if self.config.peerLibrary != nil {
-                  guard !self.config.paused, self.config.peers[from] != nil else { continue }
-                  try await self.receive(data, from: from, epoch: epoch)
+                if let peers = self.meshPeers, peers.contains(from) {
+                  try await self.receiveMesh(data, from: from, epoch: epoch)
                 }
                 try await connection.acknowledge(id: id, from: from, offline: event["offline"] as? Bool ?? false)
               } else if event["type"] as? String == "group.changed",
@@ -405,50 +284,6 @@ final class VaultRelay: ObservableObject {
               try await fileClient.acknowledge(id: id)
             }
             lastSuccess = Date()
-          } else {
-          if config.peerLibrary != nil && !config.paused && !config.peers.isEmpty {
-            try await updateSummary()
-            for peer in config.peers.keys.sorted() {
-              let libraries = config.peerLibrary == nil ? [""] : peerRosters.keys.filter { peerRosters[$0]?[peer] != nil }.sorted()
-              for library in libraries {
-                let packet: JSONValue
-                if library.isEmpty { packet = try await call(CoreRequest.relayExport(peer: peer)) }
-                else { packet = try await call(CoreRequest.relayPeerExport(library: library, peer: peer)) }
-                let encoder = JSONEncoder(); encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
-                let data = try encoder.encode(packet)
-                let digest = Data(SHA256.hash(data: data)).relayHex
-                let signature = digest + ":" + String(Int(Date().timeIntervalSince1970 / 3600))
-                let route = peer + ":" + library
-                guard sent[route] != signature else { continue }
-                guard generation == epoch, active else { return }
-                if data.count <= 128 * 1024 {
-                  let id = String(Data(SHA256.hash(data: Data((route + signature).utf8))).relayHex.prefix(32))
-                  _ = try await connection.message(to: peer, data: data, offline: true, id: id)
-                } else if !library.isEmpty {
-                  guard data.count <= 48 * 1024 * 1024 else { throw RelayFault.invalid("peer packet too large") }
-                  let count = (data.count + 65535) / 65536
-                  let transfer = String(digest.prefix(32))
-                  for index in 0..<count {
-                    let part = data.subdata(in: index * 65536..<min(data.count, (index + 1) * 65536))
-                    let chunk = Data(try encode(["protocol":"peer-v2-chunk","library":library,"transfer":transfer,"index":index,"count":count,"total":data.count,"digest":digest,"data":part.base64EncodedString()]).utf8)
-                    let id = String(Data(SHA256.hash(data: Data((route + signature + ":" + String(index)).utf8))).relayHex.prefix(32))
-                    guard generation == epoch, active else { return }
-                    _ = try await connection.message(to: peer, data: chunk, offline: true, id: id)
-                    try await Task.sleep(nanoseconds: 25_000_000)
-                  }
-                } else { try await fileClient.send(to: peer, data: data) }
-                sent[route] = signature
-              }
-            }
-            for event in try await fileClient.inbox() {
-              guard let id = event["id"] as? String, let from = event["from"] as? String,
-                    config.peers[from] != nil, let size = event["size"] as? NSNumber,
-                    size.int64Value <= 768 * 1024 * 1024 else { throw RelayFault.invalid("file sender or size") }
-              let bytes = try await fileClient.receive(event)
-              try await receive(bytes, from: from, epoch: epoch)
-              try await fileClient.acknowledge(id: id)
-            }
-          }
           }
           try await Task.sleep(nanoseconds: 5_000_000_000)
         }
@@ -485,41 +320,13 @@ final class VaultRelay: ObservableObject {
     lastSuccess = Date()
     if result["changed"]?.bool == true { await refresh() }
   }
-  private func receive(_ data: Data, from: String, epoch: UUID) async throws {
-    guard active, generation == epoch, config.peers[from] != nil else { throw RelayFault.closed }
-    let packet = try JSONDecoder().decode(JSONValue.self, from: data)
-    if let library = config.peerLibrary {
-      if let expected = config.peerExpectedLibrary, (packet.object["packet"]?.object["library"]?.string ?? packet.object["library"]?.string) == expected, let founder = config.peerFounderKey {
-        let result = try await call(CoreRequest.relayPeerJoin(library: config.peerPendingLocalLibrary ?? library, envelope: packet, expectedLibrary: expected, founderKey: founder, sender: from)).object
-        if result["partial"]?.bool == true { return }
-        config.peerLibrary = result["library"]?.string; config.peerExpectedLibrary = nil; config.peerPendingLocalLibrary = nil; config.peerFounderKey = nil; config.peerPreviousLibrary = nil; config.peerPreviousPeers = nil; config.peerPreviousPaused = nil; try await persist()
-      } else {
-        guard let incomingLibrary = packet.object["packet"]?.object["library"]?.string ?? packet.object["library"]?.string else { throw RelayFault.invalid("missing library") }
-        let registered = try await call(CoreRequest.relayPeerList()).object["libraries"]?.array ?? []
-        guard registered.contains(where: { $0.object["id"]?.string == incomingLibrary }) else { return }
-        let current = try await call(CoreRequest.relayPeerStatus(library: incomingLibrary)).object
-        if current["frozen"]?.bool == true { return }
-        guard current["members"]?.object[from]?.object["transportKey"]?.string == config.peers[from] else { throw RelayFault.invalid("library identity mismatch") }
-        let result = try await call(CoreRequest.relayPeerReceive(library: incomingLibrary, envelope: packet, sender: from)).object
-        if result["partial"]?.bool == true { return }
-      }
-    } else { _ = try await call(CoreRequest.relayReceive(peer: from, packet: packet)) }
-    guard active, generation == epoch else { throw RelayFault.closed }
-    lastSuccess = Date(); try await updateSummary(); await refresh()
-    // A mobile snapshot receipt must not immediately trigger an identical reply loop.
-    if config.role == "hub" { sent.removeAll() }
-  }
 
 }
 
-// Device-group access never grants vault read/write authority. Vault pairing below
-// remains a separate, explicit confirmation between the Mac and a replica.
 extension VaultRelay {
   private var connectedStatus: String {
-    if meshPeers != nil { return "已连接 · 自动双向同步 / Connected · syncing both ways" }
-    if config.peers.isEmpty { return "中继已连接，密码库尚未授权 / Relay connected; vault not authorized" }
-    if config.paused { return "中继已连接，密码库同步已暂停 / Relay connected; vault sync paused" }
-    return "已连接 / Connected"
+    (meshPeers ?? []).isEmpty ? "中继已连接，等待组内其他设备 / Relay connected; waiting for other devices"
+      : "已连接 · 自动双向同步 / Connected · syncing both ways"
   }
   private func setGroupOnline(_ ids: Set<String>) {
     groupMembers = groupMembers.map { GroupMember(id: $0.id, name: $0.name, manager: $0.manager, online: ids.contains($0.id)) }
@@ -537,7 +344,7 @@ extension VaultRelay {
   /// Signed-roster members with pinned keys, excluding this device. Joining the group is
   /// the only admission step for symmetric sync; nil outside a personal group.
   var meshPeers: [String]? {
-    guard config.peerLibrary == nil, let entry = groupDictionary["group_entry"] as? [String: Any],
+    guard let entry = groupDictionary["group_entry"] as? [String: Any],
           groupDictionary["access_invalid"] as? Bool != true,
           let state = try? RelayCodec.unpack(entry), state["closed"] as? Bool != true,
           let members = state["members"] as? [[String: Any]] else { return nil }
@@ -843,7 +650,7 @@ extension VaultRelay {
     else { throw RelayFault.invalid("identity") }
     config.peers = [:]; config.paused = true; config.device = device
     config.serverPassword = nil
-    if config.peerLibrary?.isEmpty ?? true { config.secret = secret } // a peer library still pins the current key
+    config.secret = secret
     do { try await persist() } catch { config = old; throw error }
     groupMembers = []; groupFresh = false; groupName = ""; pairingText = ""
     try await updateSummary(); status = "本机接入已清除，本地资料保留 / Local access cleared; vault retained"

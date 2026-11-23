@@ -27,8 +27,3 @@ internal fun relayDeliveryId(route: String, signature: String, manualRetryNonce:
         .joinToString("") { "%02x".format(it) }.take(32)
 }
 
-internal fun completedSyncPhase(pending: Int, peerMode: Boolean, capabilityBlocked: Boolean): RelaySyncPhase = when {
-    capabilityBlocked -> RelaySyncPhase.WAITING_FOR_CAPABILITY
-    pending > 0 && !peerMode -> RelaySyncPhase.WAITING_FOR_PRIMARY
-    else -> RelaySyncPhase.CHECKED
-}

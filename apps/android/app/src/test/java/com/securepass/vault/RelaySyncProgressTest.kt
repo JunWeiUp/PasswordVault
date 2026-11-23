@@ -4,17 +4,6 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class RelaySyncProgressTest {
-    @Test fun relayDeliveryDoesNotClearPrimaryConfirmation() {
-        assertEquals(RelaySyncPhase.WAITING_FOR_PRIMARY, completedSyncPhase(2, false, false))
-        assertEquals(RelaySyncPhase.CHECKED, completedSyncPhase(0, false, false))
-    }
-    @Test fun peerCheckDoesNotInventLegacyPendingAcknowledgements() {
-        assertEquals(RelaySyncPhase.CHECKED, completedSyncPhase(2, true, false))
-    }
-    @Test fun negotiationBlocksAClaimOfCompletion() {
-        assertEquals(RelaySyncPhase.WAITING_FOR_CAPABILITY, completedSyncPhase(0, false, true))
-        assertEquals(RelaySyncPhase.WAITING_FOR_CAPABILITY, completedSyncPhase(2, false, true))
-    }
     @Test fun progressUsesOnlyKnownTransferUnits() {
         assertNull(RelaySyncProgress(RelaySyncPhase.SENDING).fraction)
         assertEquals(.5f, RelaySyncProgress(RelaySyncPhase.SENDING, 2, 4).fraction!!, .001f)

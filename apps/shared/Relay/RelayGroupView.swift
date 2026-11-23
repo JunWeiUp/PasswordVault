@@ -60,8 +60,7 @@ struct RelayGroupView: View {
           }
         }
         if relay.groupManager {
-          // Personal groups always admit by scanning; peer libraries keep manual approval.
-          Button(t("添加设备", "Add device")) { Task { grantManager = false; await relay.inviteToGroup(automatic: relay.config.peerLibrary == nil) } }
+          Button(t("添加设备", "Add device")) { Task { grantManager = false; await relay.inviteToGroup(automatic: true) } }
         }
         if !relay.groupInvite.isEmpty {
           RelayQRCode(text: relay.groupInvite)

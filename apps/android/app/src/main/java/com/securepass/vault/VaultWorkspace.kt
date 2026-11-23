@@ -276,14 +276,6 @@ internal fun VaultWorkspace(
                     }
                 }
             Column(Modifier.weight(1f).fillMaxHeight()) {
-                val family = state.settings.optString("activePeerLibrary").isNotEmpty()
-                if (family) Text(
-                    if (family) t("家庭库：", "Family: ") + state.settings.optString("_peerLibraryName", t("家庭资料库", "Family library")) else t("个人资料库", "Personal library"),
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 6.dp),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 2,
-                )
                 state.notice?.let { notice ->
                     Row(
                         Modifier.fillMaxWidth().padding(horizontal = 20.dp),

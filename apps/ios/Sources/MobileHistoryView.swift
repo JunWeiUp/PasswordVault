@@ -95,8 +95,8 @@ struct MobileHistoryView: View {
         Text(
           action == "prune"
             ? store.t(
-              "保留当前内容。个人库清理本机旧版本；对等资料库仅隐藏旧版本，旧内容仍在同步日志中。已有备份不受影响。",
-              "Current contents remain. Personal vaults clear local older versions; peer libraries only hide them and retain their contents in the sync log. Existing backups are unchanged."
+              "保留当前内容，清理本机旧版本。已有备份不受影响。",
+              "Current contents remain and older local versions are cleared. Existing backups are unchanged."
             )
             : store.t(
               "恢复后创建新版本，当前内容保留在历史中。",

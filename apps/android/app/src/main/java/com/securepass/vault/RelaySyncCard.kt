@@ -48,10 +48,6 @@ internal fun RelaySyncCard(state: RelayUi, t: (String, String) -> String, syncNo
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             Column(Modifier.semantics { liveRegion = LiveRegionMode.Polite }, verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(title, style = MaterialTheme.typography.titleLarge, color = if (phase == RelaySyncPhase.FAILED) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface)
-                if (state.peerLibrary.isEmpty() && state.paired && !state.mesh) {
-                    Text(if (state.pending > 0) t("${state.pending} 项本地更改等待其他设备确认", "${state.pending} local changes await confirmation from other devices")
-                        else t("没有等待确认的本地更改", "No local changes await confirmation"), style = MaterialTheme.typography.bodyMedium)
-                }
                 if (state.sync.running && phase !in setOf(RelaySyncPhase.PAUSED, RelaySyncPhase.BLOCKED)) {
                     val fraction = state.sync.fraction
                     if (fraction == null) LinearProgressIndicator(Modifier.fillMaxWidth())
@@ -66,7 +62,6 @@ internal fun RelaySyncCard(state: RelayUi, t: (String, String) -> String, syncNo
                 RelaySyncPhase.PAUSED -> t("点击下方“恢复”后继续同步；已保存的本地更改不会丢失。", "Choose Resume below to continue. Saved local changes are retained.")
                 RelaySyncPhase.BLOCKED -> t("请先完成密码库授权，或修复已失效的设备接入。", "Complete vault authorization or repair invalid device access first.")
                 else -> if (state.mesh) t("同组设备会自动双向同步。多台设备同时修改同一条时以较新的修改为准，较旧版本可在条目历史中找回。", "Devices in the group sync both ways automatically. When the same entry changes on several devices, the newer edit wins; older versions stay in the entry history.")
-                    else if (state.peerLibrary.isNotEmpty()) t("本地内容已经保存。加密更改会发送给已授权设备；本轮检查完成不代表所有设备都已接收并应用。", "Your changes are saved locally. Encrypted changes go to authorized devices; a completed check does not mean every device has received and applied them.")
                     else t("本地内容已经保存。等待确认的记录可能包含条目或笔记分类；中继接收后，仍需组内其他设备处理并回传确认。", "Your changes are saved locally. Pending records may include entries or note categories. Relay receipt still requires processing and acknowledgement by another device in the group.")
             }, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             state.error?.let { Text(localized(it), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error) }

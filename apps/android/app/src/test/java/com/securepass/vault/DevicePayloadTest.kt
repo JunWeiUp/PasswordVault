@@ -100,6 +100,5 @@ class DevicePayloadTest {
         assertTrue(DevicePayload.canCreate(JSONObject().put("devicesEnabled", true), true))
         assertFalse("Format below 7", DevicePayload.canCreate(JSONObject(), true))
         assertFalse("Read-only", DevicePayload.canCreate(JSONObject().put("devicesEnabled", true), false))
-        assertFalse("Family library", DevicePayload.canCreate(JSONObject().put("devicesEnabled", true).put("activePeerLibrary", "lib"), true))
     }
 }
