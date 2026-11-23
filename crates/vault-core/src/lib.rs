@@ -14,6 +14,7 @@ mod native;
 mod passkey;
 pub mod peer_sync;
 mod recovery;
+pub mod relay_protocol;
 mod security;
 mod share_link;
 mod sharing;

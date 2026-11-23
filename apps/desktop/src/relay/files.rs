@@ -283,8 +283,8 @@ mod tests {
         },
     };
     fn identities() -> (Identity, Identity) {
-        let (ap, a) = sodiumoxide::crypto::box_::gen_keypair();
-        let (bp, b) = sodiumoxide::crypto::box_::gen_keypair();
+        let (ap, a) = crate::relay::transport::box_keypair();
+        let (bp, b) = crate::relay::transport::box_keypair();
         (
             Identity {
                 app: "passwordvault".into(),

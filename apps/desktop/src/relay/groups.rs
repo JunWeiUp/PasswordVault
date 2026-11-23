@@ -124,22 +124,22 @@ impl<A: Api> Groups<'_, A> {
         self.api.call(&self.config, m, p, b, a)
     }
     fn sign(&self, v: &Value) -> Result<Value> {
-        sign_value(
+        Ok(sign_value(
             v,
             &unhex(text(&self.config, "secret_key")?)?,
             text(&self.config, "device")?,
-        )
+        )?)
     }
     pub fn member(&self, n: &str) -> Result<Value> {
         let raw = unhex(text(&self.config, "secret_key")?)?;
-        let sk = sodiumoxide::crypto::box_::SecretKey::from_slice(&raw).ok_or("InvalidData")?;
+        let sk = super::transport::BoxSecretKey::from_slice(&raw).ok_or("InvalidData")?;
         let (pk, _) = signing(&raw)?;
         Ok(
             json!({"device":self.config["device"],"name":n,"public_key":hex(&sk.public_key().0),"signing_key":hex(&pk.0),"manager":false}),
         )
     }
     fn state(&self) -> Result<Value> {
-        unpack(&self.config["group_entry"])
+        Ok(unpack(&self.config["group_entry"])?)
     }
     fn accept(&mut self, e: Value) -> Result<()> {
         let state = unpack(&e)?;

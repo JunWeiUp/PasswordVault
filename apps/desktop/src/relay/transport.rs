@@ -5,65 +5,14 @@ use super::{
 };
 use base64::{Engine, engine::general_purpose::STANDARD};
 use serde_json::{Value, json};
-use sodiumoxide::crypto::box_;
 use std::{
-    collections::BTreeMap,
     net::{TcpStream, ToSocketAddrs},
     time::Duration,
 };
 use tungstenite::{Message, WebSocket, client::IntoClientRequest, stream::MaybeTlsStream};
-pub struct Identity {
-    pub app: String,
-    pub group: String,
-    pub device: String,
-    pub secret: box_::SecretKey,
-    pub trusted: BTreeMap<String, box_::PublicKey>,
-}
-impl Identity {
-    fn context(&self, from: &str, to: &str, kind: &str, id: &str) -> Value {
-        json!([1, self.app, self.group, from, to, kind, id])
-    }
-    pub fn seal(&self, to: &str, kind: &str, id: &str, value: Value) -> Result<String> {
-        let peer = self.trusted.get(to).ok_or("UntrustedPeer")?;
-        let nonce = box_::gen_nonce();
-        let plain = zeroize::Zeroizing::new(
-            json!({"context":self.context(&self.device,to,kind,id),"value":value}).to_string(),
-        );
-        let mut raw = nonce.0.to_vec();
-        raw.extend(box_::seal(plain.as_bytes(), &nonce, peer, &self.secret));
-        Ok(STANDARD.encode(raw))
-    }
-    pub fn open(&self, from: &str, kind: &str, id: &str, body: &str) -> Result<Value> {
-        let peer = self.trusted.get(from).ok_or("UntrustedPeer")?;
-        let raw = STANDARD.decode(body).map_err(|_| "InvalidData")?;
-        if !(40..=270336).contains(&raw.len()) {
-            return invalid();
-        }
-        let nonce = box_::Nonce::from_slice(&raw[..24]).ok_or("InvalidData")?;
-        let plain = zeroize::Zeroizing::new(
-            box_::open(&raw[24..], &nonce, peer, &self.secret).map_err(|_| "Authentication")?,
-        );
-        let v: Value = serde_json::from_slice(&plain).map_err(|_| "InvalidData")?;
-        if v["context"] != self.context(from, &self.device, kind, id) || !v["value"].is_object() {
-            return invalid();
-        }
-        Ok(v["value"].clone())
-    }
-}
-pub fn endpoint(raw: &str, local: bool) -> Result<url::Url> {
-    let u = url::Url::parse(raw).map_err(|_| "InvalidData")?;
-    if !(u.scheme() == "wss" || (local && u.scheme() == "ws" && u.host_str() == Some("127.0.0.1")))
-        || u.host_str().is_none()
-        || !u.username().is_empty()
-        || u.password().is_some()
-        || u.query().is_some()
-        || u.fragment().is_some()
-        || (u.path() != "/relay/v1/ws" && u.path() != "/v2/ws")
-    {
-        return invalid();
-    }
-    Ok(u)
-}
+#[cfg(test)]
+pub use vault_core::relay_protocol::box_keypair;
+pub use vault_core::relay_protocol::{BoxPublicKey, BoxSecretKey, Identity, endpoint};
 pub struct Connection {
     socket: WebSocket<MaybeTlsStream<TcpStream>>,
     pub identity: Identity,

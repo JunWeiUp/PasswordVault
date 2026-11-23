@@ -9,7 +9,6 @@ mod mesh;
 mod protocol;
 mod runtime;
 mod service;
-mod strict;
 mod sync;
 #[cfg(test)]
 mod tests;

@@ -233,8 +233,8 @@ mod tests {
             &json!({"group":"qa","device":"a","secret":STANDARD.encode([1;32])}),
         )
         .unwrap();
-        let (_, secret) = sodiumoxide::crypto::box_::gen_keypair();
-        let (peer, _) = sodiumoxide::crypto::box_::gen_keypair();
+        let (_, secret) = crate::relay::transport::box_keypair();
+        let (peer, _) = crate::relay::transport::box_keypair();
         let i = Identity {
             app: "passwordvault".into(),
             group: "qa".into(),

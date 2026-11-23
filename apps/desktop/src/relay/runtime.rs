@@ -247,12 +247,12 @@ pub fn identity(c: &Value) -> Result<Identity> {
             .decode(text(c, "secret")?)
             .map_err(|_| "InvalidData")?,
     );
-    let secret = sodiumoxide::crypto::box_::SecretKey::from_slice(&raw).ok_or("InvalidData")?;
+    let secret = super::transport::BoxSecretKey::from_slice(&raw).ok_or("InvalidData")?;
     let mut trusted = BTreeMap::new();
     for (id, key) in g["trusted_peers"].as_object().ok_or("InvalidData")? {
         trusted.insert(
             id.clone(),
-            sodiumoxide::crypto::box_::PublicKey::from_slice(&unhex(
+            super::transport::BoxPublicKey::from_slice(&unhex(
                 key.as_str().ok_or("InvalidData")?,
             )?)
             .ok_or("InvalidData")?,

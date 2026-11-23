@@ -3940,6 +3940,7 @@ dependencies = [
  "bip39",
  "chrono",
  "crypto_box",
+ "crypto_secretbox",
  "csv",
  "data-encoding",
  "ed25519-dalek",
