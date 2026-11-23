@@ -5,27 +5,36 @@
 //! `tool/core_contract.py`, so an op that is not registered here is rejected before any
 //! dispatch instead of silently drifting between Rust, TypeScript, Kotlin and Swift.
 use serde_json::Value;
-use std::{collections::HashSet, sync::OnceLock};
+use std::{collections::HashMap, sync::OnceLock};
 
 pub(crate) const SOURCE: &str = include_str!("../../contract/commands.json");
 
-/// Registered op names. A malformed registry yields an empty set, which fails closed.
-fn registry() -> &'static HashSet<String> {
-    static REGISTRY: OnceLock<HashSet<String>> = OnceLock::new();
+/// Registered op → group. A malformed registry yields an empty map, which fails closed.
+fn registry() -> &'static HashMap<String, String> {
+    static REGISTRY: OnceLock<HashMap<String, String>> = OnceLock::new();
     REGISTRY.get_or_init(|| {
         serde_json::from_str::<Value>(SOURCE)
             .ok()
             .and_then(|v| {
-                v["commands"]
-                    .as_object()
-                    .map(|m| m.keys().cloned().collect())
+                v["commands"].as_object().map(|m| {
+                    m.iter()
+                        .map(|(op, entry)| {
+                            (op.clone(), entry["group"].as_str().unwrap_or("").to_owned())
+                        })
+                        .collect()
+                })
             })
             .unwrap_or_default()
     })
 }
 
 pub(crate) fn is_registered(op: &str) -> bool {
-    registry().contains(op)
+    registry().contains_key(op)
+}
+
+/// The op's `group` in the registry; `DiskVault::command` routes on it.
+pub(crate) fn group(op: &str) -> Option<&'static str> {
+    registry().get(op).map(String::as_str)
 }
 
 #[cfg(test)]

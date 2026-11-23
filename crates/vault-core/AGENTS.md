@@ -6,8 +6,10 @@ sync (mesh, peer, relay), backup/import and the common-relay protocol. Rust 1.98
 ## Where things are
 - `contract/commands.json` — the JSON command API registry. Every `op` must be registered;
   unregistered ops are rejected (`src/native/contract.rs`). Results use a TS-like notation.
-- `src/native.rs` — `VaultSession` / `DiskVault` and the command dispatcher (routes by op group
-  to `src/native/*.rs`). UniFFI exports for Android/iOS live here (`#[uniffi::export]`).
+- `src/native.rs` — `VaultSession` / `DiskVault`, UniFFI exports and `DiskVault::command`,
+  which runs the shared checks (registry, lock, format guards) and routes by the op's registry
+  `group`: simple groups live in `src/native/ops/<group>.rs`; stateful ones next to their state
+  (`native/relay*.rs`, `history.rs`, `passkeys.rs`, `recovery.rs`, `devices.rs`, `capabilities.rs`).
 - `src/relay_protocol/` — group signing chain, strict payloads, invitation links, envelopes
   (shared by desktop and, through `relay-protocol-*` ops, by the mobile SDKs).
 - `src/browser.rs` — the wasm dispatcher used by the browser extension. It is NOT gated by the

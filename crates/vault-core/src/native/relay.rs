@@ -1,7 +1,7 @@
 //! Personal-vault replication. The relay transports bytes; only the Mac commits revisions.
 //! Every journal update shares the SQLCipher transaction with the document write.
 use super::*;
-#[path = "relay_peer.rs"]
+#[path = "relay_peer/mod.rs"]
 pub(super) mod peer;
 use base64::{engine::general_purpose::STANDARD, Engine};
 use serde::{Deserialize, Serialize};

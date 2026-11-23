@@ -86,7 +86,7 @@ def main() -> int:
     print(f"""
 Next steps for {args.op}:
   1. Rust handler — add a `"{args.op}" =>` arm next to the other {args.group!r} ops in:
-       {chr(10).join('       ' + f for f in files) .strip() or '(no existing handler for this group: add one and route it from native.rs)'}
+       {chr(10).join('       ' + f for f in files) .strip() or '(no existing handler: create src/native/ops/<group>.rs and add the group to the router in native.rs)'}
      lock={args.lock}: {'call self.open()? first; the registry test `unlocked_ops_refuse_while_locked` checks this automatically.' if args.lock == 'unlocked' else 'must not require an unlocked vault.'}
   2. Core test next to that handler (success + at least one failure path).
   3. Clients (only those that need it; see `python3 tool/core_contract.py matrix --group {args.group}`):
