@@ -8,7 +8,6 @@ const group = signal<any>({ device: "mac", state: { name: "QA group", members: [
   { device: "mac", name: "Mac", manager: true }, { device: "phone", name: "Phone", manager: false, signing_key: "0123456789abcdef0123456789abcdef" },
 ] } });
 mount(() => <View style={{ padding: 16 }}>
-  <Btn label="显示对等库申请" onPress={() => group.set({ ...group(), peerLibrary: "lib", applicant: "Phone", code: "ABCD-1234-EF56" })} />
   <Btn label="显示个人组申请" onPress={() => group.set({ ...group(), invitationLink: "common-relay://fixture", invitationMode: "manual", invitationExpires: Math.floor(Date.now() / 1000) + 580, applicant: "Phone", code: "ABCD-1234-EF56" })} />
   <Btn label="显示同步设备" onPress={() => group.set({ ...group(), device: "phone" })} />
   <Btn label="显示未入组" onPress={() => group.set({ device: "mac", role: "hub" })} />

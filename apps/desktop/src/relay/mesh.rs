@@ -7,11 +7,8 @@ use crate::session::VaultSession;
 pub const VERSION: u64 = 3;
 
 /// Peers from the verified group roster with pinned transport keys, excluding this
-/// device. `None` means the vault is not in a personal group (or uses a peer library).
+/// device. `None` means the vault is not in a personal group.
 pub fn roster(c: &Value) -> Result<Option<Vec<String>>> {
-    if !c["peerLibrary"].is_null() {
-        return Ok(None);
-    }
     let g = service::group(c)?;
     if !g["group_entry"].is_object() {
         return Ok(None);
@@ -44,12 +41,12 @@ pub fn ensure(s: &VaultSession, c: &Value) -> Result<Option<Vec<String>>> {
     Ok(Some(peers))
 }
 
-pub fn outgoing(s: &VaultSession, peers: &[String]) -> Result<Vec<(String, String, Vec<u8>)>> {
+pub fn outgoing(s: &VaultSession, peers: &[String]) -> Result<Vec<(String, Vec<u8>)>> {
     let mut packets = vec![];
     for peer in peers {
         let result = service::core(s, json!({"op":"relay-mesh-export","peer":peer}))?;
         if result["packet"].is_object() {
-            packets.push((peer.clone(), String::new(), canonical(&result["packet"])));
+            packets.push((peer.clone(), canonical(&result["packet"])));
         }
     }
     Ok(packets)
@@ -130,8 +127,5 @@ mod tests {
         let g = json!({"group":"g","group_entry":packed,"trusted_peers":{"phone":"ab","mac":"cd"}});
         let c = json!({"device":"mac","group":"g","groupState":STANDARD.encode(canonical(&g))});
         assert_eq!(roster(&c).unwrap(), Some(vec!["phone".to_string()]));
-        let mut library = c.clone();
-        library["peerLibrary"] = json!("lib");
-        assert!(roster(&library).unwrap().is_none());
     }
 }

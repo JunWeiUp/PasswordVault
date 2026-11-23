@@ -430,12 +430,8 @@ export async function flush() {
       const historyMeta = item.type === "secureNote"
         ? { actorType: "user", actor: "手动编辑 · 我", coalesce: true }
         : undefined;
-      const saved = await coreApi.save(stripLocal(item), historyMeta);
+      await coreApi.save(stripLocal(item), historyMeta);
       if (pending.get(item.id) === item) pending.delete(item.id);
-      if (saved?.peerBaseHeads) {
-        const cur = items().find((i) => i.id === item.id);
-        if (cur) replace({ ...cur, _peerBaseHeads: saved.peerBaseHeads, _peerLibrary: saved.peerLibrary });
-      }
     } catch (e) {
       saveState.set("failed");
       saveError.set(errorText(e));
@@ -452,7 +448,7 @@ export async function flush() {
 }
 
 function stripLocal(item: Item) {
-  // The core reads `_peerBaseHeads` for conflict checks; other underscore keys are UI-only.
+  // Double-underscore keys are UI-only.
   const out: Item = { ...item };
   for (const key of Object.keys(out)) if (key.startsWith("__")) delete out[key];
   return out;

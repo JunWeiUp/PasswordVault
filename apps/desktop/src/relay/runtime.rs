@@ -302,7 +302,7 @@ fn connected(s: &Arc<VaultSession>, run: &Run, local: bool) -> Result<()> {
     let mut queue =
         std::collections::VecDeque::<(String, String, zeroize::Zeroizing<Vec<u8>>)>::new();
     let mut pending: Option<(String, Instant)> = None;
-    // Personal groups use symmetric sync; only peer libraries keep the old path.
+    // Only members of a personal device group sync (symmetric mesh).
     let mut mesh_peers: Option<Vec<String>> = None;
     while !run.stopped() {
         if Instant::now() >= next {
@@ -328,32 +328,15 @@ fn connected(s: &Arc<VaultSession>, run: &Run, local: bool) -> Result<()> {
                     None
                 }
             } else {
-                if queue.is_empty()
-                    && pending.is_none()
-                    && c["paused"] != true
-                    && c["peers"].as_object().is_some_and(|p| !p.is_empty())
-                {
-                    match super::sync::outgoing(s) {
-                        Err(e) if e == "DevicesSyncBlocked" => {
-                            if let Ok(mut view) = run.view.lock() {
-                                view["error"] = json!(e);
-                            }
-                            None
-                        }
-                        Err(e) => return Err(e),
-                        Ok(packets) => Some(packets),
-                    }
-                } else {
-                    None
-                }
+                None
             };
             {
                 match batch {
                     None => {}
                     Some(packets) => {
-                        for (peer, library, data) in packets {
+                        for (peer, data) in packets {
                             let data = zeroize::Zeroizing::new(data);
-                            let route = format!("{peer}:{library}");
+                            let route = peer.clone();
                             let hash = digest(&data);
                             let signature = format!("{hash}:{}", super::groups::now() / 3600);
                             if sent.get(&route) == Some(&signature) {
@@ -363,18 +346,6 @@ fn connected(s: &Arc<VaultSession>, run: &Run, local: bool) -> Result<()> {
                                 digest(format!("{route}{signature}").as_bytes())[..32].to_string();
                             if data.len() <= 128 * 1024 {
                                 queue.push_back((peer.clone(), id, data));
-                            } else if !library.is_empty() {
-                                if data.len() > 48 * 1024 * 1024 {
-                                    return Err("RelayFileTooLarge".into());
-                                }
-                                let count = data.len().div_ceil(65536);
-                                for (index, part) in data.chunks(65536).enumerate() {
-                                    let id =
-                                        digest(format!("{route}{signature}:{index}").as_bytes())
-                                            [..32]
-                                            .to_string();
-                                    queue.push_back((peer.clone(),id,zeroize::Zeroizing::new(canonical(&json!({"protocol":"peer-v2-chunk","library":library,"transfer":&hash[..32],"index":index,"count":count,"total":data.len(),"digest":hash,"data":STANDARD.encode(part)})))));
-                                }
                             } else {
                                 let check = || {
                                     if run.stopped() {
@@ -419,33 +390,20 @@ fn connected(s: &Arc<VaultSession>, run: &Run, local: bool) -> Result<()> {
                                 &descriptor,
                                 &cipher,
                             )?;
-                            if let Some(peers) = &mesh_peers {
-                                if !peers.iter().any(|p| p == from) {
-                                    return Err("VaultAccessDenied".into());
-                                }
-                                let (changed, reply) = super::mesh::receive_with_reply(s, from, &plain)?;
-                                if changed {
-                                    run.changed();
-                                }
-                                if let Some(resp_bytes) = reply {
-                                    if let Ok(mut outbox) = run.blob_outbox.lock() {
-                                        outbox.push_back((from.to_string(), resp_bytes));
-                                    }
-                                }
-                                files.acknowledge(text(&descriptor, "id")?)?;
-                                continue;
+                            let peers = mesh_peers.as_deref().unwrap_or_default();
+                            if !peers.iter().any(|p| p == from) {
+                                return Err("VaultAccessDenied".into());
                             }
-                            let key = c["peers"][from].as_str().ok_or("VaultAccessDenied")?;
-                            match super::sync::receive(s, from, key, &plain) {
-                                Ok(()) => {},
-                                // Keep the file pending and the control channel alive so
-                                // capability proofs can arrive before the next download.
-                                Err(e) if e == "DevicesSyncBlocked" => continue,
-                                Err(e) => return Err(e),
+                            let (changed, reply) = super::mesh::receive_with_reply(s, from, &plain)?;
+                            if changed {
+                                run.changed();
+                            }
+                            if let Some(resp_bytes) = reply {
+                                if let Ok(mut outbox) = run.blob_outbox.lock() {
+                                    outbox.push_back((from.to_string(), resp_bytes));
+                                }
                             }
                             files.acknowledge(text(&descriptor, "id")?)?;
-                            run.changed();
-                            sent.clear();
                         }
                     }
                 }
@@ -502,17 +460,7 @@ fn connected(s: &Arc<VaultSession>, run: &Run, local: bool) -> Result<()> {
         if pending.is_none() {
             if let Some((peer, id, data)) = queue.pop_front() {
                 c = service::read(s)?;
-                let key = connection
-                    .identity
-                    .trusted
-                    .get(&peer)
-                    .map(|k| hex(&k.0))
-                    .ok_or("VaultAccessDenied")?;
-                let allowed = match &mesh_peers {
-                    Some(peers) => peers.contains(&peer),
-                    None => c["paused"] != true && c["peers"][&peer] == key,
-                };
-                if !allowed {
+                if !mesh_peers.as_ref().is_some_and(|peers| peers.contains(&peer)) {
                     return Err("VaultAccessDenied".into());
                 }
                 if let Some(event) = super::journal::prepare(
@@ -572,12 +520,6 @@ fn connected(s: &Arc<VaultSession>, run: &Run, local: bool) -> Result<()> {
                         connection
                             .identity
                             .open(from, "message", id, text(&event, "body")?)?;
-                    let key = connection
-                        .identity
-                        .trusted
-                        .get(from)
-                        .map(|k| hex(&k.0))
-                        .ok_or("VaultAccessDenied")?;
                     let expired = plain["expires"]
                         .as_u64()
                         .is_some_and(|e| e <= super::groups::now());
@@ -605,20 +547,6 @@ fn connected(s: &Arc<VaultSession>, run: &Run, local: bool) -> Result<()> {
                                 if let Ok(mut outbox) = run.blob_outbox.lock() {
                                     outbox.push_back((from.to_string(), resp_bytes));
                                 }
-                            }
-                        } else {
-                            match super::sync::receive(s, from, &key, &data) {
-                                Ok(()) => {
-                                    run.changed();
-                                    sent.clear();
-                                }
-                                Err(e) if e == "DevicesSyncBlocked" => {
-                                    if let Ok(mut view) = run.view.lock() {
-                                        view["error"] = json!(e);
-                                    }
-                                    continue;
-                                }
-                                Err(e) => return Err(e),
                             }
                         }
                         super::journal::acknowledge(s, &run.directory, from, id)?;

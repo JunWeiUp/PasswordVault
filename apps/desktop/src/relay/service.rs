@@ -210,8 +210,7 @@ pub fn execute(s: &VaultSession, request: Value, local: bool) -> Result<String> 
             .filter(|(id, key)| !valid || g["trusted_peers"][*id] != **key)
             .map(|(id, _)| id.clone())
             .collect();
-        // Symmetric sync reads the signed roster each cycle; only peer-library
-        // transport keys are pruned here.
+        // Symmetric sync reads the signed roster each cycle; legacy pinned keys are pruned.
         for id in revoked {
             c["peers"].as_object_mut().unwrap().remove(&id);
         }
@@ -271,8 +270,7 @@ fn clear_local(s: &VaultSession, c: &mut Value) -> Result<()> {
         c.as_object_mut().ok_or("InvalidData")?.remove(k);
     }
     // Owner policy (vault-core relay_protocol::policy): clear credentials and membership,
-    // keep the endpoint, rotate the device ID and — unless a peer library still pins the
-    // current transport key — the X25519 transport secret.
+    // keep the endpoint, rotate the device ID and the X25519 transport secret.
     let fresh = vault_core::relay_protocol::policy::exit_identity().map_err(String::from)?;
     for k in ["group", "token", "hub", "password"] {
         c[k] = json!("");
@@ -281,9 +279,7 @@ fn clear_local(s: &VaultSession, c: &mut Value) -> Result<()> {
     c["peers"] = json!({});
     c["paused"] = json!(true);
     c["device"] = fresh["device"].clone();
-    if c["peerLibrary"].as_str().is_none_or(str::is_empty) {
-        let secret = super::protocol::unhex(text(&fresh, "secret")?)?;
-        c["secret"] = json!(STANDARD.encode(&secret));
-    }
+    let secret = super::protocol::unhex(text(&fresh, "secret")?)?;
+    c["secret"] = json!(STANDARD.encode(&secret));
     write(s, c)
 }

@@ -10,7 +10,7 @@ export type { CoreOp, CoreParams, CoreRequest, CoreResults } from "./coreContrac
 export type VaultStatus = { exists: boolean; unlocked: boolean };
 export type VaultListResult = { items: Item[]; settings: Record<string, any> };
 export type HistoryMeta = { actorType?: string; actor?: string; coalesce?: boolean; summary?: string };
-export type SaveResult = { peerBaseHeads?: unknown; peerLibrary?: string };
+export type SaveResult = { ok?: boolean };
 export type AuditEntry = { id: string; weak?: boolean; reused?: boolean; expired?: boolean };
 export type AuditResult = { results?: AuditEntry[] } | AuditEntry[];
 export type RecoveryStatus = { enabled: boolean };
@@ -112,9 +112,6 @@ export function createCoreApi(vault: Vault) {
 
     devicesStatus: () => exec<{ formatVersion?: number; enabled?: boolean }>({ op: "devices-status" }),
     relayStatus: () => exec<RelaySummary>({ op: "relay-status" }),
-    relayPeerStatus: (library: string) => exec<Record<string, any>>({ op: "relay-peer-status", library }),
-    relayPeerResolve: (library: string, key: string, value: unknown) =>
-      exec<{ ok?: boolean }>({ op: "relay-peer-resolve", library, key, value }),
     relayMeshConflicts: () => exec<{ conflicts?: MeshNoteConflictDto[] }>({ op: "relay-mesh-conflicts" }),
     relayMeshResolveConflict: (id: string, strategy: "local" | "remote" | "both" | "custom", item?: Item) =>
       exec<{ ok?: boolean; item?: Item; conflictCount?: number }>(

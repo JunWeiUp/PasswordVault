@@ -19,7 +19,6 @@ function formatRemaining(expiresSec?: number, nowMs = Date.now()): string {
 function InviteDeviceSheet(props: {
   group: () => any;
   busy: () => boolean;
-  personal: () => boolean;
   close: () => void;
   act: (v: Record<string, unknown>) => Promise<void>;
 }) {
@@ -33,8 +32,8 @@ function InviteDeviceSheet(props: {
   cleanup(onLock(props.close));
 
   const link = () => String(props.group()?.invitationLink || "");
-  const mode = () => String(props.group()?.invitationMode || (props.personal() ? "auto" : "manual"));
-  const manual = () => !props.personal() || mode() === "manual";
+  const mode = () => String(props.group()?.invitationMode || "auto");
+  const manual = () => mode() === "manual";
   const remaining = () => formatRemaining(props.group()?.invitationExpires, now());
 
   effect(() => {
@@ -60,9 +59,7 @@ function InviteDeviceSheet(props: {
     catch (e) { if (alive) error.set(relayErrorText(e)); }
   };
 
-  const subtitle = () => !props.personal()
-    ? "核对配对码后加入设备组；对等密码库的访问仍由各库独立授权。请只交给你信任的设备。"
-    : manual()
+  const subtitle = () => manual()
       ? "新设备扫描后提交申请，核对双方配对码一致后再批准加入。请只交给你自己的设备。"
       : "在新设备上扫描即可加入并立即双向同步全部密码库内容，无需再确认。请只交给你自己的设备。";
 
@@ -161,8 +158,6 @@ export function GroupPanel(props: { group: any; busy: boolean; online?: string[]
     finally { scanning.set(false); }
   };
   const code = signal(""), connectionSettings = signal(false);
-  // Personal groups always use symmetric sync; only peer libraries keep manual approval.
-  const personal = () => !props.group.peerLibrary;
   const members = (): any[] => props.group.state?.members ?? [];
   const manager = () => members().some((m: any) => m.device === props.group.device && m.manager);
   const act = (v: Record<string, unknown>) => void props.act(v).catch(() => {});
@@ -192,7 +187,7 @@ export function GroupPanel(props: { group: any; busy: boolean; online?: string[]
 
   const openInviteSheet = () => openSheet({
     width: 540,
-    render: (close) => <InviteDeviceSheet group={() => props.group} busy={() => props.busy} personal={personal} close={close} act={props.act} />,
+    render: (close) => <InviteDeviceSheet group={() => props.group} busy={() => props.busy} close={close} act={props.act} />,
   });
 
   const startInvite = async (mode: "auto" | "manual") => {
@@ -262,7 +257,7 @@ export function GroupPanel(props: { group: any; busy: boolean; online?: string[]
               <Pill tone="info">{members().length} 台设备</Pill>
             </Row>
             <T size={11.5} color={c().muted}>
-              {personal() ? "个人对称双向同步 · 端到端加密" : "对等密码库设备组"}
+              个人对称双向同步 · 端到端加密
             </T>
           </View>
           <Btn label={connectionSettings() ? "收起连接设置" : "连接设置"} onPress={() => connectionSettings.set(!connectionSettings())} />
@@ -282,7 +277,7 @@ export function GroupPanel(props: { group: any; busy: boolean; online?: string[]
           </View>
         </If>
 
-        <If when={personal() && manager()}>
+        <If when={manager()}>
           <View style={{ borderTopWidth: 1, borderTopColor: c().line2, paddingTop: 10, gap: 8 }}>
             <If when={!props.group.invitationLink}>
               <Row gap={8} wrap>
@@ -308,28 +303,12 @@ export function GroupPanel(props: { group: any; busy: boolean; online?: string[]
           </View>
         </If>
 
-        <If when={personal() && !manager()}>
+        <If when={!manager()}>
           <View style={{ borderTopWidth: 1, borderTopColor: c().line2, paddingTop: 10 }}>
             <T size={12} color={c().muted}>{`请在管理设备“${members().find((m: any) => m.manager)?.name ?? "创建者"}”上邀请新设备。`}</T>
           </View>
         </If>
 
-        <If when={!personal() && manager()}>
-          <View style={{ borderTopWidth: 1, borderTopColor: c().line2, paddingTop: 10, gap: 8 }}>
-            <Row style={{ justifyContent: "space-between" }} gap={8} wrap>
-              <T size={11.5} color={c().muted} style={{ flex: 1 }}>核对配对码后加入设备组；对等密码库的访问仍由各库独立授权。</T>
-              <Btn label={props.group.invitationLink ? "查看邀请二维码" : "邀请设备"} icon="qr" kind="primary" disabled={props.busy} onPress={() => props.group.invitationLink ? openInviteSheet() : void startInvite("manual")} />
-            </Row>
-            <If when={props.group.invitationLink}>
-              <Row gap={8} wrap>
-                <Btn label="复制邀请链接" icon="link" onPress={() => void copySecret(props.group.invitationLink, "邀请链接")} />
-                <If when={props.group.invitationMode === "manual"}><Btn label="检查加入申请" disabled={props.busy} onPress={() => act({ op: "check-request" })} /></If>
-                <Btn label="取消邀请" kind="danger" disabled={props.busy} onPress={() => act({ op: "cancel-invitation" })} />
-              </Row>
-            </If>
-            {approval("此步骤只确认设备组成员身份，不更改对等密码库权限。")}
-          </View>
-        </If>
       </Group>
 
       {/* Members List */}

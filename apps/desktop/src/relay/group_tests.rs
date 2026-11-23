@@ -185,7 +185,7 @@ impl Fixture {
                                     Ok(tungstenite::Message::Text(t)) => {
                                         let e: Value = serde_json::from_str(&t).unwrap();
                                         if e["type"] == "msg" {
-                                            let mut out = json!({"type":"msg","id":e["id"],"from":device,"body":e["body"],"offline":e["offline"]});
+                                            let out = json!({"type":"msg","id":e["id"],"from":device,"body":e["body"],"offline":e["offline"]});
                                             if e["offline"] == true {
                                                 let mut store = offline.lock().unwrap();
                                                 let saved = store
@@ -627,108 +627,6 @@ fn joined_members_sync_both_ways_without_authorization() {
     std::thread::sleep(std::time::Duration::from_millis(300));
     std::fs::remove_dir_all(root).unwrap();
 }
-#[test]
-fn relay_peer_chunk_router_requires_library_identity() {
-    sodiumoxide::init().unwrap();
-    let server = Fixture::new();
-    let root =
-        std::env::temp_dir().join(format!("pv-relay-peer-{}", uuid::Uuid::new_v4()));
-    std::fs::create_dir(&root).unwrap();
-    let a =
-        Arc::new(crate::session::VaultSession::new(root.join("a").to_string_lossy().into()).unwrap());
-    let b =
-        Arc::new(crate::session::VaultSession::new(root.join("b").to_string_lossy().into()).unwrap());
-    for s in [&a, &b] {
-        service::core(s, json!({"op":"create","password":TEST_PASSWORD})).unwrap();
-    }
-    service::execute(
-        &a,
-        json!({"op":"create","endpoint":server.url,"relayPassword":RELAY_ACCESS,"name":"Peer QA","deviceName":"A"}),
-        true,
-    )
-    .unwrap();
-    let inv: Value = serde_json::from_str(
-        &service::execute(&a, json!({"op":"invite","mode":"auto"}), true).unwrap(),
-    )
-    .unwrap();
-    service::execute(
-        &b,
-        json!({"op":"join","link":inv["invitationLink"],"deviceName":"B"}),
-        true,
-    )
-    .unwrap();
-    service::execute(&a, json!({"op":"refresh"}), true).unwrap();
-    let mut ac = service::read(&a).unwrap();
-    let mut bc = service::read(&b).unwrap();
-    let ad = ac["device"].as_str().unwrap().to_string();
-    let bd = bc["device"].as_str().unwrap().to_string();
-    let ag = service::group(&ac).unwrap();
-    let bg = service::group(&bc).unwrap();
-    let ak = ag["public_key"].as_str().unwrap().to_string();
-    let bk = bg["public_key"].as_str().unwrap().to_string();
-    let ai = service::core(
-        &a,
-        json!({"op":"relay-peer-create","device":ad,"personal":true,"transportKey":ak}),
-    )
-    .unwrap();
-    let bi = service::core(
-        &b,
-        json!({"op":"relay-peer-identity","device":bd,"personal":true,"confirmPersonalSync":true}),
-    )
-    .unwrap();
-    let lib = ai["library"].as_str().unwrap().to_string();
-    service::core(&a,json!({"op":"relay-peer-authorize","library":lib,"peer":bd,"member":{"publicKey":bi["publicKey"],"transportKey":bk,"role":"editor"}})).unwrap();
-    ac["peerLibrary"] = json!(lib);
-    ac["peers"][&bd] = json!(bk);
-    ac["paused"] = json!(false);
-    service::write(&a, &ac).unwrap();
-    bc["peerLibrary"] = bi["library"].clone();
-    bc["peerExpectedLibrary"] = json!(lib);
-    bc["peerPendingLocalLibrary"] = bi["library"].clone();
-    bc["peerFounderKey"] = ai["publicKey"].clone();
-    bc["peers"][&ad] = json!(ak);
-    bc["paused"] = json!(false);
-    service::write(&b, &bc).unwrap();
-    service::core(&a,json!({"op":"save","richNotes":true,"item":{"id":"chunk-fixture","type":"secureNote","title":"Chunked note","noteFormat":"plain","note":"synthetic data ".repeat(14000)}})).unwrap();
-    let preflight = super::sync::outgoing(&a).unwrap();
-    assert!(
-        !preflight.is_empty(),
-        "peer export count is zero: frozen={}, memberKeyMatches={}",
-        service::core(&a, json!({"op":"relay-peer-status","library":lib})).unwrap()["frozen"],
-        service::core(&a, json!({"op":"relay-peer-status","library":lib})).unwrap()["members"][&bd]
-            ["transportKey"]
-            == bk
-    );
-    runtime::start(a.clone(), root.join("a"), true).unwrap();
-    runtime::start(b.clone(), root.join("b"), true).unwrap();
-    let end = std::time::Instant::now() + std::time::Duration::from_secs(35);
-    let received = || {
-        service::core(&b, json!({"op":"list"})).unwrap()["items"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|i| i["id"] == "chunk-fixture")
-    };
-    while !received() && std::time::Instant::now() < end {
-        std::thread::sleep(std::time::Duration::from_millis(100));
-    }
-    assert!(
-        received(),
-        "a={:?},b={:?}",
-        runtime::view(&a),
-        runtime::view(&b)
-    );
-    runtime::stop(&a);
-    runtime::stop(&b);
-    assert!(super::sync::receive(&b, &ad, "00", b"{}").is_err());
-    let data = super::sync::outgoing(&a).unwrap();
-    assert!(data.iter().any(|(_, id, _)| id == &lib));
-    drop(a);
-    drop(b);
-    std::thread::sleep(std::time::Duration::from_millis(300));
-    std::fs::remove_dir_all(root).unwrap();
-}
-
 fn enrolled_fixture(server: &Fixture) -> (std::path::PathBuf, Arc<crate::session::VaultSession>) {
     let directory = std::env::temp_dir().join(format!("pv-relay-local-exit-{}", uuid::Uuid::new_v4()));
     let session = Arc::new(crate::session::VaultSession::new(directory.to_string_lossy().into()).unwrap());
