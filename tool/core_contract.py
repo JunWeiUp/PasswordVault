@@ -450,9 +450,7 @@ MATRIX_CLIENTS: list[tuple[str, tuple[str, ...], tuple[str, ...], list[re.Patter
     ("ios", ("apps/ios/Sources", "apps/ios/Autofill", "apps/shared/Relay", "apps/shared/Capabilities"), (".swift",),
      [*SCANS[1][2], re.compile(r'\bCoreRequest\.`?([A-Za-z0-9]+)`?\(')]),
     ("browser*", ("apps/browser/src",), (".ts", ".tsx"),
-     [re.compile(r'\bop:\s*"([a-z0-9-]+)"'), re.compile(r'op\s*===?\s*"([a-z0-9-]+)"'),
-      # core.ts lists read-only ops (no snapshot save) one name per line.
-      re.compile(r'^\s*"([a-z0-9-]+)",\s*$', re.MULTILINE)]),
+     [re.compile(r'\bop:\s*"([a-z0-9-]+)"'), re.compile(r'op\s*===?\s*"([a-z0-9-]+)"')]),
 ]
 
 
@@ -472,6 +470,29 @@ def usage(commands: dict) -> dict[str, set[str]]:
                             if op in used:
                                 used[op].add(client)
     return used
+
+
+# Ops the extension sends that are not registry ops. Adding one here is a deliberate choice;
+# anything else must be in commands.json (and served by crates/vault-core/src/browser.rs).
+BROWSER_WASM_ONLY = {"draft-read", "draft-save", "draft-clear", "attachment-add", "attachment-read"}
+# Messages between extension pages and its background worker, never sent to the core.
+EXTENSION_MESSAGES = {"activity", "configure-sync", "disable-auto-unlock", "disable-sync", "open",
+                      "open-entry", "pair", "sync-save"}
+
+
+def browser_scan(commands: dict) -> list[str]:
+    """Flags extension ops that are neither registry ops nor declared extension-only ops."""
+    pattern = re.compile(r'\bop:\s*"([a-z0-9-]+)"')
+    problems = []
+    for path in sorted((ROOT / "apps/browser/src").rglob("*")):
+        if path.suffix not in (".ts", ".tsx") or not path.is_file():
+            continue
+        for match in pattern.finditer(path.read_text(errors="replace")):
+            op = match.group(1)
+            if op not in commands and op not in BROWSER_WASM_ONLY and op not in EXTENSION_MESSAGES:
+                problems.append(f"{rel(path)}: op {op!r} is not in commands.json; register it or "
+                                "declare it in BROWSER_WASM_ONLY/EXTENSION_MESSAGES (tool/core_contract.py)")
+    return problems
 
 
 def print_matrix(commands: dict, args: list[str]) -> int:
@@ -530,6 +551,7 @@ def main(argv: list[str]) -> int:
         if not path.exists() or path.read_text() != text:
             problems.append(f"{rel(path)} is stale: run `python3 tool/core_contract.py generate`")
     problems += scan(commands)
+    problems += browser_scan(commands)
     for problem in problems:
         print(problem, file=sys.stderr)
     if problems:

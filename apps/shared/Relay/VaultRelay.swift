@@ -558,7 +558,7 @@ extension VaultRelay {
   private func clearGroupAccess() async throws {
     let state = try await call(CoreRequest.relayStatus()).object
     if state["enabled"]?.bool == true {
-      _ = try await call(["op": .string("relay-detach"), "group": state["group"] ?? .null, "device": state["device"] ?? .null])
+      _ = try await call(CoreRequest.relayDetach(group: state["group"]?.string ?? "", device: state["device"]?.string ?? ""))
     }
     let old = config
     config.groupState = nil; config.group = ""; config.token = ""; config.hub = ""

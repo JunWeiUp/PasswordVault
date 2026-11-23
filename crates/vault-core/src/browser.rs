@@ -82,6 +82,46 @@ pub fn bootstrap_unlock(
     Ok(root.to_vec())
 }
 
+/// Ops that never change vault state: no checkpoint, no encrypted snapshot save. The
+/// extension asks this (`isReadOnlyOp`) instead of keeping its own list.
+const READ_ONLY_OPS: [&str; 30] = [
+    "list",
+    "totp",
+    "parse-totp",
+    "generate",
+    "audit",
+    "matches",
+    "fill",
+    "export",
+    "export-plain",
+    "wallet",
+    "share-options",
+    "share-seal",
+    "structured-list",
+    "structured-fill",
+    "history-status",
+    "draft-read",
+    "history-list",
+    "recovery-status",
+    "recovery-generate",
+    "recovery-export",
+    "attachment-read",
+    "passkey-index",
+    "passkey-matches",
+    "passkey-assert",
+    "import-preview",
+    "security-audit",
+    "breach-request",
+    "breach-response",
+    "otp-matches",
+    "otp-fill",
+];
+
+#[wasm_bindgen(js_name = isReadOnlyOp)]
+pub fn is_read_only_op(op: &str) -> bool {
+    READ_ONLY_OPS.contains(&op)
+}
+
 #[wasm_bindgen]
 pub struct BrowserVault {
     header: Header,
@@ -184,39 +224,7 @@ impl BrowserVault {
         }
         let mut request: Value =
             serde_json::from_str(&input).map_err(|_| js_error(VaultError::InvalidData))?;
-        let read_only = [
-            "list",
-            "totp",
-            "parse-totp",
-            "generate",
-            "audit",
-            "matches",
-            "fill",
-            "export",
-            "export-plain",
-            "wallet",
-            "share-options",
-            "share-seal",
-            "structured-list",
-            "structured-fill",
-            "history-status",
-            "draft-read",
-            "history-list",
-            "recovery-status",
-            "recovery-generate",
-            "recovery-export",
-            "attachment-read",
-            "passkey-index",
-            "passkey-matches",
-            "passkey-assert",
-            "import-preview",
-            "security-audit",
-            "breach-request",
-            "breach-response",
-            "otp-matches",
-            "otp-fill",
-        ]
-        .contains(&request["op"].as_str().unwrap_or(""));
+        let read_only = is_read_only_op(request["op"].as_str().unwrap_or(""));
         let checkpoint = (!read_only).then(|| {
             (
                 self.document.clone(),

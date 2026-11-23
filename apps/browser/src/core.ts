@@ -8,37 +8,6 @@ let lastActivity = 0;
 let idleMinutes = 60;
 let checkpoint: string | undefined;
 let queue: Promise<unknown> = Promise.resolve();
-const readOnly = new Set([
-  "list",
-  "draft-read",
-  "structured-list",
-  "structured-fill",
-  "totp",
-  "parse-totp",
-  "generate",
-  "passkey-index",
-            "passkey-matches",
-  "passkey-assert",
-  "audit",
-  "import-preview",
-  "security-audit",
-  "breach-request",
-  "breach-response",
-  "otp-matches",
-  "otp-fill",
-  "matches",
-  "fill",
-  "export",
-  "export-plain",
-  "share-options",
-  "share-seal",
-  "history-status",
-  "history-list",
-  "recovery-status",
-  "recovery-generate",
-  "recovery-export",
-  "attachment-read",
-]);
 export function locked() {
   if (engine && Date.now() - lastActivity > idleMinutes * 60_000) lock();
   return !engine;
@@ -100,7 +69,7 @@ async function execute(request: Request): Promise<any> {
   const before = checkpoint!;
   try {
     const result = JSON.parse(engine.command(JSON.stringify(request)));
-    if (!readOnly.has(request.op)) {
+    if (!wasm.isReadOnlyOp(request.op)) {
       const next = engine.snapshot();
       await writeStorage(
         next,

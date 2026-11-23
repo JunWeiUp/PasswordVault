@@ -16,7 +16,7 @@ Respond to this repository's owner in Chinese unless asked otherwise. Public doc
 
 - Each code area has its own short guide: `crates/vault-core/AGENTS.md`, `apps/desktop/AGENTS.md`, `apps/android/AGENTS.md`, `apps/ios/AGENTS.md`, `apps/browser/AGENTS.md` (entry files, the one check command, area rules). They are tracked; `docs/` is local-only.
 - Verify a change with `python3 tool/check_changed.py` (`--dry-run` shows the plan); it picks checks from the diff and rebuilds mobile core bindings when `crates/` changes.
-- New core command: `python3 tool/new_op.py ...`; which client calls what: `python3 tool/core_contract.py matrix [--missing <client>]`. Clients build requests with the generated typed builders (`CoreRequest`), never hand-written op strings.
+- New core command: `python3 tool/new_op.py ...`; which client calls what: `python3 tool/core_contract.py matrix [--missing <client>]`. Clients build requests with the generated typed builders (`CoreRequest`), never hand-written op strings. Desktop UI calls the core only through `call()` (results typed from `commands.json`) or a named `coreApi` helper; the browser extension's ops are checked by `core_contract.py check` (non-registry ops must be declared there).
 
 ## Documentation structure
 

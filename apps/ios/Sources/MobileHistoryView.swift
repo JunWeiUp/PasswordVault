@@ -79,11 +79,9 @@ struct MobileHistoryView: View {
             if operation == "prune" {
               _ = try await store.perform(CoreRequest.historyPrune(id: id))
             } else if let selected {
-              _ = try await store.perform([
-                "op": .string("history-restore"), "id": .string(id),
-                "revisionId": selected.object["id"] ?? .null,
-                "time": .string(ISO8601DateFormatter().string(from: Date())),
-              ])
+              _ = try await store.perform(CoreRequest.historyRestore(
+                id: id, revisionId: selected.object["id"]?.string ?? "",
+                time: ISO8601DateFormatter().string(from: Date())))
             }
             selected = nil
             reveal = false

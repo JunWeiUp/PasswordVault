@@ -89,8 +89,9 @@ export function createCoreApi(vault: Vault) {
     historyEnable: () => exec<{ ok?: boolean }>({ op: "history-enable" }),
     historyMilestone: (id: string, summary: string) =>
       exec<{ ok?: boolean }>({ op: "history-milestone", id, summary }),
-    historyList: (id: string, offset?: number, limit?: number) =>
-      exec<{ revisions?: any[]; total?: number }>({ op: "history-list", id, offset, limit }),
+    /** `R` is the caller's view of a revision (`CoreRevision` in commands.json). */
+    historyList: <R = Record<string, any>>(id: string, offset?: number, limit?: number) =>
+      exec<{ revisions: R[]; total: number }>({ op: "history-list", id, offset, limit }),
     historyRestore: (id: string, revisionId: string, time = new Date().toISOString()) =>
       exec<{ ok?: boolean }>({ op: "history-restore", id, revisionId, time }),
     historyPrune: (id: string, keepMilestones = false) =>

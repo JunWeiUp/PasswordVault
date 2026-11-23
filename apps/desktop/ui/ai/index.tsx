@@ -5,7 +5,7 @@ export { AiWorkspacePage } from "./Workspace";
 import { Dialog } from "nsh/base";
 import { Ai } from "passwordvault/native";
 import { Banner, Btn, Row, T, Toggle } from "../kit";
-import { call, noteCategories, phase, refreshItems, settings as vaultSettings, toast, vaultInstance } from "../store";
+import { call, coreApi, noteCategories, phase, refreshItems, settings as vaultSettings, toast, vaultInstance } from "../store";
 import { c } from "../theme";
 export const status = signal<any>({ settings: {}, pending: [] });
 export async function control(r: any) { return JSON.parse(await Ai.control(vaultInstance, JSON.stringify(r))); }
@@ -30,7 +30,7 @@ export async function setCategoryAiWritable(cat: string, allow: boolean) {
   if (allow && !noteCategories().includes(clean)) {
     try {
       await call({ op: "category-add", name: clean });
-      const doc = await call<{ settings: Record<string, any> }>({ op: "list", summaries: true });
+      const doc = await coreApi.list(true);
       vaultSettings.set(doc.settings ?? {});
     } catch {}
   }

@@ -34,11 +34,10 @@ export const vaultDirectory = vault.directory;
 /** Strongly-typed facade for `vault.command` JSON-RPC calls into `crates/vault-core`. */
 export const coreApi = createCoreApi(vault);
 
-/** Without a type argument the result is the documented shape from commands.json
- *  (`CoreResults`); an explicit `call<T>()` keeps a hand-written local type. */
-export function call<R extends CoreRequest>(request: R): Promise<CoreResults[R["op"]]>;
-export function call<T = any>(request: CoreRequest): Promise<T>;
-export function call(request: CoreRequest): Promise<unknown> {
+/** The one way to send a core request from UI code: the result has the documented shape from
+ *  commands.json (`CoreResults`). Results that need a sharper local type get a named helper in
+ *  `coreApi` (`ui/api/core.ts`) instead of an inline `call<T>()`. */
+export function call<R extends CoreRequest>(request: R): Promise<CoreResults[R["op"]]> {
   return coreApi.raw(request);
 }
 

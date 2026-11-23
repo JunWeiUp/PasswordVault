@@ -1,6 +1,6 @@
 import { cleanup, signal, Scroll, View } from "nsh";
 import { Banner, Btn, openSheet, SheetTitle, SheetFooter, T, Toggle } from "../kit";
-import { call, errorText, flush, items, load, now, onLock, phase, type Item } from "../store";
+import { call, coreApi, errorText, flush, items, load, now, onLock, phase, type Item } from "../store";
 import { askEnableHistory, historyWarning } from "../recovery";
 import { NoteHistorySheet } from "./NoteHistorySheet";
 
@@ -30,7 +30,7 @@ function History(props: { item: Item; close: () => void }) {
   const refresh = async (append = false) => {
     await flush();
     const status = await call({ op: "history-status" });
-    const page = status.enabled ? await call<{ revisions: Revision[]; total: number }>({ op: "history-list", id: props.item.id, offset: append ? revisions().length : 0, limit: 30 }) : { revisions: [], total: 0 };
+    const page = status.enabled ? await coreApi.historyList<Revision>(props.item.id, append ? revisions().length : 0, 30) : { revisions: [], total: 0 };
     if (!alive) return;
     enabled.set(status.enabled); total.set(page.total);
     revisions.set(append ? [...revisions(), ...page.revisions.filter((r: Revision) => !revisions().some(old => old.id === r.id))] : page.revisions);
