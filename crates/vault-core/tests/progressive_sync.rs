@@ -420,3 +420,98 @@ fn concurrent_note_c1_auto_merge_r9_attachment_union_and_c3_conflict_resolution(
     assert!(final_text.contains("conflict from A"));
     assert!(final_text.contains("conflict from B"));
 }
+
+/// Delivers every pending packet in both directions until neither side has anything to send.
+fn settle_pair(a: &VaultSession, b: &VaultSession) {
+    for _ in 0..12 {
+        let mut sent = false;
+        for (from, from_id, to, to_id) in [(a, "dev-a", b, "dev-b"), (b, "dev-b", a, "dev-a")] {
+            let packet = call(from, json!({"op":"relay-mesh-export","peer":to_id})).unwrap()
+                ["packet"]
+                .clone();
+            if !packet.is_null() {
+                call(
+                    to,
+                    json!({"op":"relay-mesh-receive","peer":from_id,"packet":packet}),
+                )
+                .unwrap();
+                sent = true;
+            }
+        }
+        if !sent {
+            return;
+        }
+    }
+    panic!("replicas did not become idle");
+}
+
+fn conflict_count(s: &VaultSession) -> usize {
+    call(s, json!({"op":"relay-mesh-conflicts"})).unwrap()["conflicts"]
+        .as_array()
+        .unwrap()
+        .len()
+}
+
+fn edit_note(s: &VaultSession, text: &str) {
+    let mut item = call(s, json!({"op":"get","id":"n"})).unwrap();
+    item["note"] = json!(text);
+    call(s, json!({"op":"save","item":item})).unwrap();
+}
+
+/// Regression: an edit made on top of the other side's version (taking turns, or resolving
+/// a parallel branch) is not concurrent. Before version vectors every such edit reopened the
+/// conflict on the other device, so resolving it on one side made it reappear on the other.
+#[test]
+fn sequential_edits_and_resolutions_do_not_reopen_parallel_branches() {
+    let (da, db) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+    let (a, b) = (new_vault(&da), new_vault(&db));
+    for (s, me, peer) in [(&a, "dev-a", "dev-b"), (&b, "dev-b", "dev-a")] {
+        call(s, json!({"op":"relay-mesh-init","group":"g3","device":me})).unwrap();
+        call(s, json!({"op":"relay-mesh-peers","peers":[peer]})).unwrap();
+    }
+    call(
+        &a,
+        json!({"op":"save","item":{"id":"n","type":"secureNote","title":"Skills","note":"## Alpha\nbase","noteFormat":"plain"}}),
+    )
+    .unwrap();
+    settle_pair(&a, &b);
+
+    // Taking turns on the same section is a plain sequence of edits.
+    for round in 0..3 {
+        edit_note(&b, &format!("## Alpha\nB round {round}"));
+        settle_pair(&a, &b);
+        edit_note(&a, &format!("## Alpha\nA round {round}"));
+        settle_pair(&a, &b);
+    }
+    assert_eq!(conflict_count(&a), 0);
+    assert_eq!(conflict_count(&b), 0);
+
+    // A real concurrent edit of the same section shows the branch on both devices.
+    edit_note(&a, "## Alpha\nconcurrent A");
+    edit_note(&b, "## Alpha\nconcurrent B");
+    settle_pair(&a, &b);
+    assert!(conflict_count(&a) + conflict_count(&b) > 0);
+
+    // Resolving on one device settles it everywhere and stays settled.
+    for s in [&b, &a] {
+        if conflict_count(s) > 0 {
+            call(
+                s,
+                json!({"op":"relay-mesh-resolve-conflict","id":"n","strategy":"remote"}),
+            )
+            .unwrap();
+            break;
+        }
+    }
+    settle_pair(&a, &b);
+    assert_eq!(conflict_count(&a), 0, "resolution reopened the branch on A");
+    assert_eq!(conflict_count(&b), 0, "resolution reopened the branch on B");
+    let note = |s: &VaultSession| call(s, json!({"op":"get","id":"n"})).unwrap()["note"].clone();
+    assert_eq!(note(&a), note(&b));
+
+    // And later edits on either side still flow without a new branch.
+    edit_note(&b, "## Alpha\nafter resolution");
+    settle_pair(&a, &b);
+    assert_eq!(conflict_count(&a) + conflict_count(&b), 0);
+    assert_eq!(note(&a), json!("## Alpha\nafter resolution"));
+}

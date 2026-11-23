@@ -38,10 +38,43 @@ pub(super) struct NoteConflict {
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 pub(super) struct Stamp(pub u64, pub u32, pub String);
 
+/// Per-key version vector: the latest `(ms, counter)` of each device whose edit this value
+/// already includes. It tells a sequential edit (made on top of ours) from a concurrent one.
+pub(super) type Versions = BTreeMap<String, (u64, u32)>;
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 struct Meta {
     stamp: Stamp,
     seq: u64,
+    /// Empty for records written before version vectors; see [`versions`].
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    vv: Versions,
+}
+
+/// Effective version vector of a value: the stored vector plus its own stamp (records from
+/// older builds carry only the stamp).
+pub(super) fn versions(stamp: &Stamp, vv: &Versions) -> Versions {
+    let mut out = vv.clone();
+    if !stamp.2.is_empty() {
+        let own = out.entry(stamp.2.clone()).or_default();
+        *own = (*own).max((stamp.0, stamp.1));
+    }
+    out
+}
+
+/// True when `a` already includes every edit `b` includes.
+pub(super) fn includes(a: &Versions, b: &Versions) -> bool {
+    b.iter()
+        .all(|(device, v)| a.get(device).is_some_and(|mine| mine >= v))
+}
+
+pub(super) fn join(a: &Versions, b: &Versions) -> Versions {
+    let mut out = a.clone();
+    for (device, v) in b {
+        let mine = out.entry(device.clone()).or_default();
+        *mine = (*mine).max(*v);
+    }
+    out
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -270,9 +303,15 @@ pub(super) fn capture(
         if mesh.baseline_digests.get(&key) == digest {
             continue;
         }
+        let previous = mesh
+            .meta
+            .get(&key)
+            .map(|m| versions(&m.stamp, &m.vv))
+            .unwrap_or_default();
         let stamp = mesh.local_stamp();
         let seq = mesh.bump()?;
-        mesh.meta.insert(key, Meta { stamp, seq });
+        let vv = versions(&stamp, &previous);
+        mesh.meta.insert(key, Meta { stamp, seq, vv });
         dirty = true;
     }
     if dirty || migrated_legacy {
@@ -410,7 +449,10 @@ impl DiskVault {
                         )?;
                     }
                     values.insert(key.clone(), value.clone());
-                    records.insert(key.clone(), json!({"value":value,"stamp":meta.stamp}));
+                    records.insert(
+                        key.clone(),
+                        json!({"value":value,"stamp":meta.stamp,"vv":versions(&meta.stamp, &meta.vv)}),
+                    );
                 }
                 let ack = *mesh.received.get(peer).unwrap_or(&0);
                 if records.is_empty() && mesh.ack_sent.get(peer) == Some(&ack) {
@@ -488,13 +530,27 @@ impl DiskVault {
                 // (never applied) and reported by key, the rest of the packet still applies.
                 let mut rejected: Vec<String> = Vec::new();
                 for (key, record) in incoming {
-                    let checked = (|| -> Result<(Stamp, Value)> {
+                    let checked = (|| -> Result<(Stamp, Value, Versions)> {
                         if !valid_key(key) {
                             return Err(VaultError::InvalidData);
                         }
                         let stamp: Stamp = serde_json::from_value(record["stamp"].clone())
                             .map_err(|_| VaultError::InvalidData)?;
                         if stamp.0 > now.saturating_add(MAX_FUTURE_MS) || stamp.2.len() > 128 {
+                            return Err(VaultError::InvalidData);
+                        }
+                        let vv: Versions = match record.get("vv") {
+                            None | Some(Value::Null) => Versions::new(),
+                            Some(v) => serde_json::from_value(v.clone())
+                                .map_err(|_| VaultError::InvalidData)?,
+                        };
+                        if vv.len() > 64
+                            || vv.iter().any(|(d, (ms, _))| {
+                                d.is_empty()
+                                    || d.len() > 128
+                                    || *ms > now.saturating_add(MAX_FUTURE_MS)
+                            })
+                        {
                             return Err(VaultError::InvalidData);
                         }
                         let value = record["value"].clone();
@@ -518,9 +574,9 @@ impl DiskVault {
                             )?;
                             validate_files(&tx, &proposed)?;
                         }
-                        Ok((stamp, value))
+                        Ok((stamp, value, vv))
                     })();
-                    let (stamp, value) = match checked {
+                    let (stamp, value, incoming_vv) = match checked {
                         Ok(checked) => checked,
                         Err(VaultError::InvalidData | VaultError::Unsupported) => {
                             if rejected.len() < 64 {
@@ -555,13 +611,28 @@ impl DiskVault {
                         .get(key)
                         .map(|m| m.stamp.clone())
                         .unwrap_or_default();
+                    let local_vv = mesh
+                        .meta
+                        .get(key)
+                        .map(|m| versions(&m.stamp, &m.vv))
+                        .unwrap_or_default();
+                    let incoming_vv = versions(&stamp, &incoming_vv);
+                    // Causality first: an edit made on top of our value replaces it, and one we
+                    // already include is stale. Only edits neither side has seen are concurrent.
+                    let newer = includes(&incoming_vv, &local_vv) && incoming_vv != local_vv;
+                    let stale = !newer && includes(&local_vv, &incoming_vv);
+                    let merged_vv = join(&local_vv, &incoming_vv);
                     mesh.observe(&stamp);
-                    let wins = stamp > local_stamp
-                        || (stamp == local_stamp
-                            && local != value
-                            && value_digest(&value) > value_digest(&local));
+                    let wins = newer
+                        || (!stale
+                            && (stamp > local_stamp
+                                || (stamp == local_stamp
+                                    && local != value
+                                    && value_digest(&value) > value_digest(&local))));
 
-                    let concurrent_note = key.starts_with("item:")
+                    let concurrent_note = !newer
+                        && !stale
+                        && key.starts_with("item:")
                         && !local.is_null()
                         && !value.is_null()
                         && local != value
@@ -634,11 +705,13 @@ impl DiskVault {
                                 mesh.local_stamp()
                             };
                             let seq = mesh.bump()?;
+                            let vv = versions(&next_stamp, &merged_vv);
                             mesh.meta.insert(
                                 key.clone(),
                                 Meta {
                                     stamp: next_stamp,
                                     seq,
+                                    vv,
                                 },
                             );
                             changed = true;
@@ -650,42 +723,72 @@ impl DiskVault {
                                 Meta {
                                     stamp: winning_stamp,
                                     seq,
+                                    vv: merged_vv.clone(),
                                 },
                             );
                         }
                     } else if wins {
                         if local != value {
-                            if value.is_null() {
+                            let deleted = value.is_null();
+                            if deleted {
                                 working.remove(key);
-                                if let Some(id) = key.strip_prefix("item:") {
-                                    mesh.note_conflicts.remove(id);
-                                }
                             } else {
                                 working.insert(key.clone(), value);
                             }
+                            // A deletion, or an edit already including our side (e.g. the peer
+                            // resolved the same parallel branch), settles any branch here.
+                            if deleted || newer {
+                                if let Some(id) = key.strip_prefix("item:") {
+                                    mesh.note_conflicts.remove(id);
+                                }
+                            }
                             let seq = mesh.bump()?;
-                            mesh.meta.insert(key.clone(), Meta { stamp, seq });
+                            mesh.meta.insert(
+                                key.clone(),
+                                Meta {
+                                    stamp,
+                                    seq,
+                                    vv: merged_vv.clone(),
+                                },
+                            );
                             changed = true;
                             applied += 1;
                         } else if let Some(meta) = mesh.meta.get_mut(key) {
                             meta.stamp = stamp;
+                            meta.vv = merged_vv.clone();
+                            if newer {
+                                if let Some(id) = key.strip_prefix("item:") {
+                                    mesh.note_conflicts.remove(id);
+                                }
+                            }
                         } else {
                             let seq = mesh.bump()?;
-                            mesh.meta.insert(key.clone(), Meta { stamp, seq });
+                            mesh.meta.insert(
+                                key.clone(),
+                                Meta {
+                                    stamp,
+                                    seq,
+                                    vv: merged_vv.clone(),
+                                },
+                            );
                         }
-                    } else if local != value && !value.is_null() && key.starts_with("item:") {
-                        // Keep the older incoming edit recoverable from entry history.
-                        history::write(
-                            &tx,
-                            &open.root,
-                            &open.header.vault_id,
-                            &history::Revision::plain(
-                                new_id(),
-                                key["item:".len()..].to_string(),
-                                stamp.0,
-                                value,
-                            ),
-                        )?;
+                    } else if let (Some(meta), false) = (mesh.meta.get_mut(key), stale) {
+                        // Our value stays (it has the later stamp) and now accounts for theirs.
+                        meta.vv = merged_vv.clone();
+                        if local != value && !value.is_null() && key.starts_with("item:") {
+                            // Keep the older incoming edit recoverable from entry history.
+                            history::write(
+                                &tx,
+                                &open.root,
+                                &open.header.vault_id,
+                                &history::Revision::plain(
+                                    new_id(),
+                                    key["item:".len()..].to_string(),
+                                    stamp.0,
+                                    value,
+                                ),
+                            )?;
+                        }
                     }
                 }
                 let acked = mesh.acked.entry(peer.into()).or_default();
@@ -1095,7 +1198,14 @@ impl DiskVault {
         for (key, stamp) in stamps {
             mesh.observe(&stamp);
             let seq = mesh.bump()?;
-            mesh.meta.insert(key, Meta { stamp, seq });
+            mesh.meta.insert(
+                key,
+                Meta {
+                    stamp,
+                    seq,
+                    vv: Versions::new(),
+                },
+            );
         }
         history::table(&tx)?;
         if legacy.is_some() {
