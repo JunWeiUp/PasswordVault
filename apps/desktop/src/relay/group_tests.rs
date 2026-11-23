@@ -757,6 +757,11 @@ fn local_exit_is_immediate_for_success_401_and_timeout() {
         assert!(start.elapsed() < std::time::Duration::from_secs(1));
         let after = service::read(&session).unwrap();
         assert_ne!(after["device"], before["device"]);
+        // Owner policy: rotate the transport key, clear the server password, keep the endpoint.
+        assert_ne!(after["secret"], before["secret"]);
+        assert_eq!(after["endpoint"], before["endpoint"]);
+        assert_ne!(after["endpoint"], "");
+        assert_eq!(after["password"], "");
         assert_eq!(after["token"], "");
         assert_eq!(after["group"], "");
         assert_eq!(after["paused"], true);

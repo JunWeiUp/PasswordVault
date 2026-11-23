@@ -267,12 +267,20 @@ fn clear_local(s: &VaultSession, c: &mut Value) -> Result<()> {
     ] {
         c.as_object_mut().ok_or("InvalidData")?.remove(k);
     }
-    for k in ["group", "token", "hub", "endpoint", "password"] {
+    // Owner policy (vault-core relay_protocol::policy): clear credentials and membership,
+    // keep the endpoint, rotate the device ID and — unless a peer library still pins the
+    // current transport key — the X25519 transport secret.
+    let fresh = vault_core::relay_protocol::policy::exit_identity().map_err(String::from)?;
+    for k in ["group", "token", "hub", "password"] {
         c[k] = json!("");
     }
     c["role"] = json!("hub"); // Explicit departure restores independent desktop creation.
     c["peers"] = json!({});
     c["paused"] = json!(true);
-    c["device"] = json!(uuid::Uuid::new_v4().to_string());
+    c["device"] = fresh["device"].clone();
+    if c["peerLibrary"].as_str().is_none_or(str::is_empty) {
+        let secret = super::protocol::unhex(text(&fresh, "secret")?)?;
+        c["secret"] = json!(STANDARD.encode(&secret));
+    }
     write(s, c)
 }

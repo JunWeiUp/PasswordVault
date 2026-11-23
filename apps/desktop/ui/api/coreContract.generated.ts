@@ -140,6 +140,8 @@ export const CORE_OPS = [
   "relay-protocol-parse-link",
   "relay-protocol-envelope-seal",
   "relay-protocol-envelope-open",
+  "relay-protocol-retry",
+  "relay-protocol-exit-identity",
 ] as const;
 
 export type CoreOp = (typeof CORE_OPS)[number];
@@ -422,6 +424,10 @@ export interface CoreParams {
   "relay-protocol-envelope-seal": { app: string; group: string; device: string; secret: string; to: string; peerKey: string; kind: string; id: string; value: object };
   /** relay-protocol · none → {value:object} */
   "relay-protocol-envelope-open": { app: string; group: string; device: string; secret: string; from: string; peerKey: string; kind: string; id: string; body: string };
+  /** relay-protocol · none → {stop:bool,delay?:number} */
+  "relay-protocol-retry": { error: string; previousDelay?: number; connectedSeconds?: number };
+  /** relay-protocol · none → {device:string,secret:string,publicKey:string,cleared:string[]} */
+  "relay-protocol-exit-identity": {};
 }
 
 /** A typed vault-core request: excess or misspelled fields fail type-checking. */
@@ -582,4 +588,6 @@ export interface CoreResults {
   "relay-protocol-parse-link": { url: string; id: string; key: string; password: string | null };
   "relay-protocol-envelope-seal": { body: string };
   "relay-protocol-envelope-open": { value: Record<string, unknown> };
+  "relay-protocol-retry": { stop: boolean; delay?: number };
+  "relay-protocol-exit-identity": { device: string; secret: string; publicKey: string; cleared: Array<string> };
 }

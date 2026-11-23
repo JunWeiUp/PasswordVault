@@ -135,6 +135,7 @@ pub fn request_blob(
     }
     Ok(json!({"queued": true, "peer": peer, "online": online.iter().any(|p| p == &peer)}))
 }
+use vault_core::relay_protocol::policy;
 pub fn exit_local(s: &Arc<VaultSession>, directory: std::path::PathBuf, disband: bool, local: bool) -> Result<String> {
     stop(s);
     let (display, remote) = service::exit_local(s)?;
@@ -161,9 +162,9 @@ fn relay_accepted(event: &Value, pending: &str) -> bool {
     event["id"] == pending
         && matches!(event["type"].as_str(), Some("stored" | "forwarded" | "queued" | "sent"))
 }
-const STABLE_CONNECTION: Duration = Duration::from_secs(120);
+/// Rejected credentials (401/403): stop and prompt. Shared owner policy in vault-core.
 pub fn authentication_failure(error: &str) -> bool {
-    matches!(error, "RelayHttp401" | "RelayHttp403")
+    vault_core::relay_protocol::policy::authentication_failure(error)
 }
 pub fn block_authentication(s: &Arc<VaultSession>, directory: std::path::PathBuf, error: &str) {
     let run = Arc::new(Run {
@@ -197,7 +198,7 @@ pub fn start(s: Arc<VaultSession>, directory: std::path::PathBuf, local: bool) -
     });
     map.insert(key, run.clone());
     std::thread::spawn(move || {
-        let mut backoff = 1;
+        let mut backoff = 0;
         while !run.stopped() {
             let attempt = Instant::now();
             let result = connected(&s, &run, local);
@@ -215,14 +216,18 @@ pub fn start(s: Arc<VaultSession>, directory: std::path::PathBuf, local: bool) -
                 }
                 Err(e) => {
                     run.set("reconnecting", json!([]), &e);
-                    // A connection that stayed up for a while is a fresh failure,
-                    // not part of a tight retry storm.
-                    if attempt.elapsed() >= STABLE_CONNECTION {
-                        backoff = 1;
-                    }
+                    // Shared policy: double up to 30 s; a connection that stayed up for
+                    // 120 s is a fresh failure, not part of a tight retry storm.
+                    backoff = match policy::retry(&e, backoff, attempt.elapsed().as_secs()) {
+                        policy::Retry::After(delay) => delay,
+                        policy::Retry::Stop => break,
+                    };
                 }
                 Ok(()) => {
-                    backoff = 1;
+                    backoff = match policy::retry("", backoff, attempt.elapsed().as_secs()) {
+                        policy::Retry::After(delay) => delay,
+                        policy::Retry::Stop => break,
+                    };
                 }
             }
             if let Ok(mut slot) = run.socket.lock() {
@@ -231,7 +236,6 @@ pub fn start(s: Arc<VaultSession>, directory: std::path::PathBuf, local: bool) -
                 }
             }
             run.wait(Duration::from_secs(backoff));
-            backoff = (backoff * 2).min(30);
         }
         if let Ok(mut slot) = run.socket.lock() {
             if let Some(socket) = slot.take() { let _ = socket.shutdown(Shutdown::Both); }

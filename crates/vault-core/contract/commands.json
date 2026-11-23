@@ -1381,6 +1381,24 @@
       },
       "result": "{value:object}",
       "notes": "Authentication on tamper/wrong key; InvalidData on context mismatch. Stateless; runs without the vault lock. Byte strings are lower-case hex."
+    },
+    "relay-protocol-retry": {
+      "group": "relay-protocol",
+      "lock": "none",
+      "params": {
+        "error": "string",
+        "previousDelay?": "number",
+        "connectedSeconds?": "number"
+      },
+      "result": "{stop:bool,delay?:number}",
+      "notes": "Owner policy: 401/403 stop and prompt; otherwise 1s doubling to 30s, reset only after a 120s stable connection."
+    },
+    "relay-protocol-exit-identity": {
+      "group": "relay-protocol",
+      "lock": "none",
+      "params": {},
+      "result": "{device:string,secret:string,publicKey:string,cleared:string[]}",
+      "notes": "Fresh device ID and X25519 transport secret (hex) after leaving a group; clear the `cleared` fields, keep the endpoint."
     }
   }
 }

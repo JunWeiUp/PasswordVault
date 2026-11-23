@@ -97,6 +97,17 @@ pub fn command(request: &Value) -> Result<Value> {
             )?;
             Ok(json!({"value":value}))
         }
+        "retry" => {
+            let previous = request["previousDelay"].as_u64().unwrap_or(0);
+            let connected = request["connectedSeconds"].as_u64().unwrap_or(0);
+            Ok(
+                match policy::retry(text(request, "error")?, previous, connected) {
+                    policy::Retry::Stop => json!({"stop":true}),
+                    policy::Retry::After(delay) => json!({"stop":false,"delay":delay}),
+                },
+            )
+        }
+        "exit-identity" => policy::exit_identity(),
         _ => invalid(),
     }
 }

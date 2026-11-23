@@ -428,4 +428,10 @@ internal object CoreRequest {
 
     /** relay-protocol · none → `{value:object}` */
     fun relayProtocolEnvelopeOpen(app: String, group: String, device: String, secret: String, from: String, peerKey: String, kind: String, id: String, body: String): JSONObject = request("relay-protocol-envelope-open", "app" to app, "group" to group, "device" to device, "secret" to secret, "from" to from, "peerKey" to peerKey, "kind" to kind, "id" to id, "body" to body)
+
+    /** relay-protocol · none → `{stop:bool,delay?:number}` */
+    fun relayProtocolRetry(error: String, previousDelay: Number? = null, connectedSeconds: Number? = null): JSONObject = request("relay-protocol-retry", "error" to error, "previousDelay" to previousDelay, "connectedSeconds" to connectedSeconds)
+
+    /** relay-protocol · none → `{device:string,secret:string,publicKey:string,cleared:string[]}` */
+    fun relayProtocolExitIdentity(): JSONObject = request("relay-protocol-exit-identity")
 }

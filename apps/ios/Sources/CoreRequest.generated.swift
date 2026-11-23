@@ -422,4 +422,10 @@ enum CoreRequest {
 
   /// relay-protocol · none → `{value:object}`
   static func relayProtocolEnvelopeOpen(app: String, group: String, device: String, secret: String, from: String, peerKey: String, kind: String, id: String, body: String) -> [String: JSONValue] { request("relay-protocol-envelope-open", [("app", .string(app)), ("group", .string(group)), ("device", .string(device)), ("secret", .string(secret)), ("from", .string(from)), ("peerKey", .string(peerKey)), ("kind", .string(kind)), ("id", .string(id)), ("body", .string(body))]) }
+
+  /// relay-protocol · none → `{stop:bool,delay?:number}`
+  static func relayProtocolRetry(error: String, previousDelay: Double? = nil, connectedSeconds: Double? = nil) -> [String: JSONValue] { request("relay-protocol-retry", [("error", .string(error)), ("previousDelay", previousDelay.map { .number($0) }), ("connectedSeconds", connectedSeconds.map { .number($0) })]) }
+
+  /// relay-protocol · none → `{device:string,secret:string,publicKey:string,cleared:string[]}`
+  static func relayProtocolExitIdentity() -> [String: JSONValue] { request("relay-protocol-exit-identity") }
 }
