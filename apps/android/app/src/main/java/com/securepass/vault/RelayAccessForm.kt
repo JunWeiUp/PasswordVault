@@ -1,7 +1,5 @@
 package com.securepass.vault
 
-import io.github.junweiup.commonrelay.InvitationLinks
-import io.github.junweiup.commonrelay.RelayAccess
 import java.net.URI
 import org.json.JSONObject
 
@@ -12,10 +10,8 @@ internal data class RelayInvitationPreview(val input: String, val endpoint: Stri
             val input = text.trim()
             require(input.toByteArray().size <= 16384) { "邀请过长 / Invitation too long" }
             if (input.startsWith("common-relay:")) {
-                RelayProtocolBridge.install()
-                val parsed = InvitationLinks.parse(input, false)
-                try { return RelayInvitationPreview(input, validateRelayEndpoint(parsed.url), parsed.password.orEmpty()) }
-                finally { parsed.key.fill(0) }
+                val parsed = RelayCore.protocol(CoreRequest.relayProtocolParseLink(input, allowLocal = RelayLocalTest.active))
+                return RelayInvitationPreview(input, validateRelayEndpoint(parsed.getString("url")), parsed.optString("password").takeUnless { parsed.isNull("password") }.orEmpty())
             }
             val invitation = JSONObject(input)
             require(invitation.getInt("version") == 1 && invitation.getString("app") == "passwordvault")
@@ -25,10 +21,17 @@ internal data class RelayInvitationPreview(val input: String, val endpoint: Stri
     }
 }
 
+/** Debug builds only: instrumented tests may point the relay at ws://127.0.0.1 (via adb reverse). */
+internal object RelayLocalTest {
+    @Volatile var enabled = false
+    val active: Boolean get() = enabled && BuildConfig.DEBUG
+}
+
 internal fun validateRelayEndpoint(text: String): String {
     val value = text.trim()
     val uri = URI(value)
-    require(uri.scheme == "wss" && !uri.host.isNullOrBlank() && uri.rawUserInfo == null && uri.rawQuery == null && uri.rawFragment == null && (uri.path == "/relay/v1/ws" || uri.path == "/v2/ws")) {
+    val local = RelayLocalTest.active && uri.scheme == "ws" && uri.host == "127.0.0.1"
+    require((uri.scheme == "wss" || local) && !uri.host.isNullOrBlank() && uri.rawUserInfo == null && uri.rawQuery == null && uri.rawFragment == null && (uri.path == "/relay/v1/ws" || uri.path == "/v2/ws")) {
         "请输入 wss://服务器/v2/ws 或 wss://服务器/relay/v1/ws / Enter a WSS relay endpoint"
     }
     return value
@@ -36,7 +39,8 @@ internal fun validateRelayEndpoint(text: String): String {
 
 internal fun validateRelayPassword(value: String): String {
     require(value.isNotEmpty()) { "请输入服务器密码 / Server password required" }
-    RelayAccess.validate(value)
+    // Relay-Access rule shared with vault-core: 8-128 printable ASCII characters.
+    require(value.length in 8..128 && value.all { it.code in 0x21..0x7e }) { "服务器密码需为 8-128 位可见 ASCII 字符 / Server password must be 8-128 printable ASCII characters" }
     return value
 }
 

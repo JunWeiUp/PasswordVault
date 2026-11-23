@@ -5,7 +5,7 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class RelayAccessFormTest {
-    // Compact `common-relay:` links are parsed by vault-core: see RelayProtocolBridgeTest (device).
+    // Compact `common-relay:` links are parsed by vault-core: see RelayCoreTest (device).
     @Test fun passwordValidation() {
         assertThrows(IllegalArgumentException::class.java) { validateRelayPassword("") }
         assertEquals("replacement-456", validateRelayPassword("replacement-456"))

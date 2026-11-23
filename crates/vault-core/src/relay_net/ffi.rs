@@ -113,7 +113,8 @@ impl RelayConnection {
         Ok(self.inner.peers()?.to_string())
     }
 
-    pub fn close(&self) {
+    /// Closes the socket (named `disconnect`: `close` is taken by Kotlin's AutoCloseable).
+    pub fn disconnect(&self) {
         self.inner.close()
     }
 

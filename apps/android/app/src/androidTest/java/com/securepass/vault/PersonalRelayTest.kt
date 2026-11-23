@@ -30,8 +30,7 @@ class PersonalRelayTest {
             val pending = vault.command(CoreRequest.relayStatus()).getInt("pending")
             // One note plus the category-set record; these are not two unsaved edits.
             assertEquals(2, pending)
-            RelayProtocolBridge.install()
-            val peerKey = io.github.junweiup.commonrelay.Crypto("passwordvault", "fixture-group", "fixture-hub", "01".repeat(32), emptyMap()).publicKey()
+            val peerKey = RelayCore.publicKey("01".repeat(32))
             config.put("group", "fixture-group").put("hub", "fixture-hub").put("paused", true)
                 .put("peers", JSONObject().put("fixture-hub", peerKey)).put("token", "")
             vault.command(CoreRequest.relayCredentialsWrite(config.toString()))
@@ -169,7 +168,7 @@ class PersonalRelayTest {
         val configs=org.json.JSONArray(File(path!!).readText());val mac=configs.getJSONObject(0);val phone=configs.getJSONObject(1)
         val directory=File(context.cacheDir,"wss-relay-test-${UUID.randomUUID()}")
         val privateDir=File(directory,"relay-private").apply{mkdirs()}
-        val alias="pv-relay-"+io.github.junweiup.commonrelay.Crypto.hex(java.security.MessageDigest.getInstance("SHA-256").digest(directory.absolutePath.toByteArray())).take(32)
+        val alias="pv-relay-"+RelayCore.hex(java.security.MessageDigest.getInstance("SHA-256").digest(directory.absolutePath.toByteArray())).take(32)
         val generator=javax.crypto.KeyGenerator.getInstance("AES","AndroidKeyStore")
         generator.init(android.security.keystore.KeyGenParameterSpec.Builder(alias,android.security.keystore.KeyProperties.PURPOSE_ENCRYPT or android.security.keystore.KeyProperties.PURPOSE_DECRYPT).setBlockModes("GCM").setEncryptionPaddings("NoPadding").build())
         val key=generator.generateKey()
@@ -191,8 +190,11 @@ class PersonalRelayTest {
         } finally {vault.close();directory.deleteRecursively();java.security.KeyStore.getInstance("AndroidKeyStore").apply{load(null);deleteEntry(alias)}}
     }
     @Test fun managedPresenceDoesNotRequireVaultAuthorization() = runBlocking {
+        // A production `wss://` relay, or a loopback one via `adb reverse` (ws://127.0.0.1:PORT/v2/ws).
         val endpoint = InstrumentationRegistry.getArguments().getString("presenceEndpoint")
-        org.junit.Assume.assumeTrue(endpoint?.startsWith("wss://") == true)
+        org.junit.Assume.assumeTrue(endpoint?.startsWith("wss://") == true || endpoint?.startsWith("ws://127.0.0.1:") == true)
+        RelayLocalTest.enabled = endpoint!!.startsWith("ws://")
+        val access = InstrumentationRegistry.getArguments().getString("relayPassword") ?: "fixture-access-123"
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val base = File(context.cacheDir, "presence-fixture-${UUID.randomUUID()}")
         val a = VaultRepository(context, File(base, "owner"))
@@ -204,11 +206,11 @@ class PersonalRelayTest {
         try {
             until { a.state.value.ready && b.state.value.ready }
             a.authenticate("fixture", true); b.authenticate("fixture", true)
-            a.relay.createGroup(endpoint!!, "Presence test fixture", "Fixture owner", "fixture-access-123")
+            a.relay.createGroup(endpoint, "Presence test fixture", "Fixture owner", access)
             until { a.relay.state.value.managed && a.relay.state.value.members.any { it.online } && !a.relay.state.value.busy }
             a.relay.inviteToGroup()
             until { a.relay.state.value.groupInvite.isNotEmpty() && !a.relay.state.value.busy }
-            b.relay.joinGroup(a.relay.state.value.groupInvite, "Fixture phone", "fixture-access-123")
+            b.relay.joinGroup(a.relay.state.value.groupInvite, "Fixture phone", access)
             until { allOnline(a) && allOnline(b) }
             // Joining is the only step: both devices sync without any grant.
             until { a.relay.state.value.mesh && b.relay.state.value.mesh }
@@ -228,22 +230,23 @@ class PersonalRelayTest {
             }
             a.close(); b.close(); base.deleteRecursively()
             for (name in listOf("owner", "phone")) {
-                val alias = "pv-relay-" + io.github.junweiup.commonrelay.Crypto.hex(java.security.MessageDigest.getInstance("SHA-256").digest(File(base, name).absolutePath.toByteArray())).take(32)
+                val alias = "pv-relay-" + RelayCore.hex(java.security.MessageDigest.getInstance("SHA-256").digest(File(base, name).absolutePath.toByteArray())).take(32)
                 java.security.KeyStore.getInstance("AndroidKeyStore").apply { load(null); deleteEntry(alias) }
             }
+            RelayLocalTest.enabled = false
         }
     }
     @Test fun legacyKeystoreMigratesToMasterPasswordFileAndRestartsWithoutLegacyKey() = runBlocking {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val base = File(context.cacheDir, "relay-migration-${UUID.randomUUID()}")
         val legacyDir = File(base, "relay-private").apply { mkdirs() }
-        val alias = "pv-relay-" + io.github.junweiup.commonrelay.Crypto.hex(java.security.MessageDigest.getInstance("SHA-256").digest(base.absolutePath.toByteArray())).take(32)
+        val alias = "pv-relay-" + RelayCore.hex(java.security.MessageDigest.getInstance("SHA-256").digest(base.absolutePath.toByteArray())).take(32)
         val keyStore = java.security.KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
         val generator = javax.crypto.KeyGenerator.getInstance("AES", "AndroidKeyStore")
         generator.init(android.security.keystore.KeyGenParameterSpec.Builder(alias, android.security.keystore.KeyProperties.PURPOSE_ENCRYPT or android.security.keystore.KeyProperties.PURPOSE_DECRYPT)
             .setBlockModes("GCM").setEncryptionPaddings("NoPadding").build())
         val key = generator.generateKey()
-        val legacy = JSONObject().put("secret", io.github.junweiup.commonrelay.Crypto.hex(io.github.junweiup.commonrelay.Crypto.random(32)))
+        val legacy = JSONObject().put("secret", RelayCore.hex(RelayCore.random(32)))
             .put("device", "migration-fixture").put("group", "").put("hub", "").put("endpoint", "").put("token", "")
             .put("paused", true).put("peers", JSONObject())
         val cipher = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding").apply { init(javax.crypto.Cipher.ENCRYPT_MODE, key) }

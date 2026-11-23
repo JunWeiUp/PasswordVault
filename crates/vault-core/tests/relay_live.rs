@@ -254,7 +254,7 @@ fn run(server: &Server) {
         0
     );
 
-    cb.close();
+    cb.disconnect();
     assert!(cb.is_closed());
     let (b, _) = groups(&b, json!({"op":"exit","disband":false})).unwrap();
     assert_eq!(b["exit_completed"], true);
