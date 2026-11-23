@@ -43,7 +43,7 @@ struct PasskeyRecordsView: View {
     busy = true
     defer { busy = false; currentPassword = "" }
     do {
-      _ = try await perform(["op":.string("passkey-remove"),"itemId":.string(item.id),"credentialId":.string(selected),"currentPassword":.string(currentPassword)])
+      _ = try await perform(CoreRequest.passkeyRemove(currentPassword: currentPassword, itemId: item.id, credentialId: selected))
       await refresh(); self.selected = nil
     } catch {
       self.error = t("未能删除，请检查主密码后重试。", "Could not delete; verify the master password and retry.")

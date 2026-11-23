@@ -76,15 +76,12 @@ class ReadmeScreenshotsTest {
             while (!fixture.state.value.ready) delay(10)
             fixture.authenticate("1", true)
             assertTrue(
-                fixture.mutate(
-                    "settings",
-                    JSONObject().put("settings", JSONObject().put("theme", theme)),
-                )
+                fixture.mutate(CoreRequest.settings(JSONObject().put("theme", theme)))
             )
             // Categories are core-owned; generic settings intentionally ignore this field.
             for (category in listOf("Personal", "Family", "Work")) {
                 assertTrue(
-                    fixture.mutate("category-add", JSONObject().put("name", label(category)))
+                    fixture.mutate(CoreRequest.categoryAdd(label(category)))
                 )
             }
             val notes =

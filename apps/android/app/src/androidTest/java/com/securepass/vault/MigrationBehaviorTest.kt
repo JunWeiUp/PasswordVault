@@ -166,24 +166,14 @@ class MigrationBehaviorTest {
                 "bound@example.test",
                 owner.state.value.entries.single().getString("email"),
             )
-            val ownerKey = owner.command("identity").getString("publicKey")
-            val viewerKey = viewer.command("identity").getString("publicKey")
+            val ownerKey = owner.command(CoreRequest.identity()).getString("publicKey")
+            val viewerKey = viewer.command(CoreRequest.identity()).getString("publicKey")
             val shared =
                 owner
-                    .command(
-                        "create-shared",
-                        JSONObject()
-                            .put("name", "Readonly migration")
-                            .put("time", "2025-01-01T00:00:00Z"),
-                    )
+                    .command(CoreRequest.createShared("Readonly migration", "2025-01-01T00:00:00Z"))
                     .getString("id")
             owner.command(
-                "add-member",
-                JSONObject()
-                    .put("vaultId", shared)
-                    .put("publicKey", viewerKey)
-                    .put("role", "viewer")
-                    .put("name", "Fixture"),
+                CoreRequest.addMember(shared, viewerKey, role = "viewer", name = "Fixture")
             )
             val sharedItem =
                 VaultRepository.blank("password")
@@ -192,15 +182,9 @@ class MigrationBehaviorTest {
                     .put("sharedVaultId", shared)
             assertTrue(owner.save(sharedItem))
             val request =
-                viewer.command(
-                    "sync-request",
-                    JSONObject().put("peerKey", ownerKey).put("vaultId", shared),
-                )
-            val packet = owner.command("sync-respond", JSONObject().put("packet", request))
-            viewer.command(
-                "sync-apply",
-                JSONObject().put("packet", packet).put("peerKey", ownerKey).put("vaultId", shared),
-            )
+                viewer.command(CoreRequest.syncRequest(ownerKey, shared))
+            val packet = owner.command(CoreRequest.syncRespond(request))
+            viewer.command(CoreRequest.syncApply(packet, ownerKey, shared))
             viewer.refresh()
             assertFalse(viewer.canEdit(viewer.state.value.entries.single()))
             val snapshot = viewer.state.value.entries.single().toString()
@@ -214,38 +198,27 @@ class MigrationBehaviorTest {
                     .put("username", "a+b@example.test")
                     .put("secret", "JBSWY3DPEHPK3PXP")
                     .put("period", 60)
-            val parsed = owner.command("parse-totp", JSONObject().put("uri", totpSetupUri(code)))
+            val parsed = owner.command(CoreRequest.parseTotp(totpSetupUri(code)))
             for (field in listOf("title", "username", "secret", "period")) assertEquals(
                 code.get(field),
                 parsed.get(field),
             )
             val csvBackup =
                 owner
-                    .command(
-                        "export-csv-backup",
-                        JSONObject().put("password", "fixture-backup-password"),
-                    )
+                    .command(CoreRequest.exportCsvBackup("fixture-backup-password"))
                     .getString("content")
             assertTrue(csvBackup.contains("PasswordVaultCSVBackup"))
             assertFalse(csvBackup.contains("shared-canary"))
             val previousCount = owner.state.value.entries.size
             assertFalse(
                 owner.mutate(
-                    "import",
-                    JSONObject()
-                        .put("kind", "json")
-                        .put("content", csvBackup)
-                        .put("password", "wrong-password"),
+                    CoreRequest.import(csvBackup, password = "wrong-password", kind = "json")
                 )
             )
             assertEquals(previousCount, owner.state.value.entries.size)
             assertTrue(
                 viewer.mutate(
-                    "import",
-                    JSONObject()
-                        .put("kind", "json")
-                        .put("content", csvBackup)
-                        .put("password", "fixture-backup-password"),
+                    CoreRequest.import(csvBackup, password = "fixture-backup-password", kind = "json")
                 )
             )
             assertTrue(
@@ -260,10 +233,7 @@ class MigrationBehaviorTest {
                     "chrome",
                 )
             assertTrue(
-                owner.mutate(
-                    "import",
-                    JSONObject().put("kind", "json").put("content", imported).put("password", ""),
-                )
+                owner.mutate(CoreRequest.import(imported, password = "", kind = "json"))
             )
         } finally {
             owner.close()

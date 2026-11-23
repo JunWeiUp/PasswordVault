@@ -47,7 +47,7 @@ struct MobileEntryEditor: View {
               Task {
                 do {
                   draft.password =
-                    try await store.perform(["op": .string("generate"), "length": .number(20)])
+                    try await store.perform(CoreRequest.generate(length: 20))
                     .object["password"]?.string ?? ""
                 } catch { message = store.t("无法生成，请重试", "Could not generate; retry") }
               }
@@ -93,9 +93,7 @@ struct MobileEntryEditor: View {
             Button(store.t("导入设置链接", "Import setup link")) {
               Task {
                 do {
-                  let result = try await store.perform([
-                    "op": .string("parse-totp"), "uri": .string(uri),
-                  ]).object
+                  let result = try await store.perform(CoreRequest.parseTotp(uri: uri)).object
                   for key in ["title", "username", "secret", "period"] {
                     if let value = result[key] { draft.fields[key] = value }
                   }
@@ -207,11 +205,8 @@ struct MobileEntryEditor: View {
   private func derive(_ generate: Bool) {
     Task {
       do {
-        let result = try await store.perform([
-          "op": .string("wallet"), "generate": .bool(generate),
-          "mnemonic": .string(draft.string("mnemonic")),
-          "privateKey": .string(draft.string("privateKey")),
-        ])
+        let result = try await store.perform(CoreRequest.wallet(
+          generate: generate, mnemonic: draft.string("mnemonic"), privateKey: draft.string("privateKey")))
         for key in ["network", "address", "privateKey", "mnemonic"] {
           if let value = result.object[key], !value.string.isEmpty { draft.fields[key] = value }
         }
@@ -225,11 +220,9 @@ struct MobileEntryEditor: View {
       defer { saving = false }
       if draft.type == "totp" {
         do {
-          _ = try await store.perform([
-            "op": .string("totp"), "secret": .string(draft.string("secret")),
-            "period": .number(draft.number("period", fallback: 30)),
-            "time": .number(Date().timeIntervalSince1970.rounded(.down)),
-          ])
+          _ = try await store.perform(CoreRequest.totp(
+            secret: draft.string("secret"), time: Date().timeIntervalSince1970.rounded(.down),
+            period: draft.number("period", fallback: 30)))
         } catch {
           message = store.t("设置密钥或间隔无效。", "Invalid setup key or period.")
           return

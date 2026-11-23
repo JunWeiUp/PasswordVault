@@ -1415,69 +1415,81 @@ function Tools({ section, doc, refresh, run, setToast, copy, openItem, readOnly 
           <p class="muted">
             {t("此资料库保存在当前浏览器中，请定期导出加密备份。")}
           </p>
-          <label>
-            {t("界面语言")}
-            <select
-              value={doc.settings.language ?? "zh"}
-              onChange={(e) => {
-                const language = e.currentTarget.value as "zh" | "en";
-                void run(async () => {
-                  await command({ op: "settings", settings: { language } });
-                  setLocale(language);
-                  await refresh();
-                });
-              }}
-            >
-              <option value="zh">中文</option>
-              <option value="en">English</option>
-            </select>
-          </label>
-          <label>
-            {t("外观")}
-            <select
-              value={doc.settings.theme ?? "system"}
-              onChange={(e) => {
-                const theme = e.currentTarget.value as
-                  | "light"
-                  | "dark"
-                  | "system";
-                void run(async () => {
-                  await command({ op: "settings", settings: { theme } });
-                  setTheme(theme);
-                  await refresh();
-                });
-              }}
-            >
-              <option value="system">{t("跟随系统")}</option>
-              <option value="light">{t("浅色")}</option>
-              <option value="dark">{t("深色")}</option>
-            </select>
-          </label>
-          <label>
-            {t("自动锁定")}
-            <select
-              value={doc.settings.autoLockMinutes ?? 60}
-              onChange={(e) =>
-                run(async () => {
-                  await command({
-                    op: "settings",
-                    settings: {
-                      autoLockMinutes: Number(e.currentTarget.value),
-                    },
-                  });
-                  await refresh();
-                })
-              }
-            >
-              {[1, 2, 5, 10, 15, 30, 60].map((m) => (
-                <option value={m}>
-                  {m === 60
-                    ? t("1 小时")
-                    : t("{count} 分钟").replace("{count}", String(m))}
-                </option>
-              ))}
-            </select>
-          </label>
+          <div class="seg-group">
+            <span class="seg-label">{t("界面语言")}</span>
+            <div class="seg-bar" role="radiogroup" aria-label={t("界面语言")}>
+              {([["zh", "中文"], ["en", "English"]] as const).map(([val, label]) => {
+                const active = (doc.settings.language ?? "zh") === val;
+                return (
+                  <button
+                    type="button"
+                    role="radio"
+                    aria-checked={active}
+                    class={active ? "on" : ""}
+                    onClick={() => {
+                      void run(async () => {
+                        await command({ op: "settings", settings: { language: val } });
+                        setLocale(val);
+                        await refresh();
+                      });
+                    }}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          <div class="seg-group">
+            <span class="seg-label">{t("外观")}</span>
+            <div class="seg-bar" role="radiogroup" aria-label={t("外观")}>
+              {([["system", t("跟随系统")], ["light", t("浅色")], ["dark", t("深色")]] as const).map(([val, label]) => {
+                const active = (doc.settings.theme ?? "system") === val;
+                return (
+                  <button
+                    type="button"
+                    role="radio"
+                    aria-checked={active}
+                    class={active ? "on" : ""}
+                    onClick={() => {
+                      void run(async () => {
+                        await command({ op: "settings", settings: { theme: val } });
+                        setTheme(val);
+                        await refresh();
+                      });
+                    }}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          <div class="seg-group">
+            <span class="seg-label">{t("自动锁定")}</span>
+            <div class="seg-bar" role="radiogroup" aria-label={t("自动锁定")}>
+              {[1, 2, 5, 10, 15, 30, 60].map((m) => {
+                const active = (doc.settings.autoLockMinutes ?? 60) === m;
+                const label = m === 60 ? t("1 小时") : t("{count} 分钟").replace("{count}", String(m));
+                return (
+                  <button
+                    type="button"
+                    role="radio"
+                    aria-checked={active}
+                    class={active ? "on" : ""}
+                    onClick={() =>
+                      void run(async () => {
+                        await command({ op: "settings", settings: { autoLockMinutes: m } });
+                        await refresh();
+                      })
+                    }
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
           <small>
             {t("浏览器回收后台进程或系统空闲时，扩展也会自动锁定。")}
           </small>

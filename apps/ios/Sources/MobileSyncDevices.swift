@@ -14,6 +14,17 @@ struct MobileSyncDevicesView: View {
   @State private var inviting = false
   @State private var enrolling: Enrollment?
   @State private var grantManager = false
+  @State private var meshConflicts: [MeshNoteConflict] = []
+  @State private var resolvingConflict: MeshNoteConflict?
+
+  struct MeshNoteConflict: Identifiable {
+    let noteId: String
+    let title: String
+    let section: String
+    let localDevice: String
+    let remoteDevice: String
+    var id: String { noteId }
+  }
 
   enum Exit: String, Identifiable { case leave, disband; var id: String { rawValue } }
   struct Enrollment: Identifiable {
@@ -104,16 +115,53 @@ struct MobileSyncDevicesView: View {
       Section {
         Label {
           VStack(alignment: .leading, spacing: 2) {
-            Text(t("同时修改时以最后修改为准", "When edited at the same time, the last change wins")).font(.subheadline.weight(.medium))
-            Text(t("另一版本保留在该条目的版本历史中，无需手动处理冲突。", "The other version stays in the entry's version history; there are no conflicts to resolve."))
+            Text(t("L1 元数据优先 · 大附件按需拉取", "L1 metadata-first · on-demand large blobs")).font(.subheadline.weight(.medium))
+            Text(t("密码与笔记优先同步，超过 512 KB 的附件不阻塞队列。非重叠编辑自动合并，冲突分支在本机保留 30 天历史。", "Credentials and notes sync first without blocking on >512 KB attachments. Disjoint edits auto-merge; competing branches stay in local history for 30 days."))
               .font(.caption).foregroundStyle(.secondary)
           }
         } icon: { Image(systemName: "clock.arrow.circlepath").foregroundStyle(.blue) }
           .accessibilityIdentifier("relay.merge.note")
       }
+      if !meshConflicts.isEmpty {
+        Section {
+          ForEach(meshConflicts) { cf in
+            Button { resolvingConflict = cf } label: {
+              HStack(spacing: 10) {
+                Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+                VStack(alignment: .leading, spacing: 2) {
+                  Text(cf.title.isEmpty ? t("未命名笔记", "Untitled note") : cf.title)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.primary)
+                  Text(t("冲突位置：\(cf.section) · \(cf.localDevice) ↔ \(cf.remoteDevice)",
+                         "Overlap: \(cf.section) · \(cf.localDevice) ↔ \(cf.remoteDevice)"))
+                    .font(.caption).foregroundStyle(.secondary)
+                }
+                Spacer()
+                Text(t("解决", "Resolve")).font(.caption.weight(.semibold)).foregroundStyle(.blue)
+              }
+            }
+            .accessibilityIdentifier("relay.conflict.\(cf.noteId)")
+          }
+        } header: {
+          Text(t("\(meshConflicts.count) 篇笔记存在并行分支", "\(meshConflicts.count) note conflict(s)"))
+        } footer: {
+          Text(t("两端附件已自动取并集保护（0 项丢失），点击条目选择要保留的版本。",
+                 "Attachments from both sides are union-protected (0 lost). Tap a note to choose a version."))
+        }
+      }
+      if relay.groupBusy {
+        Section {
+          HStack(spacing: 10) {
+            ProgressView().controlSize(.small)
+            Text(t("正在后台同步设备组状态，页面可继续浏览…", "Updating device group in background; browsing remains interactive…"))
+              .font(.caption).foregroundStyle(.secondary)
+          }
+        }
+      }
       Section {
         if !relay.groupFresh {
           Button(t("刷新成员名单", "Refresh members")) { Task { await relay.refreshGroup() } }
+            .disabled(relay.groupBusy)
         }
         ForEach(relay.groupMembers) { member in
           Button { memberTarget = member } label: { memberRow(member) }
@@ -127,7 +175,7 @@ struct MobileSyncDevicesView: View {
               Text(t("二维码与邀请链接 · 10 分钟内有效，只能使用一次", "QR code and link · valid for 10 minutes, one use"))
                 .font(.caption).foregroundStyle(.secondary)
             }
-          }.accessibilityIdentifier("relay.invite")
+          }.disabled(relay.groupBusy).accessibilityIdentifier("relay.invite")
         }
       } header: {
         Text(t("设备组「\(groupTitle)」", "Device group “\(groupTitle)”"))
@@ -179,7 +227,7 @@ struct MobileSyncDevicesView: View {
             Text(t("本地资料保留；同步日志加密归档并更新设备标识", "Local data stays; the sync log is archived encrypted and the device ID changes"))
               .font(.caption).foregroundStyle(.secondary)
           }
-        }.accessibilityIdentifier("relay.leave")
+        }.disabled(relay.groupBusy).accessibilityIdentifier("relay.leave")
         if relay.groupManager {
           Button(role: .destructive) { exit = .disband } label: {
             VStack(alignment: .leading, spacing: 2) {
@@ -187,13 +235,42 @@ struct MobileSyncDevicesView: View {
               Text(t("本机先退出，再通知服务器解散；各设备资料不会被远程删除", "This device leaves first, then asks the server to disband; data on other devices is not erased"))
                 .font(.caption).foregroundStyle(.secondary)
             }
-          }.accessibilityIdentifier("relay.disband")
+          }.disabled(relay.groupBusy).accessibilityIdentifier("relay.disband")
         }
       }
       if let failure = relay.failure { Section { Text(localized(failure)).foregroundStyle(.red) } }
     }
-    .disabled(relay.groupBusy)
-    .refreshable { await relay.refreshGroup() }
+    .refreshable {
+      await relay.refreshGroup()
+      await loadMeshConflicts()
+    }
+    .task { await loadMeshConflicts() }
+    .confirmationDialog(
+      resolvingConflict.map { t("解决「\($0.title.isEmpty ? "未命名笔记" : $0.title)」并行分支", "Resolve “\($0.title.isEmpty ? "Untitled note" : $0.title)”") } ?? "",
+      isPresented: Binding(get: { resolvingConflict != nil }, set: { if !$0 { resolvingConflict = nil } }),
+      titleVisibility: .visible
+    ) {
+      if let cf = resolvingConflict {
+        Button(t("保留本机版本", "Keep local version")) {
+          resolvingConflict = nil
+          Task { await resolveMeshConflict(cf, strategy: "local") }
+        }
+        Button(t("采用远端版本", "Use remote version")) {
+          resolvingConflict = nil
+          Task { await resolveMeshConflict(cf, strategy: "remote") }
+        }
+        Button(t("合并两版", "Keep both")) {
+          resolvingConflict = nil
+          Task { await resolveMeshConflict(cf, strategy: "both") }
+        }
+        Button(t("取消", "Cancel"), role: .cancel) { resolvingConflict = nil }
+      }
+    } message: {
+      if let cf = resolvingConflict {
+        Text(t("冲突位置：\(cf.section)（\(cf.localDevice) ↔ \(cf.remoteDevice)）。被替换的版本仍保留在 30 天条目历史中。",
+               "Overlap at \(cf.section) (\(cf.localDevice) ↔ \(cf.remoteDevice)). Replaced versions remain in 30-day history."))
+      }
+    }
     .confirmationDialog(memberTarget?.name ?? "", isPresented: Binding(get: { memberTarget != nil }, set: { if !$0 { memberTarget = nil } }), titleVisibility: .visible) {
       if let member = memberTarget {
         if relay.groupManager || member.id == relay.config.device {
@@ -313,6 +390,37 @@ struct MobileSyncDevicesView: View {
   private func localized(_ text: String) -> String {
     let parts = text.components(separatedBy: " / ")
     return parts.count == 2 ? t(parts[0], parts[1]) : text
+  }
+
+  private func loadMeshConflicts() async {
+    guard store.unlocked else { meshConflicts = []; return }
+    do {
+      let res = try await store.perform(CoreRequest.relayMeshConflicts())
+      let list = res.object["conflicts"]?.array ?? []
+      meshConflicts = list.compactMap { entry in
+        let obj = entry.object
+        guard let noteId = obj["noteId"]?.string, !noteId.isEmpty else { return nil }
+        return MeshNoteConflict(
+          noteId: noteId,
+          title: obj["title"]?.string ?? "",
+          section: obj["section"]?.string ?? "",
+          localDevice: obj["localDevice"]?.string ?? "",
+          remoteDevice: obj["remoteDevice"]?.string ?? ""
+        )
+      }
+    } catch {
+      meshConflicts = []
+    }
+  }
+
+  private func resolveMeshConflict(_ cf: MeshNoteConflict, strategy: String) async {
+    do {
+      _ = try await store.perform(CoreRequest.relayMeshResolveConflict(id: cf.noteId, strategy: strategy))
+      try? await store.refresh()
+      await loadMeshConflicts()
+    } catch {
+      relay.failure = t("冲突解决失败，请稍后重试。", "Failed to resolve conflict. Please try again.")
+    }
   }
 }
 

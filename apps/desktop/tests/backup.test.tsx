@@ -14,4 +14,10 @@ test("backup page separates local export, remote credentials and reviewed import
   await app.press("text:立即备份…");
   await app.waitFor("text:上传完整加密备份");
   expect(app.texts()).toContain("使用新的唯一文件名，不覆盖远端已有备份。");
+  await app.press("text:取消");
+  await app.press("text:导出 CXF…");
+  await app.waitFor("text:文件未加密");
+  // Export stays disabled until the risk is acknowledged and a password entered.
+  expect(app.texts()).toContain("选择位置并导出");
+  await app.press("text:取消");
 });

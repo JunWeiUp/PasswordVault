@@ -260,10 +260,16 @@ struct MobileUnlockView: View {
         }
         if store.exists { Section { NavigationLink(store.t("使用恢复密钥", "Use recovery key")) { MobileRecoveryView() } } }
         Section {
-          Picker(store.t("语言 / Language", "Language"), selection: $store.language) {
-            Text("简体中文").tag("zh")
-            Text("English").tag("en")
-          }.onChange(of: store.language) { UserDefaults.standard.set($0, forKey: "language") }
+          VStack(alignment: .leading, spacing: 8) {
+            Text(store.t("语言 / Language", "Language"))
+            Picker(store.t("语言 / Language", "Language"), selection: $store.language) {
+              Text("简体中文").tag("zh")
+              Text("English").tag("en")
+            }
+            .pickerStyle(.segmented)
+            .onChange(of: store.language) { UserDefaults.standard.set($0, forKey: "language") }
+          }
+          .padding(.vertical, 2)
         } footer: {
           Text(
             store.t(

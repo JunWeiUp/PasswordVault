@@ -110,7 +110,7 @@ struct MobileQRImport: View {
     Task {
       defer { busy = false }
       do {
-        let result = try await store.perform(["op": .string("parse-totp"), "uri": .string(text)])
+        let result = try await store.perform(CoreRequest.parseTotp(uri: text))
         if let save {
           if let failure = await save(result.object) { message = failure; return }
         } else {

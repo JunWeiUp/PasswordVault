@@ -1,5 +1,4 @@
 import XCTest
-import CommonRelay
 @testable import PasswordVault
 
 @MainActor
@@ -7,7 +6,7 @@ final class RelayGroupTests: XCTestCase {
   private func fixture(_ role: String) async throws -> (RelayTestCore, VaultRelay, URL) {
     let path = FileManager.default.temporaryDirectory.appendingPathComponent("pv-groups-" + UUID().uuidString)
     let core = try RelayTestCore(directory: path)
-    _ = try await core.call(["op": .string("create"), "password": .string("fixture")])
+    _ = try await core.call(CoreRequest.create(password: "fixture"))
     let relay = VaultRelay(directory: path, role: role, allowLocalGroupTest: true, call: { try await core.call($0) }, refresh: {}, credentialReader: { _, _ in nil })
     relay.setUnlocked(true)
     try await eventually { relay.credentialsReady && !relay.groupBusy }
@@ -61,7 +60,9 @@ final class RelayGroupTests: XCTestCase {
   func testSignedMembershipRejectsTamperingRollbackAndUnauthorizedChanges() throws {
     let file = try XCTUnwrap(Bundle(for: Self.self).url(forResource: "group-vectors", withExtension: "json"))
     let v = try JSONSerialization.jsonObject(with: Data(contentsOf: file)) as! [String: Any]
-    let groups = RelayGroups(config: v["config"] as! [String: Any])
+    // Chain rules run in vault-core (`relay-protocol-advance`); the app-scope check is the core's too.
+    enum Groups { static func advance(_ a: [String: Any], _ b: [String: Any]) throws -> [String: Any] { try RelayCodec.advance(a, b) } }
+    let groups = Groups.self
     let first = v["initial"] as! [String: Any], added = v["approved"] as! [String: Any], removed = v["removed"] as! [String: Any]
     _ = try groups.advance(first, added); _ = try groups.advance(added, removed)
     _ = try groups.advance(added, v["renamed"] as! [String: Any])
@@ -105,10 +106,10 @@ final class RelayGroupTests: XCTestCase {
     XCTAssertNil(mac.failure); XCTAssertTrue(mac.groupMembers.contains { $0.name == "Renamed fixture" })
     // Membership alone starts symmetric sync; the welcome group revision must not
     // force endless reconnects before the first exchange.
-    _ = try await phoneCore.call(["op": .string("save"), "item": .object(["id": .string("synced"), "type": .string("secureNote"), "title": .string("Managed group transfer")])])
+    _ = try await phoneCore.call(CoreRequest.save(item: .object(["id": .string("synced"), "type": .string("secureNote"), "title": .string("Managed group transfer")])))
     var transferred = false
     for _ in 0..<150 {
-      let list = try await core.call(["op": .string("list")])
+      let list = try await core.call(CoreRequest.list())
       if list.object["items"]?.array.contains(where: { $0.object["id"]?.string == "synced" }) == true { transferred = true; break }
       try await Task.sleep(nanoseconds: 100_000_000)
     }
@@ -120,10 +121,11 @@ final class RelayGroupTests: XCTestCase {
     for _ in 0..<150 where phone.groupBusy { try await Task.sleep(nanoseconds: 100_000_000) }
     try await eventually { !phone.groupBusy }; await phone.refreshGroup(); XCTAssertFalse(phone.groupFresh); XCTAssertTrue(phone.hasManagedGroup); XCTAssertTrue(phone.groupMembers.isEmpty)
     let original = phone.config.device, secret = phone.config.secret
-    _ = try await phoneCore.call(["op": .string("save"), "item": .object(["id": .string("local"), "type": .string("secureNote"), "title": .string("Local fixture")])])
+    _ = try await phoneCore.call(CoreRequest.save(item: .object(["id": .string("local"), "type": .string("secureNote"), "title": .string("Local fixture")])))
     await phone.clearLocalGroup(); XCTAssertNil(phone.failure)
-    XCTAssertNotEqual(phone.config.device, original); XCTAssertEqual(phone.config.secret, secret)
-    let retained = try await phoneCore.call(["op": .string("list")])
+    // Owner policy: clearing access rotates the device ID and the X25519 transport key.
+    XCTAssertNotEqual(phone.config.device, original); XCTAssertNotEqual(phone.config.secret, secret)
+    let retained = try await phoneCore.call(CoreRequest.list())
     XCTAssertTrue(retained.object["items"]?.array.contains { $0.object["id"]?.string == "local" } == true)
     try await eventually { !mac.groupBusy }; await mac.leaveGroup(disband: false); XCTAssertNil(mac.failure); XCTAssertFalse(mac.hasManagedGroup)
   }
@@ -174,16 +176,16 @@ final class RelayGroupTests: XCTestCase {
     try await eventually { mac.groupMembers.allSatisfy(\.online) && phone.groupMembers.count == 2 && phone.groupMembers.allSatisfy(\.online) }
     // Joining by scan is the only step: both replicas switch to symmetric sync
     // and an edit on the phone reaches the Mac without any grant.
-    _ = try await phoneCore.call(["op": .string("save"), "item": .object(["id": .string("scan-join-edit"), "type": .string("secureNote"), "title": .string("Phone edit after joining")])])
+    _ = try await phoneCore.call(CoreRequest.save(item: .object(["id": .string("scan-join-edit"), "type": .string("secureNote"), "title": .string("Phone edit after joining")])))
     phone.syncNow()
     var synced = false
     for _ in 0..<200 {
-      let list = try await core.call(["op": .string("list")])
+      let list = try await core.call(CoreRequest.list())
       if list.object["items"]?.array.contains(where: { $0.object["id"]?.string == "scan-join-edit" }) == true { synced = true; break }
       try await Task.sleep(nanoseconds: 100_000_000)
     }
     XCTAssertTrue(synced)
-    let phoneState = try await phoneCore.call(["op": .string("relay-status")])
+    let phoneState = try await phoneCore.call(CoreRequest.relayStatus())
     XCTAssertEqual(phoneState.object["mode"]?.string, "mesh")
     try await eventually { !mac.groupBusy }; await mac.leaveGroup(disband: true)
     XCTAssertNil(mac.failure)

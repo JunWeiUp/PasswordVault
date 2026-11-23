@@ -2,6 +2,7 @@ mod archive;
 #[cfg(feature = "browser")]
 mod browser;
 mod crypto;
+mod cxf;
 mod devices;
 mod import;
 mod legacy;
@@ -13,6 +14,7 @@ mod native;
 mod passkey;
 pub mod peer_sync;
 mod recovery;
+pub mod relay_protocol;
 mod security;
 mod share_link;
 mod sharing;
@@ -20,6 +22,7 @@ mod structured;
 mod utilities;
 
 pub use crypto::*;
+pub use cxf::{cxf_export, redact_import_preview};
 pub use devices::*;
 pub use import::*;
 pub use legacy::*;
@@ -71,3 +74,5 @@ pub use wallet::*;
 
 #[cfg(feature = "native")]
 pub mod native_file_ops;
+#[cfg(feature = "native")]
+pub mod relay_net;

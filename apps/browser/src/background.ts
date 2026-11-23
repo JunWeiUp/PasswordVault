@@ -553,14 +553,21 @@ chrome.runtime.onMessage.addListener((request, sender, respond) => {
     const run = async () => {
       const nativeMode = (await mode()) === "native";
       if(request.action === "passkey-cancel" && sender.id===chrome.runtime.id && sender.frameId===0 && sender.documentId) cancelPasskeyApproval(sender.documentId);
-      return handlePasskey(request,sender,nativeMode ? requestCore : query=>requestPasskeyApproval(query,async approved => {
+      return handlePasskey(request,sender,nativeMode ? requestCore : async query=>{
+        // Nothing stored for this site: let the page use the browser's own authenticator without a prompt.
+        if(query.op==="passkey-assert" && core && !core.locked()){
+          const allowed=(query.allowed as string[]|undefined)??[];
+          const matches=await requestCore({op:"passkey-matches",rpId:query.rpId});
+          if(!matches.some((m:any)=>!allowed.length || allowed.includes(m.id)))throw new Error("no-credentials");
+        }
+        return requestPasskeyApproval(query,async approved => {
         if (!sender.tab?.id || !sender.documentId) throw new Error("forbidden");
         const tab = await chrome.tabs.get(sender.tab.id);
         if(tab.url !== sender.url) throw new Error("changed-origin");
         const current = await chrome.tabs.sendMessage(sender.tab.id,{action:"passkey-document-check"},{documentId:sender.documentId});
         if(!current?.ok) throw new Error("expired");
         return requestCore(approved);
-      },sender.documentId??""));
+      },sender.documentId??"");});
     };
     void run().then(data=>respond({ok:true,data}),error=>respond({ok:false,error:error instanceof Error?error.message:"failed"}));
     return true;

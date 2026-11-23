@@ -23,14 +23,14 @@ class RecoveryHistoryTest {
             vault.authenticate("original", true)
             val item = VaultRepository.blank("secureNote").put("title", "Fixture").put("note", "Original")
             assertTrue(vault.save(item))
-            vault.command("history-enable")
+            vault.command(CoreRequest.historyEnable())
             assertTrue(vault.save(JSONObject(item.toString()).put("note", "Edited")))
-            val key = vault.command("recovery-generate").getString("key")
-            vault.command("recovery-enable", JSONObject().put("key", key).put("currentPassword", "original"))
+            val key = vault.command(CoreRequest.recoveryGenerate()).getString("key")
+            vault.command(CoreRequest.recoveryEnable("original", key))
             vault.pendingDraft = item.toString()
-            try { vault.command("recovery-export", JSONObject().put("key", key)); fail("Pending draft ignored") } catch (_: Exception) {}
+            try { vault.command(CoreRequest.recoveryExport(key)); fail("Pending draft ignored") } catch (_: Exception) {}
             vault.pendingDraft = null
-            val archive = vault.command("recovery-export", JSONObject().put("key", key)).getString("content")
+            val archive = vault.command(CoreRequest.recoveryExport(key)).getString("content")
             restored.recover("bad", "x", archive)
             assertFalse(restored.state.value.unlocked)
             context.getSharedPreferences("biometric-key", 0).edit().putString("ciphertext", "synthetic enrollment").commit()
@@ -38,12 +38,12 @@ class RecoveryHistoryTest {
             assertTrue(restored.state.value.unlocked)
             assertFalse(context.getSharedPreferences("biometric-key", 0).contains("ciphertext"))
             assertEquals("Edited", restored.state.value.entries.first().getString("note"))
-            val rows = restored.command("history-list", JSONObject().put("id", item.getString("id"))).getJSONArray("revisions")
+            val rows = restored.command(CoreRequest.historyList(item.getString("id"))).getJSONArray("revisions")
             assertEquals(2, rows.length())
-            restored.command("history-restore", JSONObject().put("id", item.getString("id")).put("revisionId", rows.getJSONObject(1).getString("id")).put("time", java.time.Instant.now().toString()))
+            restored.command(CoreRequest.historyRestore(item.getString("id"), rows.getJSONObject(1).getString("id"), java.time.Instant.now().toString()))
             restored.refresh()
             assertEquals("Original", restored.state.value.entries.first().getString("note"))
-            restored.command("export", JSONObject().put("password", "Long backup fixture"))
+            restored.command(CoreRequest.export("Long backup fixture"))
             Unit
         } finally { vault.close(); restored.close(); source.deleteRecursively(); target.deleteRecursively() }
     }

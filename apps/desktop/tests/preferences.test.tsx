@@ -65,8 +65,7 @@ test("general settings offer list density, note line numbers and closing Quick A
   expect(app.texts()).toContain("笔记编辑器");
   expect(app.texts()).toContain("显示行号");
   expect(app.texts()).toContain("复制后关闭快速访问");
-  await app.press("label:标准");
-  expect((app.menu() ?? []).map((entry) => entry.label)).toEqual(["标准", "紧凑"]);
-  await app.chooseMenuItem("紧凑");
+  await app.press("text:紧凑");
+  expect(app.menu()).toBeNull();
   await app.waitFor("text:紧凑");
 });

@@ -30,7 +30,7 @@ function History(props: { item: Item; close: () => void }) {
   const refresh = async (append = false) => {
     await flush();
     const status = await call({ op: "history-status" });
-    const page = status.enabled ? await call({ op: "history-list", id: props.item.id, offset: append ? revisions().length : 0, limit: 30 }) : { revisions: [], total: 0 };
+    const page = status.enabled ? await call<{ revisions: Revision[]; total: number }>({ op: "history-list", id: props.item.id, offset: append ? revisions().length : 0, limit: 30 }) : { revisions: [], total: 0 };
     if (!alive) return;
     enabled.set(status.enabled); total.set(page.total);
     revisions.set(append ? [...revisions(), ...page.revisions.filter((r: Revision) => !revisions().some(old => old.id === r.id))] : page.revisions);

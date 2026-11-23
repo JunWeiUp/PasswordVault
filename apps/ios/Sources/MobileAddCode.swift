@@ -41,11 +41,9 @@ extension MobileVaultStore {
       return t("请填写有效的密钥，周期为 1–86400 秒。", "Enter a valid setup key and a period of 1–86400 seconds.")
     }
     do {
-      _ = try await perform([
-        "op": .string("totp"), "secret": .string(item.string("secret")),
-        "period": .number(item.number("period", fallback: 30)),
-        "time": .number(Date().timeIntervalSince1970.rounded(.down)),
-      ])
+      _ = try await perform(CoreRequest.totp(
+        secret: item.string("secret"), time: Date().timeIntervalSince1970.rounded(.down),
+        period: item.number("period", fallback: 30)))
     } catch {
       return t("设置密钥无效，请检查后重试。", "Invalid setup key. Check it and retry.")
     }

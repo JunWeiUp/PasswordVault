@@ -4,7 +4,7 @@ import { cleanup, effect, signal, View } from "nsh";
 import { Menu } from "nsh/desktop";
 import { Attachments, Files } from "passwordvault/native";
 import { Icon } from "../icons";
-import { Btn, IconBtn, Row, T, confirm } from "../kit";
+import { Btn, IconBtn, Pill, Row, T, confirm } from "../kit";
 import { desktopCapabilities } from "../native";
 import { edit, flush, items, phase, toast, vaultInstance, type Item } from "../store";
 import { c } from "../theme";
@@ -14,6 +14,7 @@ import {
   aiAssetTextEnabled,
   assetBadge,
   assetErrorText,
+  assetReadinessBadge,
   assetsTick,
   bumpNoteAssets,
   collectReferencedIds,
@@ -22,6 +23,7 @@ import {
   openExternalAsset,
   recommendedApps,
   removeAttachmentFromDoc,
+  requestRemoteAsset,
   toggleAiAssetText,
   formatAssetSize,
   type NoteAssetMeta,
@@ -32,7 +34,9 @@ export { bumpAssetSessions, bumpNoteAssets, formatAssetSize, type ExternalAssetS
 
 export function NoteAssetsSection(props: { item: Item; editable: boolean }) {
   const stored = signal<NoteAssetMeta[]>([]);
-  const importing = signal(false);
+  const importingName = signal("");
+  const importCancelled = signal(false);
+  const fetchingIds = signal<Record<string, boolean>>({});
   let alive = true;
   cleanup(() => { alive = false; });
 
@@ -46,9 +50,10 @@ export function NoteAssetsSection(props: { item: Item; editable: boolean }) {
     }
   };
 
+  // Depend ONLY on item.id & explicit assetsTick (never updatedAt!) so keystrokes never spam SQLite IPC.
   effect(() => {
     props.item.id;
-    props.item.updatedAt;
+    props.item.noteSummary;
     assetsTick();
     void loadAssets();
   });
@@ -61,15 +66,33 @@ export function NoteAssetsSection(props: { item: Item; editable: boolean }) {
     return stored().filter((a) => refs.has(a.id));
   };
 
+  const triggerDownload = async (asset: NoteAssetMeta) => {
+    if (fetchingIds()[asset.id]) return;
+    fetchingIds.update((m) => ({ ...m, [asset.id]: true }));
+    try {
+      await requestRemoteAsset(props.item.id, asset);
+      await loadAssets();
+    } finally {
+      if (alive) fetchingIds.update((m) => { const n = { ...m }; delete n[asset.id]; return n; });
+    }
+  };
+
   const importFromPicker = async () => {
-    if (!props.editable || importing() || phase() !== "unlocked") return;
-    importing.set(true);
+    if (!props.editable || !!importingName() || phase() !== "unlocked") return;
+    importCancelled.set(false);
     try {
       await flush();
       const path = await Files.pickOpen("导入加密资产（PDF / Word / Excel / 图片，上限 100 MB）", []);
       if (!path || !alive || phase() !== "unlocked") return;
+      const baseName = path.split(/[/\\]/).pop() || "附件";
+      importingName.set(baseName);
       const raw = await Attachments.importFile(vaultInstance, props.item.id, path);
       const meta = JSON.parse(raw) as { id: string; name: string; mime: string; size: number };
+      if (!alive || importCancelled() || phase() !== "unlocked") {
+        // User cancelled while encrypting: clean up unreferenced import cleanly.
+        try { await Attachments.discard(vaultInstance, props.item.id, meta.id); } catch {}
+        return;
+      }
       const currentItem = items().find((i) => i.id === props.item.id) ?? props.item;
       const doc: Node = currentItem.noteFormat === "rich-v1" && currentItem.noteDocument
         ? clone(currentItem.noteDocument)
@@ -103,7 +126,10 @@ export function NoteAssetsSection(props: { item: Item; editable: boolean }) {
     } catch (e) {
       toast(assetErrorText(e));
     } finally {
-      if (alive) importing.set(false);
+      if (alive) {
+        importingName.set("");
+        importCancelled.set(false);
+      }
     }
   };
 
@@ -173,21 +199,52 @@ export function NoteAssetsSection(props: { item: Item; editable: boolean }) {
           <If when={props.editable}>
             <Btn
               testID="note-import-asset-btn"
-              label={importing() ? "导入中…" : "导入 PDF / Word / 表格…"}
+              label={importingName() ? "后台分块加密中…" : "导入 PDF / Word / 表格…"}
               icon="plus"
               kind="ghost"
-              tooltip="支持导入 PDF / Word / Excel / 图片（单文件上限 100 MB，64 KiB 分块加密存于 blobs/）"
-              disabled={importing()}
+              tooltip="支持导入 PDF / Word / Excel / 图片（单文件上限 100 MB，64 KiB 分块加密存于 blobs/，不阻塞正文编辑）"
+              disabled={!!importingName()}
               onPress={() => void importFromPicker()}
             />
           </If>
         </Row>
 
+        <If when={!!importingName()}>
+          <View
+            testID="note-asset-importing-card"
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 10,
+              paddingHorizontal: 12,
+              paddingVertical: 9,
+              borderRadius: 9,
+              borderWidth: 1,
+              borderColor: c().blueLine,
+              backgroundColor: c().blueSoft,
+            }}
+          >
+            <Icon name="sync" size={14} tint={c().blue} />
+            <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+              <T size={12} weight="600" color={c().blue} lines={1}>正在后台分块加密：{importingName()}</T>
+              <T size={11} color={c().muted} lines={1}>按 64 KiB 分块加密并生成预览缓存，可继续编辑正文</T>
+            </View>
+            <Btn
+              label="取消插入"
+              kind="ghost"
+              onPress={() => { importCancelled.set(true); toast("已标记取消，完成后自动丢弃未引用分块"); }}
+            />
+          </View>
+        </If>
+
         <If when={activeAssets().length > 0}>
           <View style={{ gap: 7 }}>
             {activeAssets().map((asset) => {
               const badge = assetBadge(asset.name, asset.mime);
+              const ready = assetReadinessBadge(asset);
+              const isRemote = asset.state === "remote" || asset.state === "failed" || asset.state === "downloading";
               const aiOn = () => aiAssetTextEnabled(props.item.id, asset.id);
+              const pulling = () => !!fetchingIds()[asset.id] || asset.state === "downloading";
               return (
                 <View
                   testID={`note-asset-row-${asset.id}`}
@@ -200,7 +257,7 @@ export function NoteAssetsSection(props: { item: Item; editable: boolean }) {
                     paddingVertical: 10,
                     borderRadius: 9,
                     borderWidth: 1,
-                    borderColor: c().line,
+                    borderColor: asset.state === "failed" ? c().red : c().line,
                     backgroundColor: c().soft2,
                   }}
                 >
@@ -217,13 +274,23 @@ export function NoteAssetsSection(props: { item: Item; editable: boolean }) {
                   >
                     <T mono size={10} weight="700" color={badge.fg}>{badge.label}</T>
                   </View>
-                  <View style={{ flex: 1, minWidth: 210, gap: 2 }}>
-                    <T size={12.5} weight="600" lines={1}>{asset.name}</T>
+                  <View style={{ flex: 1, minWidth: 210, gap: 3 }}>
+                    <Row gap={6} wrap>
+                      <T size={12.5} weight="600" lines={1} style={{ flexShrink: 1 }}>{asset.name}</T>
+                      <Pill tone={ready.tone}>{ready.label}</Pill>
+                      <If when={asset.hasCachedExcerpt}>
+                        <Pill tone="gray">摘录缓存</Pill>
+                      </If>
+                    </Row>
                     <T size={11} color={c().muted} lines={1}>
-                      {formatAssetSize(asset.size)} · {asset.blobShort ?? "SQLCipher"}
+                      {formatAssetSize(asset.size)} · {isRemote ? (asset.sourceDevice ? `来源设备 ${asset.sourceDevice}` : "云端元数据") : (asset.blobShort ?? "SQLCipher")}
                       {asset.chunks ? ` · ${asset.chunks} 块加密` : ""}
-                      {asset.blockedExternal ? " · 可执行文件仅限只读导出" : ""}
                     </T>
+                    <If when={!!ready.reason || !!asset.blockedExternal}>
+                      <T size={10.5} color={asset.state === "failed" ? c().red : c().muted} lines={2}>
+                        {ready.reason ?? "门控原因：可执行脚本/安装包按安全策略禁止直接用外部应用运行，仅限只读导出。"}
+                      </T>
+                    </If>
                   </View>
                   <Row gap={5} wrap>
                     <If when={desktopCapabilities.ai && asset.canExtractText}>
@@ -237,26 +304,40 @@ export function NoteAssetsSection(props: { item: Item; editable: boolean }) {
                       />
                     </If>
                     <Btn label="预览" icon="eye" onPress={() => openAssetPreviewSheet(props.item.id, asset)} />
-                    <If when={!asset.blockedExternal}>
-                      <Btn
-                        label="打开"
-                        icon="globe"
-                        kind="primary"
-                        onPress={() => void openExternalAsset(props.item.id, asset)}
+                    <If
+                      when={!isRemote}
+                      else={
+                        <Btn
+                          testID={`asset-download-${asset.id}`}
+                          label={pulling() ? "拉取中…" : asset.state === "failed" ? "重试拉取" : "拉取下载"}
+                          icon="down"
+                          kind="primary"
+                          disabled={pulling()}
+                          onPress={() => void triggerDownload(asset)}
+                        />
+                      }
+                    >
+                      <If when={!asset.blockedExternal}>
+                        <Btn
+                          label="打开"
+                          icon="globe"
+                          kind="primary"
+                          onPress={() => void openExternalAsset(props.item.id, asset)}
+                        />
+                      </If>
+                      <IconBtn
+                        icon="chevd"
+                        label="选择打开方式"
+                        size={12}
+                        onPress={(e: any) => openWithMenu(asset, e?.pagePosition)}
+                      />
+                      <IconBtn
+                        icon="down"
+                        label={`另存明文副本 ${asset.name}`}
+                        size={12}
+                        onPress={() => exportAssetPlaintext(props.item.id, asset)}
                       />
                     </If>
-                    <IconBtn
-                      icon="chevd"
-                      label="选择打开方式"
-                      size={12}
-                      onPress={(e: any) => openWithMenu(asset, e?.pagePosition)}
-                    />
-                    <IconBtn
-                      icon="down"
-                      label={`另存明文副本 ${asset.name}`}
-                      size={12}
-                      onPress={() => exportAssetPlaintext(props.item.id, asset)}
-                    />
                     <If when={props.editable}>
                       <IconBtn
                         icon="trash"

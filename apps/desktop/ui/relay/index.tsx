@@ -3,21 +3,27 @@ import { Canvas, View, signal, effect } from "nsh";
 import { pollEvery } from "../polling";
 import { isMac } from "../native";
 import { Relay } from "passwordvault/native";
-import { Banner, Btn, Group, Row, T, confirm, closeSheet, openSheet, SheetTitle, SheetFooter } from "../kit";
-import { call, errorText, load, refreshItems, phase, settings, onLock, vaultInstance } from "../store";
+import { Banner, Btn, Group, Pill, Row, T, confirm, closeSheet, openSheet, SheetTitle, SheetFooter } from "../kit";
+import { coreApi, errorText, load, meshConflicts, refreshItems, refreshMeshConflicts, phase, settings, onLock, vaultInstance } from "../store";
+import type { RelaySummary } from "../api/core";
 import { c } from "../theme";
 import { GroupPanel } from "./GroupPanel";
+import { openConflictResolver } from "../history/ConflictResolverSheet";
+import { bumpNoteAssets } from "../api/noteAssets";
 
-type Summary = { enabled?: boolean; mode?: string; pending?: number; peers?: string[] | Record<string, unknown>; capabilities?: string[]; archivedConflicts?: number; skew?: boolean };
+type Summary = RelaySummary;
 const summary = signal<Summary>({});
 const roster = signal<any>({});
 const peerState = signal<any>({});
-const busy = signal(false);
+const acting = signal(false);
+const refreshing = signal(false);
+const syncing = signal(false);
 const failure = signal("");
 const syncBlocked = signal(false);
 const connection = signal<any>({ transport: "disconnected", online: [] });
 /** Symmetric sync: every member of the group syncs both ways; no primary, grants or conflict list. */
 export const meshSync = () => !!roster().state && !roster().peerLibrary;
+export const isRelayOffline = () => phase() === "unlocked" && !!roster().state && connection().transport !== "connected";
 export const RELAY_UPGRADE_MESSAGE = "部分设备尚未验证格式兼容性，正在自动协商";
 export function relayErrorText(error: unknown) {
   const text = String(error).replace(/^Error:\s*/, "");
@@ -53,6 +59,7 @@ effect(() => {
     connection.set(state);
     if (Number(state.updates ?? 0) !== updates) {
       updates = Number(state.updates ?? 0);
+      bumpNoteAssets();
       void refreshItems().then(refreshRelay).catch(() => {});
     }
   });
@@ -61,8 +68,15 @@ effect(() => {
 /** Safe sidebar accessor: membership never implies a live connection. */
 export function syncStatus(): string {
   if (phase() !== "unlocked") return "已锁定 · 同步已断开";
-  if (roster().state && connection().transport !== "connected") return ({ connecting: "正在连接中继…", reconnecting: "中继连接中断，正在重试…" } as Record<string,string>)[connection().transport] ?? "中继未连接 · 点击立即同步重连";
-  if (meshSync()) return connection().transport === "connected" ? "已同步 · 组内设备自动双向同步" : "中继未连接";
+  const noteConflictCount = Object.keys(meshConflicts()).length || Number(summary().conflictCount ?? 0);
+  if (noteConflictCount > 0) return `${noteConflictCount} 篇笔记有并行分支待处理`;
+  if (roster().state && connection().transport !== "connected") return ({ connecting: "正在连接中继…", reconnecting: "离线可用 · 正在重连中继…" } as Record<string,string>)[connection().transport] ?? "离线可用 · 本地完整读写";
+  if (meshSync()) {
+    const remoteCount = Number(summary().remoteAssetCount ?? 0);
+    return connection().transport === "connected"
+      ? (remoteCount > 0 ? `已同步 · L1 优先（${remoteCount} 附件按需）` : "已同步 · L1 元数据优先双向同步")
+      : "离线可用 · 本地完整读写";
+  }
   if (syncBlocked()) return RELAY_UPGRADE_MESSAGE;
   const count = Object.keys(peerState().conflicts ?? {}).length;
   if (count) return `${count} 项同步冲突`;
@@ -71,7 +85,8 @@ export function syncStatus(): string {
 /** Tone for the sidebar status dot, derived from the same state as `syncStatus`. */
 export function syncTone(): "ok" | "busy" | "warn" | "off" {
   if (phase() !== "unlocked") return "off";
-  if (syncBlocked() || Object.keys(peerState().conflicts ?? {}).length) return "warn";
+  const noteConflictCount = Object.keys(meshConflicts()).length || Number(summary().conflictCount ?? 0);
+  if (syncBlocked() || noteConflictCount > 0 || Object.keys(peerState().conflicts ?? {}).length) return "warn";
   const transport = connection().transport;
   if (transport === "connected") return "ok";
   if (transport === "connecting" || transport === "reconnecting") return "busy";
@@ -80,23 +95,27 @@ export function syncTone(): "ok" | "busy" | "warn" | "off" {
 export async function refreshRelay() {
   const epoch = ++generation;
   if (phase() !== "unlocked") { summary.set({}); roster.set({}); peerState.set({}); syncBlocked.set(false); return; }
+  refreshing.set(true);
   try {
-    const [state, group, devices] = await Promise.all([call<Summary>({ op: "relay-status" }), Relay.summary(vaultInstance), call({ op: "devices-status" })]);
+    const [state, group, devices] = await Promise.all([coreApi.relayStatus(), Relay.summary(vaultInstance), coreApi.devicesStatus()]);
     const parsed = JSON.parse(group);
     const library = settings().activePeerLibrary || parsed.peerLibrary;
-    const peer = library ? await call({ op: "relay-peer-status", library }) : {};
+    const peer = library ? await coreApi.relayPeerStatus(library) : {};
+    await refreshMeshConflicts();
     if (epoch !== generation || phase() !== "unlocked") return;
     peerState.set(peer); summary.set(state); roster.set(parsed);
     // Peer libraries still cannot carry format-7 device records; personal groups can.
     syncBlocked.set(!!library && Number(devices.formatVersion) >= 7);
     failure.set("");
   } catch (e) { if (epoch === generation && phase() === "unlocked") failure.set(relayErrorText(e)); }
+  finally { if (epoch === generation) refreshing.set(false); }
 }
 /** Only pass an already-created invitation link. Never logs the fragment key. */
-export function InvitationQR(props: { link: string }) {
+export function InvitationQR(props: { link: string; size?: number }) {
   const matrix = signal<boolean[][]>([]);
+  const px = () => props.size ?? 232;
   effect(() => { try { matrix.set(JSON.parse(Relay.qr(props.link))); } catch { matrix.set([]); } });
-  return <Canvas accessibilityLabel="设备组邀请二维码" style={{ width: 232, height: 232 }} draw={(cx, size) => {
+  return <Canvas accessibilityLabel="设备组邀请二维码" style={{ width: px(), height: px() }} draw={(cx, size) => {
     cx.fillStyle = "#ffffff"; cx.fillRect(0, 0, size.width, size.height);
     const rows = matrix(); if (!rows.length) return;
     const unit = Math.floor(Math.min(size.width, size.height) / rows.length);
@@ -106,11 +125,11 @@ export function InvitationQR(props: { link: string }) {
   }} />;
 }
 async function groupAction(request: Record<string, unknown>) {
-  if (busy() || phase() !== "unlocked") throw new Error("Locked");
-  busy.set(true); failure.set("");
+  if (acting() || phase() !== "unlocked") throw new Error("Locked");
+  acting.set(true); failure.set("");
   try { await Relay.action(vaultInstance, JSON.stringify(request)); if (phase() === "unlocked") { const status = JSON.parse(await Relay.connectionStatus(vaultInstance)); if (phase() === "unlocked") { connection.set(status); await refreshRelay(); } } }
   catch (e) { failure.set(relayErrorText(e)); await refreshRelay().catch(() => {}); failure.set(relayErrorText(e)); throw e; }
-  finally { busy.set(false); }
+  finally { acting.set(false); }
 }
 function comparePeer(key: string, candidates: any[]) {
   const library = peerState().library;
@@ -118,10 +137,10 @@ function comparePeer(key: string, candidates: any[]) {
     <SheetTitle title="比较对等库修改" text={key} />
     {candidates.map((candidate) => <Group style={{ gap: 8, paddingVertical: 10 }}>
       <T weight="600">{candidate.device || candidate.author || candidate.id}</T><T size={12}>{JSON.stringify(candidate.value, null, 2)}</T>
-      <Btn label="使用此版本" disabled={busy() || syncBlocked() || peerState().frozen === true} onPress={() => {
+      <Btn label="使用此版本" disabled={acting() || syncBlocked() || peerState().frozen === true} onPress={() => {
         close(); confirm({ title: "解决此项冲突", text: "此版本将作为新的已解决版本同步给授权设备。", ok: "确认使用", onConfirm: async () => {
-          busy.set(true); try { await call({ op: "relay-peer-resolve", library, key, value: candidate.value }); await load(); await refreshRelay(); }
-          catch(e) { failure.set(relayErrorText(e)); } finally { busy.set(false); }
+          acting.set(true); try { await coreApi.relayPeerResolve(library, key, candidate.value); await load(); await refreshRelay(); }
+          catch(e) { failure.set(relayErrorText(e)); } finally { acting.set(false); }
         } });
       }} />
     </Group>)}
@@ -130,28 +149,70 @@ function comparePeer(key: string, candidates: any[]) {
 }
 export function RelayPage() {
   effect(() => { if (phase() === "unlocked") void refreshRelay(); else { ++generation; summary.set({}); roster.set({}); peerState.set({}); syncBlocked.set(false); failure.set(""); closeSheet(); } });
+  const conflictList = () => Object.values(meshConflicts());
   return <View style={{ gap: 14 }}>
     <T size={19} weight="600">同步与设备</T>
     <If when={roster().state && meshSync()}>
+      <Group style={{ gap: 6, paddingVertical: 10 }}>
+        <Row gap={8} wrap>
+          <T weight="600">{roster().state?.name || "我的密码库"}</T>
+          <Pill tone="blue">L1 元数据优先</Pill>
+          <If when={Number(summary().remoteAssetCount ?? 0) > 0}>
+            <Pill tone="gray">{summary().remoteAssetCount} 个大附件按需下载</Pill>
+          </If>
+        </Row>
+        <T size={12} color={c().muted}>密码、笔记正文与 512 KB 以上附件元数据优先毫秒级同步，大附件不阻塞队列、点击时端到端按需拉取。非重叠章节与标签自动合并，重叠编辑保留并行分支供本机解决。</T>
+      </Group>
+    </If>
+    <If when={conflictList().length > 0}>
+      <Banner tone="warn" title={`${conflictList().length} 篇笔记存在并发编辑并行分支`}>
+        两端附件已自动取并集保护（0 项丢失），点击下方进入本机分屏解决。
+      </Banner>
       <Group>
-        <T weight="600">{roster().state?.name || "我的密码库"}</T>
-        <T size={12} color={c().muted}>组内所有设备自动双向同步。多台设备同时修改同一条时以较新的修改为准，较旧版本可在条目历史中找回。</T>
+        {conflictList().map((cf) => (
+          <Row style={{ paddingVertical: 10 }} gap={8}>
+            <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+              <T weight="600" lines={1}>{cf.title || "未命名笔记"}</T>
+              <T size={11.5} color={c().muted} lines={1}>冲突位置：{cf.section} · {cf.localDevice} ↔ {cf.remoteDevice}</T>
+            </View>
+            <Btn label="分屏解决" kind="primary" onPress={() => openConflictResolver(cf.noteId)} />
+          </Row>
+        ))}
       </Group>
     </If>
     <If when={meshSync() && Number(summary().archivedConflicts ?? 0) > 0}><Banner tone="info" title={`升级时 ${summary().archivedConflicts} 个旧冲突版本已存入条目历史`}>无需再手动处理冲突；需要时可在对应条目的历史中恢复。</Banner></If>
     <If when={meshSync() && summary().skew === true}><Banner tone="warn" title="有设备的系统时间明显不准">同时修改时以时间较新的修改为准，请校准该设备时间。</Banner></If>
     <If when={syncBlocked()}><Banner tone="warn" title="对等库暂不支持设备条目同步">个人设备组不受影响。</Banner></If>
-    <If when={!roster().state}><Banner tone="info" title="扫码加入，自动双向同步">创建设备组，或在其他设备上扫描邀请二维码加入。组内所有设备自动双向同步，无需逐台授权。</Banner></If>
-    <Group><Row><View style={{ flex: 1 }}><T weight="600">{syncStatus()}</T></View><Btn label="刷新记录" disabled={busy()} onPress={() => void refreshRelay()} /><Btn label="立即同步" disabled={busy() || !roster().state} onPress={async () => { try { await Relay.syncNow(vaultInstance); } catch(e) { failure.set(relayErrorText(e)); } }} /></Row></Group>
+    <If when={!roster().state}><Banner tone="info" title="扫码加入，L1 元数据优先自动同步">创建设备组，或在其他设备上扫描邀请二维码加入。优先同步密码与笔记索引，大附件按需拉取，离线时本机仍完整读写。</Banner></If>
+    <Group>
+      <View style={{ gap: 6, paddingVertical: 8 }}>
+        <Row gap={8} wrap>
+          <View style={{ flex: 1, minWidth: 160 }}><T weight="600">{syncStatus()}</T></View>
+          <Btn label={refreshing() ? "刷新中…" : "刷新记录"} disabled={refreshing()} onPress={() => void refreshRelay()} />
+          <Btn
+            label={syncing() ? "同步中…" : "立即同步"}
+            disabled={syncing() || !roster().state}
+            onPress={async () => {
+              syncing.set(true);
+              try { await Relay.syncNow(vaultInstance); } catch(e) { failure.set(relayErrorText(e)); }
+              finally { syncing.set(false); }
+            }}
+          />
+        </Row>
+        <If when={!roster().state}>
+          <T size={11} color={c().muted}>门控原因：尚未加入设备组，创建或加入后启用「立即同步」。</T>
+        </If>
+      </View>
+    </Group>
     <If when={failure()}><Banner tone="err" title={failure()} /></If>
     <If when={connection().error}><Banner tone="warn" title={relayErrorText(connection().error)} /></If>
     <If when={connection().exit}><Banner tone={connection().exit?.remote === "failed" ? "warn" : "info"} title={exitNotice(connection().exit ?? {})}>本地资料已保留；退出后不会自动恢复旧组连接。</Banner></If>
     <If when={Object.keys(peerState().conflicts ?? {}).length > 0}>
       <T weight="600">对等库冲突</T>
-      <Group>{Object.entries(peerState().conflicts ?? {}).map(([key, candidates]) => <Row style={{ paddingVertical: 10 }}><T style={{ flex: 1 }}>{key}</T><Btn label="比较修改" disabled={busy()} onPress={() => comparePeer(key, candidates as any[])} /></Row>)}</Group>
+      <Group>{Object.entries(peerState().conflicts ?? {}).map(([key, candidates]) => <Row style={{ paddingVertical: 10 }}><T style={{ flex: 1 }}>{key}</T><Btn label="比较修改" disabled={acting()} onPress={() => comparePeer(key, Array.isArray(candidates) ? candidates : [])} /></Row>)}</Group>
     </If>
     <T weight="600">设备组</T>
-    <GroupPanel group={roster()} busy={busy()} act={groupAction} online={connection().online ?? []} />
+    <GroupPanel group={roster()} busy={acting()} act={groupAction} online={connection().online ?? []} />
     <If when={!roster().state?.members?.length}><T color={c().muted}>本地没有设备组记录</T></If>
   </View>;
 }

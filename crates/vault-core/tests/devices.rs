@@ -189,10 +189,12 @@ fn archives_and_history_preserve_owned_inert_files() {
 fn sync_gate_cannot_be_bypassed_by_claimed_peer_capabilities() {
     let (_d, s) = fixture();
     enable(&s);
+    // Registered sync ops reach the devices gate; unregistered names are already rejected
+    // earlier by the command registry, but the gate itself still covers them.
     for op in [
         "relay-peer-export",
-        "relay-request",
-        "relay-apply",
+        "sync-respond",
+        "sync-apply",
         "sync-request",
         "relay-peer-receive",
     ] {
@@ -203,6 +205,13 @@ fn sync_gate_cannot_be_bypassed_by_claimed_peer_capabilities() {
             ),
             "{op}"
         );
+    }
+    for unregistered in ["relay-request", "relay-apply"] {
+        assert!(matches!(
+            run(&s, json!({"op":unregistered,"peerFormat":7})),
+            Err(VaultError::Unsupported)
+        ));
+        assert!(guard_device_sync(7, unregistered).is_err());
     }
     assert!(guard_device_sync(7, "relay-status").is_ok());
     assert!(guard_device_sync(7, "relay-credentials-read").is_ok());

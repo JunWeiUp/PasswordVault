@@ -20,6 +20,12 @@ class IOSSimulatorSelectionTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'No available iPhone'):
             select_simulator(self.fixtures(), '26.3')
 
+    def test_nearest_falls_back_to_newest_older_runtime_locally(self):
+        self.assertEqual(select_simulator(self.fixtures(), '26.3', nearest=True), 'correct')
+        self.assertEqual(select_simulator(self.fixtures(), '19.0', nearest=True), 'old')
+        with self.assertRaisesRegex(ValueError, 'No available iPhone'):
+            select_simulator(self.fixtures(), '18.0', nearest=True)
+
     def test_rejects_malformed_sdk(self):
         with self.assertRaises(ValueError):
             select_simulator(self.fixtures(), '')

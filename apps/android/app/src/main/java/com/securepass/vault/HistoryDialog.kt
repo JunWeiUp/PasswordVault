@@ -52,8 +52,8 @@ internal fun HistoryDialog(vault: VaultRepository, id: String, t: (String, Strin
     var confirm by remember { mutableStateOf<String?>(null) }
     var message by remember { mutableStateOf<String?>(null) }
     suspend fun load(append: Boolean = false) {
-        enabled = vault.command("history-status").getBoolean("enabled")
-        val result = vault.command("history-list", JSONObject().put("id", id).put("offset", if (append) rows.size else 0))
+        enabled = vault.command(CoreRequest.historyStatus()).getBoolean("enabled")
+        val result = vault.command(CoreRequest.historyList(id, offset = if (append) rows.size else 0))
         val array = result.getJSONArray("revisions")
         val page = (0 until array.length()).map { array.getJSONObject(it) }
         total = result.getInt("total"); rows = if (append) rows + page else page
@@ -70,7 +70,7 @@ internal fun HistoryDialog(vault: VaultRepository, id: String, t: (String, Strin
             LegacySection {
                 Text(t("尚未启用完整历史", "Complete history is not enabled"), style = MaterialTheme.typography.titleMedium)
                 Text(t("启用将升级资料库格式，旧客户端无法打开。历史包含旧秘密及附件，请先升级所有客户端。", "Enabling upgrades the vault format. Old clients cannot open it. History retains old secrets and attachments; update all clients first."))
-                Button(enabled = !working, onClick = { run { vault.command("history-enable"); vault.refresh(); load() } }) { Text(t("启用完整历史", "Enable complete history")) }
+                Button(enabled = !working, onClick = { run { vault.command(CoreRequest.historyEnable()); vault.refresh(); load() } }) { Text(t("启用完整历史", "Enable complete history")) }
             }
         } else if (loaded) {
             if (rows.isEmpty()) Text(t("暂无已保存的历史版本。", "No saved versions yet."), color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -110,8 +110,8 @@ internal fun HistoryDialog(vault: VaultRepository, id: String, t: (String, Strin
             title = { Text(if (operation == "prune") t("清理旧版本？", "Clear older versions?") else t("恢复这个版本？", "Restore this version?")) },
             text = { Text(if (operation == "prune") t("保留当前内容。个人库清理本机旧版本；对等资料库仅隐藏旧版本，旧内容仍在同步日志中。已有备份不受影响。", "Current contents remain. Personal vaults clear local older versions; peer libraries only hide them and retain their contents in the sync log. Existing backups are unchanged.") else t("当前内容会保留在历史中，并创建一个新的版本。", "Current contents remain in history and a new version is created.")) },
             confirmButton = { Button(enabled = !working, onClick = { run {
-                if (operation == "prune") vault.command("history-prune", JSONObject().put("id", id))
-                else vault.command("history-restore", JSONObject().put("id", id).put("revisionId", selected!!.getString("id")).put("time", Instant.now().toString()))
+                if (operation == "prune") vault.command(CoreRequest.historyPrune(id))
+                else vault.command(CoreRequest.historyRestore(id, selected!!.getString("id"), Instant.now().toString()))
                 confirm = null; selected = null; reveal = false; vault.refresh(); load()
             } }) { Text(if (operation == "prune") t("清理", "Clear") else t("恢复", "Restore")) } },
             dismissButton = { TextButton(enabled = !working, onClick = { confirm = null }) { Text(t("取消", "Cancel")) } })

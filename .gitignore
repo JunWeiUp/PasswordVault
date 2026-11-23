@@ -120,10 +120,6 @@ coverage/
 /downloaded/
 
 # Vendored relay SDK build/cache outputs are local artifacts.
-/vendor/common-relay/java/build/
-/vendor/common-relay/java/.gradle/
-/vendor/common-relay/swift/.build/
-/vendor/common-relay/swift/.swiftpm/
 
 
 # Project documentation is kept locally and not published.

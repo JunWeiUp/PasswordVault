@@ -2,11 +2,14 @@
 // Keeps formatting, app-recommendation, AST updates, and UI workflows in TypeScript
 // so UI/UX changes deploy via --ui-only in seconds without touching Rust.
 import { signal } from "nsh";
-import { Attachments, Files } from "passwordvault/native";
+import { Files } from "passwordvault/native";
 import { aiSettings, change as aiChange } from "../ai";
 import { confirm } from "../kit";
-import { call, errorText, phase, toast, vaultInstance } from "../store";
+import { coreApi, errorText, phase, toast, vaultInstance } from "../store";
 import { c } from "../theme";
+import { attachmentsNative, relayNative } from "./nativeBridge";
+
+export type AssetReadiness = "ready" | "remote" | "downloading" | "failed";
 
 export type NoteAssetMeta = {
   id: string;
@@ -18,6 +21,13 @@ export type NoteAssetMeta = {
   blobId?: string;
   blobShort?: string;
   chunks?: number;
+  state?: AssetReadiness;
+  sourceDevice?: string;
+  errorReason?: string;
+  hasCachedExcerpt?: boolean;
+  hasThumb?: boolean;
+  thumbWidth?: number;
+  thumbHeight?: number;
   canExtractText?: boolean;
   blockedExternal?: boolean;
 };
@@ -25,6 +35,16 @@ export type NoteAssetMeta = {
 export type AssetPreviewInfo = NoteAssetMeta & {
   excerpt?: string;
   totalChars?: number;
+  excerptCached?: boolean;
+  remoteOnly?: boolean;
+};
+
+export type ImageThumbResult = {
+  dataUrl: string;
+  width?: number;
+  height?: number;
+  lod: "l2" | "l3";
+  cached?: boolean;
 };
 
 export type ExternalAssetSession = {
@@ -122,7 +142,37 @@ const ASSET_ERRORS: Record<string, string> = {
   OpenFailed: "未能启动所选外部应用，请确认应用已安装或改用默认应用打开。",
   Unchanged: "临时文件内容未发生变化，无需写回。",
   SessionNotFound: "临时编辑会话已结束或已清理。",
+  RelayDisconnected: "同步网络未连接，请先在「设置 › 同步」恢复连接后再拉取云端附件。",
+  PeerOffline: "附件来源设备当前离线，待对方上线后可立即拉取。",
+  Unsupported: "该附件尚未下载到本机，请先点击「拉取下载」。",
 };
+
+export function assetReadinessBadge(asset: NoteAssetMeta): {
+  label: string;
+  tone: "green" | "blue" | "orange" | "red";
+  reason?: string;
+} {
+  switch (asset.state) {
+    case "remote":
+      return {
+        label: "云端按需",
+        tone: "blue",
+        reason: asset.sourceDevice
+          ? `仅同步元信息与摘录，原文件位于设备「${asset.sourceDevice}」`
+          : "仅同步元信息与摘录，点击拉取后可打开原文件",
+      };
+    case "downloading":
+      return { label: "拉取中…", tone: "blue", reason: "正在通过端到端加密通道按需下载" };
+    case "failed":
+      return {
+        label: "拉取失败",
+        tone: "red",
+        reason: asset.errorReason ? assetErrorText(asset.errorReason) : "拉取中断，可点击重试",
+      };
+    default:
+      return { label: "本地就绪", tone: "green" };
+  }
+}
 
 export function assetErrorText(e: unknown): string {
   const code = String(e).replace(/^Error:\s*/, "");
@@ -244,6 +294,9 @@ export function enrichNoteAsset(raw: Record<string, any>): NoteAssetMeta {
   const name = String(raw.name ?? "");
   const mime = String(raw.mime ?? "application/octet-stream");
   const blobId = typeof raw.blobId === "string" ? raw.blobId : undefined;
+  const rawState = typeof raw.state === "string" ? raw.state : "ready";
+  const state: AssetReadiness =
+    rawState === "remote" || rawState === "downloading" || rawState === "failed" ? rawState : "ready";
   return {
     id: String(raw.id ?? ""),
     noteId: String(raw.noteId ?? ""),
@@ -254,6 +307,13 @@ export function enrichNoteAsset(raw: Record<string, any>): NoteAssetMeta {
     blobId,
     blobShort: formatBlobShort(blobId),
     chunks: typeof raw.chunks === "number" ? raw.chunks : undefined,
+    state,
+    sourceDevice: typeof raw.sourceDevice === "string" ? raw.sourceDevice : undefined,
+    errorReason: typeof raw.errorReason === "string" ? raw.errorReason : undefined,
+    hasCachedExcerpt: raw.hasCachedExcerpt === true,
+    hasThumb: raw.hasThumb === true,
+    thumbWidth: typeof raw.thumbWidth === "number" ? raw.thumbWidth : undefined,
+    thumbHeight: typeof raw.thumbHeight === "number" ? raw.thumbHeight : undefined,
     canExtractText: canExtractAssetText(name, mime),
     blockedExternal: isBlockedExternalAsset(name),
   };
@@ -262,15 +322,45 @@ export function enrichNoteAsset(raw: Record<string, any>): NoteAssetMeta {
 // --- Thin native boundary wrappers ---
 
 export async function listNoteAssets(noteId: string): Promise<NoteAssetMeta[]> {
-  const parsed = await call<{ attachments?: Record<string, any>[] }>({
-    op: "note-attachments-list",
-    noteId,
-  });
+  const parsed = await coreApi.noteAttachmentsList(noteId);
   return Array.isArray(parsed?.attachments) ? parsed.attachments.map(enrichNoteAsset) : [];
 }
 
-export async function getBlobStorageStatus(): Promise<{ blobCount: number; totalPlainBytes: number; totalDiskBytes: number }> {
-  return await call({ op: "note-attachments-status" });
+export async function getBlobStorageStatus() {
+  return await coreApi.noteAttachmentsStatus();
+}
+
+export async function readImageThumbnail(noteId: string, attachmentId: string): Promise<ImageThumbResult> {
+  const fn = attachmentsNative.readThumbnail;
+  if (typeof fn === "function") {
+    const raw = await fn(vaultInstance, noteId, attachmentId);
+    const parsed = JSON.parse(raw) as ImageThumbResult;
+    if (parsed?.dataUrl) return parsed;
+  }
+  const full = await attachmentsNative.readImage(vaultInstance, noteId, attachmentId);
+  return { dataUrl: full, lod: "l3", cached: false };
+}
+
+export async function readImageOriginal(noteId: string, attachmentId: string): Promise<string> {
+  return await attachmentsNative.readImage(vaultInstance, noteId, attachmentId);
+}
+
+export async function requestRemoteAsset(noteId: string, asset: NoteAssetMeta): Promise<boolean> {
+  try {
+    const fn = relayNative.requestBlob;
+    if (typeof fn !== "function") {
+      toast("当前运行环境暂不支持按需拉取远端附件");
+      return false;
+    }
+    await fn(vaultInstance, noteId, asset.id, asset.sourceDevice ?? null);
+    bumpNoteAssets();
+    toast(`已向设备发送「${asset.name}」按需拉取请求`);
+    return true;
+  } catch (e) {
+    bumpNoteAssets();
+    toast(assetErrorText(e));
+    return false;
+  }
 }
 
 export async function fetchAssetPreviewInfo(noteId: string, attachmentId: string): Promise<AssetPreviewInfo> {
@@ -278,27 +368,37 @@ export async function fetchAssetPreviewInfo(noteId: string, attachmentId: string
   const meta = list.find((a) => a.id === attachmentId);
   if (!meta) throw new Error("InvalidData");
   if (!meta.canExtractText || meta.size > 32 * 1024 * 1024) {
-    return { ...meta, excerpt: undefined, totalChars: 0 };
+    return { ...meta, excerpt: undefined, totalChars: 0, remoteOnly: meta.state === "remote" };
   }
   try {
-    const raw = await (Attachments as any).extractText(vaultInstance, noteId, attachmentId, 4000);
-    const extracted = JSON.parse(raw) as { text?: string | null; totalChars?: number };
+    const raw = await attachmentsNative.extractText?.(vaultInstance, noteId, attachmentId, 4000);
+    if (!raw) return { ...meta, excerpt: undefined, totalChars: 0, remoteOnly: meta.state === "remote" };
+    const extracted = JSON.parse(raw) as {
+      text?: string | null;
+      totalChars?: number;
+      cached?: boolean;
+      remote?: boolean;
+    };
     return {
       ...meta,
       excerpt: extracted.text ?? undefined,
       totalChars: extracted.totalChars ?? 0,
+      excerptCached: extracted.cached === true,
+      remoteOnly: extracted.remote === true || meta.state === "remote",
     };
   } catch {
-    return { ...meta, excerpt: undefined, totalChars: 0 };
+    return { ...meta, excerpt: undefined, totalChars: 0, remoteOnly: meta.state === "remote" };
   }
 }
 
 export async function launchAssetQuickLook(noteId: string, attachmentId: string): Promise<void> {
-  await (Attachments as any).quickLook(vaultInstance, noteId, attachmentId);
+  if (!attachmentsNative.quickLook) throw new Error("Unsupported");
+  await attachmentsNative.quickLook(vaultInstance, noteId, attachmentId);
 }
 
 export async function listExternalAssetSessions(noteId: string): Promise<ExternalAssetSession[]> {
-  const raw = await (Attachments as any).listSessions(noteId);
+  if (!attachmentsNative.listSessions) return [];
+  const raw = await attachmentsNative.listSessions(noteId);
   const parsed = JSON.parse(raw);
   return Array.isArray(parsed?.sessions) ? parsed.sessions : [];
 }
@@ -306,18 +406,20 @@ export async function listExternalAssetSessions(noteId: string): Promise<Externa
 export async function writeBackExternalSession(
   sessionId: string,
 ): Promise<{ id: string; name: string; mime: string; size: number }> {
-  const raw = await (Attachments as any).writeBackSession(vaultInstance, sessionId);
+  if (!attachmentsNative.writeBackSession) throw new Error("Unsupported");
+  const raw = await attachmentsNative.writeBackSession(vaultInstance, sessionId);
   const res = JSON.parse(raw);
   return res.meta as { id: string; name: string; mime: string; size: number };
 }
 
 export async function closeExternalSession(sessionId: string): Promise<void> {
-  await (Attachments as any).closeSession(sessionId);
+  await attachmentsNative.closeSession?.(sessionId);
 }
 
 export async function openExternalAsset(noteId: string, asset: NoteAssetMeta, appName?: string) {
   try {
-    await (Attachments as any).openExternal(vaultInstance, noteId, asset.id, appName || null);
+    if (!attachmentsNative.openExternal) throw new Error("Unsupported");
+    await attachmentsNative.openExternal(vaultInstance, noteId, asset.id, appName || null);
     bumpAssetSessions();
     toast(`已解密到 0700 防索引临时会话并用「${appName || "默认应用"}」打开，锁库或退出自动清除`);
   } catch (e) {
@@ -336,7 +438,8 @@ export function exportAssetPlaintext(noteId: string, asset: NoteAssetMeta) {
           const ext = asset.name.includes(".") ? [asset.name.split(".").pop()!] : [];
           const dest = await Files.pickSave("另存加密资产明文副本", asset.name, ext);
           if (!dest || phase() !== "unlocked") return;
-          await (Attachments as any).exportPlaintext(vaultInstance, noteId, asset.id, dest);
+          if (!attachmentsNative.exportPlaintext) throw new Error("Unsupported");
+          await attachmentsNative.exportPlaintext(vaultInstance, noteId, asset.id, dest);
           toast(`已导出明文副本：${asset.name}`);
         } catch (e) {
           toast(assetErrorText(e));

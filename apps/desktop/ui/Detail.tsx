@@ -8,9 +8,10 @@ import {
   Banner, Btn, copySecret, Empty, Field, Group, IconBtn, openSite, Row, SectionHead, SmallAction, Strength, strengthOf, T,
 } from "./kit";
 import {
-  audit, DEST_NAME, dest, edit, editing, flush, items, lock, noteCategories, onLock, restore, saveError, saveState,
+  audit, DEST_NAME, dest, edit, editing, flush, items, lock, meshConflicts, noteCategories, onLock, restore, saveError, saveState,
   selected, toggleFavorite, type Item,
 } from "./store";
+import { openConflictResolver } from "./history/ConflictResolverSheet";
 import { askDeleteForever, askSaveMilestone, askTrash, showPasswordHistory } from "./sheets";
 import { moveToCategoryMenu, rowMenu, Tile } from "./ItemList";
 import { c, layout, MONO, fs } from "./theme";
@@ -312,9 +313,35 @@ function NoteDetail(props: { item: Item }) {
               style={{ fontSize: fs(28), fontWeight: "700", color: c().ink, backgroundColor: "transparent", borderWidth: 0, paddingVertical: 4, marginBottom: 10 }} />
           </If>
           <NotePropertiesPanel item={item()} editable={canEdit() || (noteMode() === "md" && !item().isDeleted)} />
+          <If when={!!meshConflicts()[item().id]}>
+            <Banner
+              tone="warn"
+              title={`检测到并行编辑分支（${meshConflicts()[item().id]?.section || "正文段落"}）`}
+              actions={
+                <Row gap={6}>
+                  <Btn label="打开分屏解决" kind="primary" onPress={() => openConflictResolver(item().id)} />
+                  <Btn label="版本历史" icon="history" onPress={() => openItemHistory(item())} />
+                </Row>
+              }
+            >
+              {meshConflicts()[item().id]?.assetGuard || "两端附件引用已取并集保护（0 项丢失）"} · 未选用分支保留 {meshConflicts()[item().id]?.retentionDays || 30} 天。
+            </Banner>
+          </If>
           <NoteExternalEditBanner item={item()} />
           <AgentAutoSaveBanner item={item()} onOpenHistory={() => openItemHistory(item())} />
-          <If when={!item().noteSummary} else={<T size={13} color={c().muted}>正在加载笔记…</T>}>
+          <If
+            when={!item().noteSummary}
+            else={
+              <View testID="note-l1-preview" style={{ gap: 10, paddingVertical: 6 }}>
+                <Row gap={8}>
+                  <T size={11.5} color={c().blue}>L1 摘要已就绪 · 正在按需解密完整富文本…</T>
+                </Row>
+                <T size={14} color={c().ink2} selectable style={{ lineHeight: 24 }}>
+                  {String(item().note ?? "").trim() || "（正在加载正文…）"}
+                </T>
+              </View>
+            }
+          >
             <If when={noteMode() === "md"} else={
               <If when={noteMode() === "preview" || item().isDeleted} else={
                 <RichNoteEditor
@@ -323,6 +350,7 @@ function NoteDetail(props: { item: Item }) {
                   vault={vaultInstance}
                   wikilinkTargets={wikilinkTargets()}
                   onMilestone={() => askSaveMilestone(item())}
+                  onOpenHistory={() => openItemHistory(item())}
                   onChange={(patch, owner) => edit(owner ?? item().id, (d) => Object.assign(d, patch))}
                 />
               }>

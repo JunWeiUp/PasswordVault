@@ -5,9 +5,9 @@ import { errorText, load, phase, toast, vaultInstance } from "../store";
 import { flushBackup } from "../backup";
 import { c } from "../theme";
 
-export async function structuredImport(format: "csv" | "1pux") {
+export async function structuredImport(format: "csv" | "1pux" | "cxf") {
   try {
-    const path = await Files.pickOpen(`导入 ${format.toUpperCase()}`, [format]);
+    const path = await Files.pickOpen(`导入 ${format.toUpperCase()}`, format === "cxf" ? ["json", "cxf"] : [format]);
     if (!path || phase() !== "unlocked") return;
     const preview = signal<any>(null); const mapping = signal<Record<string,string>>({});
     const choices = signal<Record<string,string>>({}); const busy = signal(false); const error = signal(""); const stale = signal(false);
@@ -34,7 +34,7 @@ export async function structuredImport(format: "csv" | "1pux") {
           <T weight="600">预览 · {preview()?.rows?.length ?? 0} 条</T>
           {(preview()?.rows ?? []).map((row:any) => <View style={{padding:10,borderBottomWidth:1,borderBottomColor:c().line2,gap:4}}>
             <Toggle title={row.item.title || "未命名"} note={`${row.item.type} · ${row.duplicateIds.length ? "检测到重复，默认跳过" : "新记录"}`} checked={(choices()[row.index] ?? (row.duplicateIds.length ? "skip" : "add")) === "add"} disabled={busy()} onChange={v=>choices.update(s=>({...s,[row.index]:v?"add":"skip"}))} />
-            <T size={12}>{row.item.username ?? ""} · {row.item.url ?? ""} · 密码已隐藏</T>
+            <T size={12}>{row.item.username ?? ""} · {row.item.url ?? ""} · 密码已隐藏{row.item.passkeys ? ` · ${row.item.passkeys} 个通行密钥` : ""}</T>
             {(row.warnings ?? []).map((w:string)=><T size={11} color={c().orange}>{w}</T>)}
           </View>)}
           {(preview()?.failures ?? []).map((f:any)=><T color={c().red}>{JSON.stringify(f)}</T>)}
@@ -45,4 +45,29 @@ export async function structuredImport(format: "csv" | "1pux") {
       </View>;
     }});
   } catch(e) { toast(errorText(e)); }
+}
+
+/** FIDO CXF export: plaintext secrets, so an explicit warning and master password every time. */
+export function cxfExport() {
+  const password = signal(""), error = signal(""), busy = signal(false), understood = signal(false);
+  openSheet({ width: 520, render: close => <View style={{ gap: 10 }}>
+    <SheetTitle title="导出为 FIDO 凭据交换格式（CXF）" text="可导入支持 CXF 的其他密码管理器。包含账号、密码、通行密钥和验证码。" />
+    <Banner tone="warn" title="文件未加密">文件中的密码和通行密钥私钥是明文。任何拿到文件的人都能登录你的账号。导入完成后请立即删除，不要放在同步盘或发给他人。</Banner>
+    <Toggle title="我了解此文件未加密，并会在导入后删除" checked={understood()} onChange={v => understood.set(v)} />
+    <TextBox label="当前主密码" masked value={password()} onChange={v => password.set(v)} />
+    <T color={c().red}>{error()}</T>
+    <SheetFooter>
+      <Btn label="取消" disabled={busy()} onPress={() => { password.set(""); close(); }} />
+      <Btn label={busy() ? "导出中…" : "选择位置并导出"} kind="dangerSolid" disabled={busy() || !understood() || !password()} onPress={async () => {
+        busy.set(true); error.set("");
+        try {
+          const path = await Files.pickSave("导出 CXF", "PasswordVault-export.json", ["json"]);
+          if (!path) return;
+          const result = JSON.parse(await Backup.exportCxf(vaultInstance, path, password()));
+          password.set(""); close();
+          toast(result.skipped ? `已导出；${result.skipped} 条银行卡、身份等资料不在 CXF 范围内` : "已导出，请在导入后删除该文件");
+        } catch (e) { error.set(errorText(e)); } finally { busy.set(false); }
+      }} />
+    </SheetFooter>
+  </View> });
 }

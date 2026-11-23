@@ -25,6 +25,8 @@ def classify(paths):
             selected |= NATIVE
         elif path == 'tool/build_mobile_core.sh':
             selected |= {'android', 'ios'}
+        elif path.startswith(('apps/shared/Relay/', 'apps/shared/RelayTests/', 'apps/shared/Capabilities/')):
+            selected |= {'ios'}  # Swift sources compiled only by apps/ios/project.yml.
         elif path.startswith('apps/shared/note-editor/'):
             selected |= {'macos', 'ios', 'android', 'browser'}
         elif path.startswith('apps/desktop/'):

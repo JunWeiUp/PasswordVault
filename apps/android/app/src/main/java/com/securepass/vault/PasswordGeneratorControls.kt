@@ -44,19 +44,21 @@ internal data class GeneratorOptions(
 
     fun request(): JSONObject =
         if (passphrase)
-            JSONObject()
-                .put("mode", "passphrase")
-                .put("words", words)
-                .put("separator", separator)
-                .put("capitalize", capitalize)
-                .put("number", number)
+            CoreRequest.generate(
+                mode = "passphrase",
+                words = words,
+                separator = separator,
+                capitalize = capitalize,
+                number = number,
+            )
         else
-            JSONObject()
-                .put("length", length)
-                .put("upper", upper)
-                .put("lower", lower)
-                .put("digits", digits)
-                .put("symbols", symbols)
+            CoreRequest.generate(
+                length = length,
+                upper = upper,
+                lower = lower,
+                digits = digits,
+                symbols = symbols,
+            )
 
     companion object {
         /** Mirrors the core limits; the core validates every request again. */
@@ -82,7 +84,7 @@ internal fun PasswordGeneratorControls(
             try {
                 val snapshot = options
                 generated =
-                    snapshot to vault.command("generate", snapshot.request()).getString("password")
+                    snapshot to vault.command(snapshot.request()).getString("password")
             } catch (cancelled: kotlinx.coroutines.CancellationException) {
                 throw cancelled
             } catch (_: Exception) {

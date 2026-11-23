@@ -15,9 +15,6 @@ settings:
     CODE_SIGN_STYLE: Automatic
     SWIFT_STRICT_CONCURRENCY: targeted
     OTHER_LDFLAGS: ["-lresolv", "-liconv", "-framework", "Security"]
-packages:
-  CommonRelay:
-    path: ../../vendor/common-relay/swift
 targets:
   PasswordVault:
     type: application
@@ -41,8 +38,8 @@ targets:
           ProvidesPasskeys: true
           ProvidesPasswords: true
         CFBundleDisplayName: PasswordVault
-        CFBundleShortVersionString: "2.5.7"
-        CFBundleVersion: "23"
+        CFBundleShortVersionString: "2.5.8"
+        CFBundleVersion: "24"
         UILaunchScreen: {}
         NSFaceIDUsageDescription: Unlock your encrypted PasswordVault with Face ID.
         NSCameraUsageDescription: Scan an authenticator setup QR code you choose.
@@ -58,7 +55,6 @@ targets:
           VAULT_APP_GROUP: group.com.securepass.vault.nativepreview
           PRODUCT_BUNDLE_IDENTIFIER: com.securepass.vault.ios.nativepreview
     dependencies:
-      - package: CommonRelay
       - target: PasswordVaultAutofill
       - framework: Generated/VaultCore.xcframework
         embed: false
@@ -70,7 +66,7 @@ targets:
     sources:
       - Tests
       - path: ../shared/RelayTests
-      - path: ../../vendor/common-relay/protocol/group-vectors.json
+      - path: ../../crates/vault-core/tests/fixtures/relay-protocol/group-vectors.json
         buildPhase: resources
     dependencies:
       - target: PasswordVault
@@ -100,6 +96,7 @@ targets:
       - Sources/MobileCore.swift
       - Sources/CredentialRequestLifetime.swift
       - Sources/Models.swift
+      - Sources/CoreRequest.generated.swift
       - Generated/VaultCore.swift
     settings:
       base:
@@ -113,8 +110,8 @@ targets:
       path: Autofill/Info.plist
       properties:
         CFBundleDisplayName: PasswordVault
-        CFBundleShortVersionString: "2.5.7"
-        CFBundleVersion: "23"
+        CFBundleShortVersionString: "2.5.8"
+        CFBundleVersion: "24"
         VaultAppGroup: $(VAULT_APP_GROUP)
         NSExtension:
           NSExtensionPointIdentifier: com.apple.authentication-services-credential-provider-ui

@@ -117,7 +117,7 @@ final class MobileVaultStore: ObservableObject {
   func start() async {
     do {
       exists =
-        try await connection().call(["op": .string("status")]).object["exists"]?.bool ?? false
+        try await connection().call(CoreRequest.status()).object["exists"]?.bool ?? false
     } catch { report(error) }
     legacyAvailable = !exists && FileManager.default.fileExists(atPath: legacySource.path)
     ready = true
@@ -140,15 +140,11 @@ final class MobileVaultStore: ObservableObject {
         guard let salt = UserDefaults.standard.string(forKey: "flutter.master_key_salt"),
           !salt.isEmpty
         else { throw VaultError.Unsupported }
-        _ = try await core.call([
-          "op": .string("create-migrated"), "source": .string(legacySource.path),
-          "salt": .string(salt), "legacyPassword": .string(legacyPassword),
-          "password": .string(password),
-        ])
+        _ = try await core.call(CoreRequest.createMigrated(
+          source: legacySource.path, legacyPassword: legacyPassword, salt: salt, password: password))
       } else {
-        _ = try await core.call([
-          "op": .string(create ? "create" : "unlock"), "password": .string(password),
-        ])
+        _ = try await core.call(
+          create ? CoreRequest.create(password: password) : CoreRequest.unlock(password: password))
       }
       guard generation == epoch else {
         await core.close()
@@ -194,11 +190,8 @@ final class MobileVaultStore: ObservableObject {
     do {
       await closing?.value
       let core = try connection()
-      _ = try await core.call([
-        "op": .string("create-from-backup"), "content": .string(content),
-        "backupPassword": .string(filePassword), "password": .string(password),
-        "kind": .string(kind),
-      ])
+      _ = try await core.call(CoreRequest.createFromBackup(
+        content: content, password: password, backupPassword: filePassword, kind: kind))
       guard generation == epoch else {
         await core.close()
         return
@@ -226,11 +219,8 @@ final class MobileVaultStore: ObservableObject {
     do {
       await closing?.value
       let core = try connection()
-      var request: [String: JSONValue] = [
-        "op": .string(archive == nil ? "recovery-reset-password" : "recovery-restore-backup"),
-        "key": .string(key), "newPassword": .string(newPassword),
-      ]
-      if let archive { request["content"] = .string(archive) }
+      let request = archive.map { CoreRequest.recoveryRestoreBackup(key: key, content: $0, newPassword: newPassword) }
+        ?? CoreRequest.recoveryResetPassword(key: key, newPassword: newPassword)
       _ = try await core.call(request)
       guard generation == epoch else { await core.close(); return }
       let document = try await core.document()
@@ -258,9 +248,7 @@ final class MobileVaultStore: ObservableObject {
         directory.lastPathComponent.hasPrefix("UI-Test-")
       else { return }
       do {
-        _ = try await perform([
-          "op": .string("devices-enable"), "confirm": .bool(true), "currentPassword": .string(password),
-        ])
+        _ = try await perform(CoreRequest.devicesEnable(confirm: true, currentPassword: password))
         var item = VaultItem.blank(type: "device", title: "Fixture server")
         item.fields["device"] = .object([
           "version": .number(1), "host": .string("server.example.test"), "port": .number(2222),
@@ -277,7 +265,7 @@ final class MobileVaultStore: ObservableObject {
           ])]),
         ])
         item.set("updatedAt", ISO8601DateFormatter().string(from: Date()))
-        _ = try await perform(["op": .string("save"), "item": try .from(item)])
+        _ = try await perform(CoreRequest.save(item: try .from(item)))
         try await refresh()
       } catch { report(error) }
     }
@@ -306,9 +294,7 @@ final class MobileVaultStore: ObservableObject {
       let pending = await capturedRichDraft?.value ?? pending
       if let previous, let pending {
         do {
-          let sealed = try await previous.call([
-            "op": .string("seal-drafts"), "items": try .from([pending]),
-          ])
+          let sealed = try await previous.call(CoreRequest.sealDrafts(items: try .from([pending])))
           volatileRecovery = sealed
           try JSONEncoder().encode(sealed).write(
             to: directory.appendingPathComponent("mobile-draft.sealed"),
@@ -383,9 +369,7 @@ final class MobileVaultStore: ObservableObject {
     do {
       let sealed =
         try volatileRecovery ?? JSONDecoder().decode(JSONValue.self, from: Data(contentsOf: url))
-      let result = try await core.call([
-        "op": .string("open-drafts"), "payload": sealed.object["payload"] ?? .null,
-      ])
+      let result = try await core.call(CoreRequest.openDrafts(payload: sealed.object["payload"] ?? .null))
       guard unlocked else { return }
       if let value = result.object["items"]?.array.first {
         recoveredDraft = try JSONDecoder().decode(VaultItem.self, from: JSONEncoder().encode(value))
@@ -411,17 +395,60 @@ final class MobileVaultStore: ObservableObject {
     let generation = epoch
     let document = try await core.document()
     guard generation == epoch, unlocked else { throw VaultError.Locked }
-    items = document.items
+    // Preserve already-hydrated note bodies whose updatedAt has not changed.
+    let hydratedByID = Dictionary(
+      uniqueKeysWithValues: items.filter { $0.type == "secureNote" && !$0.bool("noteSummary") }.map { ($0.id, $0) }
+    )
+    items = document.items.map { incoming in
+      if incoming.bool("noteSummary"), let cached = hydratedByID[incoming.id],
+         Self.summaryKey(cached) == Self.summaryKey(incoming) {
+        return cached
+      }
+      return incoming
+    }
     settings = document.settings
     sharedMembers = document.sharedMembers
     var passkeys: [JSONValue] = []
     if #available(iOS 17.0, *) {
-      let index = try await core.call(["op": .string("passkey-index")])
+      let index = try await core.call(CoreRequest.passkeyIndex())
       guard generation == epoch, unlocked else { throw VaultError.Locked }
       passkeys = index.object["passkeys"]?.array ?? []
     }
     lastPasskeyIndex = passkeys
     syncCredentialIndex()
+  }
+  /// Body-only and transient fields; everything else must match before a hydrated note is
+  /// reused for an incoming summary (same rule as the desktop `summaryKey`). `updatedAt`
+  /// alone has one-second resolution, so a favourite/move/trash in the same second as the
+  /// last save would otherwise keep showing the stale copy.
+  private static let summaryOnly: Set<String> = ["noteDocument", "noteOriginal", "noteSummary", "__noteSearchText"]
+  static func summaryKey(_ item: VaultItem) -> [String: JSONValue] {
+    item.fields.filter { !summaryOnly.contains($0.key) && !$0.key.hasPrefix("_") }
+  }
+  /// Hydrates a single lazy `secureNote` summary on demand via `op: "get"`.
+  @discardableResult
+  func ensureFull(_ id: String) async -> VaultItem? {
+    if let existing = items.first(where: { $0.id == id }), !existing.bool("noteSummary") {
+      return existing
+    }
+    guard unlocked, let core else { return nil }
+    let generation = epoch
+    guard let full = try? await core.getItem(id: id) else { return nil }
+    guard generation == epoch, unlocked else { return nil }
+    if let idx = items.firstIndex(where: { $0.id == id }) {
+      items[idx] = full
+    }
+    return full
+  }
+  /// Merges metadata changes made on a summary onto the hydrated full note before saving.
+  private func materializeForSave(_ item: VaultItem) async throws -> VaultItem {
+    guard item.bool("noteSummary") else { return item }
+    guard var full = await ensureFull(item.id) else { throw VaultError.InvalidData }
+    let summaryOnly: Set<String> = ["noteDocument", "noteOriginal", "note", "noteFormat", "noteSummary", "__noteSearchText"]
+    for (key, value) in item.fields where !summaryOnly.contains(key) && !key.hasPrefix("_") {
+      full.fields[key] = value
+    }
+    return full
   }
   /// Re-syncs the system identity store after the QuickType setting changes.
   func refreshCredentialSuggestions() async {
@@ -472,14 +499,14 @@ final class MobileVaultStore: ObservableObject {
     busy = true
     defer { busy = false }
     do {
-      var item = item
+      var item = try await materializeForSave(item)
       let time = ISO8601DateFormatter().string(from: Date())
       item.set("updatedAt", time)
       // New entries record when they were created (used by the notes sort); existing ones keep theirs.
       if item.string("createdAt").isEmpty && !items.contains(where: { $0.id == item.id }) {
         item.set("createdAt", time)
       }
-      _ = try await perform(["op": .string("save"), "item": try .from(item)])
+      _ = try await perform(CoreRequest.save(item: try .from(item)))
       try await refresh()
       activity()
       return true
@@ -521,10 +548,11 @@ final class MobileVaultStore: ObservableObject {
     let time = ISO8601DateFormatter().string(from: Date())
     var saved = 0
     do {
-      for var item in items where ids.contains(item.id) && !item.isDeleted && canEdit(item) && include(item) {
+      for rawItem in items where ids.contains(rawItem.id) && !rawItem.isDeleted && canEdit(rawItem) && include(rawItem) {
+        var item = try await materializeForSave(rawItem)
         change(&item)
         item.set("updatedAt", time)
-        _ = try await perform(["op": .string("save"), "item": try .from(item)])
+        _ = try await perform(CoreRequest.save(item: try .from(item)))
         saved += 1
       }
     } catch { report(error) }
@@ -576,7 +604,7 @@ final class MobileVaultStore: ObservableObject {
     var removed = 0
     do {
       for item in removable {
-        _ = try await perform(["op": .string("remove"), "id": .string(item.id)])
+        _ = try await perform(CoreRequest.remove(id: item.id))
         removed += 1
       }
     } catch { report(error) }
@@ -587,13 +615,13 @@ final class MobileVaultStore: ObservableObject {
   func remove(_ item: VaultItem) async {
     guard item.isDeleted else { return }
     do {
-      _ = try await perform(["op": .string("remove"), "id": .string(item.id)])
+      _ = try await perform(CoreRequest.remove(id: item.id))
       try await refresh()
     } catch { report(error) }
   }
   func saveSettings(_ changes: [String: JSONValue]) async {
     do {
-      _ = try await perform(["op": .string("settings"), "settings": .object(changes)])
+      _ = try await perform(CoreRequest.settings(settings: .object(changes)))
       try await refresh()
     } catch { report(error) }
   }
@@ -653,6 +681,14 @@ enum ClipboardClear {
     case 60: return t("1 分钟", "1 minute")
     case 120: return t("2 分钟", "2 minutes")
     default: return t("\(seconds) 秒", "\(seconds) seconds")
+    }
+  }
+  static func shortLabel(_ seconds: Int, t: (String, String) -> String) -> String {
+    switch seconds {
+    case 0: return t("从不", "Never")
+    case 60: return t("1分", "1m")
+    case 120: return t("2分", "2m")
+    default: return t("\(seconds)秒", "\(seconds)s")
     }
   }
   static func notice(_ seconds: Int, t: (String, String) -> String) -> String {

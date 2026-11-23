@@ -1,5 +1,4 @@
 import XCTest
-import CommonRelay
 @testable import PasswordVault
 
 @MainActor
@@ -14,7 +13,7 @@ final class RelayCredentialTests: XCTestCase {
   private func fixture() async throws -> (URL, RelayTestCore, Data) {
     let path = FileManager.default.temporaryDirectory.appendingPathComponent("relay-credential-" + UUID().uuidString)
     let core = try RelayTestCore(directory: path)
-    _ = try await core.call(["op": .string("create"), "password": .string("fixture")])
+    _ = try await core.call(CoreRequest.create(password: "fixture"))
     var config = VaultRelay.Config(role: "hub", secret: RelayIdentity.generateSecretKey())
     config.device = "existing-device"; config.group = "existing-group"
     config.token = "FICTIONAL-CREDENTIAL-CANARY"
@@ -32,11 +31,11 @@ final class RelayCredentialTests: XCTestCase {
     let file = path.appendingPathComponent("vault/relay-private/credentials.v1.enc")
     XCTAssertFalse(String(decoding: try Data(contentsOf: file), as: UTF8.self).contains("FICTIONAL-CREDENTIAL-CANARY"))
     relay.setUnlocked(false); XCTAssertTrue(relay.config.token.isEmpty)
-    _ = try await core.call(["op": .string("lock")])
+    _ = try await core.call(CoreRequest.lock())
     let reloaded = VaultRelay(directory: path, role: "hub", call: { try await core.call($0) }, refresh: {},
       credentialReader: { _, _ in XCTFail("Migrated files must not read Keychain again"); return nil })
     XCTAssertFalse(reloaded.credentialsReady)
-    _ = try await core.call(["op": .string("unlock"), "password": .string("fixture")])
+    _ = try await core.call(CoreRequest.unlock(password: "fixture"))
     reloaded.setUnlocked(true); try await wait { reloaded.credentialsReady }
     XCTAssertEqual(reloaded.config.device, "existing-device"); XCTAssertEqual(reloaded.config.token, "FICTIONAL-CREDENTIAL-CANARY")
     reloaded.setUnlocked(false)
@@ -69,9 +68,12 @@ final class RelayCredentialTests: XCTestCase {
     var saved = try JSONDecoder().decode(VaultRelay.Config.self, from: legacy)
     saved.token = ""
     saved.endpoint = "wss://original.example.test/relay/v1/ws"
-    let groups = RelayGroups(config: ["url": saved.endpoint, "app": "passwordvault", "device": saved.device, "secret_key": saved.secret.relayHex])
-    try groups.prepareCreate(groupName: "Persisted group", deviceName: "Persisted phone")
-    saved.groupState = try JSONSerialization.data(withJSONObject: groups.config)
+    // vault-core persists the signed draft before contacting the (unreachable) relay.
+    final class Drafts: @unchecked Sendable { var last: [String: Any]? }
+    let drafts = Drafts()
+    let groups = CoreGroups(config: ["url": saved.endpoint, "app": "passwordvault", "device": saved.device, "secret_key": saved.secret.relayHex]) { drafts.last = $0 }
+    _ = try? await groups.create(name: "Persisted group", deviceName: "Persisted phone")
+    saved.groupState = try JSONSerialization.data(withJSONObject: XCTUnwrap(drafts.last))
     let bytes = try JSONEncoder().encode(saved)
     let relay = VaultRelay(directory: path, role: "mobile", call: { try await core.call($0) }, refresh: {}, credentialReader: { _, _ in bytes })
     relay.setUnlocked(true); try await wait { relay.credentialsReady && !relay.groupBusy }
@@ -107,7 +109,7 @@ final class RelayCredentialTests: XCTestCase {
     defer { try? FileManager.default.removeItem(at: path) }
     var allow = false, reads: [Bool] = []
     let relay = VaultRelay(directory: path, role: "hub", call: { try await core.call($0) }, refresh: {},
-      credentialReader: { _, interactive in reads.append(interactive); guard allow && interactive else { throw RelayError.closed }; return legacy })
+      credentialReader: { _, interactive in reads.append(interactive); guard allow && interactive else { throw RelayFault.closed }; return legacy })
     relay.setUnlocked(true); try await wait { relay.credentialAccessBlocked }
     await relay.clearLocalGroup()
     XCTAssertFalse(FileManager.default.fileExists(atPath: path.appendingPathComponent("vault/relay-private/credentials.v1.enc").path))
@@ -122,7 +124,7 @@ final class RelayCredentialTests: XCTestCase {
     defer { try? FileManager.default.removeItem(at: path) }
     var fail = true
     let relay = VaultRelay(directory: path, role: "hub", call: {
-      if fail && $0["op"]?.string == "relay-credentials-write" { throw RelayError.closed }
+      if fail && $0["op"]?.string == "relay-credentials-write" { throw RelayFault.closed }
       return try await core.call($0)
     }, refresh: {}, credentialReader: { _, _ in legacy })
     relay.setUnlocked(true); try await wait { relay.credentialAccessBlocked }
@@ -136,7 +138,7 @@ final class RelayCredentialTests: XCTestCase {
     let (path, core, legacy) = try await fixture()
     defer { try? FileManager.default.removeItem(at: path) }
     let file = path.appendingPathComponent("vault/relay-private/credentials.v1.enc")
-    _ = try await core.call(["op": .string("relay-credentials-write"), "data": .string(String(decoding: legacy, as: UTF8.self))])
+    _ = try await core.call(CoreRequest.relayCredentialsWrite(data: String(decoding: legacy, as: UTF8.self)))
     let corrupted = Data("corrupt-encrypted-fixture".utf8); try corrupted.write(to: file)
     let relay = VaultRelay(directory: path, role: "hub", call: { try await core.call($0) }, refresh: {},
       credentialReader: { _, _ in XCTFail("Do not fall back on corrupt files"); return legacy })

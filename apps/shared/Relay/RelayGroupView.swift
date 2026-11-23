@@ -3,7 +3,7 @@ import SwiftUI
 struct RelayGroupView: View {
   @ObservedObject var relay: VaultRelay
   var t: (String, String) -> String = { zh, _ in zh }
-  @State private var endpoint = "wss://relay.example.test/relay/v1/ws"
+  @State private var endpoint = "wss://relay.example.test/v2/ws"
   @State private var name = ""
   @State private var deviceName = ""
   @State private var input = ""
@@ -105,7 +105,7 @@ struct RelayGroupView: View {
         Text(t("设备组名称", "Group name")).font(.subheadline)
         TextField(t("设备组名称", "Group name"), text: $name).textFieldStyle(.roundedBorder)
         DisclosureGroup(t("服务地址", "Relay endpoint")) {
-          TextField("wss://host/relay/v1/ws", text: $endpoint).textFieldStyle(.roundedBorder).autocorrectionDisabled()
+          TextField("wss://host/v2/ws", text: $endpoint).textFieldStyle(.roundedBorder).autocorrectionDisabled()
         }
         Button(relay.creatingGroup ? t("重试创建", "Retry creation") : t("创建新设备组", "Create group")) {
           Task { await relay.createGroup(endpoint: endpoint, name: name, deviceName: deviceName) }

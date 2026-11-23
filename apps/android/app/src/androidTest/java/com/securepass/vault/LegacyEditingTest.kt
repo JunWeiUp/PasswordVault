@@ -228,10 +228,7 @@ class LegacyEditingTest {
                 )
             )
         }
-        repo.command(
-            "create-shared",
-            JSONObject().put("name", "空共享库").put("time", "2025-01-01T00:00:00Z"),
-        )
+        repo.command(CoreRequest.createShared("空共享库", "2025-01-01T00:00:00Z"))
         repo.close()
         val scenario =
             ActivityScenario.launch<MainActivity>(
@@ -466,7 +463,7 @@ class LegacyEditingTest {
         repo.authenticate("1", true)
         val phrase = List(23) { "abandon" }.plus("art").joinToString(" ")
         val derived =
-            repo.command("wallet", JSONObject().put("mnemonic", phrase).put("generate", false))
+            repo.command(CoreRequest.wallet(generate = false, mnemonic = phrase))
         val item =
             VaultRepository.blank("crypto")
                 .put("title", "二十四词迁移钱包")
@@ -478,13 +475,7 @@ class LegacyEditingTest {
         assertTrue(repo.save(item))
         val expected =
             repo
-                .command(
-                    "wallet",
-                    JSONObject()
-                        .put("privateKey", "2".repeat(64))
-                        .put("mnemonic", "")
-                        .put("generate", false),
-                )
+                .command(CoreRequest.wallet(generate = false, mnemonic = "", privateKey = "2".repeat(64)))
                 .getString("address")
         repo.close()
         val scenario =

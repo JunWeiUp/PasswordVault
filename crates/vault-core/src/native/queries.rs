@@ -26,6 +26,56 @@ fn decode(root: &[u8; 32], aad: &str, bytes: &[u8]) -> Result<Value> {
     let plain = Zeroizing::new(unseal(&key(root), &sealed, aad.as_bytes())?);
     serde_json::from_slice(&plain).map_err(|_| VaultError::InvalidData)
 }
+fn active_passwords(doc: &Document) -> impl Iterator<Item = (usize, &Value)> {
+    doc.items
+        .iter()
+        .enumerate()
+        .filter(|(_, item)| item["type"] == "password" && item["isDeleted"] != true)
+}
+
+fn same_browser_projection_inputs(a: &Document, b: &Document) -> bool {
+    if a.format_version != b.format_version || a.settings != b.settings {
+        return false;
+    }
+    let mut ia = active_passwords(a);
+    let mut ib = active_passwords(b);
+    loop {
+        match (ia.next(), ib.next()) {
+            (None, None) => return true,
+            (Some((oa, va)), Some((ob, vb))) if oa == ob && va == vb => continue,
+            _ => return false,
+        }
+    }
+}
+
+/// Skips full password projection re-encryption when only non-password entries (such as
+/// notes or wallets) changed, updating only `browser_query_revision` to stay current.
+pub(super) fn update_incremental(
+    conn: &Connection,
+    root: &[u8; 32],
+    vault: &str,
+    previous: Option<&Document>,
+    next: &Document,
+) -> Result<()> {
+    if let Some(prev) = previous {
+        if same_browser_projection_inputs(prev, next) {
+            let count: i64 = storage(conn.query_row(
+                "SELECT count(*) FROM sqlite_master WHERE type='table' AND name IN ('browser_query_revision','browser_query_items','browser_query_hosts','browser_query_settings')",
+                [],
+                |r| r.get(0),
+            ))?;
+            if count == 4 {
+                storage(conn.execute(
+                    "INSERT OR REPLACE INTO browser_query_revision VALUES(1,?1)",
+                    [revision(conn)?],
+                ))?;
+                return Ok(());
+            }
+        }
+    }
+    rebuild(conn, root, vault, next)
+}
+
 pub(super) fn rebuild(
     conn: &Connection,
     root: &[u8; 32],

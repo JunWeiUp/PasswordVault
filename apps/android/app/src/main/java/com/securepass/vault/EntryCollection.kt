@@ -273,7 +273,7 @@ internal fun EntryCollection(
         Text(t("排序", "Sort"), Modifier.padding(horizontal = 20.dp, vertical = 8.dp), style = MaterialTheme.typography.titleLarge)
         listOf("updatedDesc" to t("最近修改", "Recently updated"), "updatedAsc" to t("最早修改", "Oldest updated"), "titleAsc" to t("标题升序", "Title A–Z"), "titleDesc" to t("标题降序", "Title Z–A")).forEach { (value, label) ->
             ListItem(headlineContent = { Text(label) }, trailingContent = { if (sort == value) Icon(Icons.Outlined.Check, null, tint = MaterialTheme.colorScheme.primary) }, modifier = Modifier.clickable {
-                scope.launch { val sorts = JSONObject(state.settings.optJSONObject("collectionSort")?.toString() ?: "{}").put(page, value); if (vault.mutate("settings", JSONObject().put("settings", JSONObject().put("collectionSort", sorts)))) sortSheet = false }
+                scope.launch { val sorts = JSONObject(state.settings.optJSONObject("collectionSort")?.toString() ?: "{}").put(page, value); if (vault.mutate(CoreRequest.settings(JSONObject().put("collectionSort", sorts)))) sortSheet = false }
             })
         }
         if (notes) TextButton(onClick = { sortSheet = false; toolsSheet = true }, modifier = Modifier.padding(horizontal = 12.dp)) { Text(t("资料工具", "Collection tools")) }
@@ -300,7 +300,7 @@ internal fun EntryCollection(
             }
             if (addingCategory) Row(verticalAlignment = Alignment.CenterVertically) {
                 OutlinedTextField(categoryName, { categoryName = it }, label = { Text(t("新分类", "New category")) }, singleLine = true, modifier = Modifier.weight(1f), enabled = !categoryBusy)
-                TextButton(enabled = !categoryBusy && categoryName.isNotBlank(), onClick = { scope.launch { categoryBusy = true; if (vault.mutate("category-add", JSONObject().put("name", categoryName.trim()))) { categoryName = ""; addingCategory = false }; categoryBusy = false } }) { Text(t("添加", "Add")) }
+                TextButton(enabled = !categoryBusy && categoryName.isNotBlank(), onClick = { scope.launch { categoryBusy = true; if (vault.mutate(CoreRequest.categoryAdd(categoryName.trim()))) { categoryName = ""; addingCategory = false }; categoryBusy = false } }) { Text(t("添加", "Add")) }
             } else FilledTonalButton(onClick = { addingCategory = true }, modifier = Modifier.fillMaxWidth()) {
                 Icon(Icons.Outlined.Add, null, Modifier.size(18.dp))
                 Spacer(Modifier.width(6.dp))
@@ -327,7 +327,7 @@ internal fun EntryCollection(
         )
     }
     categoryToRemove?.let { name -> AlertDialog(onDismissRequest = { if (!categoryBusy) categoryToRemove = null }, title = { Text(t("删除分类“$name”？", "Remove “$name”?")) }, text = { Text(t("笔记会保留，只清空归类。", "Notes are kept; only their category is cleared.")) },
-        confirmButton = { TextButton(enabled = !categoryBusy, onClick = { scope.launch { categoryBusy = true; if (vault.mutate("category-remove", JSONObject().put("name", name).put("time", Instant.now().toString()))) { if (category == name) category = ""; categoryToRemove = null }; categoryBusy = false } }) { Text(t("删除分类", "Remove category")) } }, dismissButton = { TextButton(enabled = !categoryBusy, onClick = { categoryToRemove = null }) { Text(t("取消", "Cancel")) } }) }
+        confirmButton = { TextButton(enabled = !categoryBusy, onClick = { scope.launch { categoryBusy = true; if (vault.mutate(CoreRequest.categoryRemove(name, Instant.now().toString()))) { if (category == name) category = ""; categoryToRemove = null }; categoryBusy = false } }) { Text(t("删除分类", "Remove category")) } }, dismissButton = { TextButton(enabled = !categoryBusy, onClick = { categoryToRemove = null }) { Text(t("取消", "Cancel")) } }) }
 }
 
 internal fun resolvedTotpSource(item: JSONObject, entries: List<JSONObject>): Pair<String, Int>? {
@@ -360,7 +360,7 @@ private fun CredentialCard(
     LaunchedEffect(item.toString(), totpSource) {
         if (totpSource != null) while (true) {
             remaining = period - (System.currentTimeMillis() / 1000 % period).toInt()
-            code = runCatching { vault.command("totp", JSONObject().put("secret", totpSource.first).put("period", period).put("time", System.currentTimeMillis() / 1000)).optString("code") }.getOrDefault("")
+            code = runCatching { vault.command(CoreRequest.totp(totpSource.first, time = System.currentTimeMillis() / 1000, period = period)).optString("code") }.getOrDefault("")
             delay(1000)
         } else {
             code = ""

@@ -2,14 +2,13 @@
 // native services not yet ported say so instead of pretending to work.
 import { cleanup, Clipboard, openUrl, setColorScheme, signal, Storage, View, Scroll } from "nsh";
 import { Dialog } from "nsh/base";
-import { Menu } from "nsh/desktop";
 import { Platform } from "passwordvault/native";
 import { Icon, type IconName } from "./icons";
-import { Banner, Btn, Group, OptionRow, Row, T, TextBox, Toggle } from "./kit";
-import { call, errorText, onLock, saveSettings, settings, toast, vaultDirectory } from "./store";
+import { Banner, Btn, Group, OptionRow, Pill, Row, SegmentedChoice, T, TextBox, Toggle } from "./kit";
+import { coreApi, errorText, onLock, saveSettings, settings, toast, vaultDirectory } from "./store";
 import { c, radius, TEXT_SCALES, textScale } from "./theme";
 import { appVersion } from "./version";
-import { CLIPBOARD_CHOICES, clipboardSeconds, DENSITY_LABEL, hideFromCapture, listDensity, noteLineNumbers, quickCloseAfterCopy, setClipboardSeconds, setHideFromCapture, setListDensity, setNoteLineNumbers, setQuickCloseAfterCopy, setTrayIcon, trayIcon, type ListDensity } from "./preferences";
+import { clipboardSeconds, DENSITY_LABEL, hideFromCapture, listDensity, noteLineNumbers, quickCloseAfterCopy, setClipboardSeconds, setHideFromCapture, setListDensity, setNoteLineNumbers, setQuickCloseAfterCopy, setTrayIcon, trayIcon, type ListDensity } from "./preferences";
 import { SHORTCUT_LABEL, setShortcut, shortcut, shortcutAvailable, type ShortcutChoice } from "./hotkey";
 import { isMac, desktopCapabilities, biometricAvailability, biometricEnabled, biometricError, disableBiometrics, enableBiometrics, loginItemStatus, openLoginItemSettings, setLoginItem, type LoginStatus } from "./native";
 import { openSheet, SheetFooter, SheetTitle } from "./kit";
@@ -38,18 +37,6 @@ export function openSettings(t?: Tab) {
 export const settingsOpen = () => open();
 export const closeSettings = () => open.set(false);
 
-function Picker(props: { value: string; options: [string, string][]; onChange: (v: string) => void }) {
-  const label = () => props.options.find(([v]) => v === props.value)?.[1] ?? props.value;
-  return (
-    <View role="button" accessibilityLabel={label()} onPress={() => void Menu.popup(props.options.map(([v, l]) => ({ label: l, checked: v === props.value, onSelect: () => props.onChange(v) })))}
-      style={{ flexDirection: "row", alignItems: "center", gap: 6, borderWidth: 1, borderColor: c().line, borderRadius: radius.control, paddingHorizontal: 10, height: 28, minWidth: 140, cursor: "pointer" }}
-      hoverStyle={{ backgroundColor: c().blueSoft }}>
-      <T size={12.5} style={{ flex: 1 }}>{label()}</T>
-      <Icon name="chevd" size={12} tint={c().muted} />
-    </View>
-  );
-}
-
 function Title(props: { title: string; text: string }) {
   return (
     <View style={{ marginBottom: 14, gap: 4 }}>
@@ -69,47 +56,74 @@ function General() {
       <GroupTitle text="外观" />
       <Group>
         <OptionRow title="主题">
-          <Picker value={appearance()} options={[["system", "跟随系统"], ["light", "浅色"], ["dark", "深色"]]}
-            onChange={(v) => { appearance.set(v as any); setColorScheme(v as any); }} />
+          <SegmentedChoice
+            testID="setting-theme"
+            value={appearance()}
+            options={[["system", "跟随系统"], ["light", "浅色"], ["dark", "深色"]]}
+            onChange={(next) => { appearance.set(next); setColorScheme(next); }}
+          />
         </OptionRow>
         <OptionRow title="文字大小" note="调整整个界面的文字与控件大小">
-          <Picker value={String(textScale())} options={TEXT_SCALES.map(([v, l]) => [String(v), l] as [string, string])}
-            onChange={(v) => { textScale.set(Number(v)); void Storage.setItem("textScale", v); }} />
+          <SegmentedChoice
+            testID="setting-text-scale"
+            value={String(textScale())}
+            options={TEXT_SCALES.map(([v, l]) => [String(v), l] as const)}
+            onChange={(v) => { textScale.set(Number(v)); void Storage.setItem("textScale", v); }}
+          />
         </OptionRow>
         <OptionRow title="列表密度" note="紧凑模式在列表中显示更多项目">
-          <Picker value={listDensity()} options={(Object.keys(DENSITY_LABEL) as ListDensity[]).map((k) => [k, DENSITY_LABEL[k]])}
-            onChange={(v) => setListDensity(v as ListDensity)} />
+          <SegmentedChoice
+            testID="setting-list-density"
+            value={listDensity()}
+            options={(Object.keys(DENSITY_LABEL) as ListDensity[]).map((k) => [k, DENSITY_LABEL[k]] as const)}
+            onChange={(v) => setListDensity(v)}
+          />
         </OptionRow>
-        <OptionRow title="语言" note="其他语言将在本地化接入后提供"><Picker value="zh" options={[["zh", "简体中文"]]} onChange={() => {}} /></OptionRow>
+        <OptionRow last title="语言" note="其他语言将在本地化接入后提供">
+          <Pill tone="neutral">简体中文</Pill>
+        </OptionRow>
       </Group>
       <GroupTitle text="笔记编辑器" />
       <Group>
-        <Toggle title="显示行号" note="在笔记编辑与 Markdown 源码左侧显示行号，也可在编辑器工具栏随时切换"
+        <Toggle last title="显示行号" note="在笔记编辑与 Markdown 源码左侧显示行号，也可在编辑器工具栏随时切换"
           checked={noteLineNumbers()} onChange={setNoteLineNumbers} />
       </Group>
       <GroupTitle text="剪贴板" />
       <Group>
-        <OptionRow title="自动清除剪贴板" note="清除前确认内容未被替换；只影响本机">
-          <Picker value={String(clipboardSeconds())} options={CLIPBOARD_CHOICES.map(([v, l]) => [String(v), l] as [string, string])}
-            onChange={(v) => setClipboardSeconds(Number(v))} />
+        <OptionRow last title="自动清除剪贴板" note="清除前确认内容未被替换；只影响本机">
+          <SegmentedChoice
+            testID="setting-clipboard"
+            compact
+            wrap
+            value={String(clipboardSeconds())}
+            options={[["15", "15 秒"], ["30", "30 秒"], ["60", "1 分"], ["120", "2 分"], ["0", "不清除"]]}
+            onChange={(v) => setClipboardSeconds(Number(v))}
+          />
         </OptionRow>
       </Group>
       <If when={desktopCapabilities.loginItem}><GroupTitle text="启动" />
       <Group><LoginItemRow /></Group></If>
       <GroupTitle text={isMac ? "菜单栏" : "通知区域"} />
       <Group>
-        <Toggle title={isMac ? "在菜单栏显示图标" : "在通知区域显示图标"} note="提供快速访问、锁定和打开主窗口；图标菜单不显示任何资料"
+        <Toggle last title={isMac ? "在菜单栏显示图标" : "在通知区域显示图标"} note="提供快速访问、锁定和打开主窗口；图标菜单不显示任何资料"
           checked={trayIcon()} onChange={setTrayIcon} />
       </Group>
       <If when={desktopCapabilities.globalHotkeys}><GroupTitle text="快速访问" />
       <Group>
-        <OptionRow title="全局快捷键" note={shortcutAvailable() ? "在任何应用中打开快速访问；锁定时只唤起主窗口" : "该快捷键已被其他应用占用，请换一个"}>
-          <Picker value={shortcut()} options={(Object.keys(SHORTCUT_LABEL) as ShortcutChoice[]).map((k) => [k, SHORTCUT_LABEL[k]])} onChange={(v) => void setShortcut(v as ShortcutChoice)} />
+        <OptionRow last title="全局快捷键" note={shortcutAvailable() ? "在任何应用中打开快速访问；锁定时只唤起主窗口" : "该快捷键已被其他应用占用，请换一个"}>
+          <SegmentedChoice
+            testID="setting-shortcut"
+            compact
+            wrap
+            value={shortcut()}
+            options={(Object.keys(SHORTCUT_LABEL) as ShortcutChoice[]).map((k) => [k, SHORTCUT_LABEL[k]] as const)}
+            onChange={(v) => void setShortcut(v)}
+          />
         </OptionRow>
       </Group></If>
       <GroupTitle text="快速访问面板" />
       <Group>
-        <Toggle title="复制后关闭快速访问" note="关闭后，复制密码、验证码或用户名时面板保持打开，便于连续复制"
+        <Toggle last title="复制后关闭快速访问" note="关闭后，复制密码、验证码或用户名时面板保持打开，便于连续复制"
           checked={quickCloseAfterCopy()} onChange={setQuickCloseAfterCopy} />
       </Group>
     </>
@@ -238,7 +252,7 @@ function Security() {
     if (busy() || problem() || !current() || !next()) return;
     busy.set(true);
     try {
-      await call({ op: "change-password", currentPassword: current(), newPassword: next() });
+      await coreApi.changePassword(current(), next());
       current.set(""); next.set(""); again.set("");
       toast("主密码已更新");
     } catch (e) {
@@ -253,8 +267,14 @@ function Security() {
       <GroupTitle text="自动锁定" />
       <Group>
         <OptionRow title="闲置后锁定" note="“从不”只关闭闲置锁定；手动锁定仍然生效">
-          <Picker value={String(minutes())} options={[["1", "1 分钟"], ["5", "5 分钟"], ["15", "15 分钟"], ["30", "30 分钟"], ["60", "1 小时"], ["0", "从不"]]}
-            onChange={(v) => void (v === "0" ? saveSettings({ macNeverIdleLock: true }) : saveSettings({ macNeverIdleLock: false, autoLockMinutes: Number(v) }))} />
+          <SegmentedChoice
+            testID="setting-idle-lock"
+            compact
+            wrap
+            value={String(minutes())}
+            options={[["1", "1分"], ["5", "5分"], ["15", "15分"], ["30", "30分"], ["60", "1小时"], ["0", "从不"]]}
+            onChange={(v) => void (v === "0" ? saveSettings({ macNeverIdleLock: true }) : saveSettings({ macNeverIdleLock: false, autoLockMinutes: Number(v) }))}
+          />
         </OptionRow>
         <Toggle title="电脑睡眠时锁定" checked={settings().macLockOnSleep !== false} onChange={(v) => void saveSettings({ macLockOnSleep: v })} />
         <Toggle title="屏幕锁定、屏保或切换用户时锁定" checked={settings().macLockOnScreenLock !== false} onChange={(v) => void saveSettings({ macLockOnScreenLock: v })} />
@@ -286,7 +306,7 @@ function Security() {
       </Group>
       <GroupTitle text="本地数据" />
       <Group>
-        <OptionRow title="数据目录" note={vaultDirectory}><Btn label="打开数据目录" onPress={() => Platform.openVaultFolder()} /></OptionRow>
+        <OptionRow last title="数据目录" note={vaultDirectory}><Btn label="打开数据目录" onPress={() => Platform.openVaultFolder()} /></OptionRow>
       </Group>
     </>
   );
@@ -312,7 +332,7 @@ function About() {
         <OptionRow title="隐私说明" note="资料只在本机加密保存；只在你主动操作（同步、备份、泄露检查）时联网，不收集使用数据">
           <Btn label="查看" onPress={() => openLink(`${REPO}#readme`)} />
         </OptionRow>
-        <OptionRow title="复制诊断信息" note="仅包含版本与系统信息，不含资料、路径或账号">
+        <OptionRow last title="复制诊断信息" note="仅包含版本与系统信息，不含资料、路径或账号">
           <Btn testID="copy-diagnostics" label="复制" onPress={() => void Clipboard.writeText(diagnostics()).then(() => toast("已复制诊断信息"), () => toast("无法写入剪贴板"))} />
         </OptionRow>
       </Group>
@@ -332,7 +352,7 @@ export function diagnostics(): string {
 const PAGES: Record<Tab, () => any> = {
   general: General,
   security: Security,
-  backup: () => <><BackupPage /><RecoverySettings /></>,
+  backup: () => <View style={{ gap: 20 }}><BackupPage /><RecoverySettings /></View>,
   relay: RelayPage,
   browser: BrowserPage,
   about: About,

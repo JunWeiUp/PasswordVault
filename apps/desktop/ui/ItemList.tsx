@@ -1,11 +1,11 @@
 import { shortcutLabel } from "./shortcut-label";
-// The middle column: heading, new item, search, filters and rows.
-import { effect, type JSX, signal, View, Scroll } from "nsh";
+// The middle column: heading, new item, search, filters and virtualized rows.
+import { effect, type JSX, List, signal, View } from "nsh";
 import { Menu, type MenuItem } from "nsh/desktop";
 import { Icon } from "./icons";
 import { Btn, copySecret, Empty, IconBtn, T } from "./kit";
 import {
-  audit, chip, createItem, DEST_NAME, dest, edit, noteCategories, noteCategory, query, restore, selected, select,
+  audit, chip, createItem, DEST_NAME, dest, edit, meshConflicts, noteCategories, noteCategory, prefetchNoteNeighbors, query, restore, selected, select,
   toggleFavorite, togglePin, TYPE_NAME, visible, type Item, type ItemType,
 } from "./store";
 import { askDeleteForever, askEmptyTrash, askTrash } from "./sheets";
@@ -14,8 +14,10 @@ import { secondsLeft, TotpText } from "./totp";
 import { deviceSubtitle, deviceTitle, importDeviceDocuments, newDevice } from "./devices";
 import { RowCode } from "./entries/linkedCode";
 import { askAddCode } from "./entries/CodeDetail";
-import { listDensity, rowPadding, SORT_LABEL, setSortMode, sortMode, type SortMode } from "./preferences";
+import { listDensity, rowPadding, sidebarCollapsed, SORT_LABEL, setSortMode, sortMode, toggleSidebar, type SortMode } from "./preferences";
+import { isMac } from "./native";
 import { catLeaf, isAiActor } from "./notes/knowledge";
+import { isRelayOffline } from "./relay";
 
 export const searchFocus = signal(0);
 const itemTitle = (item: Item) => (item.type === "device" ? deviceTitle(item) : item.title || "未命名");
@@ -24,20 +26,22 @@ const COLORS = ["#24292f", "#3265db", "#a259ff", "#c8102e", "#2f8f63", "#f38020"
 export function Tile(props: { item: Item; size?: number }) {
   const s = () => props.size ?? 34;
   const icon = () =>
-    ({ totp: "clock", secureNote: "note", creditCard: "wallet", identity: "id", crypto: "coin", device: "server" } as const)[props.item.type as Exclude<ItemType, "password">];
-  if (props.item.type === "password") {
-    const ch = (props.item.title || "?").trim().charAt(0).toUpperCase() || "?";
-    const color = COLORS[ch.charCodeAt(0) % COLORS.length];
-    return (
-      <View style={{ width: s(), height: s(), borderRadius: s() * 0.24, backgroundColor: color, alignItems: "center", justifyContent: "center" }}>
-        <T size={s() * 0.42} weight="600" color="#ffffff">{ch}</T>
-      </View>
-    );
-  }
+    ({ totp: "clock", secureNote: "note", creditCard: "wallet", identity: "id", crypto: "coin", device: "server" } as const)[props.item.type as Exclude<ItemType, "password">] ?? "key";
+  const ch = () => (props.item.title || "?").trim().charAt(0).toUpperCase() || "?";
+  const color = () => COLORS[ch().charCodeAt(0) % COLORS.length];
   return (
-    <View style={{ width: s(), height: s(), borderRadius: s() * 0.24, borderWidth: 1, borderColor: c().line, backgroundColor: c().surface, alignItems: "center", justifyContent: "center" }}>
-      <Icon name={icon()} size={s() * 0.5} tint="#617795" />
-    </View>
+    <If
+      when={props.item.type === "password"}
+      else={
+        <View style={{ width: s(), height: s(), borderRadius: s() * 0.24, borderWidth: 1, borderColor: c().line, backgroundColor: c().surface, alignItems: "center", justifyContent: "center" }}>
+          <Icon name={icon()} size={s() * 0.5} tint="#617795" />
+        </View>
+      }
+    >
+      <View style={{ width: s(), height: s(), borderRadius: s() * 0.24, backgroundColor: color(), alignItems: "center", justifyContent: "center" }}>
+        <T size={s() * 0.42} weight="600" color="#ffffff">{ch()}</T>
+      </View>
+    </If>
   );
 }
 
@@ -97,10 +101,12 @@ export function rowMenu(item: Item): MenuItem[] {
   ];
 }
 
-function ItemRow(props: { item: Item }) {
+function ItemRow(props: { item: Item; active?: boolean }) {
   const item = () => props.item;
   const on = () => selected()?.id === item().id;
   const flagged = () => !!audit()[item().id];
+  const hasConflict = () => !!meshConflicts()[item().id];
+  const liveTick = () => props.active !== false;
   return (
     <View
       role="button"
@@ -122,6 +128,14 @@ function ItemRow(props: { item: Item }) {
           <T size={13} weight="600" lines={item().type === "device" ? 2 : 1} style={{ flexShrink: 1 }}>{itemTitle(item())}</T>
           <If when={item().isFavorite}><Icon name="star" size={11} tint="#e3a008" fill /></If>
           <If when={item().isPinned}><Icon name="pin" size={11} tint={c().faint} /></If>
+          {/* Design v1.21.0: compact key badge when the entry holds passkeys (metadata only). */}
+          <If when={dest() !== "trash" && (item().passkeys?.length ?? 0) > 0}>
+            <View testID={`passkey-badge-${item().id}`} accessibilityLabel={`已保存 ${item().passkeys!.length} 个通行密钥`}
+              tooltip={`已保存 ${item().passkeys!.length} 个通行密钥`}
+              style={{ flexShrink: 0, width: 18, height: 16, borderRadius: 5, alignItems: "center", justifyContent: "center", backgroundColor: on() ? c().surface : c().blueSoft }}>
+              <Icon name="passkey" size={11} tint={c().blue} />
+            </View>
+          </If>
         </View>
         <T size={11.5} color={c().muted} lines={item().type === "secureNote" ? 2 : 1}>
           {dest() === "trash" ? `${TYPE_NAME[item().type]} · 删除于 ${shortDate(item().deletedAt)}` : subtitle(item()) || " "}
@@ -130,6 +144,11 @@ function ItemRow(props: { item: Item }) {
           <View style={{ flexDirection: "row", alignItems: "center", gap: 5, marginTop: 4 }}>
             <Icon name="folder" size={11} tint={c().faint} />
             <T size={11} color={c().faint} style={{ flex: 1 }} lines={1}>{catLeaf(item().category)}</T>
+            <If when={hasConflict()}>
+              <View style={{ backgroundColor: c().orangeSoft, borderRadius: 4, paddingHorizontal: 5, paddingVertical: 1 }}>
+                <T size={9.5} weight="600" color={c().orange}>并行分支</T>
+              </View>
+            </If>
             <If when={isAiActor(item().lastActor)}>
               <View style={{ backgroundColor: c().blueSoft, borderRadius: 4, paddingHorizontal: 5, paddingVertical: 1 }}>
                 <T size={9.5} weight="600" color={c().blue}>AI</T>
@@ -139,11 +158,11 @@ function ItemRow(props: { item: Item }) {
           </View>
         </If>
       </View>
-      <If when={item().type === "password"}><RowCode item={item()} /></If>
+      <If when={item().type === "password"}><RowCode item={item()} active={liveTick()} /></If>
       <If when={item().type === "totp" && dest() !== "trash"}>
         <View style={{ alignItems: "flex-end", gap: 3 }}>
-          <TotpText secret={item().secret} period={item().period ?? 30} style={{ fontFamily: MONO, fontSize: fs(12), fontWeight: "600", color: c().blue }} />
-          <T size={11} color={c().faint}>{secondsLeft(item().period ?? 30)}s</T>
+          <TotpText secret={item().secret} period={item().period ?? 30} active={liveTick()} style={{ fontFamily: MONO, fontSize: fs(12), fontWeight: "600", color: c().blue }} />
+          <T size={11} color={c().faint}>{liveTick() ? `${secondsLeft(item().period ?? 30)}s` : "—"}</T>
         </View>
       </If>
       <If when={flagged() && dest() !== "trash"}>
@@ -207,25 +226,46 @@ function Chip(props: { value: ReturnType<typeof chip>; label: string }) {
 
 function Chips() {
   const d = dest();
+  const conflictCount = () => Object.keys(meshConflicts()).length;
   if (d === "trash") return <T size={11.5} color={c().muted}>项目保留至手动永久删除</T>;
   if (d === "wallets") return <><Chip value="all" label="全部" /><Chip value="card" label="银行卡" /><Chip value="identity" label="身份" /><Chip value="crypto" label="加密钱包" /></>;
   if (d === "accounts") return <><Chip value="all" label="全部" /><Chip value="fav" label="收藏" /><Chip value="issue" label="需关注" /></>;
-  if (d === "notes") return <><Chip value="all" label="全部" /><Chip value="fav" label="收藏" /><Chip value="ai" label="AI 更新" /></>;
+  if (d === "notes") return (
+    <>
+      <Chip value="all" label="全部" />
+      <Chip value="fav" label="收藏" />
+      <Chip value="ai" label="AI 更新" />
+      <If when={conflictCount() > 0}><Chip value="conflict" label={`并行分支 ${conflictCount()}`} /></If>
+    </>
+  );
   return <><Chip value="all" label="全部" /><Chip value="fav" label="收藏" /></>;
 }
 
 export function ItemList() {
   const title = () => (dest() === "notes" ? (noteCategory() ? catLeaf(noteCategory()) : "全部笔记") : DEST_NAME[dest()]);
+  const viewableIds = signal<Set<string>>(new Set());
   let input: any;
   effect(() => {
     if (searchFocus() > 0) input?.focus?.();
+  });
+  effect(() => {
+    // Reset viewability mask when switching lists so initial rows tick immediately.
+    dest(); noteCategory(); chip(); query();
+    viewableIds.set(new Set());
   });
   let header: { x: number; y: number } | undefined;
   return (
     <View testID="item-list" style={{ width: layout.list, backgroundColor: c().list, borderRightWidth: 1, borderRightColor: c().line }}>
       <View desktop={{ windowDrag: true }} style={{ paddingTop: 44, paddingHorizontal: 16, paddingBottom: 10 }}>
         <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", marginBottom: 14, gap: 8 }}>
-          <T size={20} weight="600" lines={dest() === "devices" ? undefined : 1} style={{ flexShrink: 1 }}>{title()}</T>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 6, flexShrink: 1, minWidth: 0 }}>
+            <If when={sidebarCollapsed()}>
+              <View desktop={{ windowDrag: false }}>
+                <IconBtn testID="sidebar-expand-btn" icon="sidebar" label={isMac ? "显示边栏 (⌃⌘S)" : "显示边栏 (Ctrl+Alt+S)"} size={15} onPress={toggleSidebar} />
+              </View>
+            </If>
+            <T size={20} weight="600" lines={dest() === "devices" ? undefined : 1} style={{ flexShrink: 1 }}>{title()}</T>
+          </View>
           <View desktop={{ windowDrag: false }} onLayout={(e) => (header = { x: e.bounds.origin.x, y: e.bounds.origin.y + 34 })}>
             <If when={dest() === "trash"} else={<Btn testID="new-item" label={`${NEW_LABEL[dest()] ?? "新建"}${MENU_DESTS.includes(dest()) ? " ▾" : ""}`} icon="plus" kind="primary" onPress={() => newInCurrent(header, true)} />}>
               <Btn label="清空" disabled={visible().length === 0} onPress={askEmptyTrash} />
@@ -252,12 +292,31 @@ export function ItemList() {
             <Icon name="chevd" size={10} tint={c().faint} />
           </View>
         </View>
-      </View>
-      <Scroll style={{ flex: 1 }} contentStyle={{ paddingHorizontal: 8, paddingBottom: 10 }}>
-        <If when={visible().length} else={<ListEmpty />}>
-          <Each of={visible()} key={(i) => i.id}>{(item) => <ItemRow item={item()} />}</Each>
+        <If when={isRelayOffline()}>
+          <View testID="offline-local-first-strip" style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 8, paddingHorizontal: 9, paddingVertical: 5, borderRadius: 7, backgroundColor: c().soft2, borderWidth: 1, borderColor: c().line2 }}>
+            <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: c().orange }} />
+            <T size={11} color={c().muted} lines={1} style={{ flex: 1 }}>离线可用 · 本地完整读写，联网后自动双向同步</T>
+          </View>
         </If>
-      </Scroll>
+      </View>
+      <List<Item>
+        each={visible()}
+        keyExtractor={(i) => i.id}
+        empty={<ListEmpty />}
+        style={{ flex: 1, minHeight: 220 }}
+        contentStyle={{ paddingHorizontal: 8, paddingBottom: 10 }}
+        onViewableItemsChange={({ viewableItems }) => {
+          const next = new Set<string>();
+          for (const v of viewableItems) {
+            if (v.isViewable && v.item?.id) next.add(v.item.id);
+          }
+          viewableIds.set(next);
+          const firstNote = viewableItems.find((v) => v.isViewable && v.item?.type === "secureNote");
+          if (firstNote?.item?.id) prefetchNoteNeighbors(firstNote.item.id, 2);
+        }}
+      >
+        {(item) => <ItemRow item={item()} active={viewableIds().size === 0 || viewableIds().has(item().id)} />}
+      </List>
     </View>
   );
 }
@@ -273,6 +332,20 @@ const SEARCH_PLACEHOLDER: Partial<Record<string, string>> = {
 };
 
 function SearchInput(props: { ref: (r: any) => void }) {
+  const onKey = (e: { key: string }) => {
+    if (e.key === "Escape") {
+      if (query()) query.set("");
+      return;
+    }
+    if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+    const list = visible();
+    if (!list.length) return;
+    const curId = selected()?.id;
+    const idx = list.findIndex((i) => i.id === curId);
+    const delta = e.key === "ArrowDown" ? 1 : -1;
+    const nextIdx = idx < 0 ? 0 : Math.max(0, Math.min(list.length - 1, idx + delta));
+    if (list[nextIdx] && list[nextIdx].id !== curId) select(list[nextIdx].id);
+  };
   return (
     <Input
       ref={props.ref}
@@ -281,6 +354,7 @@ function SearchInput(props: { ref: (r: any) => void }) {
       placeholder={SEARCH_PLACEHOLDER[dest()] ?? "搜索名称、账号、备注…"}
       accessibilityLabel={`搜索${DEST_NAME[dest()]}，多个关键词用空格分隔`}
       autoCorrect={false}
+      onKeyPress={onKey}
       onChange={({ value }) => query.set(value)}
       style={{ flex: 1, minWidth: 0, fontSize: fs(12.5), paddingVertical: 6, color: c().ink, backgroundColor: "transparent", borderWidth: 0 }}
     />

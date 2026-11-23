@@ -11,20 +11,13 @@ final class MobileCoreTests: XCTestCase {
     let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     defer { try? FileManager.default.removeItem(at: directory) }
     let core = try MobileCore(directory: directory)
-    _ = try await core.call([
-      "op": .string("create"), "password": .string("Synthetic mobile test 123!"),
-    ])
+    _ = try await core.call(CoreRequest.create(password: "Synthetic mobile test 123!"))
     var note = VaultItem.blank(type: "secureNote", title: "MOBILE_TITLE_CANARY_391")
     note.note = "MOBILE_NOTE_CANARY_753"
-    _ = try await core.call(["op": .string("save"), "item": try .from(note)])
-    let exported = try await core.call([
-      "op": .string("export"), "password": .string("Independent backup 123!"),
-    ]).object["content"]!.string
+    _ = try await core.call(CoreRequest.save(item: try .from(note)))
+    let exported = try await core.call(CoreRequest.export(password: "Independent backup 123!")).object["content"]!.string
     do {
-      _ = try await core.call([
-        "op": .string("import"), "content": .string(exported), "password": .string("wrong"),
-        "kind": .string("json"),
-      ])
+      _ = try await core.call(CoreRequest.`import`(content: exported, password: "wrong", kind: "json"))
       XCTFail("Wrong password accepted")
     } catch {}
     let document = try await core.document()
@@ -43,9 +36,7 @@ final class MobileCoreTests: XCTestCase {
       _ = try await reopened.document()
       XCTFail("Locked read accepted")
     } catch {}
-    _ = try await reopened.call([
-      "op": .string("unlock"), "password": .string("Synthetic mobile test 123!"),
-    ])
+    _ = try await reopened.call(CoreRequest.unlock(password: "Synthetic mobile test 123!"))
     let restored = try await reopened.document()
     XCTAssertEqual(restored.items.first?.id, note.id)
     await reopened.close()

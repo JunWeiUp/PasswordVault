@@ -9,3 +9,15 @@ test("browser page explains offline ownership and confirms revocation", async ()
   expect(app.texts()).toContain("后台保存、读取与启动自动解锁将全部停用。");
   await app.press("text:取消");
 });
+test("passkey prompt requires a shown credential and the master password", async () => {
+  const app = await open("../ui/browser/PasskeyHarness.tsx", { width: 900, height: 900, platform: "macos" });
+  await app.waitFor("text:使用通行密钥登录？");
+  expect(app.texts()).toContain("请选择一个通行密钥。");
+  await app.type("label:当前主密码", "synthetic-only");
+  // Without a selection the confirm button stays disabled and nothing is answered.
+  expect(app.texts()).toContain("answer:");
+  await app.press("text:bob");
+  await app.waitFor("text:example.com · 共享资料库 · 已选择");
+  await app.press("text:登录");
+  await app.waitFor("text:answer:{\"currentPassword\":\"synthetic-only\",\"credentialId\":\"k2\",\"itemId\":\"i2\",\"library\":\"shared\"}");
+});

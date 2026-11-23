@@ -151,10 +151,7 @@ internal fun LiveQrScanner(
                                                         if (session.owns(token))
                                                             scope.launch {
                                                                 try {
-                                                                    if (!rawPayload) vault.command(
-                                                                        "parse-totp",
-                                                                        JSONObject().put("uri", uri),
-                                                                    )
+                                                                    if (!rawPayload) vault.command(CoreRequest.parseTotp(uri))
                                                                     if (session.accept(token))
                                                                         currentResult(uri)
                                                                 } catch (

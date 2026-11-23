@@ -16,27 +16,23 @@ class CoreLifecycleTest {
     fun encryptedPersistenceAndFailurePaths() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val directory = File(context.cacheDir, "core-test-${UUID.randomUUID()}").apply { mkdirs() }
-        fun command(core: VaultSession, op: String, values: JSONObject = JSONObject()): JSONObject =
-            JSONObject(core.command(values.put("op", op).toString()))
+        fun command(core: VaultSession, request: JSONObject): JSONObject =
+            JSONObject(core.command(request.toString()))
         try {
             VaultSession(directory.absolutePath).use { core ->
-                command(core, "create", JSONObject().put("password", "Synthetic Android 123!"))
+                command(core, CoreRequest.create("Synthetic Android 123!"))
                 val item =
                     VaultRepository.blank("secureNote")
                         .put("title", "ANDROID_TITLE_CANARY_271")
                         .put("note", "ANDROID_BODY_CANARY_803")
-                command(core, "save", JSONObject().put("item", item))
+                command(core, CoreRequest.save(item))
                 val backup =
-                    command(core, "export", JSONObject().put("password", "Separate backup 123!"))
+                    command(core, CoreRequest.export("Separate backup 123!"))
                         .getString("content")
                 assertThrows(Exception::class.java) {
-                    command(
-                        core,
-                        "import",
-                        JSONObject().put("content", backup).put("password", "wrong"),
-                    )
+                    command(core, CoreRequest.import(backup, password = "wrong"))
                 }
-                assertEquals(1, command(core, "list").getJSONArray("items").length())
+                assertEquals(1, command(core, CoreRequest.list()).getJSONArray("items").length())
                 directory
                     .walkTopDown()
                     .filter { it.isFile }
@@ -45,14 +41,14 @@ class CoreLifecycleTest {
                         assertFalse(bytes.contains("ANDROID_TITLE_CANARY_271"))
                         assertFalse(bytes.contains("ANDROID_BODY_CANARY_803"))
                     }
-                command(core, "lock")
-                assertThrows(Exception::class.java) { command(core, "list") }
+                command(core, CoreRequest.lock())
+                assertThrows(Exception::class.java) { command(core, CoreRequest.list()) }
             }
             VaultSession(directory.absolutePath).use { core ->
-                command(core, "unlock", JSONObject().put("password", "Synthetic Android 123!"))
+                command(core, CoreRequest.unlock("Synthetic Android 123!"))
                 assertEquals(
                     "ANDROID_BODY_CANARY_803",
-                    command(core, "list").getJSONArray("items").getJSONObject(0).getString("note"),
+                    command(core, CoreRequest.list()).getJSONArray("items").getJSONObject(0).getString("note"),
                 )
             }
         } finally {

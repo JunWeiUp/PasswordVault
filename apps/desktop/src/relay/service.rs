@@ -71,7 +71,7 @@ pub fn display(c: &Value) -> Result<Value> {
     };
     // No secret, token, pending signed grant or delegate key leaves Rust.
     Ok(
-        json!({"legacy":!c["token"].as_str().unwrap_or("").is_empty()&&g.as_object().is_some_and(|g|g.is_empty()),"device":c["device"],"role":c["role"],"peerLibrary":c["peerLibrary"],"paused":c["paused"],"state":state,"transport":"not-connected","joining":g["pending_join"].is_object(),"creating":g["pending_create"].is_object(),"code":code,"applicant":unpack(&g["join_request"]).ok().map(|r|r["member"]["name"].clone()),"invitationLink":link,"hasPassword":super::protocol::configured_password(&c).ok().flatten().is_some(),"invitationMode":inv["mode"],"invitationExpires":inv["expires"]}),
+        json!({"legacy":!c["token"].as_str().unwrap_or("").is_empty()&&g.as_object().is_some_and(|g|g.is_empty()),"endpoint":c["endpoint"],"device":c["device"],"role":c["role"],"peerLibrary":c["peerLibrary"],"paused":c["paused"],"state":state,"transport":"not-connected","joining":g["pending_join"].is_object(),"creating":g["pending_create"].is_object(),"code":code,"applicant":unpack(&g["join_request"]).ok().map(|r|r["member"]["name"].clone()),"invitationLink":link,"hasPassword":super::protocol::configured_password(&c).ok().flatten().is_some(),"invitationMode":inv["mode"],"invitationExpires":inv["expires"]}),
     )
 }
 pub fn execute(s: &VaultSession, request: Value, local: bool) -> Result<String> {
@@ -89,6 +89,17 @@ pub fn execute(s: &VaultSession, request: Value, local: bool) -> Result<String> 
         return Ok(display(&c)?.to_string());
     }
     let mut g = group(&c)?;
+    if op == "update-endpoint" {
+        let ep = text(&request, "endpoint")?.trim().to_owned();
+        super::transport::endpoint(&ep, local)?;
+        if g.as_object().ok_or("InvalidData")?.is_empty() {
+            return Err("NotEnrolled".into());
+        }
+        g["url"] = json!(ep);
+        c["endpoint"] = json!(ep);
+        stash(s, &mut c, &g)?;
+        return Ok(display(&c)?.to_string());
+    }
     if op == "update-password" {
         let password = super::protocol::access_password(text(&request, "relayPassword")?)?;
         if g.as_object().ok_or("InvalidData")?.is_empty() {
@@ -224,11 +235,14 @@ pub fn execute(s: &VaultSession, request: Value, local: bool) -> Result<String> 
 
 /// Commit local departure without waiting for any remote request. The returned
 /// snapshot is only for a best-effort remote notification and must never be saved.
-pub fn exit_local(s: &VaultSession) -> Result<(String, Value)> {
+pub fn exit_local(s: &VaultSession, disband: bool) -> Result<(String, Value)> {
     let _commit = CONTROL.lock().map_err(|_| "Storage")?;
     sodiumoxide::init().map_err(|_| "Storage")?;
     let mut c = read(s)?;
     let remote = group(&c)?;
+    // Never orphan a group: validate the signed exit offline before clearing local state.
+    let mut discard = |_: &Value| Ok(());
+    Groups { config: remote.clone(), api: Http { local: false }, save: &mut discard, local: false }.check_exit(disband)?;
     clear_local(s, &mut c)?;
     Ok((display(&c)?.to_string(), remote))
 }
@@ -256,12 +270,20 @@ fn clear_local(s: &VaultSession, c: &mut Value) -> Result<()> {
     ] {
         c.as_object_mut().ok_or("InvalidData")?.remove(k);
     }
-    for k in ["group", "token", "hub", "endpoint", "password"] {
+    // Owner policy (vault-core relay_protocol::policy): clear credentials and membership,
+    // keep the endpoint, rotate the device ID and — unless a peer library still pins the
+    // current transport key — the X25519 transport secret.
+    let fresh = vault_core::relay_protocol::policy::exit_identity().map_err(String::from)?;
+    for k in ["group", "token", "hub", "password"] {
         c[k] = json!("");
     }
     c["role"] = json!("hub"); // Explicit departure restores independent desktop creation.
     c["peers"] = json!({});
     c["paused"] = json!(true);
-    c["device"] = json!(uuid::Uuid::new_v4().to_string());
+    c["device"] = fresh["device"].clone();
+    if c["peerLibrary"].as_str().is_none_or(str::is_empty) {
+        let secret = super::protocol::unhex(text(&fresh, "secret")?)?;
+        c["secret"] = json!(STANDARD.encode(&secret));
+    }
     write(s, c)
 }

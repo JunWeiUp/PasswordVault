@@ -1,47 +1,112 @@
 import { desktopCapabilities } from "../native";
 import { cleanup, signal, View, Clipboard } from "nsh";
 import { Files, RecoveryIO } from "passwordvault/native";
-import { Banner, Btn, Group, OptionRow, openSheet, SheetTitle, SheetFooter, TextBox, T, Toggle, confirm } from "../kit";
-import { call, errorText, flush, load, onLock, phase, toast, vaultInstance } from "../store";
+import { Banner, Btn, Group, OptionRow, Pill, Row, SmallAction, openSheet, SheetTitle, SheetFooter, TextBox, T, Toggle, confirm } from "../kit";
+import { coreApi, errorText, flush, load, onLock, phase, toast, vaultInstance } from "../store";
+import { c } from "../theme";
 
 const warning = "密钥和完整应急备份必须分开保存。密钥不能找回没有备份的数据。更换或停用不会撤销旧备份。";
 export const historyWarning = "启用后保存完整条目及附件，并升级数据格式，无法降级。旧客户端将无法打开，请先升级全部设备。启用前自动创建加密快照。";
 export function askEnableHistory(done: () => void = () => {}) {
   confirm({ title: "启用完整版本历史？", text: historyWarning, ok: "启用完整历史", onConfirm: () => {
-    void (async () => { try { await flush(); await call({ op: "history-enable" }); await load(); done(); toast("完整版本历史已启用"); } catch (e) { toast(errorText(e)); } })();
+    void (async () => { try { await flush(); await coreApi.historyEnable(); await load(); done(); toast("完整版本历史已启用"); } catch (e) { toast(errorText(e)); } })();
   } });
 }
 
 export function RecoverySettings() {
-  const enabled = signal(false), history = signal(false), splitNotes = signal<number | null>(null), blobStats = signal<{ count: number; uniqueBlobs: number; totalBytes: number } | null>(null), error = signal("");
+  const enabled = signal(false);
+  const history = signal(false);
+  const splitNotes = signal<number | null>(null);
+  const blobStats = signal<{ count: number; uniqueBlobs: number; totalBytes: number } | null>(null);
+  const showEngineDetails = signal(false);
+  const error = signal("");
   let alive = true;
   cleanup(() => { alive = false; });
-  const refresh = async () => { try {
-    const r = await call({ op: "recovery-status" }); const h = await call({ op: "history-status" });
-    const nb = await call({ op: "note-bodies-status" }).catch(() => null);
-    const bs = await call({ op: "note-attachments-status" }).catch(() => null);
-    if (alive) {
-      enabled.set(r.enabled);
-      history.set(h.enabled);
-      splitNotes.set(typeof nb?.count === "number" ? nb.count : null);
-      if (bs && typeof bs.count === "number") {
-        blobStats.set({ count: bs.count, uniqueBlobs: bs.uniqueBlobs ?? bs.diskFiles ?? 0, totalBytes: bs.totalBytes ?? 0 });
+  const refresh = async () => {
+    try {
+      const [r, h, nb, bs] = await Promise.all([
+        coreApi.recoveryStatus(),
+        coreApi.historyStatus(),
+        coreApi.noteBodiesStatus().catch(() => null),
+        coreApi.noteAttachmentsStatus().catch(() => null),
+      ]);
+      if (alive) {
+        enabled.set(r.enabled);
+        history.set(h.enabled);
+        splitNotes.set(typeof nb?.count === "number" ? nb.count : null);
+        if (bs && typeof bs.count === "number") {
+          blobStats.set({ count: bs.count, uniqueBlobs: bs.uniqueBlobs ?? bs.diskFiles ?? 0, totalBytes: bs.totalBytes ?? 0 });
+        }
       }
+    } catch (e) {
+      if (alive) error.set(errorText(e));
     }
-  } catch (e) { if (alive) error.set(errorText(e)); } };
+  };
   void refresh();
   const fmtBytes = (b: number) => b < 1024 ? `${b} B` : b < 1048576 ? `${(b / 1024).toFixed(1)} KB` : `${(b / 1048576).toFixed(1)} MB`;
-  return <View><T weight="600">应急恢复</T><Group>
-    <OptionRow title={enabled() ? "恢复密钥已启用" : "恢复密钥尚未启用"} note={warning}>
-      <Btn label="管理恢复密钥…" onPress={() => openSheet({ width: 610, render: close => <RecoverySetup close={close} done={refresh} /> })} />
-    </OptionRow>
-  </Group><T weight="600">版本历史、笔记分表与资产分块存储</T><Group><OptionRow title={history() ? "完整历史已启用" : "完整版本历史"} note={historyWarning}>
-    <Btn label={history() ? "已启用" : "启用…"} disabled={history()} onPress={() => askEnableHistory(refresh)} />
-  </OptionRow><OptionRow title="笔记正文独立加密分表（note_bodies）" note="每篇笔记正文按独立 AES-256-GCM 行存在 SQLCipher 的 note_bodies 表中，vault_state 仅保留摘要，笔记增多也不拖慢解锁与保存。">
-    <T size={12} color="#217a52">{splitNotes() === null ? "已启用" : `已分表 ${splitNotes()} 篇`}</T>
-  </OptionRow><OptionRow title="外置加密资产分块存储（blobs/）" note="PDF / Word / Excel / 图片（单文件上限 100 MB）按 64 KiB 分块 AES-256-GCM 独立存放，磁盘隐藏文件名，支持去重与历史引用计数。">
-    <T size={12} color="#217a52">{blobStats() === null ? "已启用" : `${blobStats()!.count} 个资产 · ${fmtBytes(blobStats()!.totalBytes)}`}</T>
-  </OptionRow></Group><T>{error()}</T></View>;
+
+  return (
+    <View style={{ gap: 18 }}>
+      <View style={{ gap: 7 }}>
+        <T size={12} weight="600" color={c().muted}>应急恢复</T>
+        <Group>
+          <OptionRow
+            last
+            title={enabled() ? "恢复密钥已启用" : "恢复密钥尚未启用"}
+            badge={<Pill tone={enabled() ? "ok" : "neutral"}>{enabled() ? "已启用" : "未启用"}</Pill>}
+            note="主密码遗忘时的离线恢复方案；恢复密钥与应急备份须分开保存。"
+          >
+            <Btn label="管理恢复密钥…" onPress={() => openSheet({ width: 610, render: (close) => <RecoverySetup close={close} done={refresh} /> })} />
+          </OptionRow>
+        </Group>
+      </View>
+
+      <View style={{ gap: 7 }}>
+        <Row style={{ justifyContent: "space-between" }}>
+          <T size={12} weight="600" color={c().muted}>存储与版本历史</T>
+          <SmallAction
+            label={showEngineDetails() ? "收起存储详情" : "查看存储详情"}
+            onPress={() => showEngineDetails.update((v) => !v)}
+          />
+        </Row>
+        <Group>
+          <OptionRow
+            title={history() ? "完整版本历史" : "完整版本历史"}
+            note={history() ? "保留完整条目修改记录与附件快照，可随时对比与回溯。" : historyWarning}
+          >
+            <If when={history()} else={<Btn label="启用…" onPress={() => askEnableHistory(refresh)} />}>
+              <Pill tone="ok">已启用</Pill>
+            </If>
+          </OptionRow>
+          <OptionRow
+            title="笔记正文分表存储"
+            note="正文按篇独立加密保存，笔记增多不拖慢解锁与保存。"
+          >
+            <Pill tone="ok">{splitNotes() === null ? "已启用" : `已分表 ${splitNotes()} 篇`}</Pill>
+          </OptionRow>
+          <OptionRow
+            last={!showEngineDetails()}
+            title="外置加密附件存储"
+            note="大文件按块独立加密并自动去重，单文件上限 100 MB。"
+          >
+            <Pill tone="info">{blobStats() === null ? "已启用" : `${blobStats()!.count} 个附件 · ${fmtBytes(blobStats()!.totalBytes)}`}</Pill>
+          </OptionRow>
+          <If when={showEngineDetails()}>
+            <View style={{ paddingVertical: 10, gap: 4 }}>
+              <T size={11.5} color={c().muted}>
+                • 笔记分表（SQLCipher note_bodies）：每篇正文独立 AES-256-GCM 密文存储，vault_state 仅保存轻量摘要。
+              </T>
+              <T size={11.5} color={c().muted}>
+                • 附件分块（blobs/）：按 64 KiB 分块 AES-256-GCM 独立存放，磁盘隐藏原文件名并支持历史引用计数。
+              </T>
+            </View>
+          </If>
+        </Group>
+      </View>
+
+      <If when={error()}><Banner tone="err" title={error()} style={{ marginBottom: 0 }} /></If>
+    </View>
+  );
 }
 
 function RecoverySetup(props: { close: () => void; done: () => void }) {
@@ -56,9 +121,9 @@ function RecoverySetup(props: { close: () => void; done: () => void }) {
   cleanup(() => { alive = false; clear(); });
   cleanup(onLock(() => { clear(); props.close(); }));
   const run = async (fn: () => Promise<void>) => { if (busy()) return; busy.set(true); error.set(""); try { await fn(); } catch (e) { if (alive) error.set(errorText(e)); } finally { if (alive) busy.set(false); } };
-  void run(async () => { const r = await call({ op: "recovery-status" }); if (alive) enabled.set(r.enabled); });
-  const generate = () => run(async () => { const r = await call({ op: "recovery-generate" }); if (!alive) return; clear(); key.set(r.key); generated.set(true); saved.set(false); });
-  const enable = () => run(async () => { if (!ready()) return; await call({ op: "recovery-enable", key: key(), currentPassword: password() }); clear(); if (!alive) return; props.done(); props.close(); toast("恢复密钥已启用，请立即导出应急备份"); });
+  void run(async () => { const r = await coreApi.recoveryStatus(); if (alive) enabled.set(r.enabled); });
+  const generate = () => run(async () => { const r = await coreApi.recoveryGenerate(); if (!alive) return; clear(); key.set(r.key); generated.set(true); saved.set(false); });
+  const enable = () => run(async () => { if (!ready()) return; await coreApi.recoveryEnable(key(), password()); clear(); if (!alive) return; props.done(); props.close(); toast("恢复密钥已启用，请立即导出应急备份"); });
   const ready = () => generated() && !!password() && saved() && !!check() && check().trim().toLowerCase() === key().split("-")[2]?.toLowerCase();
   return <View style={{ gap: 12 }}><SheetTitle title="离线应急恢复" text={warning} />
     <If when={generated()} else={<><T>{enabled() ? "已启用" : "尚未启用"}</T><Btn label={enabled() ? "更换密钥…" : "生成密钥…"} disabled={busy()} onPress={generate} />
@@ -67,13 +132,13 @@ function RecoverySetup(props: { close: () => void; done: () => void }) {
       <T mono selectable>{key()}</T><Btn label="复制恢复密钥" disabled={busy()} onPress={() => { copied = true; void Clipboard.writeText(key()); }} />
       <If when={desktopCapabilities.recoveryPrinting}><Btn label="打印恢复密钥…" disabled={busy()} onPress={() => run(async () => { await RecoveryIO.printKey(key()); })} /></If>
       <TextBox value={check()} onChange={v => check.set(v)} label="第 3 组字符" placeholder="为确认已保存，请输入第 3 组字符" />
-      <Toggle title="我已把密钥保存在这个密码库之外" checked={saved()} onChange={v => saved.set(v)} />
+      <Toggle last title="我已把密钥保存在这个密码库之外" checked={saved()} onChange={v => saved.set(v)} />
     </If>
     <TextBox masked value={password()} onChange={v => password.set(v)} label="当前主密码" placeholder="当前主密码（启用或停用）" />
     <If when={error()}><Banner tone="err" title={error()} /></If>
     <SheetFooter><Btn label="关闭" disabled={busy()} onPress={props.close} />
       <If when={generated()} else={<If when={enabled()}>
-        <Btn label="停用密钥…" disabled={busy() || !password()} onPress={() => run(async () => { await call({ op: "recovery-disable", currentPassword: password() }); clear(); if (alive) { enabled.set(false); props.done(); toast("本机恢复已停用，旧备份仍然有效"); } })} />
+        <Btn label="停用密钥…" disabled={busy() || !password()} onPress={() => run(async () => { await coreApi.recoveryDisable(password()); clear(); if (alive) { enabled.set(false); props.done(); toast("本机恢复已停用，旧备份仍然有效"); } })} />
         <Btn label="导出应急备份…" disabled={busy() || !key()} onPress={() => run(async () => {
           await flush(); const path = await Files.pickSave("导出应急备份", "PasswordVault-emergency.pvbackup", ["pvbackup"]);
           if (!path || !alive || phase() !== "unlocked") return;
@@ -95,10 +160,10 @@ function RecoveryUnlock(props: { close: () => void; archive: boolean }) {
     if (!approved()) { approved.set(true); return; }
     busy.set(true); error.set("");
     try {
-      const status = await call({ op: "status" });
+      const status = await coreApi.status();
       if (props.archive ? status.exists : !status.exists || status.unlocked) throw new Error(props.archive ? "AlreadyExists" : "InvalidData");
       if (props.archive) await RecoveryIO.restore(vaultInstance, key(), password(), path());
-      else await call({ op: "recovery-reset-password", key: key(), newPassword: password() });
+      else await coreApi.recoveryResetPassword(key(), password());
       key.set(""); password.set(""); again.set("");
       await load(); if (alive) props.close(); toast("恢复完成，请重新检查设备授权与恢复设置");
     } catch (e) { if (alive) { error.set(errorText(e)); approved.set(false); } } finally { if (alive) busy.set(false); }

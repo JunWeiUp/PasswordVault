@@ -252,9 +252,7 @@ struct MobileDeviceDetail: View {
     Task {
       defer { reading = nil }
       do {
-        let result = try await store.perform([
-          "op": .string("devices-file-read"), "id": .string(owner), "attachmentId": .string(attachment),
-        ])
+        let result = try await store.perform(CoreRequest.devicesFileRead(id: owner, attachmentId: attachment))
         guard case .string(let text)? = result.object["text"] else { throw VaultError.InvalidData }
         files[attachment] = text
       } catch { failedFile = attachment }

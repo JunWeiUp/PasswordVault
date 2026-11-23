@@ -8,11 +8,13 @@ setInterval(() => nowSeconds.set(Math.floor(Date.now() / 1000)), 1000);
 export const secondsLeft = (period = 30) => period - (nowSeconds() % period);
 export const formatCode = (code: string) => (code.length === 6 ? `${code.slice(0, 3)} ${code.slice(3)}` : code.length === 8 ? `${code.slice(0, 4)} ${code.slice(4)}` : code);
 
-/** The current code of `secret`, refreshed when its period turns over. */
-export function useCode(secret: () => string, period: () => number) {
+/** The current code of `secret`, refreshed when its period turns over.
+ *  When `active` returns false (e.g. off-screen list rows), skips ticking & IPC. */
+export function useCode(secret: () => string, period: () => number, active: () => boolean = () => true) {
   const code = signal("");
   let last = "";
   effect(() => {
+    if (!active()) return;
     const window = Math.floor(nowSeconds() / period());
     const key = `${secret()}|${period()}|${window}`;
     if (key === last) return;
@@ -26,7 +28,7 @@ export function useCode(secret: () => string, period: () => number) {
   return code;
 }
 
-export function TotpText(props: { secret: string; period: number; style?: any }) {
-  const code = useCode(() => props.secret, () => props.period);
+export function TotpText(props: { secret: string; period: number; active?: boolean; style?: any }) {
+  const code = useCode(() => props.secret, () => props.period, () => props.active !== false);
   return <Text style={props.style}>{code() ? formatCode(code()) : "——— ———"}</Text>;
 }

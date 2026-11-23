@@ -1,22 +1,12 @@
 package com.securepass.vault
 
-import java.util.Base64
 import org.json.JSONObject
 import org.junit.Assert.*
 import org.junit.Test
 
 class RelayAccessFormTest {
-    private val key = Base64.getUrlEncoder().withoutPadding().encodeToString(ByteArray(32) { 1 })
-    private val id = Base64.getUrlEncoder().withoutPadding().encodeToString(ByteArray(16) { 2 })
-    private val link = "common-relay://relay.example.test/i/$id#$key"
-
-    @Test fun readsCarriedPasswordLocallyAndSupportsOldLink() {
-        val access = "fixture-access-123"
-        val encoded = Base64.getUrlEncoder().withoutPadding().encodeToString(access.toByteArray())
-        val preview = RelayInvitationPreview.read("$link.$encoded")
-        assertEquals("wss://relay.example.test/relay/v1/ws", preview.endpoint)
-        assertEquals(access, preview.password)
-        assertEquals("", RelayInvitationPreview.read(link).password)
+    // Compact `common-relay:` links are parsed by vault-core: see RelayCoreTest (device).
+    @Test fun passwordValidation() {
         assertThrows(IllegalArgumentException::class.java) { validateRelayPassword("") }
         assertEquals("replacement-456", validateRelayPassword("replacement-456"))
     }
@@ -25,9 +15,7 @@ class RelayAccessFormTest {
         for (endpoint in listOf("", "https://relay.example.test/relay/v1/ws", "wss://user@relay.example.test/relay/v1/ws", "wss://relay.example.test/relay/v1/ws?secret=x", "wss:///relay/v1/ws", "wss://relay.example.test/other")) {
             assertThrows(Exception::class.java) { validateRelayEndpoint(endpoint) }
         }
-        for (input in listOf("https://relay.example.test/i/demo#demo", "$link.", "$link.%%%")) {
-            assertThrows(Exception::class.java) { RelayInvitationPreview.read(input) }
-        }
+        assertThrows(Exception::class.java) { RelayInvitationPreview.read("https://relay.example.test/i/demo#demo") }
     }
 
     @Test fun legacyInvitationChecksAppExpiryAndPreservesInput() {

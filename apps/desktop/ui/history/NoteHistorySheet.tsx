@@ -93,7 +93,7 @@ export function NoteHistorySheet(props: { item: Item; close: () => void; reopen:
     await flush();
     const status = await call({ op: "history-status" });
     const page = status.enabled
-      ? await call({
+      ? await call<{ revisions: NoteRevision[]; total: number }>({
           op: "history-list",
           id: props.item.id,
           offset: append ? revisions().length : 0,

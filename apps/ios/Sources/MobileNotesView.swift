@@ -267,6 +267,10 @@ struct MobileNoteReader: View {
               .font(.title.bold()).accessibilityIdentifier("note.reader.title")
             Text([Self.dateText(item, store: store), item.category].filter { !$0.isEmpty }.joined(separator: " · "))
               .font(.footnote).foregroundStyle(.secondary)
+            if item.bool("noteSummary") {
+              Text(store.t("L1 摘要已就绪 · 正在按需加载完整正文…", "L1 summary ready · loading full content on demand…"))
+                .font(.caption).foregroundStyle(.blue)
+            }
             Divider()
             if item.note.isEmpty {
               Text(store.t("这篇笔记还没有内容。", "This note is empty.")).foregroundStyle(.secondary)
@@ -289,6 +293,7 @@ struct MobileNoteReader: View {
           .padding()
         }
         .navigationTitle(item.title).navigationBarTitleDisplayMode(.inline)
+        .task(id: id) { _ = await store.ensureFull(id) }
         .toolbar(.hidden, for: .tabBar)
         .toolbar {
           if store.canEdit(item) {

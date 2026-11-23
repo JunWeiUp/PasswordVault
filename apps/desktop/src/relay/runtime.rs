@@ -22,6 +22,7 @@ pub struct Run {
     stop: AtomicBool,
     pub socket: Mutex<Option<TcpStream>>,
     view: Mutex<Value>,
+    blob_outbox: Mutex<std::collections::VecDeque<(String, Vec<u8>)>>,
 }
 impl Run {
     pub fn stopped(&self) -> bool {
@@ -74,12 +75,74 @@ pub fn view(s: &Arc<VaultSession>) -> Value {
         .and_then(|r| r.view.lock().ok().map(|v| v.clone()))
         .unwrap_or(json!({"transport":"disconnected","online":[]}))
 }
+
+/// Queues an on-demand L3 attachment download request to an online mesh peer (or source peer).
+pub fn request_blob(
+    s: &Arc<VaultSession>,
+    note_id: &str,
+    attachment_id: &str,
+    source_device: Option<&str>,
+) -> Result<Value> {
+    let run = runs()
+        .lock()
+        .ok()
+        .and_then(|m| m.get(&(Arc::as_ptr(s) as usize)).cloned());
+    let Some(run) = run.filter(|r| !r.stopped()) else {
+        let _ = service::core(
+            s,
+            json!({"op":"note-attachment-state","noteId":note_id,"id":attachment_id,"state":"failed","errorReason":"RelayDisconnected"}),
+        );
+        return Err("RelayDisconnected".into());
+    };
+    let snapshot = run.view.lock().ok().map(|v| v.clone()).unwrap_or_default();
+    if snapshot["transport"].as_str() != Some("connected") {
+        let _ = service::core(
+            s,
+            json!({"op":"note-attachment-state","noteId":note_id,"id":attachment_id,"state":"failed","errorReason":"RelayDisconnected"}),
+        );
+        return Err("RelayDisconnected".into());
+    }
+    let online: Vec<String> = snapshot["online"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .map(str::to_owned)
+        .collect();
+    let target = source_device
+        .filter(|src| !src.is_empty() && online.iter().any(|p| p == src))
+        .map(str::to_owned)
+        .or_else(|| online.first().cloned())
+        .or_else(|| source_device.filter(|s| !s.is_empty()).map(str::to_owned));
+    let Some(peer) = target else {
+        let _ = service::core(
+            s,
+            json!({"op":"note-attachment-state","noteId":note_id,"id":attachment_id,"state":"failed","errorReason":"PeerOffline"}),
+        );
+        return Err("PeerOffline".into());
+    };
+    service::core(
+        s,
+        json!({"op":"note-attachment-state","noteId":note_id,"id":attachment_id,"state":"downloading"}),
+    )?;
+    let req = canonical(&json!({
+        "version": super::mesh::VERSION,
+        "kind": "mesh-blob-req",
+        "attachmentId": attachment_id,
+    }));
+    if let Ok(mut outbox) = run.blob_outbox.lock() {
+        outbox.push_back((peer.clone(), req));
+    }
+    Ok(json!({"queued": true, "peer": peer, "online": online.iter().any(|p| p == &peer)}))
+}
+use vault_core::relay_protocol::policy;
 pub fn exit_local(s: &Arc<VaultSession>, directory: std::path::PathBuf, disband: bool, local: bool) -> Result<String> {
     stop(s);
-    let (display, remote) = service::exit_local(s)?;
+    let (display, remote) = service::exit_local(s, disband)?;
     let notice = Arc::new(Run {
         directory, stop: AtomicBool::new(true), socket: Mutex::new(None),
         view: Mutex::new(json!({"transport":"disconnected","online":[],"exit":{"disband":disband,"remote":"pending"}})),
+        blob_outbox: Mutex::new(std::collections::VecDeque::new()),
     });
     runs().lock().map_err(|_| "Storage")?.insert(Arc::as_ptr(s) as usize, notice.clone());
     // The worker owns only the old in-memory snapshot, never a vault/session or
@@ -99,14 +162,15 @@ fn relay_accepted(event: &Value, pending: &str) -> bool {
     event["id"] == pending
         && matches!(event["type"].as_str(), Some("stored" | "forwarded" | "queued" | "sent"))
 }
-const STABLE_CONNECTION: Duration = Duration::from_secs(120);
+/// Rejected credentials (401/403): stop and prompt. Shared owner policy in vault-core.
 pub fn authentication_failure(error: &str) -> bool {
-    matches!(error, "RelayHttp401" | "RelayHttp403")
+    vault_core::relay_protocol::policy::authentication_failure(error)
 }
 pub fn block_authentication(s: &Arc<VaultSession>, directory: std::path::PathBuf, error: &str) {
     let run = Arc::new(Run {
         directory, stop: AtomicBool::new(true), socket: Mutex::new(None),
         view: Mutex::new(json!({"transport":"disconnected","online":[],"error":error})),
+        blob_outbox: Mutex::new(std::collections::VecDeque::new()),
     });
     if let Ok(mut map) = runs().lock() {
         let key = Arc::as_ptr(s) as usize;
@@ -130,10 +194,11 @@ pub fn start(s: Arc<VaultSession>, directory: std::path::PathBuf, local: bool) -
         stop: AtomicBool::new(false),
         socket: Mutex::new(None),
         view: Mutex::new(json!({"transport":"disconnected","online":[]})),
+        blob_outbox: Mutex::new(std::collections::VecDeque::new()),
     });
     map.insert(key, run.clone());
     std::thread::spawn(move || {
-        let mut backoff = 1;
+        let mut backoff = 0;
         while !run.stopped() {
             let attempt = Instant::now();
             let result = connected(&s, &run, local);
@@ -151,14 +216,18 @@ pub fn start(s: Arc<VaultSession>, directory: std::path::PathBuf, local: bool) -
                 }
                 Err(e) => {
                     run.set("reconnecting", json!([]), &e);
-                    // A connection that stayed up for a while is a fresh failure,
-                    // not part of a tight retry storm.
-                    if attempt.elapsed() >= STABLE_CONNECTION {
-                        backoff = 1;
-                    }
+                    // Shared policy: double up to 30 s; a connection that stayed up for
+                    // 120 s is a fresh failure, not part of a tight retry storm.
+                    backoff = match policy::retry(&e, backoff, attempt.elapsed().as_secs()) {
+                        policy::Retry::After(delay) => delay,
+                        policy::Retry::Stop => break,
+                    };
                 }
                 Ok(()) => {
-                    backoff = 1;
+                    backoff = match policy::retry("", backoff, attempt.elapsed().as_secs()) {
+                        policy::Retry::After(delay) => delay,
+                        policy::Retry::Stop => break,
+                    };
                 }
             }
             if let Ok(mut slot) = run.socket.lock() {
@@ -167,7 +236,6 @@ pub fn start(s: Arc<VaultSession>, directory: std::path::PathBuf, local: bool) -
                 }
             }
             run.wait(Duration::from_secs(backoff));
-            backoff = (backoff * 2).min(30);
         }
         if let Ok(mut slot) = run.socket.lock() {
             if let Some(socket) = slot.take() { let _ = socket.shutdown(Shutdown::Both); }
@@ -183,12 +251,12 @@ pub fn identity(c: &Value) -> Result<Identity> {
             .decode(text(c, "secret")?)
             .map_err(|_| "InvalidData")?,
     );
-    let secret = sodiumoxide::crypto::box_::SecretKey::from_slice(&raw).ok_or("InvalidData")?;
+    let secret = super::transport::BoxSecretKey::from_slice(&raw).ok_or("InvalidData")?;
     let mut trusted = BTreeMap::new();
     for (id, key) in g["trusted_peers"].as_object().ok_or("InvalidData")? {
         trusted.insert(
             id.clone(),
-            sodiumoxide::crypto::box_::PublicKey::from_slice(&unhex(
+            super::transport::BoxPublicKey::from_slice(&unhex(
                 key.as_str().ok_or("InvalidData")?,
             )?)
             .ok_or("InvalidData")?,
@@ -355,8 +423,14 @@ fn connected(s: &Arc<VaultSession>, run: &Run, local: bool) -> Result<()> {
                                 if !peers.iter().any(|p| p == from) {
                                     return Err("VaultAccessDenied".into());
                                 }
-                                if super::mesh::receive(s, from, &plain)? {
+                                let (changed, reply) = super::mesh::receive_with_reply(s, from, &plain)?;
+                                if changed {
                                     run.changed();
+                                }
+                                if let Some(resp_bytes) = reply {
+                                    if let Ok(mut outbox) = run.blob_outbox.lock() {
+                                        outbox.push_back((from.to_string(), resp_bytes));
+                                    }
                                 }
                                 files.acknowledge(text(&descriptor, "id")?)?;
                                 continue;
@@ -386,6 +460,44 @@ fn connected(s: &Arc<VaultSession>, run: &Run, local: bool) -> Result<()> {
             .is_some_and(|(_, deadline)| Instant::now() > *deadline)
         {
             return Err("RelayMessageTimeout".into());
+        }
+        if let Some(peers) = &mesh_peers {
+            let drained: Vec<(String, Vec<u8>)> = run
+                .blob_outbox
+                .lock()
+                .map(|mut q| q.drain(..).collect())
+                .unwrap_or_default();
+            for (peer, payload) in drained {
+                if !peers.contains(&peer) {
+                    continue;
+                }
+                let data = zeroize::Zeroizing::new(payload);
+                if data.len() <= 128 * 1024 {
+                    let msg_id = uuid::Uuid::new_v4().simple().to_string();
+                    queue.push_back((peer, msg_id, data));
+                } else {
+                    let check = || {
+                        if run.stopped() {
+                            Err("Locked".into())
+                        } else {
+                            Ok(())
+                        }
+                    };
+                    if let Ok(files) = super::files::Files::new(
+                        text(&c, "endpoint")?,
+                        text(&c, "token")?,
+                        super::protocol::configured_password(&c)?,
+                        local,
+                        &check,
+                    ) {
+                        if let Ok((descriptor, cipher)) =
+                            super::files::prepare(&connection.identity, &peer, &data)
+                        {
+                            let _ = files.upload(&descriptor, &cipher);
+                        }
+                    }
+                }
+            }
         }
         if pending.is_none() {
             if let Some((peer, id, data)) = queue.pop_front() {
@@ -420,7 +532,9 @@ fn connected(s: &Arc<VaultSession>, run: &Run, local: bool) -> Result<()> {
             Err(e) if e == "Timeout" => continue,
             Err(e) => return Err(e),
             Ok(event) => {
-                if event["id"] == peers_request && event["type"] == "peers" {
+                if event["type"] == "peers"
+                    && (event["id"] == peers_request || event["id"].is_null())
+                {
                     let online: Vec<_> = event["devices"]
                         .as_array()
                         .ok_or("InvalidData")?
@@ -429,7 +543,9 @@ fn connected(s: &Arc<VaultSession>, run: &Run, local: bool) -> Result<()> {
                         .filter_map(|d| d["device"].as_str().map(str::to_owned))
                         .collect();
                     run.set("connected", json!(online), "");
-                    peers_request.clear();
+                    if event["id"] == peers_request {
+                        peers_request.clear();
+                    }
                 } else if event["type"] == "group.changed" {
                     // The server announces its current revision after every welcome.
                     // Reconnect only for a newer roster, otherwise welcome loops forever.
@@ -481,8 +597,14 @@ fn connected(s: &Arc<VaultSession>, run: &Run, local: bool) -> Result<()> {
                             || value["format"] == "passwordvault.capabilities.v1";
                         if control {
                         } else if mesh_peers.is_some() {
-                            if super::mesh::receive(s, from, &data)? {
+                            let (changed, reply) = super::mesh::receive_with_reply(s, from, &data)?;
+                            if changed {
                                 run.changed();
+                            }
+                            if let Some(resp_bytes) = reply {
+                                if let Ok(mut outbox) = run.blob_outbox.lock() {
+                                    outbox.push_back((from.to_string(), resp_bytes));
+                                }
                             }
                         } else {
                             match super::sync::receive(s, from, &key, &data) {
@@ -535,6 +657,7 @@ mod tests {
             stop: AtomicBool::new(false),
             socket: Mutex::new(Some(client)),
             view: Mutex::new(json!({})),
+            blob_outbox: Mutex::new(std::collections::VecDeque::new()),
         };
         let _control = service::CONTROL.lock().unwrap();
         r.disconnect();

@@ -180,18 +180,15 @@ class NotesScrollTest {
             fixture.authenticate("1", true)
             assertTrue(
                 fixture.mutate(
-                    "settings",
-                    JSONObject()
-                        .put(
-                            "settings",
-                            JSONObject()
-                                .put("theme", theme)
-                                .put("collectionSort", JSONObject().put("secureNote", "titleAsc")),
-                        ),
+                    CoreRequest.settings(
+                        JSONObject()
+                            .put("theme", theme)
+                            .put("collectionSort", JSONObject().put("secureNote", "titleAsc"))
+                    )
                 )
             )
             for (category in listOf("Family", "Work", "Empty folder")) {
-                assertTrue(fixture.mutate("category-add", JSONObject().put("name", category)))
+                assertTrue(fixture.mutate(CoreRequest.categoryAdd(category)))
             }
             repeat(noteCount) { index ->
                 assertTrue(

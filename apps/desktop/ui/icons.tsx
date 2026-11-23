@@ -62,6 +62,7 @@ const paths = {
   play: "M7 4l13 8-13 8z",
   filter: "M3 5h18l-7 8v6l-4-2v-4z",
   lineNumbers: "M3.5 6.5h2.5M3.5 12h2.5M3.5 17.5h2.5M9 4v16M12.5 6.5h8M12.5 12h8M12.5 17.5h5.5",
+  sidebar: rect(3, 4, 18, 16, 2) + "M9 4v16",
 } as const;
 
 export type IconName = keyof typeof paths;

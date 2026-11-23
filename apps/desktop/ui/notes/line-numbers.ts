@@ -166,12 +166,30 @@ export type GeometryReader = {
   nodeRect(pos: number): unknown | null;
 };
 
-/** Resolves exact y/height coordinates for each logical line anchor inside the content box. */
+const WINDOWED_LINE_THRESHOLD = 250;
+const WINDOW_HALF_SPAN = 120;
+
+/** Resolves exact y/height coordinates for each logical line anchor inside the content box.
+ *  For very long documents (>250 lines), windows FFI geometry probes around `focusPos` to keep keystrokes O(1). */
 export function measureLineAnchors(
   anchors: LineAnchor[],
   reader: GeometryReader,
   defaultLineHeight: number,
+  focusPos?: number | null,
 ): MeasuredLine[] {
+  let slice = anchors;
+  let lineOffset = 0;
+  if (anchors.length > WINDOWED_LINE_THRESHOLD) {
+    let centerIdx = 0;
+    if (typeof focusPos === "number") {
+      const found = anchors.findIndex((a) => focusPos >= a.from && focusPos <= a.to);
+      if (found >= 0) centerIdx = found;
+    }
+    const start = Math.max(0, centerIdx - WINDOW_HALF_SPAN);
+    const end = Math.min(anchors.length, centerIdx + WINDOW_HALF_SPAN + 1);
+    slice = anchors.slice(start, end);
+    lineOffset = start;
+  }
   const out: MeasuredLine[] = [];
   const safeCaret = (pos: number): BoxRect | null => {
     try {
@@ -188,7 +206,7 @@ export function measureLineAnchors(
     }
   };
 
-  for (const anchor of anchors) {
+  for (const anchor of slice) {
     let rect: BoxRect | null = null;
     let isNodeBox = false;
     if (anchor.measure === "caret") {
@@ -225,7 +243,7 @@ export function measureLineAnchors(
     }
 
     out.push({
-      line: out.length + 1,
+      line: lineOffset + out.length + 1,
       top: Math.round(top * 2) / 2,
       height: Math.round(height * 2) / 2,
       from: anchor.from,

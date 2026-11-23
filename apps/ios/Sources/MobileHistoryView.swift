@@ -20,11 +20,11 @@ struct MobileHistoryView: View {
           ))
         Button(store.t("启用完整历史", "Enable complete history")) {
           run {
-            _ = try await store.perform(["op": .string("history-enable")])
+            _ = try await store.perform(CoreRequest.historyEnable())
             try await store.refresh()
             try await load()
           }
-        }
+        }.disabled(working)
       } else {
         ForEach(rows, id: \.self) { revision in
           Button {
@@ -42,6 +42,7 @@ struct MobileHistoryView: View {
         }
         if rows.count < total {
           Button(store.t("加载更多", "Load more")) { run { try await load(append: true) } }
+            .disabled(working)
         }
         if let selected {
           Section(store.t("版本预览", "Version preview")) {
@@ -53,13 +54,18 @@ struct MobileHistoryView: View {
                 .textSelection(.enabled)
             }
             Button(store.t("恢复此版本", "Restore this version")) { action = "restore" }
-              .disabled(selected.object["item"]?.object.isEmpty != false)
+              .disabled(working || selected.object["item"]?.object.isEmpty != false)
+            if selected.object["item"]?.object.isEmpty != false {
+              Text(store.t("门控原因：该历史节点为删除快照，不包含可恢复正文。", "Unavailable: this history entry represents a deleted snapshot."))
+                .font(.caption).foregroundStyle(.secondary)
+            }
           }
         }
         Button(store.t("清理旧版本", "Clear older versions"), role: .destructive) { action = "prune" }
+          .disabled(working)
       }
       if working { ProgressView() }
-    }.navigationTitle(store.t("版本历史", "Version history")).disabled(working)
+    }.navigationTitle(store.t("版本历史", "Version history"))
       .task { do { try await load() } catch { store.report(error) } }
       .confirmationDialog(
         store.t("确认修改历史？", "Confirm history action?"),
@@ -71,7 +77,7 @@ struct MobileHistoryView: View {
           action = nil
           run {
             if operation == "prune" {
-              _ = try await store.perform(["op": .string("history-prune"), "id": .string(id)])
+              _ = try await store.perform(CoreRequest.historyPrune(id: id))
             } else if let selected {
               _ = try await store.perform([
                 "op": .string("history-restore"), "id": .string(id),
@@ -104,11 +110,8 @@ struct MobileHistoryView: View {
   }
   private func load(append: Bool = false) async throws {
     enabled =
-      try await store.perform(["op": .string("history-status")]).object["enabled"]?.bool ?? false
-    let value = try await store.perform([
-      "op": .string("history-list"), "id": .string(id),
-      "offset": .number(Double(append ? rows.count : 0)),
-    ])
+      try await store.perform(CoreRequest.historyStatus()).object["enabled"]?.bool ?? false
+    let value = try await store.perform(CoreRequest.historyList(id: id, offset: Double(append ? rows.count : 0)))
     total = Int(value.object["total"]?.number ?? 0)
     let page = value.object["revisions"]?.array ?? []
     if append { rows += page } else { rows = page }

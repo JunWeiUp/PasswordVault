@@ -44,6 +44,7 @@ pub fn preview_import(
     match format {
         "csv" => csv_rows(bytes, mapping, &mut preview)?,
         "1pux" => one_password_rows(bytes, &mut preview)?,
+        "cxf" => crate::cxf::cxf_rows(bytes, &mut preview)?,
         _ => return Err(VaultError::Unsupported),
     }
     if preview.rows.len() > 100_000 {
@@ -65,7 +66,24 @@ pub fn preview_import(
             );
         }
     }
+    // A re-imported passkey (same RP and credential ID) defaults to skip like other duplicates.
+    let mut passkeys: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    for old in doc.items.iter().filter(|v| v["isDeleted"] != true) {
+        for key in old["passkeys"].as_array().into_iter().flatten() {
+            remember_duplicate(
+                &mut passkeys,
+                json!([key["rpId"], key["credentialId"]]).to_string(),
+                old["id"].as_str().unwrap_or("").to_owned(),
+            );
+        }
+    }
     for row in &mut preview.rows {
+        for key in row.item["passkeys"].as_array().into_iter().flatten() {
+            let id = json!([key["rpId"], key["credentialId"]]).to_string();
+            row.duplicate_ids
+                .extend(passkeys.get(&id).cloned().unwrap_or_default());
+            remember_duplicate(&mut passkeys, id, format!("import-row:{}", row.index));
+        }
         let title = row.item["title"].to_string();
         row.duplicate_ids = titles.get(&title).cloned().unwrap_or_default();
         if let Some(key) = credential_key(&row.item) {
@@ -390,6 +408,7 @@ pub fn apply_import(
         added += 1;
     }
     if added > 0 {
+        // Passkeys share the structured format (6).
         next.format_version = next
             .format_version
             .max(crate::structured::STRUCTURED_FORMAT);

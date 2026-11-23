@@ -58,6 +58,63 @@ internal fun SettingsDetail(content: @Composable ColumnScope.() -> Unit) {
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
+@Composable
+internal fun SettingsChoiceOption(
+    title: String,
+    subtitle: String = "",
+    value: String,
+    options: List<String>,
+    onSelect: (String) -> Unit,
+) {
+    Column(
+        Modifier.fillMaxWidth().padding(horizontal = 15.dp, vertical = 11.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(title, fontSize = 14.sp, lineHeight = 20.sp, fontWeight = FontWeight.Normal)
+            if (subtitle.isNotEmpty()) {
+                Text(subtitle, fontSize = 12.sp, lineHeight = 17.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        if (options.size <= 4 && options.all { it.length <= 6 }) {
+            SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                options.forEachIndexed { index, option ->
+                    SegmentedButton(
+                        selected = option == value,
+                        onClick = { onSelect(option) },
+                        shape = SegmentedButtonDefaults.itemShape(index = index, count = options.size),
+                        icon = {},
+                    ) {
+                        Text(option, fontSize = 12.sp, maxLines = 1)
+                    }
+                }
+            }
+        } else if (options.size <= 6) {
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                options.forEach { option ->
+                    val selected = option == value
+                    FilterChip(
+                        selected = selected,
+                        onClick = { onSelect(option) },
+                        label = { Text(option, fontSize = 12.sp) },
+                        colors = FilterChipDefaults.filterChipColors(
+                            containerColor = MaterialTheme.colorScheme.surface,
+                            selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                            selectedLabelColor = MaterialTheme.colorScheme.primary,
+                        ),
+                    )
+                }
+            }
+        } else {
+            SettingsChoice(value, options, onSelect)
+        }
+    }
+}
+
 @Composable
 internal fun SettingsChoice(value: String, options: List<String>, onSelect: (String) -> Unit) {
     var expanded by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }

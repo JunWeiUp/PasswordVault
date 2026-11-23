@@ -9,7 +9,7 @@ const group = signal<any>({ device: "mac", state: { name: "QA group", members: [
 ] } });
 mount(() => <View style={{ padding: 16 }}>
   <Btn label="显示对等库申请" onPress={() => group.set({ ...group(), peerLibrary: "lib", applicant: "Phone", code: "ABCD-1234-EF56" })} />
-  <Btn label="显示个人组申请" onPress={() => group.set({ ...group(), invitationLink: "common-relay://fixture", invitationMode: "manual", applicant: "Phone", code: "ABCD-1234-EF56" })} />
+  <Btn label="显示个人组申请" onPress={() => group.set({ ...group(), invitationLink: "common-relay://fixture", invitationMode: "manual", invitationExpires: Math.floor(Date.now() / 1000) + 580, applicant: "Phone", code: "ABCD-1234-EF56" })} />
   <Btn label="显示同步设备" onPress={() => group.set({ ...group(), device: "phone" })} />
   <Btn label="显示未入组" onPress={() => group.set({ device: "mac", role: "hub" })} />
   <Btn label="模拟本地写入失败" onPress={() => rejectExit.set(true)} />
@@ -18,7 +18,7 @@ mount(() => <View style={{ padding: 16 }}>
       if ("currentPassword" in request) throw new Error("UnexpectedPassword");
       if (rejectExit()) throw new Error("Storage");
     }
-    result.set(`ACTION:${request.op}:${request.mode ?? request.code ?? (request.relayPassword ? "with-password" : "")}`);
+    result.set(`ACTION:${request.op}:${request.op === "rename" ? request.name : (request.mode ?? request.code ?? (request.relayPassword ? "with-password" : ""))}`);
   }} />
   <Btn label="模拟服务器解散失败" onPress={() => result.set(exitNotice({ disband: true, remote: "failed" }))} />
   <T>{result()}</T><SheetHost />

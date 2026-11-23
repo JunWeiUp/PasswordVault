@@ -24,12 +24,15 @@ fun WebDavScreen(vault: VaultRepository, state: VaultState, t: (String, String) 
     var secret by remember { mutableStateOf("") }
     var files by remember { mutableStateOf(emptyList<RemoteBackup>()) }
     var target by remember { mutableStateOf<RemoteBackup?>(null) }
-    var busy by remember { mutableStateOf(false) }
+    var savingConfig by remember { mutableStateOf(false) }
+    var listing by remember { mutableStateOf(false) }
+    var transferring by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
-    fun run(action: suspend (WebDav) -> String) {
-        if (busy) return
-        busy = true
+    val hasUrl = url.trim().isNotEmpty()
+    fun run(isList: Boolean, action: suspend (WebDav) -> String) {
+        if ((isList && listing) || transferring) return
+        if (isList) listing = true else transferring = true
         message = null
         scope.launch {
             try {
@@ -46,7 +49,7 @@ fun WebDavScreen(vault: VaultRepository, state: VaultState, t: (String, String) 
                         "Check connection, server permissions and file password. Existing data is preserved.",
                     )
             } finally {
-                busy = false
+                if (isList) listing = false else transferring = false
             }
         }
     }
@@ -67,15 +70,14 @@ fun WebDavScreen(vault: VaultRepository, state: VaultState, t: (String, String) 
             style = MaterialTheme.typography.bodySmall,
         )
         OutlinedButton(
-            enabled = !busy,
+            enabled = !savingConfig && !transferring && hasUrl,
             onClick = {
+                savingConfig = true
                 scope.launch {
-                    if (
-                        vault.mutate(
-                            "settings",
-                            JSONObject()
-                                .put(
-                                    "settings",
+                    try {
+                        if (
+                            vault.mutate(
+                                CoreRequest.settings(
                                     JSONObject()
                                         .put(
                                             "webdav",
@@ -86,33 +88,43 @@ fun WebDavScreen(vault: VaultRepository, state: VaultState, t: (String, String) 
                                                 .put("folder", folder),
                                         ),
                                 ),
+                            )
                         )
-                    )
-                        message = t("设置已保存", "Settings saved")
+                            message = t("设置已保存", "Settings saved")
+                    } finally {
+                        savingConfig = false
+                    }
                 }
             },
         ) {
-            Text(t("保存设置", "Save settings"))
+            Text(if (savingConfig) t("保存中…", "Saving…") else t("保存设置", "Save settings"))
         }
         Button(
-            enabled = !busy,
+            enabled = !listing && !transferring && hasUrl,
             onClick = {
-                run { client ->
+                run(true) { client ->
                     files = withContext(Dispatchers.IO) { client.list() }
                     "${files.size} ${t("份备份", "backups")}"
                 }
             },
         ) {
-            Text(t("连接并刷新", "Connect & refresh"))
+            Text(if (listing) t("读取列表中…", "Refreshing…") else t("连接并刷新", "Connect & refresh"))
+        }
+        if (!hasUrl) {
+            Text(
+                t("门控原因：请先填写 HTTPS 服务器地址后再保存或连接。", "Required: enter an HTTPS server URL before saving or connecting."),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
         Input(t("新备份文件密码", "Password for new backup"), secret, { secret = it }, secret = true)
         Button(
-            enabled = !busy && secret.length >= 10,
+            enabled = !transferring && hasUrl && secret.length >= 10,
             onClick = {
-                run { client ->
+                run(false) { client ->
                     val content =
                         vault
-                            .command("export", JSONObject().put("password", secret))
+                            .command(CoreRequest.export(secret))
                             .getString("content")
                     withContext(Dispatchers.IO) { client.upload(content.toByteArray()) }
                     files = withContext(Dispatchers.IO) { client.list() }
@@ -121,9 +133,16 @@ fun WebDavScreen(vault: VaultRepository, state: VaultState, t: (String, String) 
                 }
             },
         ) {
-            Text(t("创建加密备份", "Create encrypted backup"))
+            Text(if (transferring) t("传输中…", "Transferring…") else t("创建加密备份", "Create encrypted backup"))
         }
-        if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
+        if (secret.length < 10) {
+            Text(
+                t("门控原因：需输入至少 10 位独立备份文件密码后启用上传。", "Required: enter a backup file password of at least 10 characters."),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        if (listing || transferring) LinearProgressIndicator(Modifier.fillMaxWidth())
         message?.let { Text(it) }
         files.forEach { file ->
             OutlinedCard(
@@ -131,7 +150,7 @@ fun WebDavScreen(vault: VaultRepository, state: VaultState, t: (String, String) 
                     target = file
                     secret = ""
                 },
-                enabled = !busy,
+                enabled = !transferring,
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -174,18 +193,14 @@ fun WebDavScreen(vault: VaultRepository, state: VaultState, t: (String, String) 
                     onClick = {
                         val inputPassword = secret
                         target = null
-                        run { client ->
+                        run(false) { client ->
                             val content =
                                 withContext(Dispatchers.IO) {
                                     client.download(file).toString(Charsets.UTF_8)
                                 }
                             if (
                                 !vault.mutate(
-                                    "import",
-                                    JSONObject()
-                                        .put("content", content)
-                                        .put("password", inputPassword)
-                                        .put("kind", "json"),
+                                    CoreRequest.import(content, password = inputPassword, kind = "json")
                                 )
                             )
                                 error("Import failed")

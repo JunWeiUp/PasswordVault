@@ -47,7 +47,12 @@ per-request confirmation in the window (same pending channel and 35-second expir
 pairing; prompts show origin/username only, never secrets), `otp-matches` (labels
 only) and `open-entry`, which reveals an owned record in the window. Update and open
 verify that the record belongs to the requesting website before prompting.
-Passkeys still fail closed as unsupported. Read-only grants (Mac locked) remain
+`passkey-create` and `passkey-assert` check the HTTPS origin and PSL-bounded RP
+before prompting, fall back (`no-credentials`, `already-registered`) without a prompt,
+then show a 50-second window sheet with public metadata only. The answer carries the
+selected credential (it must be one that was shown) and the master password, which the
+core reauthenticates before signing and persisting; PRF salts pass through to the core.
+"Use another device" returns `use-browser` so the page hands over to the browser. Read-only grants (Mac locked) remain
 limited to matches/fill.
 
 Browser mode targets the isolated default `PasswordVaultNSHPreview/vault` directory.

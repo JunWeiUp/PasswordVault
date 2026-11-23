@@ -12,9 +12,15 @@ Respond to this repository's owner in Chinese unless asked otherwise. Public doc
 - Do not claim production readiness while docs/security/SECURITY_MODEL.md contains unresolved blockers.
 - Run the checks documented in README.md and report any unverified platform behavior.
 
+## Agent quick start
+
+- Each code area has its own short guide: `crates/vault-core/AGENTS.md`, `apps/desktop/AGENTS.md`, `apps/android/AGENTS.md`, `apps/ios/AGENTS.md`, `apps/browser/AGENTS.md` (entry files, the one check command, area rules). They are tracked; `docs/` is local-only.
+- Verify a change with `python3 tool/check_changed.py` (`--dry-run` shows the plan); it picks checks from the diff and rebuilds mobile core bindings when `crates/` changes.
+- New core command: `python3 tool/new_op.py ...`; which client calls what: `python3 tool/core_contract.py matrix [--missing <client>]`. Clients build requests with the generated typed builders (`CoreRequest`), never hand-written op strings.
+
 ## Documentation structure
 
-Maintain these canonical guides and update the relevant document when behavior changes. `docs/` is local-only: it is ignored by Git and must not be committed or published (the owner removed it from the public history).
+Maintain these canonical guides and update the relevant document when behavior changes. `docs/` is local-only: it is ignored by Git and must not be committed or published (the owner removed it from the public history). For a fast codebase map, invariants, and verification commands across all four client stacks, read `docs/development/AI-MAP.md` first.
 
 ```text
 .

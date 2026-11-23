@@ -344,10 +344,8 @@ struct MobileEntryDetail: View {
       guard let item, let source = totpSource(for: item) else { return }
       let period = source.period
       func totp(_ time: Double) async -> String {
-        (try? await store.perform([
-          "op": .string("totp"), "secret": .string(source.secret),
-          "period": .number(period), "time": .number(time.rounded(.down)),
-        ]).object["code"]?.string) ?? ""
+        (try? await store.perform(CoreRequest.totp(secret: source.secret, time: time.rounded(.down), period: period))
+          .object["code"]?.string) ?? ""
       }
       while !Task.isCancelled {
         let now = Date().timeIntervalSince1970

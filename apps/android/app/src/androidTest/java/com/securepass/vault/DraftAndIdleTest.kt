@@ -55,14 +55,10 @@ class DraftAndIdleTest {
         try {
             withTimeout(10_000) { while (!vault.state.value.ready) delay(10) }
             vault.authenticate("Synthetic idle 123!", true)
-            vault.mutate(
-                "settings",
-                JSONObject().put("settings", JSONObject().put("autoLockMinutes", 1)),
-            )
+            vault.mutate(CoreRequest.settings(JSONObject().put("autoLockMinutes", 1)))
             now = 59_000
             vault.command(
-                "totp",
-                JSONObject().put("secret", "JBSWY3DPEHPK3PXP").put("period", 30).put("time", 59),
+                CoreRequest.totp("JBSWY3DPEHPK3PXP", time = 59, period = 30),
             )
             now = 60_001
             vault.checkIdle()

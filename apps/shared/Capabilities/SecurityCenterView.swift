@@ -66,7 +66,7 @@ struct SecurityCenterView: View {
             defer { if accessed { url.stopAccessingSecurityScopedResource() } }
             guard (try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0) <= 8 * 1024 * 1024 else { throw CocoaError(.fileReadTooLarge) }
             let catalog = try JSONDecoder().decode(JSONValue.self, from: Data(contentsOf: url))
-            _ = try await perform(["op": .string("security-catalog"), "catalog": catalog]); await refresh()
+            _ = try await perform(CoreRequest.securityCatalog(catalog: catalog)); await refresh()
           } catch { message = t("目录导入失败，已保留原目录", "Catalog import failed; previous catalog retained") }
         }
       }
@@ -90,7 +90,7 @@ struct SecurityCenterView: View {
     ].filter { !$0.isEmpty }.joined(separator: " · ")
   }
   @MainActor private func refresh() async {
-    do { report = try await perform(["op": .string("security-audit")]); message = "" }
+    do { report = try await perform(CoreRequest.securityAudit()); message = "" }
     catch { message = t("检查未完成", "Check incomplete") }
   }
   @MainActor private func check() async {
@@ -107,7 +107,7 @@ struct SecurityCenterView: View {
         var occurrences = 0
         for value in Set(values).filter({ !$0.isEmpty }) {
           try Task.checkCancellation()
-          let parts = try await perform(["op": .string("breach-request"), "password": .string(value)]).object
+          let parts = try await perform(CoreRequest.breachRequest(password: value)).object
           guard let prefix = parts["prefix"]?.string, prefix.count == 5, prefix.allSatisfy({ $0.isHexDigit }), let suffix = parts["suffix"] else { throw URLError(.badServerResponse) }
           var request = URLRequest(url: URL(string: "https://api.pwnedpasswords.com/range/\(prefix)")!)
           request.setValue("true", forHTTPHeaderField: "Add-Padding"); request.timeoutInterval = 20

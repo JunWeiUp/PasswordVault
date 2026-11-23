@@ -71,7 +71,7 @@ export const c = (): Colors => current();
 
 export const MONO = "Menlo";
 export const radius = { control: 7, row: 9, card: 10, sheet: 14 };
-export const layout = { sidebar: 236, list: 320, toolbar: 52 };
+export const layout = { sidebar: 204, list: 296, toolbar: 52 };
 
 /** Interface text scale (Settings → 通用 → 文字大小); 1.15 by default. */
 export const TEXT_SCALES = [

@@ -37,6 +37,7 @@ class CIChangesTests(unittest.TestCase):
 
     def test_editor_bundle_changes_cover_all_embedding_clients(self):
         self.assertEqual(classify(['apps/shared/note-editor/editor.js']), {'macos', 'ios', 'android', 'browser'})
+        self.assertEqual(classify(['apps/shared/Relay/VaultRelay.swift']), {'ios'})
         self.assertEqual(classify(['apps/shared/note-editor/package-lock.json']), {'macos', 'ios', 'android', 'browser'})
 
     def test_native_runs_are_requested_and_tests_are_opt_in(self):

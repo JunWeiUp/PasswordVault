@@ -94,11 +94,20 @@ test("relay background refresh keeps an unchanged open note and unsaved edits", 
 
 test("symmetric sync invites by scan alone, without primary, grants or code checks", async () => {
   const app = await open("../ui/relay/GroupHarness.tsx", { width: 1000, height: 1200, platform: "macos" });
-  await app.waitFor("text:Mac · 本机 · 管理");
+  await app.waitFor("text:Mac");
+  expect(app.texts()).toContain("本机");
+  expect(app.texts()).toContain("管理");
   expect(app.texts().join("\n")).not.toContain("主库");
   expect(app.texts()).not.toContain("查看并同步修改");
   await app.press("text:邀请设备");
   await app.waitFor("text:ACTION:invite:auto");
+  // Per-row rename opens a modal sheet instead of a shared floating input.
+  await app.press("text:重命名 >> nth=0");
+  await app.waitFor("id:rename-device-input");
+  await app.clear("id:rename-device-input");
+  await app.type("id:rename-device-input", "MacBook Pro");
+  await app.press("id:rename-device-submit");
+  await app.waitFor("text:ACTION:rename:MacBook Pro");
   await app.press("text:显示同步设备");
   expect(app.texts()).not.toContain("邀请设备");
   expect(app.texts()).toContain("请在管理设备“Mac”上邀请新设备。");
@@ -114,10 +123,17 @@ test("personal groups can invite with code approval and members show their pinne
   await app.press("text:显示个人组申请");
   await app.waitFor("text:检查加入申请");
   expect(app.texts()).not.toContain("加入方式");
+  await app.press("text:查看邀请二维码");
+  await app.waitFor("text:邀请设备");
+  expect(app.texts()).toContain("邀请链接");
+  expect(app.texts()).toContain("复制邀请链接");
+  expect(app.texts()).toContain("取消邀请");
+  expect(app.texts().some((t) => t.startsWith("剩余 "))).toBe(true);
+  await app.press("text:完成");
   await app.type("label:输入对方显示的配对码", "ABCD-1234-EF56");
   await app.press("text:批准加入设备组");
   await app.waitFor("text:ACTION:approve:ABCD-1234-EF56");
-  await app.press("text:查看公钥指纹");
+  await app.press("text:公钥指纹");
   await app.waitFor("text:Phone 的公钥指纹");
   expect(app.texts()).toContain("0123 4567 89AB CDEF 0123 4567 89AB CDEF");
   await app.press("text:完成");

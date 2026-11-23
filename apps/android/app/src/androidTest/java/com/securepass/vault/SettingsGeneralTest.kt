@@ -79,13 +79,13 @@ class SettingsGeneralTest {
             withTimeout(15_000) { while (fixture.relay.state.value.device.isEmpty() || fixture.relay.state.value.busy) delay(25) }
             assertTrue(fixture.save(VaultRepository.blank("password").put("title", "Prefs fixture").put("username", "qa@example.test").put("password", "Fictional-only-" + "value-42")))
             // A relay pointed at a closed loopback port: configured, but the transport always fails.
-            val config = JSONObject(fixture.command("relay-credentials-read").getString("data"))
-            fixture.command("relay-init", JSONObject().put("role", "mobile").put("device", config.getString("device")).put("hub", "fixture-hub").put("group", "fixture-group"))
-            fixture.command("relay-trust", JSONObject().put("peer", "fixture-hub"))
-            val peerKey = io.github.junweiup.commonrelay.Crypto("passwordvault", "fixture-group", "fixture-hub", "01".repeat(32), emptyMap()).publicKey()
+            val config = JSONObject(fixture.command(CoreRequest.relayCredentialsRead()).getString("data"))
+            fixture.command(CoreRequest.relayInit("mobile", "fixture-group", config.getString("device"), "fixture-hub"))
+            fixture.command(CoreRequest.relayTrust("fixture-hub"))
+            val peerKey = RelayCore.publicKey("01".repeat(32))
             config.put("group", "fixture-group").put("hub", "fixture-hub").put("paused", false)
                 .put("peers", JSONObject().put("fixture-hub", peerKey)).put("token", "q".repeat(48)).put("endpoint", "wss://127.0.0.1:1/relay/v1/ws")
-            fixture.command("relay-credentials-write", JSONObject().put("data", config.toString()))
+            fixture.command(CoreRequest.relayCredentialsWrite(config.toString()))
         } finally { fixture.close() }
 
         try {

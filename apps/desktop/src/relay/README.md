@@ -5,8 +5,8 @@ The app has device-group orchestration, presence and symmetric bidirectional syn
 records with every other member; joining is the only admission step. The newest
 hybrid-logical stamp wins and older versions stay in entry history. Vault grants,
 primary identification, pause and conflict resolution were removed; sections below
-that mention grants/ACK describe history or peer libraries. Protocol primitives are adapted from the vendored CommonRelay
-Swift SDK, copyright JunWeiUp, under its [MIT license](../../../../vendor/common-relay/swift/LICENSE).
+that mention grants/ACK describe history or peer libraries. Protocol primitives follow the upstream Common Relay protocol, implemented once in vault-core (`relay_protocol`, `relay_net`) and adapted from the original CommonRelay
+Swift SDK, copyright JunWeiUp, under its [MIT license](../../../../crates/vault-core/tests/fixtures/relay-protocol/LICENSE-common-relay).
 Automated local tests use loopback services and synthetic vaults. A separate, explicitly
 authorized production run verified admission and WSS with disposable vaults and a
 test group that was disbanded afterward; no real user vault was accessed.

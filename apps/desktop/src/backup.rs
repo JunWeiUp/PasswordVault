@@ -300,7 +300,7 @@ fn structured_file(
     if let Some(rows) = result["rows"].as_array_mut() {
         for row in rows {
             let i = &row["item"];
-            row["item"] = json!({"title":i["title"],"type":i["type"],"username":i["username"],"url":i["url"]});
+            row["item"] = json!({"title":i["title"],"type":i["type"],"username":i["username"],"url":i["url"],"passkeys":i["passkeys"].as_array().map(|k| k.len())});
         }
     }
     Ok(result.to_string())
@@ -318,6 +318,29 @@ impl Backup {
             let password = Zeroizing::new(password);
             let content = archive(&session, &password)?;
             write_new(Path::new(&path), content.as_bytes())
+        })
+        .await
+        .map_err(|_| "Storage".to_string())?
+    }
+    /// Writes a FIDO CXF v1.0 export (plaintext passwords and passkey private keys) to a new
+    /// owner-only file. The core reauthenticates the master password; content never reaches TS.
+    pub async fn export_cxf(
+        vault: Instance<Vault>,
+        path: String,
+        password: String,
+    ) -> Result<String, String> {
+        let session = vault.with(|v| v.session.clone()).ok_or("Locked")?;
+        blocking(move || {
+            let password = Zeroizing::new(password);
+            let output = Zeroizing::new(command(
+                &session,
+                json!({"op":"export-cxf","currentPassword":password.as_str()}),
+            )?);
+            let mut value: Value = serde_json::from_str(&output).map_err(|_| "InvalidData")?;
+            let content = Zeroizing::new(value["content"].as_str().ok_or("InvalidData")?.to_owned());
+            value["content"] = Value::Null;
+            write_new(Path::new(&path), content.as_bytes())?;
+            Ok(json!({"skipped":value["skipped"]}).to_string())
         })
         .await
         .map_err(|_| "Storage".to_string())?

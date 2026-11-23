@@ -123,10 +123,7 @@ class CredentialLayoutTest {
         while (!fixture.state.value.ready) delay(10)
         fixture.authenticate("1", true)
         assertTrue(
-            fixture.mutate(
-                "settings",
-                JSONObject().put("settings", JSONObject().put("theme", theme)),
-            )
+            fixture.mutate(CoreRequest.settings(JSONObject().put("theme", theme)))
         )
         for ((kind, prefix) in listOf("password" to "账号", "totp" to "验证码", "crypto" to "钱包")) {
             for (index in 29 downTo 0) {

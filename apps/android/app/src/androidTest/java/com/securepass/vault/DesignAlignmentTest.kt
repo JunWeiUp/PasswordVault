@@ -59,7 +59,7 @@ class DesignAlignmentTest {
             withTimeout(10_000) { while (!vault.state.value.ready) delay(10) }
             vault.authenticate("1", true)
             val theme = InstrumentationRegistry.getArguments().getString("designTheme") ?: "light"
-            assertTrue(vault.mutate("settings", JSONObject().put("settings", JSONObject().put("theme", theme))))
+            assertTrue(vault.mutate(CoreRequest.settings(JSONObject().put("theme", theme))))
             val notes = listOf(
                 Triple("家庭重要资料", "家庭", "集中保存家庭常用信息，查找时更省心。"),
                 Triple("设备与保修信息", "家庭", "记录家中设备型号、购买信息与保修情况。"),
@@ -81,8 +81,8 @@ class DesignAlignmentTest {
             val trashedAccount = VaultRepository.blank("password").put("title", "旧论坛账号").put("username", "lin_2015").put("url", "https://forum.example.org").put("password", "Synthetic archived account #42")
             assertTrue(vault.save(trashedAccount))
             assertTrue(vault.trash(trashedAccount))
-            assertTrue(vault.mutate("category-add", JSONObject().put("name", "收据")))
-            assertTrue(vault.mutate("settings", JSONObject().put("settings", JSONObject().put("collectionSort", JSONObject().put("secureNote", "titleAsc").put("password", "titleAsc")))))
+            assertTrue(vault.mutate(CoreRequest.categoryAdd("收据")))
+            assertTrue(vault.mutate(CoreRequest.settings(JSONObject().put("collectionSort", JSONObject().put("secureNote", "titleAsc").put("password", "titleAsc")))))
             vault.close()
             device.wakeUp(); device.executeShellCommand("wm dismiss-keyguard")
             scenario = ActivityScenario.launch(Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK).putExtra("uiTestVault", id).putExtra("qaScreenshots", true))
@@ -126,7 +126,7 @@ class DesignAlignmentTest {
             assertTrue(checkVault.state.value.unlocked)
             // Delete a populated category through the existing core command: notes must survive.
             val noteIds = checkVault.state.value.entries.filter { it.optString("type") == "secureNote" }.map { it.getString("id") }.toSet()
-            assertTrue(checkVault.mutate("category-remove", JSONObject().put("name", "家庭").put("time", java.time.Instant.now().toString())))
+            assertTrue(checkVault.mutate(CoreRequest.categoryRemove("家庭", java.time.Instant.now().toString())))
             assertEquals(noteIds, checkVault.state.value.entries.filter { it.optString("type") == "secureNote" }.map { it.getString("id") }.toSet())
             assertFalse(checkVault.state.value.entries.any { it.optString("type") == "secureNote" && it.optString("category") == "家庭" })
         } catch (failure: Throwable) {

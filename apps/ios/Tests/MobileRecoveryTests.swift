@@ -14,20 +14,18 @@ final class MobileRecoveryTests: XCTestCase {
     item.note = "Original contents"
     let saved = await store.save(item)
     XCTAssertTrue(saved)
-    _ = try await store.perform(["op": .string("history-enable")])
+    _ = try await store.perform(CoreRequest.historyEnable())
     item.note = "Edited contents"
     let edited = await store.save(item)
     XCTAssertTrue(edited)
-    let key = try await store.perform(["op": .string("recovery-generate")]).object["key"]!.string
-    _ = try await store.perform([
-      "op": .string("recovery-enable"), "key": .string(key), "currentPassword": .string("original"),
-    ])
-    let archive = try await store.perform(["op": .string("recovery-export"), "key": .string(key)])
+    let key = try await store.perform(CoreRequest.recoveryGenerate()).object["key"]!.string
+    _ = try await store.perform(CoreRequest.recoveryEnable(currentPassword: "original", key: key))
+    let archive = try await store.perform(CoreRequest.recoveryExport(key: key))
       .object["content"]!.string
     await restored.recover(key: key, newPassword: "x", archive: archive)
     XCTAssertTrue(restored.unlocked)
     XCTAssertEqual(restored.items.first?.note, "Edited contents")
-    let rows = try await restored.perform(["op": .string("history-list"), "id": .string(item.id)])
+    let rows = try await restored.perform(CoreRequest.historyList(id: item.id))
       .object["revisions"]!.array
     XCTAssertEqual(rows.count, 2)
     _ = try await restored.perform([
@@ -37,9 +35,7 @@ final class MobileRecoveryTests: XCTestCase {
     ])
     try await restored.refresh()
     XCTAssertEqual(restored.items.first?.note, "Original contents")
-    _ = try await restored.perform([
-      "op": .string("export"), "password": .string("long backup fixture"),
-    ])
+    _ = try await restored.perform(CoreRequest.export(password: "long backup fixture"))
     await store.close()
     await restored.close()
     try FileManager.default.removeItem(at: source)
@@ -49,13 +45,11 @@ final class MobileRecoveryTests: XCTestCase {
     let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     let store = MobileVaultStore(directory: directory)
     await store.authenticate("original", create: true)
-    let key = try await store.perform(["op": .string("recovery-generate")]).object["key"]!.string
-    _ = try await store.perform([
-      "op": .string("recovery-enable"), "key": .string(key), "currentPassword": .string("original"),
-    ])
+    let key = try await store.perform(CoreRequest.recoveryGenerate()).object["key"]!.string
+    _ = try await store.perform(CoreRequest.recoveryEnable(currentPassword: "original", key: key))
     store.pendingDraft = VaultItem.blank(type: "secureNote", title: "Unfinished")
     do {
-      _ = try await store.perform(["op": .string("recovery-export"), "key": .string(key)])
+      _ = try await store.perform(CoreRequest.recoveryExport(key: key))
       XCTFail("Pending draft must not be omitted silently")
     } catch {}
     store.pendingDraft = nil

@@ -36,6 +36,11 @@ internal fun RelaySettingsScreen(vault: VaultRepository, t: (String,String)->Str
     var showPeerReply by remember(state.reply) { mutableStateOf(false) }
     fun localized(text: String): String { val parts = text.split(" / ", limit = 2); return if (parts.size == 2) t(parts[0], parts[1]) else text }
     var importError by remember { mutableStateOf(false) }
+    var noteConflicts by remember { mutableStateOf<List<org.json.JSONObject>>(emptyList()) }
+    var resolvingId by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(state.paired, state.managed, state.busy) {
+        if (state.paired || state.managed) noteConflicts = vault.meshConflicts()
+    }
     val importer = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) scope.launch {
             try {
@@ -56,8 +61,49 @@ internal fun RelaySettingsScreen(vault: VaultRepository, t: (String,String)->Str
             RelaySyncCard(state, t, relay::syncNow)
             Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.primaryContainer) {
                 Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text(t("已加入同步组", "In the sync group"), style = MaterialTheme.typography.titleSmall)
-                    Text(t("组内所有设备自动双向同步，资料在设备间加密传输，无需逐台授权。", "Every device in the group syncs both ways automatically with end-to-end encryption; no per-device authorization."), style = MaterialTheme.typography.bodyMedium)
+                    Text(t("已加入同步组 · L1 元数据优先", "In sync group · L1 metadata-first"), style = MaterialTheme.typography.titleSmall)
+                    Text(t("密码、笔记正文与大附件元数据优先毫秒级双向同步；大于 512 KB 的附件不阻塞队列、按需拉取。非重叠章节自动合并，重叠编辑保留并行分支供本机解决。", "Credentials, notes, and metadata for >512 KB attachments sync first without head-of-line blocking; large blobs download on demand. Disjoint edits auto-merge and overlapping edits stay as visible local branches."), style = MaterialTheme.typography.bodyMedium)
+                }
+            }
+            if (noteConflicts.isNotEmpty()) {
+                Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.errorContainer) {
+                    Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(t("待解决并行分支（${noteConflicts.size} 篇笔记）", "Parallel branches to resolve (${noteConflicts.size})"), style = MaterialTheme.typography.titleSmall)
+                        Text(t("两端附件引用已自动取并集保护（0 项丢失），未选用分支保留 30 天。", "Attachments from both branches are union-protected; the unchosen branch stays in history for 30 days."), style = MaterialTheme.typography.bodySmall)
+                        noteConflicts.forEach { cf ->
+                            val nid = cf.optString("noteId")
+                            val busyThis = resolvingId == nid
+                            OutlinedCard(Modifier.fillMaxWidth()) {
+                                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    Text(cf.optString("title").ifBlank { t("未命名笔记", "Untitled note") }, style = MaterialTheme.typography.titleSmall)
+                                    Text("${t("冲突位置：", "Section: ")}${cf.optString("section")} · ${cf.optString("localDevice")} ↔ ${cf.optString("remoteDevice")}", style = MaterialTheme.typography.bodySmall)
+                                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        OutlinedButton(enabled = !busyThis, onClick = {
+                                            resolvingId = nid
+                                            scope.launch {
+                                                try { if (vault.resolveMeshConflict(nid, "local")) noteConflicts = vault.meshConflicts() }
+                                                finally { resolvingId = null }
+                                            }
+                                        }) { Text(t("保留本机", "Keep local")) }
+                                        OutlinedButton(enabled = !busyThis, onClick = {
+                                            resolvingId = nid
+                                            scope.launch {
+                                                try { if (vault.resolveMeshConflict(nid, "remote")) noteConflicts = vault.meshConflicts() }
+                                                finally { resolvingId = null }
+                                            }
+                                        }) { Text(t("采用远端", "Use remote")) }
+                                        Button(enabled = !busyThis, onClick = {
+                                            resolvingId = nid
+                                            scope.launch {
+                                                try { if (vault.resolveMeshConflict(nid, "both")) noteConflicts = vault.meshConflicts() }
+                                                finally { resolvingId = null }
+                                            }
+                                        }) { Text(t("合并两版", "Keep both")) }
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -73,7 +119,7 @@ internal fun RelaySettingsScreen(vault: VaultRepository, t: (String,String)->Str
         Text(t("登记设备", "Register device"), style = MaterialTheme.typography.titleMedium)
         Text(t("管理员用此公钥登记设备，并使用与 Mac 相同的设备组。", "Register this public key in the Mac's device group."))
         SelectionContainer { Text("Device: ${state.device}\nGroup: ${state.group}\nPublic key: ${state.publicKey}") }
-        OutlinedTextField(endpoint, { endpoint = it }, label = { Text("wss://host/relay/v1/ws") }, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(endpoint, { endpoint = it }, label = { Text("wss://host/v2/ws") }, modifier = Modifier.fillMaxWidth())
         OutlinedButton(onClick = { importer.launch(arrayOf("application/json", "text/plain")) }) { Text(t("导入设备凭据 JSON", "Import credential JSON")) }
         HorizontalDivider()
             }

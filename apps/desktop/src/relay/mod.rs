@@ -9,14 +9,15 @@ mod mesh;
 mod protocol;
 mod runtime;
 mod service;
-mod strict;
 mod sync;
 #[cfg(test)]
 mod tests;
 mod transport;
 #[cfg(feature = "ui")]
 use nsh_core::prelude::*;
-use serde_json::{Value, json};
+use serde_json::Value;
+#[cfg(feature = "ui")]
+use serde_json::json;
 type Result<T> = std::result::Result<T, String>;
 fn invalid<T>() -> Result<T> {
     Err("InvalidData".into())
@@ -146,6 +147,36 @@ impl Relay {
         }
         Ok(json!(rows).to_string())
     }
+    /// Queues an on-demand L3 attachment download from an online mesh peer.
+    pub async fn request_blob(
+        vault: Instance<crate::Vault>,
+        note_id: String,
+        attachment_id: String,
+        source_device: Option<String>,
+    ) -> Result<String> {
+        #[cfg(all(target_os = "macos", not(test)))]
+        {
+            return remote(
+                vault,
+                json!({
+                    "method": "request_blob",
+                    "noteId": note_id,
+                    "attachmentId": attachment_id,
+                    "sourceDevice": source_device,
+                }),
+            )
+            .await
+            .map(|v| v.to_string());
+        }
+        #[allow(unreachable_code)]
+        let session = vault.with(|v| v.session.clone()).ok_or("Locked")?;
+        blocking(move || {
+            runtime::request_blob(&session, &note_id, &attachment_id, source_device.as_deref())
+                .map(|v| v.to_string())
+        })
+        .await
+        .map_err(|_| "Storage".to_string())?
+    }
     /// Returns unlocked UI state, including an issued invitation capability; identity keys and tokens stay native.
     pub async fn summary(vault: Instance<crate::Vault>) -> Result<String> {
         #[cfg(all(target_os = "macos", not(test)))]
@@ -192,6 +223,12 @@ pub(crate) fn background_dispatch(
             runtime::stop(&session);
             runtime::start(session, directory, false)?;
             Ok(Value::Null)
+        }
+        "request_blob" => {
+            let note_id = args["noteId"].as_str().ok_or("InvalidData")?;
+            let attachment_id = args["attachmentId"].as_str().ok_or("InvalidData")?;
+            let source_device = args["sourceDevice"].as_str();
+            runtime::request_blob(&session, note_id, attachment_id, source_device)
         }
         "action" => {
             let request: Value =

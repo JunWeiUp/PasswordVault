@@ -22,8 +22,8 @@ android {
         applicationId = "com.securepass.vault"
         minSdk = 26
         targetSdk = 36
-        versionCode = 25007
-        versionName = "2.5.7"
+        versionCode = 25008
+        versionName = "2.5.8"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         testProguardFile("test-proguard-rules.pro")
         ndk {
@@ -78,7 +78,6 @@ android {
             matchingFallbacks += "debug"
         }
     }
-    testOptions.unitTests.all { it.systemProperty("jna.library.path", System.getenv("SODIUM_LIBRARY_PATH") ?: "") }
     testBuildType = providers.gradleProperty("testBuildType").orElse("debug").get()
     sourceSets["main"].java.srcDir("src/main/generated")
     sourceSets["main"].assets.srcDir(layout.buildDirectory.dir("generated/note-editor-assets"))
@@ -100,7 +99,6 @@ android {
 
 dependencies {
     implementation("androidx.credentials:credentials:1.5.0")
-    implementation(project(":common-relay"))
     implementation("androidx.camera:camera-camera2:1.4.2")
     implementation("androidx.camera:camera-lifecycle:1.4.2")
     implementation("androidx.camera:camera-view:1.4.2")

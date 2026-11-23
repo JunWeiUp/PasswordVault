@@ -1,10 +1,12 @@
 use crate::*;
 mod capabilities;
+mod contract;
 mod devices;
 mod history;
 mod note_blobs;
 mod note_bodies;
 mod notes;
+mod ops;
 mod passkey_backups;
 mod passkeys;
 mod queries;
@@ -22,12 +24,53 @@ use std::{
 };
 use zeroize::{Zeroize, Zeroizing};
 
+const HYDRATED_NOTE_CACHE_CAP: usize = 16;
+
 struct OpenVault {
     connection: Connection,
     root: Secret,
     header: Header,
     document: Document,
     document_loaded: bool,
+    hydrated_notes: Vec<(String, Value)>,
+}
+
+impl OpenVault {
+    fn get_hydrated(&mut self, id: &str) -> Option<Value> {
+        let pos = self.hydrated_notes.iter().position(|(k, _)| k == id)?;
+        let entry = self.hydrated_notes.remove(pos);
+        let cloned = entry.1.clone();
+        self.hydrated_notes.push(entry);
+        Some(cloned)
+    }
+    fn put_hydrated(&mut self, id: String, item: Value) {
+        if let Some(pos) = self.hydrated_notes.iter().position(|(k, _)| k == &id) {
+            let mut old = self.hydrated_notes.remove(pos);
+            wipe_value(&mut old.1);
+        }
+        while self.hydrated_notes.len() >= HYDRATED_NOTE_CACHE_CAP {
+            let mut evicted = self.hydrated_notes.remove(0);
+            wipe_value(&mut evicted.1);
+        }
+        self.hydrated_notes.push((id, item));
+    }
+    fn invalidate_hydrated(&mut self, id: &str) {
+        if let Some(pos) = self.hydrated_notes.iter().position(|(k, _)| k == id) {
+            let mut old = self.hydrated_notes.remove(pos);
+            wipe_value(&mut old.1);
+        }
+    }
+    fn clear_hydrated_cache(&mut self) {
+        for (_, value) in &mut self.hydrated_notes {
+            wipe_value(value);
+        }
+        self.hydrated_notes.clear();
+    }
+    /// Installs the persisted (`_bodySplit`-stripped) document and wipes the hydrated note LRU cache.
+    fn commit_persisted(&mut self, persisted: Document) {
+        self.document = persisted;
+        self.clear_hydrated_cache();
+    }
 }
 pub struct DiskVault {
     directory: PathBuf,
@@ -88,41 +131,47 @@ fn open_database(path: &Path, root: &[u8; 32], create: bool) -> Result<Connectio
     }
     Ok(conn)
 }
+#[must_use = "assign the returned stripped Document to open.document via commit_persisted()"]
 fn save_document(
     conn: &mut Connection,
     root: &[u8; 32],
     vault_id: &str,
     doc: &Document,
-) -> Result<()> {
-    save_document_with_history(conn, root, vault_id, doc, None)
+) -> Result<Document> {
+    save_document_with_history(conn, root, vault_id, None, doc, None)
 }
+#[must_use = "assign the returned stripped Document to open.document via commit_persisted()"]
 fn save_document_with_history(
     conn: &mut Connection,
     root: &[u8; 32],
     vault_id: &str,
+    previous: Option<&Document>,
     doc: &Document,
     meta: Option<&history::HistoryMeta>,
-) -> Result<()> {
+) -> Result<Document> {
     let tx = storage(conn.transaction())?;
-    save_document_row_with_meta(&tx, root, vault_id, doc, meta)?;
+    let persisted = save_document_row_with_prev(&tx, root, vault_id, previous, doc, meta)?;
     storage(tx.commit())?;
-    Ok(())
+    Ok(persisted)
 }
+#[must_use = "assign the returned stripped Document to open.document via commit_persisted()"]
 fn save_document_row(
     conn: &Connection,
     root: &[u8; 32],
     vault_id: &str,
     doc: &Document,
-) -> Result<()> {
-    save_document_row_with_meta(conn, root, vault_id, doc, None)
+) -> Result<Document> {
+    save_document_row_with_prev(conn, root, vault_id, None, doc, None)
 }
-fn save_document_row_with_meta(
+#[must_use = "assign the returned stripped Document to open.document via commit_persisted()"]
+fn save_document_row_with_prev(
     conn: &Connection,
     root: &[u8; 32],
     vault_id: &str,
+    previous: Option<&Document>,
     doc: &Document,
     meta: Option<&history::HistoryMeta>,
-) -> Result<()> {
+) -> Result<Document> {
     let mut guarded = doc.clone();
     if relay::enabled(conn)? {
         guarded.format_version = guarded.format_version.max(4);
@@ -133,18 +182,19 @@ fn save_document_row_with_meta(
     }
     let doc = &guarded;
     history::capture_with_meta(conn, root, vault_id, doc, meta)?;
-    relay::capture(conn, root, vault_id, doc)?;
     let persisted = note_bodies::sync_and_strip(conn, root, vault_id, doc)?;
+    relay::capture_with_stripped(conn, root, vault_id, doc, &persisted)?;
     let bytes =
         Zeroizing::new(serde_json::to_vec(&persisted).map_err(|_| VaultError::InvalidData)?);
     let sealed = seal(&subkey(root, b"document"), &bytes, vault_id.as_bytes())?;
     let encrypted = serde_json::to_vec(&sealed).map_err(|_| VaultError::InvalidData)?;
     storage(conn.execute("INSERT INTO vault_state(id,payload) VALUES(1,?1) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload",[encrypted]))?;
-    queries::rebuild(conn, root, vault_id, doc)?;
-    Ok(())
+    queries::update_incremental(conn, root, vault_id, previous, &persisted)?;
+    Ok(persisted)
 }
 
-fn load_document(conn: &Connection, root: &[u8; 32], vault_id: &str) -> Result<Document> {
+/// Loads `vault_state` without hydrating `note_bodies`, keeping split notes in L1 summary form.
+fn load_document_raw(conn: &Connection, root: &[u8; 32], vault_id: &str) -> Result<Document> {
     let bytes: Vec<u8> = storage(conn.query_row(
         "SELECT payload FROM vault_state WHERE id=1",
         [],
@@ -161,6 +211,12 @@ fn load_document(conn: &Connection, root: &[u8; 32], vault_id: &str) -> Result<D
     {
         return Err(VaultError::InvalidData);
     }
+    Ok(document)
+}
+
+#[cfg(test)]
+fn load_document(conn: &Connection, root: &[u8; 32], vault_id: &str) -> Result<Document> {
+    let document = load_document_raw(conn, root, vault_id)?;
     note_bodies::hydrate(conn, root, vault_id, document)
 }
 
@@ -208,7 +264,7 @@ impl DiskVault {
         storage(connection.execute_batch(
             "CREATE TABLE vault_state(id INTEGER PRIMARY KEY CHECK(id=1),payload BLOB NOT NULL);",
         ))?;
-        save_document(&mut connection, &root, &header.vault_id, &doc)?;
+        let _ = save_document(&mut connection, &root, &header.vault_id, &doc)?;
         drop(connection);
         atomic_write(
             &temp.path().join("header.json"),
@@ -231,7 +287,7 @@ impl DiskVault {
         {
             (Document::default(), false)
         } else {
-            let document = load_document(&connection, &root, &header.vault_id)?;
+            let document = load_document_raw(&connection, &root, &header.vault_id)?;
             let tx = storage(connection.transaction())?;
             queries::rebuild(&tx, &root, &header.vault_id, &document)?;
             storage(tx.commit())?;
@@ -244,11 +300,13 @@ impl DiskVault {
             header,
             document,
             document_loaded,
+            hydrated_notes: Vec::new(),
         });
         Ok(())
     }
     fn lock(&mut self) {
         if let Some(mut open) = self.unlocked.take() {
+            open.clear_hydrated_cache();
             for value in &mut open.document.items {
                 wipe_value(value);
             }
@@ -267,13 +325,15 @@ impl DiskVault {
     fn open(&mut self) -> Result<&mut OpenVault> {
         let open = self.unlocked.as_mut().ok_or(VaultError::Locked)?;
         if !open.document_loaded {
-            open.document = load_document(&open.connection, &open.root, &open.header.vault_id)?;
+            open.document = load_document_raw(&open.connection, &open.root, &open.header.vault_id)?;
             open.document_loaded = true;
+            open.clear_hydrated_cache();
         }
         Ok(open)
     }
     fn release_document(&mut self) {
         if let Some(open) = &mut self.unlocked {
+            open.clear_hydrated_cache();
             queries::wipe_document(&mut open.document);
             open.document = Document::default();
             open.document_loaded = false;
@@ -281,6 +341,27 @@ impl DiskVault {
     }
     fn mutate(&mut self, f: impl FnOnce(&mut Document) -> Result<Value>) -> Result<Value> {
         self.mutate_with_history(None, f)
+    }
+    fn mutate_hydrated(&mut self, f: impl FnOnce(&mut Document) -> Result<Value>) -> Result<Value> {
+        let open = self.open()?;
+        let mut next = note_bodies::hydrate(
+            &open.connection,
+            &open.root,
+            &open.header.vault_id,
+            open.document.clone(),
+        )?;
+        let result = f(&mut next)?;
+        let persisted = save_document_with_history(
+            &mut open.connection,
+            &open.root,
+            &open.header.vault_id,
+            Some(&open.document),
+            &next,
+            None,
+        )?;
+        open.document = persisted;
+        open.clear_hydrated_cache();
+        Ok(result)
     }
     fn mutate_with_history(
         &mut self,
@@ -290,19 +371,30 @@ impl DiskVault {
         let open = self.open()?;
         let mut next = open.document.clone();
         let result = f(&mut next)?;
-        save_document_with_history(
+        let persisted = save_document_with_history(
             &mut open.connection,
             &open.root,
             &open.header.vault_id,
+            Some(&open.document),
             &next,
             meta,
         )?;
-        open.document = next;
+        open.document = persisted;
+        if let Some(id) = meta.and_then(|m| m.item_id.as_deref()) {
+            open.invalidate_hydrated(id);
+        } else {
+            open.clear_hydrated_cache();
+        }
         Ok(result)
     }
     fn command(&mut self, request: &Value) -> Result<Value> {
         let op = request["op"].as_str().ok_or(VaultError::InvalidData)?;
-        let string = |key: &str| request[key].as_str().ok_or(VaultError::InvalidData);
+        if !contract::is_registered(op) {
+            return Err(VaultError::Unsupported);
+        }
+        if op.starts_with(crate::relay_protocol::OP_PREFIX) {
+            return relay_protocol_command(request);
+        }
         if matches!(op, "read-settings" | "matches" | "fill") {
             let open = self.unlocked.as_ref().ok_or(VaultError::Locked)?;
             return queries::query(&open.connection, &open.root, &open.header.vault_id, request);
@@ -325,6 +417,7 @@ impl DiskVault {
         if [
             "import-preview",
             "import-commit",
+            "export-cxf",
             "security-audit",
             "security-ignore",
             "security-catalog",
@@ -363,426 +456,45 @@ impl DiskVault {
         if op.starts_with("history-") {
             return self.history_command(request);
         }
-        match op {
-            "status" => Ok(
-                json!({"exists":self.directory.exists(),"unlocked":self.unlocked.is_some(),"version":2}),
-            ),
-            "create" => {
-                self.create(string("password")?)?;
-                Ok(json!({"ok":true}))
-            }
-            "create-from-backup" => {
-                if string("content")?.contains("\"PasswordVaultArchive\"") {
-                    if request["richNotes"] != true {
-                        return Err(VaultError::Unsupported);
-                    }
-                    return self.import_archive(
-                        string("content")?,
-                        request["backupPassword"].as_str().unwrap_or(""),
-                        Some(string("password")?),
-                    );
-                }
-                let document = import_document(
-                    string("content")?,
-                    request["backupPassword"].as_str().unwrap_or(""),
-                    request["kind"].as_str().unwrap_or("json"),
-                )?;
-                if document.format_version >= 3 {
-                    return Err(VaultError::Unsupported);
-                }
-                let count = document.items.len();
-                self.create_document(string("password")?, document)?;
-                Ok(json!({"imported": count}))
-            }
-            "create-migrated" => {
-                let document = crate::legacy_database::read_legacy_database(
-                    Path::new(string("source")?),
-                    string("legacyPassword")?,
-                    string("salt")?,
-                )?;
-                let count = document.items.len();
-                self.create_document(string("password")?, document)?;
-                Ok(json!({"imported": count}))
-            }
-            "unlock" => {
-                self.unlock(string("password")?)?;
-                Ok(json!({"ok":true}))
-            }
-            "lock" => {
-                self.lock();
-                Ok(json!({"ok":true}))
-            }
-            "list" => {
-                let open = self.open()?;
-                // Summaries keep the plain-text projection for lists and search but omit
-                // rich note structures, which interfaces load per note with "get". They
-                // are stripped before any copy so large notes are never duplicated here.
-                let summary;
-                let source = if request["summaries"] == true {
-                    summary = summary_document(&open.document);
-                    &summary
-                } else {
-                    &open.document
-                };
-                Ok(json!(relay::peer::editable_document(
-                    &open.connection,
-                    &open.root,
-                    &open.header.vault_id,
-                    source
-                )?))
-            }
-            "get" => {
-                let open = self.open()?;
-                let id = string("id")?;
-                let document = json!(relay::peer::editable_document(
-                    &open.connection,
-                    &open.root,
-                    &open.header.vault_id,
-                    &open.document
-                )?);
-                document["items"]
-                    .as_array()
-                    .and_then(|items| items.iter().find(|item| item["id"] == id))
-                    .cloned()
-                    .ok_or(VaultError::InvalidData)
-            }
-            "share-options" => {
-                let open = self.open()?;
-                let item = open
-                    .document
-                    .items
-                    .iter()
-                    .find(|i| i["id"] == string("id").unwrap_or("") && i["isDeleted"] != true)
-                    .ok_or(VaultError::InvalidData)?;
-                let mut used = std::collections::HashSet::new();
-                crate::archive::item_attachment_refs(item, &mut used)?;
-                let files: Vec<_> = notes::metas(&open.connection)?
-                    .into_iter()
-                    .filter(|m| m.note_id == item["id"] && used.contains(&m.id))
-                    .collect();
-                let fields: Vec<_> = SHARE_FIELDS
-                    .iter()
-                    .filter(|key| item.get(**key).is_some())
-                    .collect();
-                Ok(json!({"fields":fields,"attachments":files}))
-            }
-            "share-seal" => {
-                let id = string("id")?;
-                let fields: Vec<String> = serde_json::from_value(request["fields"].clone())
-                    .map_err(|_| VaultError::InvalidData)?;
-                let ids: Vec<String> = serde_json::from_value(
-                    request.get("attachmentIds").cloned().unwrap_or(json!([])),
-                )
-                .map_err(|_| VaultError::InvalidData)?;
-                if ids.len() > 50 {
-                    return Err(VaultError::InvalidData);
-                }
-                let vault_dir = self.directory.clone();
-                let open = self.open()?;
-                let item = open
-                    .document
-                    .items
-                    .iter()
-                    .find(|i| i["id"] == id && i["isDeleted"] != true)
-                    .ok_or(VaultError::InvalidData)?;
-                let mut used = std::collections::HashSet::new();
-                crate::archive::item_attachment_refs(item, &mut used)?;
-                let metas = notes::metas(&open.connection)?;
-                let mut attachments = Vec::new();
-                let mut bytes_total = 0;
-                for file_id in ids {
-                    let meta = metas
-                        .iter()
-                        .find(|m| m.id == file_id && m.note_id == id && used.contains(&m.id))
-                        .ok_or(VaultError::InvalidData)?;
-                    bytes_total += meta.size;
-                    if bytes_total > 24 * 1024 * 1024 {
-                        return Err(VaultError::InvalidData);
-                    }
-                    let bytes = notes::read(
-                        &vault_dir,
-                        &open.connection,
-                        &open.root,
-                        &open.header.vault_id,
-                        meta,
-                    )?;
-                    attachments.push(share_attachment(
-                        meta.name.clone(),
-                        meta.mime.clone(),
-                        &bytes,
-                    ));
-                }
-                seal_share(item, &fields, &attachments)
-            }
-            "collect-note-attachments" if request["richNotes"] == true => {
-                self.collect_note_attachments()
-            }
-            "note-attachments-status" => {
-                let vault_dir = self.directory.clone();
-                note_blobs::status(&vault_dir, &self.open()?.connection)
-            }
-            "note-attachments-list" => {
-                let note_id = string("noteId")?;
-                notes::list_note_attachments(&self.open()?.connection, note_id)
-            }
-            "category-add" => {
-                self.mutate(|doc| Ok(json!({"name":doc.add_note_category(string("name")?)?})))
-            }
-            "category-remove" => self.mutate(|doc| {
-                Ok(json!({"updated":doc.remove_note_category(string("name")?,string("time")?)?}))
-            }),
-            "category-rename" => self.mutate(|doc| {
-                Ok(json!({"updated":doc.rename_note_category(string("name")?,string("to")?,string("time")?)?}))
-            }),
-            "note-bodies-status" => note_bodies::status(&self.open()?.connection),
-            "save" => {
-                // A summary lacks note structures; writing it back would drop them.
-                if request["item"]["noteSummary"] == true {
-                    return Err(VaultError::InvalidData);
-                }
-                let open = self.open()?;
-                let mut item = relay::peer::prepare_save(
-                    &open.connection,
-                    &open.root,
-                    &open.header.vault_id,
-                    &open.document,
-                    &request["item"],
-                )?;
-                preserve_passkeys_for_edit(&open.document, &mut item)?;
-                let mut cleaned = request.clone();
-                cleaned["item"] = item.clone();
-                self.validate_note_save(&cleaned)?;
-                let item_id = item["id"].as_str().ok_or(VaultError::InvalidData)?.to_owned();
-                let history_meta = history::HistoryMeta::parse(&request["historyMeta"], Some(&item_id))?;
-                // AI writes and explicit milestones auto-enable history so every update is reversible.
-                if history_meta
-                    .as_ref()
-                    .is_some_and(|m| m.actor_type.as_deref() == Some("ai") || m.milestone)
-                {
-                    self.ensure_history_enabled()?;
-                }
-                self.mutate_with_history(history_meta.as_ref(), |doc| {
-                    authorize_item_write(doc, &item)?;
-                    if let Some(old) = doc.items.iter().find(|v| v["id"] == item["id"]) {
-                        authorize_item_write(doc, old)?;
-                    }
-                    doc.upsert(item.clone())?;
-                    Ok(json!({"ok":true}))
-                })?;
-                let open = self.open()?;
-                relay::peer::save_result(
-                    &open.connection,
-                    &open.root,
-                    &open.header.vault_id,
-                    &open.document,
-                    &item_id,
-                )
-            }
-            "remove" => self.remove_note_record(string("id")?),
-            "seal-drafts" => {
-                let open = self.open()?;
-                let bytes = Zeroizing::new(
-                    serde_json::to_vec(&request["items"]).map_err(|_| VaultError::InvalidData)?,
-                );
-                Ok(
-                    json!({"payload":seal(&subkey(&open.root,b"draft-recovery"),&bytes,open.header.vault_id.as_bytes())?}),
-                )
-            }
-            "open-drafts" => {
-                let open = self.open()?;
-                let sealed: Sealed = serde_json::from_value(request["payload"].clone())
-                    .map_err(|_| VaultError::InvalidData)?;
-                let bytes = unseal(
-                    &subkey(&open.root, b"draft-recovery"),
-                    &sealed,
-                    open.header.vault_id.as_bytes(),
-                )?;
-                let items: Vec<Value> =
-                    serde_json::from_slice(&bytes).map_err(|_| VaultError::InvalidData)?;
-                Ok(json!({"items": items}))
-            }
-            "restore-drafts" => {
-                let open = self.open()?;
-                let sealed: Sealed = serde_json::from_value(request["payload"].clone())
-                    .map_err(|_| VaultError::InvalidData)?;
-                let bytes = unseal(
-                    &subkey(&open.root, b"draft-recovery"),
-                    &sealed,
-                    open.header.vault_id.as_bytes(),
-                )?;
-                let items: Vec<Value> =
-                    serde_json::from_slice(&bytes).map_err(|_| VaultError::InvalidData)?;
-                let items = items
-                    .iter()
-                    .map(|item| {
-                        relay::peer::prepare_save(
-                            &open.connection,
-                            &open.root,
-                            &open.header.vault_id,
-                            &open.document,
-                            item,
-                        )
-                    })
-                    .collect::<Result<Vec<_>>>()?;
-                for item in &items {
-                    self.validate_note_save(
-                        &json!({"item":item,"richNotes":request["richNotes"]}),
-                    )?;
-                }
-                self.mutate(|doc| {
-                    for mut item in items {
-                        preserve_passkeys_for_edit(doc, &mut item)?;
-                        authorize_item_write(doc, &item)?;
-                        doc.upsert(item)?;
-                    }
-                    Ok(json!({"ok":true}))
-                })
-            }
-            "settings" => self.mutate(|doc| {
-                update_settings(doc, &request["settings"])?;
-                Ok(json!({"ok":true}))
-            }),
-            "identity" => self.mutate(|doc| {
-                let key = sharing_identity(doc)?;
-                Ok(json!({"publicKey":key}))
-            }),
-            "create-shared" => {
-                self.mutate(|doc| create_shared(doc, string("name")?, string("time")?))
-            }
-            "add-member" => self.mutate(|doc| {
-                add_member(
-                    doc,
-                    string("vaultId")?,
-                    string("publicKey")?,
-                    request["role"].as_str().unwrap_or("viewer"),
-                    request["name"].as_str().unwrap_or(""),
-                )
-            }),
-            "remove-member" => {
-                self.mutate(|doc| remove_member(doc, string("vaultId")?, string("publicKey")?))
-            }
-            "sync-request" => {
-                self.mutate(|doc| create_sync_request(doc, string("peerKey")?, string("vaultId")?))
-            }
-            "sync-respond" => self.mutate(|doc| respond_sync(doc, &request["packet"])),
-            "sync-apply" => self.mutate(|doc| {
-                apply_sync(
-                    doc,
-                    &request["packet"],
-                    string("peerKey")?,
-                    string("vaultId")?,
-                )
-            }),
-            "export" => {
-                if self.open()?.document.format_version >= 3 {
-                    if request["richNotes"] != true {
-                        return Err(VaultError::Unsupported);
-                    }
-                    return Ok(json!({"content":self.archive(string("password")?)?}));
-                }
-                let data = Zeroizing::new(
-                    serde_json::to_vec(&self.open()?.document)
-                        .map_err(|_| VaultError::InvalidData)?,
-                );
-                Ok(json!({"content":encrypt_backup(&data,string("password")?)?}))
-            }
-            "export-csv-backup" => {
-                if self.open()?.document.format_version >= 3 {
-                    return Err(VaultError::Unsupported);
-                }
-                let csv = Zeroizing::new(export_csv(&self.open()?.document)?);
-                let envelope: Value =
-                    serde_json::from_str(&encrypt_backup(csv.as_bytes(), string("password")?)?)
-                        .map_err(|_| VaultError::InvalidData)?;
-                Ok(
-                    json!({"content":json!({"format":"PasswordVaultCSVBackup","version":1,"envelope":envelope}).to_string()}),
-                )
-            }
-            "export-plain" => {
-                if self.open()?.document.format_version >= 3 {
-                    return Err(VaultError::Unsupported);
-                }
-                let doc = &self.open()?.document;
-                let content = if request["kind"] == "csv" {
-                    export_csv(doc)?
-                } else {
-                    serde_json::to_string(doc).map_err(|_| VaultError::InvalidData)?
-                };
-                Ok(json!({"content":content}))
-            }
-            "import" => {
-                self.open()?;
-                if string("content")?.contains("\"PasswordVaultArchive\"") {
-                    if request["richNotes"] != true {
-                        return Err(VaultError::Unsupported);
-                    }
-                    return self.import_archive(
-                        string("content")?,
-                        request["password"].as_str().unwrap_or(""),
-                        None,
-                    );
-                }
-                let incoming = import_document(
-                    string("content")?,
-                    request["password"].as_str().unwrap_or(""),
-                    request["kind"].as_str().unwrap_or("json"),
-                )?;
-                if incoming.format_version >= 3 {
-                    return Err(VaultError::Unsupported);
-                }
-                self.mutate(|doc| Ok(json!({"imported":doc.merge(incoming)?})))
-            }
-            "revoke-background" => {
-                self.open()?;
-                let base = self.directory.parent().ok_or(VaultError::Storage)?;
-                revoke_background_grants(base.to_string_lossy().into_owned())?;
-                Ok(json!({"ok":true}))
-            }
-            "change-password" => {
-                let open = self.open()?;
-                let validated = open.header.unlock(string("currentPassword")?)?;
-                if validated.as_ref() != open.root.as_ref() {
-                    return Err(VaultError::Authentication);
-                }
-                let new_header = Header::create(
-                    string("newPassword")?,
-                    &open.root,
-                    open.header.vault_id.clone(),
-                )?;
-                let bytes = serde_json::to_vec(&new_header).map_err(|_| VaultError::InvalidData)?;
-                atomic_write(&self.directory.join("header.json"), &bytes)?;
-                self.open()?.header = new_header;
-                Ok(json!({"ok":true}))
-            }
-            "totp" => {
-                self.open()?;
-                Ok(
-                    json!({"code":totp(string("secret")?,request["period"].as_u64().unwrap_or(30),request["time"].as_u64().ok_or(VaultError::InvalidData)?)?}),
-                )
-            }
-            "parse-totp" => {
-                self.open()?;
-                parse_totp_uri(string("uri")?)
-            }
-            "wallet" => {
-                self.open()?;
-                wallet(request)
-            }
-            "generate" => {
-                self.open()?;
-                generate_secret(request)
-            }
-            "audit" => Ok(audit(&self.open()?.document.items)),
-            "matches" => matching_accounts(&self.open()?.document.items, string("origin")?),
-            "fill" => fill_account(
-                &self.open()?.document.items,
-                string("origin")?,
-                string("id")?,
-                request["accountId"].as_str(),
-            ),
+        match contract::group(op) {
+            Some("vault") => self.vault_ops(op, request),
+            Some("items") => self.items_ops(op, request),
+            Some("notes") => self.notes_ops(op, request),
+            Some("backup") => self.backup_ops(op, request),
+            Some("sharing") => self.sharing_ops(op, request),
+            Some("categories") => self.categories_ops(op, request),
+            Some("tools") => self.tools_ops(op, request),
             _ => Err(VaultError::Unsupported),
         }
     }
+}
+
+/// Stateless common-relay protocol ops (`relay-protocol-*`) for the mobile relay clients.
+/// Needs no vault or session; requests are wiped after use.
+#[uniffi::export]
+pub fn relay_protocol(request: String) -> Result<String> {
+    let input = Zeroizing::new(request);
+    if input.len() > 300_000 {
+        return Err(VaultError::InvalidData);
+    }
+    let mut parsed: Value = serde_json::from_str(&input).map_err(|_| VaultError::InvalidData)?;
+    let result = match parsed["op"].as_str() {
+        Some(op)
+            if op.starts_with(crate::relay_protocol::OP_PREFIX) && contract::is_registered(op) =>
+        {
+            relay_protocol_command(&parsed)
+        }
+        _ => Err(VaultError::Unsupported),
+    };
+    wipe_value(&mut parsed);
+    serde_json::to_string(&result?).map_err(|_| VaultError::InvalidData)
+}
+
+fn relay_protocol_command(request: &Value) -> Result<Value> {
+    crate::relay_protocol::command(request).map_err(|e| match e.0 {
+        "Authentication" => VaultError::Authentication,
+        _ => VaultError::InvalidData,
+    })
 }
 
 // A native-only Keychain capability. Never return this material through a browser message.
@@ -946,10 +658,18 @@ impl DiskVault {
                 )?;
             }
             let tx = storage(open.connection.transaction())?;
-            save_document_row(&tx, &open.root, &open.header.vault_id, &doc)?;
+            let saved = save_document_row_with_prev(
+                &tx,
+                &open.root,
+                &open.header.vault_id,
+                Some(&open.document),
+                &doc,
+                None,
+            )?;
             storage(tx.execute("INSERT INTO browser_sync_receipts(id) VALUES(?1)", [id]))?;
             storage(tx.commit())?;
-            open.document = doc;
+            open.document = saved;
+            open.clear_hydrated_cache();
             Ok(json!({"saved":true}))
         })();
         if was_locked {
@@ -988,11 +708,22 @@ impl VaultSession {
         }
         let mut parsed: Value =
             serde_json::from_str(&input).map_err(|_| VaultError::InvalidData)?;
-        let result = self
-            .inner
-            .lock()
-            .map_err(|_| VaultError::Storage)?
-            .command(&parsed);
+        // Stateless relay protocol ops never wait for, or touch, the vault.
+        let result = if parsed["op"]
+            .as_str()
+            .is_some_and(|op| op.starts_with(crate::relay_protocol::OP_PREFIX))
+        {
+            if parsed["op"].as_str().is_some_and(contract::is_registered) {
+                relay_protocol_command(&parsed)
+            } else {
+                Err(VaultError::Unsupported)
+            }
+        } else {
+            self.inner
+                .lock()
+                .map_err(|_| VaultError::Storage)?
+                .command(&parsed)
+        };
         wipe_value(&mut parsed);
         serde_json::to_string(&result?).map_err(|_| VaultError::InvalidData)
     }
@@ -1119,11 +850,41 @@ fn note_search_metadata(node: &Value, depth: usize, output: &mut Vec<String>) {
 
 /// A copy of `doc` whose items omit rich note structures (marked `noteSummary`),
 /// built item by item so no full copy of the large structures is made.
+/// Handles both hydrated notes and lazily split `_bodySplit: true` notes with zero DB decryption.
 fn summary_document(doc: &Document) -> Document {
     let items = doc
         .items
         .iter()
         .map(|item| match item.as_object() {
+            Some(object) if object.get("_bodySplit") == Some(&Value::Bool(true)) => {
+                let mut lite: serde_json::Map<String, Value> = object
+                    .iter()
+                    .filter(|(key, _)| {
+                        !matches!(
+                            key.as_str(),
+                            "_bodySplit"
+                                | "_bodyDigest"
+                                | "_hasRichBody"
+                                | "_searchMeta"
+                                | "noteDocument"
+                                | "noteOriginal"
+                        )
+                    })
+                    .map(|(key, value)| (key.clone(), value.clone()))
+                    .collect();
+                let search_meta = object
+                    .get("_searchMeta")
+                    .and_then(Value::as_str)
+                    .unwrap_or("");
+                if !search_meta.is_empty()
+                    || object.get("_hasRichBody") == Some(&Value::Bool(true))
+                    || object.get("noteFormat").and_then(Value::as_str) == Some("rich-v1")
+                {
+                    lite.insert("__noteSearchText".into(), json!(search_meta));
+                }
+                lite.insert("noteSummary".into(), Value::Bool(true));
+                Value::Object(lite)
+            }
             Some(object)
                 if object.contains_key("noteDocument") || object.contains_key("noteOriginal") =>
             {

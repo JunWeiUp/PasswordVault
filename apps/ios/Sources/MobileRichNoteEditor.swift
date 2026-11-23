@@ -7,6 +7,7 @@ struct MobileRichNoteEditor: View {
   @Environment(\.dismiss) private var dismiss
   let original: VaultItem
   @State private var draft: VaultItem
+  @State private var hydrated: Bool
   @State private var session: MobileNoteSession?
   @State private var picker = false
   @State private var exporting = false
@@ -15,20 +16,48 @@ struct MobileRichNoteEditor: View {
   @State private var error = ""
   @State private var saving = false
   @State private var discard = false
-  init(item: VaultItem) { original = item; _draft = State(initialValue: item) }
+  init(item: VaultItem) {
+    original = item
+    _draft = State(initialValue: item)
+    _hydrated = State(initialValue: !item.bool("noteSummary"))
+  }
   var body: some View {
     NavigationStack {
       VStack(spacing: 8) {
         TextField(store.t("标题", "Title"), text: Binding(get: { draft.title }, set: { draft.title = $0; store.pendingDraft = draft })).font(.title2).padding(.horizontal).disabled(!store.canEdit(draft)).accessibilityIdentifier("entry.title")
         if !error.isEmpty { Text(error).foregroundStyle(.orange).font(.caption).padding(.horizontal) }
-        MobileNoteSurface(item: draft, store: store, connected: { value in
-          session = value
-          value.changed = { item in draft = item; store.pendingDraft = item; store.activity() }
-          value.failed = { error = store.t("编辑器操作未完成，最近确认的草稿已保留。", "Editor operation incomplete; last confirmed draft retained.") }
-          value.chooseFile = { picker = true }
-          value.exportFile = { data, name in exportDocument = MobileNoteFile(data: data); exportName = (name as NSString).lastPathComponent; exporting = true }
-          if store.canEdit(draft) { store.pendingDraft = draft; store.captureRichDraft = { value.capture(closing: true) } }
-        })
+        if hydrated {
+          MobileNoteSurface(item: draft, store: store, connected: { value in
+            session = value
+            value.changed = { item in draft = item; store.pendingDraft = item; store.activity() }
+            value.failed = { error = store.t("编辑器操作未完成，最近确认的草稿已保留。", "Editor operation incomplete; last confirmed draft retained.") }
+            value.chooseFile = { picker = true }
+            value.exportFile = { data, name in exportDocument = MobileNoteFile(data: data); exportName = (name as NSString).lastPathComponent; exporting = true }
+            if store.canEdit(draft) { store.pendingDraft = draft; store.captureRichDraft = { value.capture(closing: true) } }
+          })
+        } else {
+          VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+              ProgressView().controlSize(.small)
+              Text(store.t("L1 摘要已就绪 · 正在按需加载完整富文本…", "L1 summary ready · loading full rich note…"))
+                .font(.caption).foregroundStyle(.blue)
+            }
+            if !draft.note.isEmpty {
+              Text(draft.note).font(.body).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading)
+            }
+            Spacer()
+          }.padding(.horizontal)
+        }
+      }
+      .task {
+        if !hydrated {
+          if let full = await store.ensureFull(original.id) {
+            var next = full
+            if draft.title != original.title { next.title = draft.title }
+            draft = next
+          }
+          hydrated = true
+        }
       }
       .navigationTitle(store.t("图文笔记", "Rich note"))
       .toolbar {

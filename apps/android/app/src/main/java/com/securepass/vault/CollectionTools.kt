@@ -302,10 +302,7 @@ internal fun CollectionTools(
                                         lines.lines().filter { it.isNotBlank() }.withIndex()) {
                                         try {
                                             ready +=
-                                                vault.command(
-                                                    "parse-totp",
-                                                    JSONObject().put("uri", line.trim()),
-                                                )
+                                                vault.command(CoreRequest.parseTotp(line.trim()))
                                         } catch (_: Exception) {
                                             error("${index + 1}")
                                         }

@@ -3,7 +3,7 @@ import { View } from "nsh";
 import { Menu } from "nsh/desktop";
 import { Btn, Row, T, copySecret } from "../kit";
 import { Icon } from "../icons";
-import { call, dest, edit, errorText, go, items, select, toast, type Item } from "../store";
+import { call, dest, edit, errorText, go, items, itemsById, select, toast, type Item } from "../store";
 import { c, MONO, fs } from "../theme";
 import { formatCode, secondsLeft, TotpText } from "../totp";
 import { hostOf, validPeriod, websites } from "./model";
@@ -13,11 +13,12 @@ const periodOf = (item: Item) => (validPeriod(item.period ?? 30) ? Number(item.p
 const live = (item: Item | undefined) => !!item && item.type === "totp" && !item.isDeleted && !!item.secret;
 
 /** The code an account shows: its own secret first, then the linked 验证码 entry (`linkedTotpId`). */
-export function codeFor(item: Item, list: Item[] = items()): AccountCode | null {
+export function codeFor(item: Item, list?: Item[]): AccountCode | null {
   if (item.type !== "password") return null;
   if (item.secret) return { secret: item.secret, period: periodOf(item), source: "embedded" };
   if (!item.linkedTotpId) return null;
-  const entry = list.find(other => other.id === item.linkedTotpId);
+  // O(1) Map lookup on the default live store list, eliminating O(N^2) scans across rows.
+  const entry = list ? list.find(other => other.id === item.linkedTotpId) : itemsById().get(item.linkedTotpId);
   return live(entry) ? { secret: entry!.secret, period: periodOf(entry!), source: "entry", entry } : null;
 }
 
@@ -63,15 +64,16 @@ export function pickCodeMenu(item: Item, position?: { x: number; y: number }) {
 export function openCodeEntry(entry: Item) { go("codes"); select(entry.id); }
 
 /** Compact live code for list rows; pressing copies without selecting the row. */
-export function RowCode(props: { item: Item }) {
+export function RowCode(props: { item: Item; active?: boolean }) {
   const code = () => codeFor(props.item);
+  const liveTick = () => props.active !== false;
   return <If when={code() && dest() !== "trash"}>
     <View role="button" accessibilityLabel={`复制 ${props.item.title || "账号"} 的验证码`} tooltip="点击复制验证码"
       onPress={() => void copyAccountCode(props.item)}
       style={{ alignItems: "flex-end", gap: 3, paddingHorizontal: 5, paddingVertical: 3, borderRadius: 6, cursor: "copy" }}
       hoverStyle={{ backgroundColor: c().blueSoft }}>
-      <TotpText secret={code()!.secret} period={code()!.period} style={{ fontFamily: MONO, fontSize: fs(12), fontWeight: "600", color: c().blue }} />
-      <T size={11} color={c().faint}>{secondsLeft(code()!.period)}s</T>
+      <TotpText secret={code()!.secret} period={code()!.period} active={liveTick()} style={{ fontFamily: MONO, fontSize: fs(12), fontWeight: "600", color: c().blue }} />
+      <T size={11} color={c().faint}>{liveTick() ? `${secondsLeft(code()!.period)}s` : "—"}</T>
     </View>
   </If>;
 }

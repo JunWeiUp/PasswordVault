@@ -162,6 +162,10 @@ mod server {
                 browser::approve_native(string(args, "challenge")?, args["allow"] == true);
                 Ok(Value::Null)
             }
+            "browser-approve-passkey" => {
+                browser::approve_passkey_native(string(args, "challenge")?, args["selection"].clone());
+                Ok(Value::Null)
+            }
             "hotkey-configure" => {
                 let choice = string(args, "choice")?;
                 let ok = hotkey::configure_background(choice.clone());

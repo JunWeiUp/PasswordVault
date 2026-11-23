@@ -66,17 +66,17 @@ internal fun ImportReviewPanel(vault: VaultRepository, t: (String, String) -> St
     var source by remember { mutableStateOf("") }; var format by remember { mutableStateOf("csv") }; var previewText by remember { mutableStateOf("") }
     var checkedMappingText by remember { mutableStateOf("{}") }
     var mappingText by remember { mutableStateOf("{}") }; var choicesText by remember { mutableStateOf("{}") }; var busy by remember { mutableStateOf(false) }; var message by remember { mutableStateOf("") }
-    suspend fun inspect(data: String = source, kind: String = format) { val submitted = mappingText; busy = true; try { previewText = vault.command("import-preview", JSONObject().put("format", kind).put("data", data).put("mapping", JSONObject(submitted))).toString(); checkedMappingText = submitted; choicesText = "{}"; message = "" } catch (_: Exception) { previewText = ""; message = t("预检失败；资料库未更改", "Preview failed; vault unchanged") } finally { busy = false } }
+    suspend fun inspect(data: String = source, kind: String = format) { val submitted = mappingText; busy = true; try { previewText = vault.command(CoreRequest.importPreview(kind, data, mapping = JSONObject(submitted))).toString(); checkedMappingText = submitted; choicesText = "{}"; message = "" } catch (_: Exception) { previewText = ""; message = t("预检失败；资料库未更改", "Preview failed; vault unchanged") } finally { busy = false } }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> if (uri != null) scope.launch {
         busy = true
         try {
             val data = withContext(Dispatchers.IO) { context.contentResolver.openInputStream(uri)?.use { input -> val bytes = input.readBytesLimited(64 * 1024 * 1024); Base64.encodeToString(bytes, Base64.NO_WRAP) } ?: error("Cannot open file") }
             var name = ""; context.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { if (it.moveToFirst()) name = it.getString(0) }
-            source = data; format = if (name.endsWith(".1pux", true)) "1pux" else "csv"; mappingText = "{}"; inspect(data, format)
+            source = data; format = when { name.endsWith(".1pux", true) -> "1pux"; name.endsWith(".json", true) || name.endsWith(".cxf", true) -> "cxf"; else -> "csv" }; mappingText = "{}"; inspect(data, format)
         } catch (_: Exception) { message = t("无法读取文件，原文件未修改", "Could not read file; source unchanged") } finally { busy = false }
     } }
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(t("导入 CSV / 1Password .1pux", "Import CSV / 1Password .1pux"), style = MaterialTheme.typography.titleMedium)
+        Text(t("导入 CSV / 1Password .1pux / FIDO CXF", "Import CSV / 1Password .1pux / FIDO CXF"), style = MaterialTheme.typography.titleMedium)
         Text(t("重复条目默认跳过，不覆盖同名记录；原文件不会删除。", "Duplicates are skipped by default; existing records and source files are retained."))
         Button(enabled = !busy, onClick = { picker.launch(arrayOf("*/*")) }) { Text(t("选择文件", "Choose file")) }
         if (message.isNotEmpty()) Text(message)
@@ -95,7 +95,7 @@ internal fun ImportReviewPanel(vault: VaultRepository, t: (String, String) -> St
                 val warnings = row.optJSONArray("warnings") ?: JSONArray(); for (j in 0 until warnings.length()) Text(warnings.getString(j))
             }
             val failures = preview.optJSONArray("failures") ?: JSONArray(); for (i in 0 until failures.length()) Text(failures.getJSONObject(i).optString("reason"), color = MaterialTheme.colorScheme.error)
-            Button(enabled = !busy && rows.length() > 0 && checkedMappingText == mappingText, onClick = { scope.launch { busy = true; try { val result = vault.command("import-commit", JSONObject().put("format", format).put("data", source).put("mapping", JSONObject(mappingText)).put("choices", JSONObject(choicesText))); vault.refresh(); message = "${t("已导入", "Imported")}: ${result.optInt("added")}; ${t("跳过", "Skipped")}: ${result.optInt("skipped")}"; source = ""; previewText = "" } catch (_: Exception) { message = t("导入失败；原有数据已保留", "Import failed; existing data retained") } finally { busy = false } } }) { Text(t("确认导入", "Confirm import")) }
+            Button(enabled = !busy && rows.length() > 0 && checkedMappingText == mappingText, onClick = { scope.launch { busy = true; try { val result = vault.command(CoreRequest.importCommit(format, source, mapping = JSONObject(mappingText), choices = JSONObject(choicesText))); vault.refresh(); message = "${t("已导入", "Imported")}: ${result.optInt("added")}; ${t("跳过", "Skipped")}: ${result.optInt("skipped")}"; source = ""; previewText = "" } catch (_: Exception) { message = t("导入失败；原有数据已保留", "Import failed; existing data retained") } finally { busy = false } } }) { Text(t("确认导入", "Confirm import")) }
         }
     }
 }
@@ -112,10 +112,10 @@ internal fun SecurityCenterPanel(vault: VaultRepository, items: List<JSONObject>
     var reportText by remember { mutableStateOf("{}") }; var enabled by remember { mutableStateOf(false) }; var busy by remember { mutableStateOf(false) }; var message by remember { mutableStateOf("") }
     var showLicenses by remember { mutableStateOf(false) }
     var results by remember { mutableStateOf<Map<String, String>>(emptyMap()) }; var job by remember { mutableStateOf<Job?>(null) }
-    suspend fun refresh() { try { reportText = vault.command("security-audit").toString() } catch (_: Exception) { message = t("本地检查未完成", "Local check incomplete") } }
+    suspend fun refresh() { try { reportText = vault.command(CoreRequest.securityAudit()).toString() } catch (_: Exception) { message = t("本地检查未完成", "Local check incomplete") } }
     val catalogPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) scope.launch {
-            try { val text = withContext(Dispatchers.IO) { context.contentResolver.openInputStream(uri)?.use { String(it.readBytesLimited(8 * 1024 * 1024), Charsets.UTF_8) } ?: error("Cannot read") }; vault.command("security-catalog", JSONObject().put("catalog", JSONObject(text))); refresh() }
+            try { val text = withContext(Dispatchers.IO) { context.contentResolver.openInputStream(uri)?.use { String(it.readBytesLimited(8 * 1024 * 1024), Charsets.UTF_8) } ?: error("Cannot read") }; vault.command(CoreRequest.securityCatalog(JSONObject(text))); refresh() }
             catch (_: Exception) { message = t("目录导入失败，已保留原目录", "Catalog import failed; previous catalog retained") }
         }
     }
@@ -142,7 +142,7 @@ internal fun SecurityCenterPanel(vault: VaultRepository, items: List<JSONObject>
             if (detail.isNotEmpty()) Text(detail, style = MaterialTheme.typography.bodyMedium)
             val link = finding.optString("source").ifEmpty { finding.optJSONObject("incident")?.optString("source").orEmpty() }
             if (link.startsWith("https://")) TextButton(onClick = { context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(link))) }) { Text(t("查看依据", "View source")) }
-            TextButton(onClick = { scope.launch { try { vault.command("security-ignore", JSONObject().put("key", finding.getString("key")).put("ignored", !finding.optBoolean("ignored"))); refresh() } catch (_: Exception) { message = t("无法保存设置", "Could not save setting") } } }) { Text(if (finding.optBoolean("ignored")) t("恢复提醒", "Restore finding") else t("忽略此项", "Ignore finding")) }
+            TextButton(onClick = { scope.launch { try { vault.command(CoreRequest.securityIgnore(finding.getString("key"), !finding.optBoolean("ignored"))); refresh() } catch (_: Exception) { message = t("无法保存设置", "Could not save setting") } } }) { Text(if (finding.optBoolean("ignored")) t("恢复提醒", "Restore finding") else t("忽略此项", "Ignore finding")) }
         }
         Row { Checkbox(enabled, { enabled = it; if (!it) { job?.cancel(); results = emptyMap() } }); Text(t("允许本次联网检查", "Allow network check for this session")) }
         Text(t("仅向 Have I Been Pwned 发送 SHA-1 前 5 位；不发送密码、完整哈希、账号或站点。未检查和失败不表示安全。", "Only 5 SHA-1 characters go to Have I Been Pwned; no passwords, full hashes, accounts or sites. Unchecked and failed do not mean safe."))
@@ -154,12 +154,12 @@ internal fun SecurityCenterPanel(vault: VaultRepository, items: List<JSONObject>
                     val passwords = mutableSetOf(item.optString("password")); val accounts = item.optJSONArray("accounts") ?: JSONArray(); for (i in 0 until accounts.length()) passwords.add(accounts.getJSONObject(i).optString("password")); passwords.remove("")
                     var count = 0L
                     for (password in passwords) {
-                        ensureActive(); val parts = vault.command("breach-request", JSONObject().put("password", password)); val prefix = parts.getString("prefix"); require(prefix.matches(Regex("[A-F0-9]{5}")))
+                        ensureActive(); val parts = vault.command(CoreRequest.breachRequest(password)); val prefix = parts.getString("prefix"); require(prefix.matches(Regex("[A-F0-9]{5}")))
                         val response = withContext(Dispatchers.IO) {
                             val connection = URL("https://api.pwnedpasswords.com/range/$prefix").openConnection() as HttpsURLConnection
                             try { connection.instanceFollowRedirects = false; connection.useCaches = false; connection.connectTimeout = 15000; connection.readTimeout = 15000; connection.setRequestProperty("Add-Padding", "true"); require(connection.responseCode == 200); connection.inputStream.use { String(it.readBytesLimited(4 * 1024 * 1024), Charsets.UTF_8) } } finally { connection.disconnect() }
                         }
-                        count += vault.command("breach-response", JSONObject().put("suffix", parts.getString("suffix")).put("response", response)).getLong("count")
+                        count += vault.command(CoreRequest.breachResponse(parts.getString("suffix"), response)).getLong("count")
                     }
                     if (passwords.isNotEmpty()) result = if (count > 0) t("发现泄露记录，请更换密码", "Exposed password found; change it") else t("本次查询未发现记录", "Not found in this query")
                 } catch (error: CancellationException) { throw error } catch (_: Exception) { result = t("检查未完成，请重试", "Check incomplete; retry") }

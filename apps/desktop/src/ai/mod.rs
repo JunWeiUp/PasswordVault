@@ -105,7 +105,13 @@ fn core(s: &VaultSession, v: Value) -> Result<Value> {
         .map_err(|_| "InvalidData".into())
 }
 fn doc(s: &VaultSession) -> Result<Value> {
+    core(s, json!({"op":"list","summaries":true,"richNotes":true}))
+}
+fn doc_full(s: &VaultSession) -> Result<Value> {
     core(s, json!({"op":"list","richNotes":true}))
+}
+fn full_item(s: &VaultSession, id: &str) -> Result<Value> {
+    core(s, json!({"op":"get","id":id}))
 }
 fn save(s: &VaultSession, patch: Value) -> Result<()> {
     core(s, json!({"op":"settings","settings":patch})).map(|_| ())
@@ -403,7 +409,7 @@ fn request_inner(s: &VaultSession, r: Value, request_id: &str, digest: &str) -> 
         let d = doc(s)?;
         let c = client_digest(&d, digest)?;
         return match op {
-            "note_list" => notes::note_list(&d, c, &r),
+            "note_list" => notes::note_list(s, &d, c, &r),
             "note_read" => notes::note_read(s, &d, c, &r),
             "note_read_asset" => notes::note_read_asset(s, &d, c, &r),
             "note_history" => notes::note_history(s, &d, c, &r),
@@ -514,13 +520,20 @@ fn request_inner(s: &VaultSession, r: Value, request_id: &str, digest: &str) -> 
             }
             "get" if r.get("fileId").is_none() => {
                 let i = entry(&d, c, &r)?;
-                let mut out = projection(i, true);
-                out["version"] = i["updatedAt"].clone();
-                let files: Vec<&String> = d["settings"]["aiAccessOrdinaryFiles"][i["id"].as_str().unwrap_or("")]
+                let owned;
+                let target = if i["type"] == "secureNote" && i["noteSummary"] == true {
+                    owned = full_item(s, i["id"].as_str().ok_or("InvalidData")?)?;
+                    &owned
+                } else {
+                    i
+                };
+                let mut out = projection(target, true);
+                out["version"] = target["updatedAt"].clone();
+                let files: Vec<&String> = d["settings"]["aiAccessOrdinaryFiles"][target["id"].as_str().unwrap_or("")]
                     .as_object()
                     .into_iter()
                     .flatten()
-                    .filter(|(fid, _)| approved_file(&d, c, i, fid))
+                    .filter(|(fid, _)| approved_file(&d, c, target, fid))
                     .map(|(fid, _)| fid)
                     .collect();
                 if !files.is_empty() {
@@ -533,7 +546,14 @@ fn request_inner(s: &VaultSession, r: Value, request_id: &str, digest: &str) -> 
                 if hash(&i.to_string()) != revision {
                     return Err("EntryChanged".into());
                 }
-                let value = secret(i, &field)?.as_str().ok_or("DeniedField")?;
+                let owned;
+                let target = if i["type"] == "secureNote" && i["noteSummary"] == true {
+                    owned = full_item(s, i["id"].as_str().ok_or("InvalidData")?)?;
+                    &owned
+                } else {
+                    i
+                };
+                let value = secret(target, &field)?.as_str().ok_or("DeniedField")?;
                 if let Some(seconds) = lease {
                     let entry_id = i["id"].as_str().unwrap_or("").to_string();
                     let cid = c["id"].as_str().unwrap_or("").to_string();

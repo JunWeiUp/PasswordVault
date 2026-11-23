@@ -83,7 +83,7 @@ class DeviceEditorTest {
             fixture.authenticate("1", true)
             // Below format 7 the core refuses device records outright.
             assertFalse(fixture.save(storedDevice()))
-            fixture.command("devices-enable", JSONObject().put("confirm", true).put("currentPassword", "1"))
+            fixture.command(CoreRequest.devicesEnable(true, "1"))
             // The core validates device payloads: an invalid port is rejected and nothing is written.
             assertFalse(fixture.save(storedDevice().apply { getJSONObject("device").put("port", 0) }))
             assertFalse(fixture.save(storedDevice().put("sharedVaultId", "shared-x")))

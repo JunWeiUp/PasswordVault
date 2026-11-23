@@ -1,7 +1,7 @@
 //! Personal-vault replication. The relay transports bytes; only the Mac commits revisions.
 //! Every journal update shares the SQLCipher transaction with the document write.
 use super::*;
-#[path = "relay_peer.rs"]
+#[path = "relay_peer/mod.rs"]
 pub(super) mod peer;
 use base64::{engine::general_purpose::STANDARD, Engine};
 use serde::{Deserialize, Serialize};
@@ -9,7 +9,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 #[path = "relay_capabilities.rs"]
 mod capabilities;
-#[path = "relay_mesh.rs"]
+#[path = "relay_mesh/mod.rs"]
 pub(super) mod mesh;
 
 // These operations implement their own authenticated personal-relay gate.
@@ -134,14 +134,15 @@ fn commit(state: &mut State, key: &str, value: Value) -> Result<()> {
     state.canonical.insert(key.into(), value);
     Ok(())
 }
-pub(super) fn capture(
+pub(super) fn capture_with_stripped(
     conn: &Connection,
     root: &[u8; 32],
     vault: &str,
     doc: &Document,
+    stripped: &Document,
 ) -> Result<()> {
     peer::capture(conn, root, vault, doc)?;
-    if mesh::capture(conn, root, vault, doc)? {
+    if mesh::capture(conn, root, vault, stripped)? {
         return Ok(());
     }
     if doc.settings["activePeerLibrary"]
@@ -153,8 +154,9 @@ pub(super) fn capture(
     if !enabled(conn)? {
         return Ok(());
     }
+    let hydrated = note_bodies::hydrate(conn, root, vault, doc.clone())?;
     let mut state = load(conn, root, vault)?;
-    let now = records(doc);
+    let now = records(&hydrated);
     let keys: BTreeSet<_> = now.keys().chain(state.baseline.keys()).cloned().collect();
     for key in keys {
         let value = now.get(&key).cloned().unwrap_or(Value::Null);
@@ -205,6 +207,9 @@ fn attachments(vault_dir: &Path, open: &OpenVault, packet: &Value) -> Result<Val
         if !needed.contains(&meta.id) {
             continue;
         }
+        if notes::is_remote(&open.connection, &meta.id)? {
+            continue;
+        }
         let bytes = notes::read(
             vault_dir,
             &open.connection,
@@ -216,6 +221,87 @@ fn attachments(vault_dir: &Path, open: &OpenVault, packet: &Value) -> Result<Val
     }
     Ok(json!(files))
 }
+
+/// Splits referenced attachments into inline small files (`<= inline_limit`) and
+/// L1 metadata-only `remoteFiles` (`> inline_limit` or still remote locally) so
+/// large `<= 100 MB` blobs never cause head-of-line blocking in Mesh sync.
+fn attachments_split(
+    vault_dir: &Path,
+    open: &OpenVault,
+    packet: &Value,
+    inline_limit: usize,
+    device: &str,
+) -> Result<(Value, Value)> {
+    let mut needed = std::collections::HashSet::new();
+    if let Some(records) = packet["records"].as_object() {
+        for item in records.values() {
+            crate::archive::item_attachment_refs(item, &mut needed)?;
+        }
+    }
+    let mut inline_files = Vec::new();
+    let mut remote_files = Vec::new();
+    for meta in notes::metas(&open.connection)? {
+        if !needed.contains(&meta.id) {
+            continue;
+        }
+        let is_remote = notes::is_remote(&open.connection, &meta.id)?;
+        if !is_remote && meta.size <= inline_limit {
+            let bytes = notes::read(
+                vault_dir,
+                &open.connection,
+                &open.root,
+                &open.header.vault_id,
+                &meta,
+            )?;
+            inline_files.push(json!({"meta":meta,"data":STANDARD.encode(bytes.as_slice())}));
+        } else {
+            let cache = notes::get_cache(
+                &open.connection,
+                &open.root,
+                &open.header.vault_id,
+                &meta.note_id,
+                &meta.id,
+            )
+            .ok();
+            remote_files.push(json!({
+                "meta": meta,
+                "sourceDevice": device,
+                "excerpt": cache.as_ref().and_then(|c| c.get("excerpt").cloned()).unwrap_or(Value::Null),
+                "thumb": cache.as_ref().and_then(|c| c.get("thumb").cloned()).unwrap_or(Value::Null),
+            }));
+        }
+    }
+    Ok((json!(inline_files), json!(remote_files)))
+}
+
+fn receive_remote_files(
+    conn: &Connection,
+    root: &[u8; 32],
+    vault: &str,
+    peer: &str,
+    remote_files: &Value,
+) -> Result<()> {
+    if remote_files.is_null() {
+        return Ok(());
+    }
+    let list = remote_files.as_array().ok_or(VaultError::InvalidData)?;
+    if list.len() > 10_000 {
+        return Err(VaultError::InvalidData);
+    }
+    for entry in list {
+        let meta: notes::AttachmentMeta =
+            serde_json::from_value(entry["meta"].clone()).map_err(|_| VaultError::InvalidData)?;
+        if meta.size > crate::archive::FILE_LIMIT {
+            return Err(VaultError::InvalidData);
+        }
+        let source = entry["sourceDevice"].as_str().unwrap_or(peer);
+        let excerpt = entry.get("excerpt").filter(|v| !v.is_null());
+        let thumb = entry.get("thumb").filter(|v| !v.is_null());
+        notes::write_remote_stub(conn, root, vault, &meta, Some(source), excerpt, thumb)?;
+    }
+    Ok(())
+}
+
 fn receive_files(
     vault_dir: &Path,
     conn: &Connection,
@@ -249,8 +335,12 @@ fn receive_files(
             return Err(VaultError::InvalidData);
         }
         if let Some(old) = existing.iter().find(|m| m.id == meta.id) {
-            if serde_json::to_value(old).ok() != serde_json::to_value(&meta).ok()
-                || notes::read(vault_dir, conn, root, vault, old)?.as_slice() != bytes.as_slice()
+            if serde_json::to_value(old).ok() != serde_json::to_value(&meta).ok() {
+                return Err(VaultError::InvalidData);
+            }
+            if notes::is_remote(conn, &old.id)? {
+                notes::write(vault_dir, conn, root, vault, &meta, &bytes)?;
+            } else if notes::read(vault_dir, conn, root, vault, old)?.as_slice() != bytes.as_slice()
             {
                 return Err(VaultError::InvalidData);
             }
@@ -413,7 +503,12 @@ impl DiskVault {
                 storage(fs::rename(stage.path(), &backup))?;
             }
             let open = self.open()?;
-            let mut next = open.document.clone();
+            let mut next = note_bodies::hydrate(
+                &open.connection,
+                &open.root,
+                &open.header.vault_id,
+                open.document.clone(),
+            )?;
             next.format_version = next.format_version.max(4);
             let baseline = records(&next);
             let mut state = State {
@@ -455,9 +550,17 @@ impl DiskVault {
             let tx = storage(open.connection.transaction())?;
             storage(tx.execute_batch("CREATE TABLE personal_relay(id INTEGER PRIMARY KEY CHECK(id=1),payload BLOB NOT NULL)"))?;
             store(&tx, &open.root, &open.header.vault_id, &state)?;
-            save_document_row(&tx, &open.root, &open.header.vault_id, &next)?;
+            let saved = save_document_row_with_prev(
+                &tx,
+                &open.root,
+                &open.header.vault_id,
+                Some(&open.document),
+                &next,
+                None,
+            )?;
             storage(tx.commit())?;
-            open.document = next;
+            open.document = saved;
+            open.clear_hydrated_cache();
             return Ok(json!({"ok":true}));
         }
         let credentials = if op.starts_with("relay-capabilities-")
@@ -549,7 +652,12 @@ impl DiskVault {
             return Ok(packet);
         }
         let peer_capable = request["peer"].as_str().is_some_and(capable);
-        let mut next = open.document.clone();
+        let mut next = note_bodies::hydrate(
+            &open.connection,
+            &open.root,
+            &open.header.vault_id,
+            open.document.clone(),
+        )?;
         let tx = storage(open.connection.transaction())?;
         match op {
             "relay-trust" | "relay-revoke" => {
@@ -885,9 +993,17 @@ impl DiskVault {
         validate_files(&tx, &next)?;
         state.baseline = records(&next);
         store(&tx, &open.root, &open.header.vault_id, &state)?;
-        save_document_row(&tx, &open.root, &open.header.vault_id, &next)?;
+        let saved = save_document_row_with_prev(
+            &tx,
+            &open.root,
+            &open.header.vault_id,
+            Some(&open.document),
+            &next,
+            None,
+        )?;
         storage(tx.commit())?;
-        open.document = next;
+        open.document = saved;
+        open.clear_hydrated_cache();
         Ok(json!({"ok":true}))
     }
 }
