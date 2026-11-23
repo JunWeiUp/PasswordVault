@@ -34,7 +34,11 @@ internal fun NoteReader(
     restore: () -> Unit,
 ) {
     DetailPrivacy(vault, item.optString("id")) {
-        val rich = item.optString("noteFormat") == "rich-v1"
+        val summary = item.optBoolean("noteSummary")
+        LaunchedEffect(item.optString("id"), summary) {
+            if (summary) vault.loadFullNote(item.optString("id"))
+        }
+        val rich = !summary && item.optString("noteFormat") == "rich-v1" && item.optJSONObject("noteDocument") != null
         val scroll = rememberScrollState()
         Column(
             Modifier.fillMaxSize()
@@ -57,6 +61,13 @@ internal fun NoteReader(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            if (summary) {
+                Text(
+                    t("L1 摘要已就绪 · 正在按需加载完整正文…", "L1 summary ready · loading full content on demand…"),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            }
             if (item.optBoolean("isDeleted") && vault.canEdit(item)) Button(onClick = restore) { Text(t("恢复", "Restore")) }
             if (rich) RichNoteReader(item, vault, t, Modifier.fillMaxWidth().weight(1f))
             else {

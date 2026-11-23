@@ -3,11 +3,13 @@ import { captureNotes } from "./notes/capture";
 // this module keeps the decrypted list the interface shows while unlocked and
 // forgets it on lock.
 import { batch, computed, effect, signal } from "nsh";
-import { Attachments, Browser, Vault } from "passwordvault/native";
+import { Browser, Vault } from "passwordvault/native";
 import { bindNativeVault } from "./native";
 import { clearSearchIndex, searchItems } from "./search";
 import { catMatches, isAiActor } from "./notes/knowledge";
 import { sortMode } from "./preferences";
+import { createCoreApi, type MeshNoteConflictDto } from "./api/core";
+import { attachmentsNative } from "./api/nativeBridge";
 import {
   DEST_NAME,
   DEST_TYPES,
@@ -29,32 +31,68 @@ bindNativeVault(vault);
 /** The app's single vault session, for Rust modules that take `Instance<Vault>` (attachments). */
 export const vaultInstance = vault;
 export const vaultDirectory = vault.directory;
+/** Strongly-typed facade for `vault.command` JSON-RPC calls into `crates/vault-core`. */
+export const coreApi = createCoreApi(vault);
 
 export async function call<T = any>(request: Record<string, unknown>): Promise<T> {
-  return JSON.parse(await vault.command(JSON.stringify(request))) as T;
+  return coreApi.raw<T>(request);
 }
 
 // --- State -----------------------------------------------------------------
 
 export const phase = signal<Phase>("loading");
 export const items = signal<Item[]>([]);
+export const itemsById = computed<Map<string, Item>>(() => new Map(items().map((i) => [i.id, i])));
 export const settings = signal<Record<string, any>>({});
 export const dest = signal<Dest>("notes");
 export const noteCategory = signal<string | null>(null);
 export const query = signal("");
-export const chip = signal<"all" | "fav" | "ai" | "issue" | "card" | "identity" | "crypto">("all");
+export const chip = signal<"all" | "fav" | "ai" | "conflict" | "issue" | "card" | "identity" | "crypto">("all");
 export const selection = signal<Partial<Record<Dest, string>>>({});
 export const editing = signal(false);
 export const saveState = signal<"saved" | "saving" | "failed">("saved");
 export const saveError = signal("");
+export type ToastAction = { label: string; onAction: () => void; durationMs?: number };
 export const toastText = signal("");
+export const toastAction = signal<ToastAction | null>(null);
 export const audit = signal<Record<string, { weak?: boolean; reused?: boolean; expired?: boolean }>>({});
+export type MeshNoteConflict = MeshNoteConflictDto;
+export const meshConflicts = signal<Record<string, MeshNoteConflict>>({});
+
+export async function refreshMeshConflicts() {
+  if (phase() !== "unlocked") {
+    meshConflicts.set({});
+    return;
+  }
+  try {
+    const res = await coreApi.relayMeshConflicts();
+    const next: Record<string, MeshNoteConflict> = {};
+    for (const cf of res?.conflicts ?? []) {
+      if (cf?.noteId) next[cf.noteId] = cf;
+    }
+    meshConflicts.set(next);
+  } catch {
+    meshConflicts.set({});
+  }
+}
 
 let toastTimer: number | undefined;
-export function toast(text: string) {
-  toastText.set(text);
+export function dismissToast() {
   if (toastTimer !== undefined) clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => toastText.set(""), 2600) as unknown as number;
+  toastTimer = undefined;
+  batch(() => {
+    toastText.set("");
+    toastAction.set(null);
+  });
+}
+export function toast(text: string, action?: ToastAction) {
+  batch(() => {
+    toastText.set(text);
+    toastAction.set(action ?? null);
+  });
+  if (toastTimer !== undefined) clearTimeout(toastTimer);
+  const ms = action?.durationMs ?? (action ? 5000 : 2600);
+  toastTimer = setTimeout(() => dismissToast(), ms) as unknown as number;
 }
 
 export const now = () => new Date().toISOString();
@@ -79,6 +117,7 @@ export const visible = computed<Item[]>(() => {
   const f = chip();
   if (f === "fav") list = list.filter((i) => i.isFavorite);
   if (f === "ai") list = list.filter((i) => isAiActor(i.lastActor));
+  if (f === "conflict") list = list.filter((i) => !!meshConflicts()[i.id]);
   if (f === "issue") list = list.filter((i) => issues[i.id]);
   if (f === "card") list = list.filter((i) => i.type === "creditCard");
   if (f === "identity") list = list.filter((i) => i.type === "identity");
@@ -131,7 +170,7 @@ export function reveal(item: Item) {
 
 export async function boot() {
   try {
-    const status = await call<{ exists: boolean; unlocked: boolean }>({ op: "status" });
+    const status = await coreApi.status();
     if (!status.exists) phase.set("onboard");
     else if (status.unlocked) await load();
     else phase.set("locked");
@@ -144,13 +183,14 @@ export async function boot() {
 export async function load() {
   // Notes arrive as summaries (plain text for lists/search); full rich structures
   // load per note (`ensureFull`) to keep unlock memory proportional to what is shown.
-  const doc = await call<{ items: Item[]; settings: Record<string, any> }>({ op: "list", summaries: true });
+  const doc = await coreApi.list(true);
   batch(() => {
     items.set(doc.items ?? []);
     settings.set(doc.settings ?? {});
     phase.set("unlocked");
   });
   refreshAudit();
+  void refreshMeshConflicts();
 }
 
 const SUMMARY_ONLY = new Set(["noteDocument", "noteOriginal", "noteSummary", "__noteSearchText"]);
@@ -165,7 +205,7 @@ function summaryKey(item: Item): string {
  *  edits stay on screen and an open note keeps its loaded full structures, so
  *  the editor is not torn down while the record itself did not change. */
 export async function refreshItems() {
-  const doc = await call<{ items: Item[]; settings: Record<string, any> }>({ op: "list", summaries: true });
+  const doc = await coreApi.list(true);
   if (phase() !== "unlocked") return;
   const current = new Map(items().map((i) => [i.id, i]));
   const next = (doc.items ?? []).map((item) => {
@@ -183,12 +223,12 @@ export async function refreshItems() {
 }
 
 export async function create(password: string) {
-  await call({ op: "create", password });
+  await coreApi.create(password);
   await load();
 }
 
 export async function unlock(password: string) {
-  await call({ op: "unlock", password });
+  await coreApi.unlock(password);
   await load();
 }
 
@@ -199,17 +239,19 @@ export async function lock() {
     await Browser.cancelStartup();
   } catch {}
   try {
-    await (Attachments as any).cleanupSessions?.();
+    await attachmentsNative.cleanupSessions?.();
   } catch {}
   await flush();
   try {
-    await call({ op: "lock" });
+    await coreApi.lock();
   } finally {
+    dismissToast();
     batch(() => {
       clearSearchIndex();
       items.set([]);
       settings.set({});
       audit.set({});
+      meshConflicts.set({});
       selection.set({});
       editing.set(false);
       query.set("");
@@ -243,16 +285,16 @@ export function onLock(fn: () => void) {
 const loadingFull = new Map<string, Promise<Item | undefined>>();
 /** The complete item (rich note structures included), fetched once when needed. */
 export function ensureFull(id: string): Promise<Item | undefined> {
-  const current = items().find((i) => i.id === id);
+  const current = itemsById().get(id);
   if (!current?.noteSummary) return Promise.resolve(current);
   let pending = loadingFull.get(id);
   if (!pending) {
-    pending = call<Item>({ op: "get", id })
+    pending = coreApi.get(id)
       .then((full) => {
-        const now = items().find((i) => i.id === id);
+        const now = itemsById().get(id);
         // Keep local edits made meanwhile only if they were already full items.
         if (now?.noteSummary) replace(full);
-        return items().find((i) => i.id === id);
+        return itemsById().get(id);
       })
       .catch((e) => {
         toast(errorText(e));
@@ -263,6 +305,32 @@ export function ensureFull(id: string): Promise<Item | undefined> {
   }
   return pending;
 }
+
+let prefetchTimer: ReturnType<typeof setTimeout> | undefined;
+/** P2 idle prefetch: hydrates +-2 neighboring notes around the active/visible index. */
+export function prefetchNoteNeighbors(centerId: string, radius = 2) {
+  if (prefetchTimer !== undefined) clearTimeout(prefetchTimer);
+  prefetchTimer = setTimeout(() => {
+    prefetchTimer = undefined;
+    if (phase() !== "unlocked") return;
+    const list = visible();
+    const idx = list.findIndex((i) => i.id === centerId);
+    if (idx < 0) return;
+    const targets: string[] = [];
+    for (let d = 1; d <= radius; d++) {
+      for (const pos of [idx + d, idx - d]) {
+        const cand = list[pos];
+        if (cand?.type === "secureNote" && cand.noteSummary && !loadingFull.has(cand.id)) {
+          targets.push(cand.id);
+        }
+      }
+    }
+    for (const tid of targets.slice(0, 3)) {
+      void ensureFull(tid);
+    }
+  }, 90);
+}
+
 /** `item` with its full note structures; flags changed on the summary are kept. */
 async function withFull(item: Item): Promise<Item> {
   if (!item.noteSummary) return item;
@@ -273,7 +341,9 @@ async function withFull(item: Item): Promise<Item> {
 }
 effect(() => {
   const shown = selected();
-  if (shown?.noteSummary) void ensureFull(shown.id);
+  if (!shown) return;
+  if (shown.noteSummary) void ensureFull(shown.id);
+  if (shown.type === "secureNote") prefetchNoteNeighbors(shown.id);
 });
 
 // --- Saving ----------------------------------------------------------------
@@ -353,11 +423,10 @@ export async function flush() {
   const batchItems = [...pending.values()];
   for (const item of batchItems) {
     try {
-      const req: Record<string, unknown> = { op: "save", item: stripLocal(item) };
-      if (item.type === "secureNote") {
-        req.historyMeta = { actorType: "user", actor: "手动编辑 · 我", coalesce: true };
-      }
-      const saved = await call<any>(req);
+      const historyMeta = item.type === "secureNote"
+        ? { actorType: "user", actor: "手动编辑 · 我", coalesce: true }
+        : undefined;
+      const saved = await coreApi.save(stripLocal(item), historyMeta);
       if (pending.get(item.id) === item) pending.delete(item.id);
       if (saved?.peerBaseHeads) {
         const cur = items().find((i) => i.id === item.id);
@@ -437,7 +506,13 @@ export function togglePin(item: Item) {
 
 export async function moveToTrash(item: Item) {
   const ok = await saveNow({ ...item, isDeleted: true, isPinned: false, deletedAt: now(), updatedAt: now() });
-  if (ok) toast("已移到回收站，可随时恢复");
+  if (ok) {
+    toast("已移到回收站，可随时恢复", {
+      label: "撤销",
+      durationMs: 5000,
+      onAction: () => void restore(item),
+    });
+  }
 }
 export async function restore(item: Item) {
   const ok = await saveNow({ ...item, isDeleted: false, deletedAt: "", updatedAt: now() });
@@ -448,7 +523,7 @@ export async function restore(item: Item) {
 }
 export async function deleteForever(item: Item) {
   try {
-    await call({ op: "remove", id: item.id });
+    await coreApi.remove(item.id);
     items.update((list) => list.filter((i) => i.id !== item.id));
     toast("已永久删除");
   } catch (e) {
@@ -463,8 +538,8 @@ export async function addCategory(name: string) {
   try {
     const clean = name.trim().replace(/^\/+|\/+$/g, "");
     if (!clean) return;
-    await call({ op: "category-add", name: clean });
-    const doc = await call<{ settings: Record<string, any> }>({ op: "list", summaries: true });
+    await coreApi.categoryAdd(clean);
+    const doc = await coreApi.list(true);
     settings.set(doc.settings ?? {});
     noteCategory.set(clean);
   } catch (e) {
@@ -475,7 +550,7 @@ export async function renameCategory(name: string, to: string) {
   await flush();
   try {
     const cleanTo = to.trim().replace(/^\/+|\/+$/g, "");
-    const result = await call<{ updated: number }>({ op: "category-rename", name, to: cleanTo, time: now() });
+    const result = await coreApi.categoryRename(name, cleanTo, now());
     await load();
     const sel = noteCategory();
     if (sel && catMatches(sel, name)) {
@@ -489,7 +564,7 @@ export async function renameCategory(name: string, to: string) {
 export async function removeCategory(name: string) {
   await flush();
   try {
-    await call({ op: "category-remove", name, time: now() });
+    await coreApi.categoryRemove(name, now());
     await load();
     if (noteCategory() && catMatches(noteCategory()!, name)) noteCategory.set(null);
     toast(`已删除分类「${name}」，笔记已保留`);
@@ -503,7 +578,7 @@ export async function saveMilestone(id: string, summary: string) {
   try {
     const clean = summary.trim();
     if (!clean) return false;
-    await call({ op: "history-milestone", id, summary: clean, actor: "手动里程碑" });
+    await coreApi.historyMilestone(id, clean, "手动里程碑");
     await refreshItems();
     toast(`已保存里程碑版本「${clean}」`);
     return true;
@@ -515,7 +590,7 @@ export async function saveMilestone(id: string, summary: string) {
 
 export async function saveSettings(change: Record<string, unknown>) {
   try {
-    await call({ op: "settings", settings: change });
+    await coreApi.saveSettings(change);
     settings.update((s) => ({ ...s, ...change }));
   } catch (e) {
     toast(errorText(e));
@@ -524,9 +599,10 @@ export async function saveSettings(change: Record<string, unknown>) {
 
 export async function refreshAudit() {
   try {
-    const result = await call<any>({ op: "audit" });
+    const result = await coreApi.audit();
+    const rows = Array.isArray(result) ? result : (result?.results ?? []);
     const map: Record<string, { weak?: boolean; reused?: boolean; expired?: boolean }> = {};
-    for (const r of result?.results ?? result ?? []) {
+    for (const r of rows) {
       if (r && (r.weak || r.reused || r.expired)) map[r.id] = { weak: r.weak, reused: r.reused, expired: r.expired };
     }
     audit.set(map);
@@ -538,7 +614,7 @@ export async function refreshAudit() {
 export async function totpCode(secret: string, period = 30): Promise<string> {
   if (!secret) return "";
   try {
-    const r = await call<{ code: string }>({ op: "totp", secret, period, time: Math.floor(Date.now() / 1000) });
+    const r = await coreApi.totp(secret, period, Math.floor(Date.now() / 1000));
     return r.code;
   } catch {
     return "";
@@ -546,6 +622,6 @@ export async function totpCode(secret: string, period = 30): Promise<string> {
 }
 
 export async function generatePassword(options: { length: number; upper: boolean; lower: boolean; digits: boolean; symbols: boolean }) {
-  const r = await call<{ password: string }>({ op: "generate", ...options });
+  const r = await coreApi.generate(options);
   return r.password;
 }

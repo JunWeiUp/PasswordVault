@@ -1,11 +1,11 @@
 import { effect, keymap, signal, View } from "nsh";
 import { Input, TextView, RichEditor, command, undo, redo, insertTable, setTextSelection } from "nsh/base";
-import { Menu } from "nsh/desktop";
 import { Attachments, Files, NoteMarkdown, type Vault } from "passwordvault/native";
 import { Icon, type IconName } from "../icons";
-import { Btn, Row, T } from "../kit";
+import { Btn, Pill, Row, T } from "../kit";
 import { noteLineNumbers, setNoteLineNumbers } from "../preferences";
 import { c, fs, MONO, textScale } from "../theme";
+import { assetErrorText, readImageThumbnail, requestRemoteAsset } from "../api/noteAssets";
 import { bumpNoteAssets } from "./NoteAssetsPanel";
 import {
   activeLineAt,
@@ -27,9 +27,61 @@ export type RichNoteEditorProps = {
   vault?: Vault;
   wikilinkTargets?: string[];
   onMilestone?: () => void;
+  onOpenHistory?: () => void;
   showLineNumbers?: boolean;
   onToggleLineNumbers?: () => void;
 };
+
+type ImageLoadItem = {
+  attachmentId: string;
+  name: string;
+  status: "loading" | "l2" | "l3" | "failed";
+  error?: string;
+};
+
+function collectVaultImages(node: Node, out: { attachmentId: string; name: string }[] = []): { attachmentId: string; name: string }[] {
+  if (node.type === "vaultImage" && node.attrs?.attachmentId) {
+    out.push({ attachmentId: String(node.attrs.attachmentId), name: String(node.attrs.name || node.attrs.caption || "图片") });
+  }
+  for (const child of node.content ?? []) collectVaultImages(child, out);
+  return out;
+}
+
+function makePlaceholderViewDoc(doc: Node): Node {
+  const view = clone(doc);
+  function visit(n: Node) {
+    if (n.type === "vaultImage" && n.attrs) {
+      n.attrs.src = "";
+      n.attrs.alt = n.attrs.caption || n.attrs.name || "加载预览图中…";
+    }
+    for (const child of n.content ?? []) visit(child);
+  }
+  visit(view);
+  return view;
+}
+
+function patchImageSrcsInDoc(doc: Node, srcMap: Map<string, string>, altMap?: Map<string, string>): boolean {
+  let changed = false;
+  function visit(n: Node) {
+    if (n.type === "vaultImage" && n.attrs?.attachmentId) {
+      const id = String(n.attrs.attachmentId);
+      const nextSrc = srcMap.get(id);
+      if (nextSrc !== undefined && n.attrs.src !== nextSrc) {
+        n.attrs.src = nextSrc;
+        changed = true;
+      }
+      const nextAlt = altMap?.get(id);
+      if (nextAlt !== undefined && n.attrs.alt !== nextAlt) {
+        n.attrs.alt = nextAlt;
+        changed = true;
+      }
+    }
+    for (const child of n.content ?? []) visit(child);
+  }
+  visit(doc);
+  return changed;
+}
+
 export function RichNoteEditor(props: RichNoteEditorProps) {
   const session = signal<ReturnType<typeof createNoteSession> | null>(null);
   const error = signal(""); const blocked = signal(false); const revision = signal(0);
@@ -38,10 +90,16 @@ export function RichNoteEditor(props: RichNoteEditorProps) {
   const measuredLines = signal<MeasuredLine[]>([]);
   const anchorCount = signal(1);
   const selectionHead = signal<number | null>(null);
+  const imageStates = signal<ImageLoadItem[]>([]);
+  const upgradingOrig = signal(false);
+  const pendingExternal = signal<Note | null>(null);
   let owner = "", initialized = false, origin: Note, alive = true, generation = 0;
   let last: Node | undefined, stop: (() => void) | undefined, stopSel: (() => void) | undefined;
   let measureTimer: ReturnType<typeof setTimeout> | null = null;
   let retryTimer: ReturnType<typeof setTimeout> | null = null;
+  let saveTimer: ReturnType<typeof setTimeout> | null = null;
+  let localDirty = false;
+  let applyingInternal = false;
   const dismiss = () => panel.set(null);
   const showLineNumbers = () => props.showLineNumbers ?? noteLineNumbers();
   const toggleLineNumbers = () => {
@@ -51,6 +109,9 @@ export function RichNoteEditor(props: RichNoteEditorProps) {
   const clearMeasureTimers = () => {
     if (measureTimer !== null) { clearTimeout(measureTimer); measureTimer = null; }
     if (retryTimer !== null) { clearTimeout(retryTimer); retryTimer = null; }
+  };
+  const clearSaveTimer = () => {
+    if (saveTimer !== null) { clearTimeout(saveTimer); saveTimer = null; }
   };
   const measureNow = (allowRetry = false) => {
     const editor = session();
@@ -62,7 +123,7 @@ export function RichNoteEditor(props: RichNoteEditorProps) {
       const doc = editor.getJSON() as Node;
       const anchors = extractLineAnchors(doc);
       anchorCount.set(Math.max(1, anchors.length));
-      const next = measureLineAnchors(anchors, editor, fs(25));
+      const next = measureLineAnchors(anchors, editor, fs(25), selectionHead());
       if (next.length === 0 && anchors.length > 0) {
         if (allowRetry && retryTimer === null) {
           retryTimer = setTimeout(() => { retryTimer = null; measureNow(false); }, 80);
@@ -70,14 +131,14 @@ export function RichNoteEditor(props: RichNoteEditorProps) {
         return;
       }
       if (!sameMeasuredLines(measuredLines(), next)) measuredLines.set(next);
-      if (next.length < anchors.length && allowRetry && retryTimer === null) {
+      if (next.length < Math.min(anchors.length, 240) && allowRetry && retryTimer === null) {
         retryTimer = setTimeout(() => { retryTimer = null; measureNow(false); }, 80);
       }
     } catch {
       // Transient state while switching documents; next layout event will re-measure.
     }
   };
-  const scheduleMeasure = (delay = 16) => {
+  const scheduleMeasure = (delay = 60) => {
     if (!alive || !showLineNumbers()) return;
     if (measureTimer !== null) clearTimeout(measureTimer);
     measureTimer = setTimeout(() => {
@@ -85,17 +146,135 @@ export function RichNoteEditor(props: RichNoteEditorProps) {
       measureNow(true);
     }, delay);
   };
+  const scheduleSave = (delay = 300) => {
+    clearSaveTimer();
+    saveTimer = setTimeout(() => {
+      saveTimer = null;
+      save();
+    }, delay);
+  };
   const metrics = () => gutterMetrics(Math.max(measuredLines().length, anchorCount()), fs);
   const activeLine = () => activeLineAt(measuredLines(), selectionHead());
   effect(() => registerNoteCapture(save));
   effect(() => () => {
-    save(); alive = false; generation++; clearMeasureTimers();
+    clearSaveTimer(); save(); alive = false; generation++; clearMeasureTimers();
     stop?.(); stopSel?.();
     const old = session(); old?.setEditable(false); session.set(null); old?.dispose();
   });
   effect(() => { if (panel() && props.editable) return keymap.bind("escape", dismiss); });
+
+  const applyImagePatches = (ticket: number, srcMap: Map<string, string>, altMap?: Map<string, string>) => {
+    const editor = session();
+    if (!alive || ticket !== generation || !editor || editor.composing) return;
+    try {
+      const liveDoc = clone(editor.getJSON() as Node);
+      if (!patchImageSrcsInDoc(liveDoc, srcMap, altMap)) return;
+      const sel = editor.selection as any;
+      applyingInternal = true;
+      editor.setContent(liveDoc);
+      if (typeof sel?.from === "number" && typeof sel?.to === "number") {
+        try { editor.run(setTextSelection(sel.from, sel.to)); } catch {}
+      }
+    } catch {
+      // Keep editor interactive even if an image patch race occurs.
+    } finally {
+      applyingInternal = false;
+    }
+  };
+
+  const hydrateImagesProgressive = (doc: Node, noteId: string, ticket: number, forceOriginal = false) => {
+    const imgs = collectVaultImages(doc);
+    if (!imgs.length || !props.vault) {
+      imageStates.set([]);
+      return;
+    }
+    const dedup = new Map<string, string>();
+    for (const img of imgs) dedup.set(img.attachmentId, img.name);
+    const entries = [...dedup.entries()];
+    if (!forceOriginal) {
+      imageStates.set(entries.map(([attachmentId, name]) => ({ attachmentId, name, status: "loading" })));
+    }
+    void Promise.allSettled(
+      entries.map(async ([attachmentId, name]) => {
+        if (forceOriginal) {
+          const dataUrl = await Attachments.readImage(props.vault!, noteId, attachmentId);
+          return { attachmentId, name, dataUrl, lod: "l3" as const };
+        }
+        const res = await readImageThumbnail(noteId, attachmentId);
+        return { attachmentId, name, dataUrl: res.dataUrl, lod: res.lod };
+      }),
+    ).then((results) => {
+      if (!alive || ticket !== generation) return;
+      const srcMap = new Map<string, string>();
+      const altMap = new Map<string, string>();
+      const nextStates: ImageLoadItem[] = [];
+      results.forEach((r, i) => {
+        const [attachmentId, name] = entries[i];
+        if (r.status === "fulfilled") {
+          srcMap.set(attachmentId, r.value.dataUrl);
+          altMap.set(attachmentId, name);
+          nextStates.push({ attachmentId, name, status: r.value.lod });
+        } else {
+          altMap.set(attachmentId, `${name}（加载失败）`);
+          nextStates.push({ attachmentId, name, status: "failed", error: assetErrorText(r.reason) });
+        }
+      });
+      imageStates.set(nextStates);
+      if (srcMap.size > 0 || altMap.size > 0) {
+        applyImagePatches(ticket, srcMap, altMap);
+      }
+      if (forceOriginal) upgradingOrig.set(false);
+    });
+  };
+
+  const mountNote = (item: Note) => {
+    clearSaveTimer();
+    clearMeasureTimers();
+    stop?.(); stopSel?.();
+    const old = session(); old?.setEditable(false); session.set(null); old?.dispose();
+    measuredLines.set([]); selectionHead.set(null); imageStates.set([]); pendingExternal.set(null);
+    owner = item.id; generation++; initialized = false; localDirty = false; blocked.set(false); error.set(""); dismiss();
+    if (item.noteFormat === "rich-v1" && !item.noteDocument) return;
+    initialized = true;
+    origin = { id: item.id, note: item.note, noteFormat: item.noteFormat, noteOriginal: item.noteOriginal };
+    const ticket = generation;
+    try {
+      const doc: Node = item.noteFormat === "rich-v1" ? clone(item.noteDocument!) : JSON.parse(NoteMarkdown.fromMarkdown(item.note ?? "")).noteDocument;
+      const placeholderView = makePlaceholderViewDoc(doc);
+      // Frame-1 immediate mount: toolbar & editable cursor appear without waiting for image I/O.
+      const editor = createNoteSession(doc, placeholderView);
+      anchorCount.set(Math.max(1, extractLineAnchors(doc).length));
+      last = storedDocument(editor.getJSON() as Node);
+      selectionHead.set(typeof (editor.selection as any)?.head === "number" ? (editor.selection as any).head : null);
+      session.set(editor);
+      stop = editor.on("revision", () => {
+        if (!alive || ticket !== generation || applyingInternal) return;
+        localDirty = true;
+        revision.update(n => n + 1);
+        scheduleSave(300);
+        scheduleMeasure(60);
+      });
+      stopSel = editor.on("selectionUpdate", () => {
+        if (!alive || ticket !== generation) return;
+        const head = (editor.selection as any)?.head;
+        selectionHead.set(typeof head === "number" ? head : null);
+        if (anchorCount() > 250) scheduleMeasure(80);
+      });
+      // Load L2 400px thumbnails concurrently in the background without blocking editing.
+      hydrateImagesProgressive(doc, item.id, ticket, false);
+    } catch (e) {
+      blocked.set(true);
+      error.set(String(e));
+    }
+  };
+
   effect(() => {
     const item = props.item;
+    if (owner !== item.id) {
+      if (owner) save();
+      mountNote(item);
+      return;
+    }
     const externalUpdate =
       initialized &&
       owner === item.id &&
@@ -103,40 +282,18 @@ export function RichNoteEditor(props: RichNoteEditorProps) {
       !!item.noteDocument &&
       !!last &&
       !equivalent(last, item.noteDocument);
-    if (owner !== item.id || externalUpdate) {
-      if (owner !== item.id) save();
-      clearMeasureTimers();
-      stop?.(); stopSel?.();
-      const old = session(); old?.setEditable(false); session.set(null); old?.dispose();
-      measuredLines.set([]); selectionHead.set(null);
-      owner = item.id; generation++; initialized = false; blocked.set(false); error.set(""); dismiss();
+    if (externalUpdate) {
+      // Never tear down active typing or undo history: defer to non-blocking LiveSyncBanner.
+      if (localDirty || session()?.isFocused) {
+        pendingExternal.set(item);
+      } else {
+        mountNote(item);
+      }
+      return;
     }
-    if (initialized || (item.noteFormat === "rich-v1" && !item.noteDocument)) return;
-    initialized = true;
-    origin = { id: item.id, note: item.note, noteFormat: item.noteFormat, noteOriginal: item.noteOriginal };
-    const ticket = generation;
-    try {
-      const doc: Node = item.noteFormat === "rich-v1" ? clone(item.noteDocument!) : JSON.parse(NoteMarkdown.fromMarkdown(item.note ?? "")).noteDocument;
-      // Validate before loading any resource. Unknown data never silently disappears.
-      createNoteSession(doc).dispose(); // Validate without retaining a second native document.
-      anchorCount.set(Math.max(1, extractLineAnchors(doc).length));
-      void loadImages(doc, props.vault, item.id).then(viewDoc => {
-        if (!alive || ticket !== generation) return;
-        const editor = createNoteSession(doc, viewDoc);
-        last = storedDocument(editor.getJSON() as Node);
-        selectionHead.set(typeof (editor.selection as any)?.head === "number" ? (editor.selection as any).head : null);
-        session.set(editor);
-        stop = editor.on("revision", () => {
-          if (!alive || ticket !== generation) return;
-          revision.update(n => n + 1); save(); scheduleMeasure(16);
-        });
-        stopSel = editor.on("selectionUpdate", () => {
-          if (!alive || ticket !== generation) return;
-          const head = (editor.selection as any)?.head;
-          selectionHead.set(typeof head === "number" ? head : null);
-        });
-      }).catch(e => { if (alive && ticket === generation) { blocked.set(true); error.set(String(e)); } });
-    } catch (e) { blocked.set(true); error.set(String(e)); }
+    if (!initialized && !(item.noteFormat === "rich-v1" && !item.noteDocument)) {
+      mountNote(item);
+    }
   });
   effect(() => { if (!props.editable) save(); session()?.setEditable(!!props.editable && !blocked()); });
   effect(() => {
@@ -151,12 +308,13 @@ export function RichNoteEditor(props: RichNoteEditorProps) {
     scheduleMeasure(0);
   });
   function save() {
+    clearSaveTimer();
     const editor = session();
     if (!editor || !alive || blocked() || editor.composing) return;
     try {
       const doc = storedDocument(editor.getJSON() as Node);
-      if (last && equivalent(last, doc)) return;
-      last = doc; props.onChange(patchFor(origin, doc), owner); error.set("");
+      if (last && equivalent(last, doc)) { localDirty = false; return; }
+      last = doc; localDirty = false; props.onChange(patchFor(origin, doc), owner); error.set("");
     } catch (e) { error.set(`正文尚未保存：${String(e)}`); }
   }
   const writable = () => { revision(); return !!props.editable && !!session() && !blocked() && !session()!.composing; };
@@ -170,10 +328,19 @@ export function RichNoteEditor(props: RichNoteEditorProps) {
       if (!alive || ticket !== generation || !writable()) return;
       const image = meta.mime.startsWith("image/");
       const atom: Node = { type: image ? "vaultImage" : "vaultAttachment", attrs: { attachmentId: meta.id, name: meta.name, mime: meta.mime, ...(image ? { width: 600, caption: "" } : { size: meta.size }) } };
-      const view = await loadImages({ type: "doc", content: [atom] }, props.vault, owner);
+      if (image) {
+        try {
+          const thumb = await readImageThumbnail(owner, meta.id);
+          atom.attrs!.src = thumb.dataUrl;
+          atom.attrs!.alt = meta.name;
+        } catch {
+          atom.attrs!.src = "";
+          atom.attrs!.alt = meta.name;
+        }
+      }
       if (!alive || ticket !== generation || !writable()) return;
-      session()!.insertContent(view.content![0]); save(); bumpNoteAssets(); file.set(""); dismiss();
-    } catch (e) { if (alive && ticket === generation) error.set(String(e)); }
+      session()!.insertContent(atom); save(); bumpNoteAssets(); file.set(""); dismiss();
+    } catch (e) { if (alive && ticket === generation) error.set(assetErrorText(e)); }
     finally { if (alive) busy.set(false); }
   }
   async function pickAndImportFile() {
@@ -215,7 +382,12 @@ export function RichNoteEditor(props: RichNoteEditorProps) {
   return <View style={{ gap: 0 }}>
     <If when={props.editable && !!session() && !blocked()}>
       <View role="toolbar" accessibilityLabel="笔记格式" style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", minHeight: fs(34), gap: 2, paddingBottom: 6, borderBottomWidth: 1, borderBottomColor: c().line, marginBottom: 14 }}>
-        <Tool label="段落样式" glyph="正文 ⌄" compactText disabled={!writable()} onPress={() => void Menu.popup([{ label: "正文", onSelect: () => run(command("setParagraph")) }, ...[1,2,3].map(level => ({ label: `标题 ${level}`, onSelect: () => run(command("toggleHeading", { level })) }))])} />
+        <View style={{ flexDirection: "row", alignItems: "center", backgroundColor: c().field, borderRadius: 6, padding: 2, gap: 1 }}>
+          <Tool label="正文" glyph="正文" compactText disabled={!writable()} onPress={() => run(command("setParagraph"))} />
+          <Tool label="标题 1" glyph="H1" compactText disabled={!writable()} onPress={() => run(command("toggleHeading", { level: 1 }))} />
+          <Tool label="标题 2" glyph="H2" compactText disabled={!writable()} onPress={() => run(command("toggleHeading", { level: 2 }))} />
+          <Tool label="标题 3" glyph="H3" compactText disabled={!writable()} onPress={() => run(command("toggleHeading", { level: 3 }))} />
+        </View>
         <Divider />
         <Tool label="粗体" glyph="B" bold disabled={!writable()} onPress={() => run(command("toggleBold"))} />
         <Tool label="斜体" glyph="I" italic disabled={!writable()} onPress={() => run(command("toggleItalic"))} />
@@ -260,9 +432,60 @@ export function RichNoteEditor(props: RichNoteEditorProps) {
         </If>
       </View></If>
     </If>
+    <If when={!!pendingExternal()}>
+      <View testID="live-sync-banner" style={{ flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, borderWidth: 1, borderColor: c().blueLine, backgroundColor: c().blueSoft, marginBottom: 10 }}>
+        <Icon name="sync" size={14} tint={c().blue} />
+        <T size={12} color={c().blue} style={{ flex: 1 }}>收到外部同步或 AI 更新，当前编辑焦点与撤销栈已保留。</T>
+        <If when={!!props.onOpenHistory}>
+          <Btn label="对照历史" kind="ghost" onPress={() => props.onOpenHistory?.()} />
+        </If>
+        <Btn label="应用最新内容" kind="primary" onPress={() => { const ext = pendingExternal(); if (ext) mountNote(ext); }} />
+        <Btn label="稍后" kind="ghost" onPress={() => pendingExternal.set(null)} />
+      </View>
+    </If>
+    <If when={imageStates().some((s) => s.status === "l2" || s.status === "failed")}>
+      <View testID="image-lod-bar" style={{ flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 8, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, borderWidth: 1, borderColor: c().line, backgroundColor: c().soft2, marginBottom: 10 }}>
+        <If when={imageStates().some((s) => s.status === "l2")}>
+          <Pill tone="blue">≈ 预览图 · L2 400px</Pill>
+          <Btn
+            testID="load-original-images-btn"
+            label={upgradingOrig() ? "加载原图中…" : "加载原图 · 100%"}
+            kind="ghost"
+            disabled={upgradingOrig()}
+            onPress={() => {
+              const ed = session();
+              if (!ed || upgradingOrig()) return;
+              upgradingOrig.set(true);
+              hydrateImagesProgressive(storedDocument(ed.getJSON() as Node), owner, generation, true);
+            }}
+          />
+        </If>
+        <Each of={imageStates().filter((s) => s.status === "failed")} key={(s) => s.attachmentId}>
+          {(img) => (
+            <Row gap={6}>
+              <T size={11.5} color={c().red}>图片「{img().name}」未就绪（{img().error || "加载失败"}）</T>
+              <Btn
+                label="重试"
+                kind="ghost"
+                onPress={() => {
+                  const ed = session();
+                  if (!ed) return;
+                  hydrateImagesProgressive(storedDocument(ed.getJSON() as Node), owner, generation, false);
+                }}
+              />
+              <Btn
+                label="拉取云端"
+                kind="ghost"
+                onPress={() => void requestRemoteAsset(owner, { id: img().attachmentId, noteId: owner, name: img().name, mime: "image/png", size: 0, state: "remote" })}
+              />
+            </Row>
+          )}
+        </Each>
+      </View>
+    </If>
     <If when={!!error()}><T color={c().red}>{error()}</T></If>
     <If when={!!session()} else={<TextView document={props.item.noteDocument ? project(props.item.noteDocument) : project(documentFor({ id: props.item.id, note: props.item.note, noteFormat: "plain" }))} links="report" onLinkPress={() => {}} />}>
-      <Each of={session() ? [session()!] : []} key={editor => editor}>{editor => <RichEditor editor={editor()} editable={!!props.editable && !blocked()} testID="note-rich-editor" accessibilityLabel="笔记正文" onChange={save} onBlur={save}
+      <Each of={session() ? [session()!] : []} key={editor => editor}>{editor => <RichEditor editor={editor()} editable={!!props.editable && !blocked()} testID="note-rich-editor" accessibilityLabel="笔记正文" onChange={() => scheduleSave(300)} onBlur={save}
         onSelectionChange={({ selection }) => selectionHead.set(selection.head)}
         onContentSizeChange={() => measureNow(false)}
         onLayout={() => scheduleMeasure(16)}
@@ -371,14 +594,6 @@ export function RichNoteEditor(props: RichNoteEditorProps) {
       />}</Each>
     </If>
   </View>;
-}
-async function loadImages(doc: Node, vault: Vault | undefined, owner: string): Promise<Node> {
-  const view = clone(doc);
-  async function visit(n: Node): Promise<void> {
-    if (n.type === "vaultImage" && n.attrs) { n.attrs.src = ""; n.attrs.alt = n.attrs.caption || n.attrs.name || "图片"; if (vault) n.attrs.src = await Attachments.readImage(vault, owner, n.attrs.attachmentId); }
-    for (const child of n.content ?? []) await visit(child);
-  }
-  await visit(view); return view;
 }
 function Divider() { return <View style={{ width: 1, height: 14, backgroundColor: c().line, marginHorizontal: 3 }} />; }
 function Tool(props: { testID?: string; label: string; glyph?: string; icon?: IconName; onPress: () => void; disabled?: boolean; selected?: boolean; compactText?: boolean; bold?: boolean; italic?: boolean; underline?: boolean; strike?: boolean }) {

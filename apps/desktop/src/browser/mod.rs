@@ -15,11 +15,15 @@ use std::{
 struct Pending {
     id: String,
     challenge: String,
-    /// "pair", "update-login", "otp-fill", "structured-list" or "structured-fill".
+    /// "pair", "update-login", "otp-fill", "structured-list", "structured-fill",
+    /// "passkey-create" or "passkey-assert".
     kind: &'static str,
     /// Website origin and, for updates, the username. Never a secret.
     detail: String,
-    reply: std::sync::mpsc::SyncSender<bool>,
+    /// Public ceremony metadata for passkey prompts (RP, user names, credential IDs).
+    extra: Value,
+    /// `None` rejects; passkey approvals carry the selected credential and master password.
+    reply: std::sync::mpsc::SyncSender<Option<Value>>,
 }
 /// One-shot request to reveal a record in the window; expires if no window shows it.
 struct Navigation {
@@ -30,8 +34,19 @@ struct Navigation {
 }
 static NAVIGATE: Mutex<Option<Navigation>> = Mutex::new(None);
 const CONSENT_TIMEOUT: Duration = Duration::from_secs(35);
+/// Typing the master password takes longer; still below the extension's 60 s ceremony limit.
+const PASSKEY_TIMEOUT: Duration = Duration::from_secs(50);
 /// Ask the unlocked window to confirm one extension request (same channel as pairing).
 fn consent(id: &str, kind: &'static str, detail: String) -> Result<(), String> {
+    consent_with(id, kind, detail, Value::Null, CONSENT_TIMEOUT).map(|_| ())
+}
+fn consent_with(
+    id: &str,
+    kind: &'static str,
+    detail: String,
+    extra: Value,
+    timeout: Duration,
+) -> Result<Value, String> {
     let (tx, rx) = std::sync::mpsc::sync_channel(1);
     {
         let mut pending = PENDING.lock().map_err(|_| "unavailable")?;
@@ -43,13 +58,14 @@ fn consent(id: &str, kind: &'static str, detail: String) -> Result<(), String> {
             challenge: uuid::Uuid::new_v4().to_string(),
             kind,
             detail,
+            extra,
             reply: tx,
         });
     }
     crate::background::show_interface();
-    let allowed = rx.recv_timeout(CONSENT_TIMEOUT).unwrap_or(false);
+    let answer = rx.recv_timeout(timeout).ok().flatten();
     PENDING.lock().map_err(|_| "unavailable")?.take();
-    if allowed { Ok(()) } else { Err("cancelled".into()) }
+    answer.ok_or_else(|| "cancelled".into())
 }
 /// Plain http(s) origin without credentials, path, query or fragment.
 fn web_origin(value: &Value) -> Result<reqwest::Url, String> {
@@ -302,6 +318,7 @@ fn dispatch(
             consent(id, "structured-fill", origin.into())?;
             json!({"op":"structured-fill","origin":origin,"id":request["id"],"includeSecurityCode":request["includeSecurityCode"] == true})
         }
+        "passkey-create" | "passkey-assert" => return passkey(session, id, op, request),
         _ => return Err("unsupported".into()),
     };
     let data = command(session, query)?;
@@ -482,6 +499,24 @@ impl Browser {
         #[allow(unreachable_code)]
         approve_native(challenge, allow)
     }
+    /// Passkey prompt answer: `{"itemId","credentialId","library","currentPassword"}`.
+    /// The bridge accepts only a credential it showed for the current challenge.
+    pub async fn approve_passkey(challenge: String, selection: String) {
+        let selection = serde_json::from_str::<Value>(&selection).unwrap_or(Value::Null);
+        #[cfg(all(feature = "ui", not(test)))]
+        {
+            let result = crate::service_ipc::control_async(
+                crate::vault_directory(),
+                "browser-approve-passkey",
+                json!({"challenge":challenge,"selection":selection}),
+            )
+            .await;
+            let _ = result;
+            return;
+        }
+        #[allow(unreachable_code)]
+        approve_passkey_native(challenge, selection)
+    }
     /// Registration statuses for the four supported browser families.
     pub fn registrations() -> Result<String, String> {
         let contents = wire::bundle()?;
@@ -558,7 +593,7 @@ pub(crate) fn cancel_startup_native() {
     }
     if let Ok(p) = PENDING.lock() {
         if let Some(p) = p.as_ref() {
-            let _ = p.reply.try_send(false);
+            let _ = p.reply.try_send(None);
         }
     }
 }
@@ -568,7 +603,7 @@ pub(crate) fn pending_native() -> String {
         .ok()
         .and_then(|p| {
             p.as_ref()
-                .map(|p| json!({"extensionId":p.id,"challenge":p.challenge,"kind":p.kind,"detail":p.detail}).to_string())
+                .map(|p| json!({"extensionId":p.id,"challenge":p.challenge,"kind":p.kind,"detail":p.detail,"passkey":p.extra}).to_string())
         })
         .unwrap_or_default()
 }
@@ -592,8 +627,144 @@ pub(crate) fn approve_native(challenge: String, allow: bool) {
     if let Ok(p) = PENDING.lock() {
         if let Some(p) = p.as_ref() {
             if p.challenge == challenge {
-                let _ = p.reply.try_send(allow);
+                let _ = p.reply.try_send(allow.then(|| json!({})));
             }
         }
     }
+}
+/// Window answer for a passkey prompt: the chosen credential (assertions) and master password.
+pub(crate) fn approve_passkey_native(challenge: String, selection: Value) {
+    if let Ok(p) = PENDING.lock() {
+        if let Some(p) = p.as_ref() {
+            if p.challenge == challenge && p.kind.starts_with("passkey-") && selection.is_object() {
+                let _ = p.reply.try_send(Some(selection));
+            }
+        }
+    }
+}
+fn string_list(value: &Value, limit: usize) -> Result<Vec<String>, String> {
+    if value.is_null() {
+        return Ok(vec![]);
+    }
+    let list = value.as_array().filter(|v| v.len() <= limit).ok_or("invalid-request")?;
+    list.iter()
+        .map(|v| bounded(v, false).map(str::to_owned))
+        .collect()
+}
+fn prf_inputs(value: &Value) -> Result<Value, String> {
+    let object = value.as_object().ok_or("invalid-request")?;
+    let mut out = json!({});
+    for name in ["first", "second"] {
+        if let Some(v) = object.get(name).filter(|v| !v.is_null()) {
+            out[name] = v.as_str().filter(|s| s.len() <= 8192).ok_or("invalid-request")?.into();
+        }
+    }
+    Ok(out)
+}
+/// WebAuthn ceremony through the desktop window: the core reauthenticates the master
+/// password, checks client data against the browser-supplied origin and persists first.
+fn passkey(
+    session: &crate::session::VaultSession,
+    id: &str,
+    op: &str,
+    request: &Value,
+) -> Result<Value, String> {
+    let url = web_origin(&request["origin"])?;
+    if url.scheme() != "https" {
+        return Err("invalid-request".into());
+    }
+    let origin = request["origin"].as_str().unwrap_or("").trim_end_matches('/').to_owned();
+    let rp = bounded(&request["rpId"], false)?;
+    if !vault_core::passkey_rp_matches(url.host_str().unwrap_or(""), rp) {
+        return Err("unsupported-rp".into());
+    }
+    let client = request["clientDataJSON"]
+        .as_str()
+        .filter(|s| !s.is_empty() && s.len() <= 16384)
+        .ok_or("invalid-request")?;
+    let allowed = string_list(&request["allowed"], 64)?;
+    let excluded = string_list(&request["excluded"], 64)?;
+    let create = op == "passkey-create";
+    let (user_name, user_handle) = if create {
+        let name = request["userName"]
+            .as_str()
+            .filter(|s| s.len() <= 1024)
+            .ok_or("invalid-request")?;
+        (name.to_owned(), bounded(&request["userHandle"], false)?.to_owned())
+    } else {
+        (String::new(), String::new())
+    };
+    let matches: Vec<Value> = command(session, json!({"op":"passkey-matches","rpId":rp}))?
+        .as_array()
+        .cloned()
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|m| {
+            allowed.is_empty() || m["id"].as_str().is_some_and(|i| allowed.iter().any(|a| a == i))
+        })
+        .collect();
+    if create {
+        if matches.iter().any(|m| m["id"].as_str().is_some_and(|i| excluded.iter().any(|e| e == i))) {
+            // Already registered here: let the browser report InvalidStateError itself.
+            return Err("already-registered".into());
+        }
+    } else if matches.is_empty() {
+        // Nothing to offer: the page falls back to the browser's own authenticator.
+        return Err("no-credentials".into());
+    }
+    let public: Vec<Value> = matches
+        .iter()
+        .map(|m| json!({"library":m["library"],"itemId":m["itemId"],"id":m["id"],"userName":m["userName"]}))
+        .collect();
+    let extra = json!({"operation":if create {"create"} else {"get"},"origin":origin,"rpId":rp,"userName":user_name,"matches":public});
+    let kind = if create { "passkey-create" } else { "passkey-assert" };
+    let selection = consent_with(id, kind, format!("{origin}\n{rp}"), extra, PASSKEY_TIMEOUT)?;
+    if selection["fallback"] == true {
+        // "Use another device": the page hands the ceremony to the browser's own authenticator.
+        return Err("use-browser".into());
+    }
+    let password = zeroize::Zeroizing::new(
+        selection["currentPassword"]
+            .as_str()
+            .filter(|s| !s.is_empty() && s.len() <= 4096)
+            .ok_or("cancelled")?
+            .to_owned(),
+    );
+    let mut query = json!({"op":op,"origin":origin,"rpId":rp,"clientDataJSON":client});
+    // PRF inputs are public salts; the core validates and evaluates them for the chosen credential.
+    if request["prf"].is_object() {
+        query["prf"] = prf_inputs(&request["prf"])?;
+        if let Some(by) = request["prfByCredential"].as_object().filter(|m| m.len() <= 64) {
+            let mut map = serde_json::Map::new();
+            for (key, value) in by {
+                bounded(&Value::from(key.as_str()), false)?;
+                map.insert(key.clone(), prf_inputs(value)?);
+            }
+            query["prfByCredential"] = Value::Object(map);
+        }
+    }
+    if create {
+        query["userName"] = user_name.into();
+        query["userHandle"] = user_handle.into();
+        query["excluded"] = json!(excluded);
+        query["library"] = json!("");
+    } else {
+        // The window may only pick one of the credentials it was shown.
+        let chosen = public
+            .iter()
+            .find(|m| m["id"] == selection["credentialId"] && m["itemId"] == selection["itemId"] && m["library"] == selection["library"])
+            .ok_or("invalid-entry")?;
+        query["credentialId"] = chosen["id"].clone();
+        query["itemId"] = chosen["itemId"].clone();
+        // "" is the personal library even when a shared library is active.
+        query["library"] = json!(chosen["library"].as_str().unwrap_or(""));
+        query["allowed"] = json!(allowed);
+    }
+    query["currentPassword"] = json!(password.as_str());
+    let result = command(session, query);
+    let data = result.map_err(|e| if e == "Authentication" { "authentication".to_string() } else { e })?;
+    if create {
+        saved();
+    }
+    Ok(json!({"ok":true,"data":data}))
 }

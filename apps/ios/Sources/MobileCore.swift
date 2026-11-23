@@ -26,7 +26,13 @@ actor MobileCore {
   func document() throws -> VaultDocument {
     guard let session else { throw VaultError.Locked }
     return try JSONDecoder().decode(
-      VaultDocument.self, from: Data(session.command(request: "{\"op\":\"list\"}").utf8))
+      VaultDocument.self, from: Data(session.command(request: "{\"op\":\"list\",\"summaries\":true}").utf8))
+  }
+  func getItem(id: String) throws -> VaultItem {
+    guard let session else { throw VaultError.Locked }
+    let data = try JSONEncoder().encode(["op": JSONValue.string("get"), "id": JSONValue.string(id)])
+    let response = try session.command(request: String(decoding: data, as: UTF8.self))
+    return try JSONDecoder().decode(VaultItem.self, from: Data(response.utf8))
   }
   func biometricKey() throws -> Data {
     guard let session else { throw VaultError.Locked }

@@ -35,6 +35,15 @@ import java.util.UUID
 @Composable
 internal fun RichNoteEditor(original: JSONObject, vault: VaultRepository, t: (String, String) -> String, close: () -> Unit) {
     val context = LocalContext.current; val scope = rememberCoroutineScope()
+    var hydrated by remember(original.optString("id")) { mutableStateOf(original) }
+    var ready by remember(original.optString("id")) { mutableStateOf(!original.optBoolean("noteSummary")) }
+    LaunchedEffect(original.optString("id"), ready) {
+        if (!ready) {
+            val full = vault.loadFullNote(original.optString("id"))
+            if (full != null) hydrated = full
+            ready = true
+        }
+    }
     var title by remember { mutableStateOf(original.optString("title")) }
     var session by remember { mutableStateOf<AndroidNoteSession?>(null) }
     var message by remember { mutableStateOf("") }; var saving by remember { mutableStateOf(false) }; var discard by remember { mutableStateOf(false) }
@@ -104,12 +113,17 @@ internal fun RichNoteEditor(original: JSONObject, vault: VaultRepository, t: (St
                 )
                 Text(listOf(noteDate(original), original.optString("category")).filter { it.isNotBlank() }.joinToString(" · "), Modifier.padding(horizontal = 18.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (message.isNotEmpty()) Text(message, Modifier.padding(horizontal = 18.dp), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-                AndroidView(modifier = Modifier.fillMaxWidth().weight(1f), factory = { ctx ->
-                    runCatching { AndroidNoteSession(ctx, original, vault, scope, t,
+                if (!ready) {
+                    Column(Modifier.fillMaxWidth().weight(1f).padding(horizontal = 18.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(t("L1 摘要已就绪 · 正在加载完整富文本编辑器…", "L1 summary ready · loading full rich editor…"), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                        Text(original.optString("note"), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                } else AndroidView(modifier = Modifier.fillMaxWidth().weight(1f), factory = { ctx ->
+                    runCatching { AndroidNoteSession(ctx, hydrated, vault, scope, t,
                         choose = { picker.launch(arrayOf("*/*")) },
                         export = { bytes, name -> exportData = bytes; export.launch(name.substringAfterLast('/').substringAfterLast('\\')) },
                         failure = { message = t("编辑器操作未完成，最近确认的草稿已保留", "Editor operation incomplete; last confirmed draft retained") }
-                    ).also { session = it; if (vault.canEdit(original)) { vault.pendingDraft = original.toString(); vault.captureRichDraft = { it.capture(true) } } }.view }.getOrElse {
+                    ).also { session = it; if (vault.canEdit(hydrated)) { vault.pendingDraft = hydrated.toString(); vault.captureRichDraft = { it.capture(true) } } }.view }.getOrElse {
                         android.widget.TextView(ctx).apply { text = t("系统 WebView 不可用，无法打开图文编辑器。原资料未修改。", "System WebView is unavailable. The rich editor cannot open; original data is unchanged.") }
                     }
                 })

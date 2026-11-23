@@ -58,7 +58,7 @@ pub fn endpoint(raw: &str, local: bool) -> Result<url::Url> {
         || u.password().is_some()
         || u.query().is_some()
         || u.fragment().is_some()
-        || u.path() != "/relay/v1/ws"
+        || (u.path() != "/relay/v1/ws" && u.path() != "/v2/ws")
     {
         return invalid();
     }
@@ -67,6 +67,7 @@ pub fn endpoint(raw: &str, local: bool) -> Result<url::Url> {
 pub struct Connection {
     socket: WebSocket<MaybeTlsStream<TcpStream>>,
     pub identity: Identity,
+    is_v2: bool,
 }
 impl Connection {
     pub fn connect(
@@ -87,6 +88,7 @@ impl Connection {
         control: Option<&super::runtime::Run>,
     ) -> Result<Self> {
         let u = endpoint(raw, local)?;
+        let is_v2 = u.path() == "/v2/ws";
         let mut req = u
             .as_str()
             .into_client_request()
@@ -105,8 +107,10 @@ impl Connection {
                     .map_err(|_| "InvalidData")?,
             );
         }
-        req.headers_mut()
-            .insert("Sec-WebSocket-Protocol", "common-relay.v1".parse().unwrap());
+        if !is_v2 {
+            req.headers_mut()
+                .insert("Sec-WebSocket-Protocol", "common-relay.v1".parse().unwrap());
+        }
         let cfg = tungstenite::protocol::WebSocketConfig::default()
             .max_message_size(Some(270336))
             .max_frame_size(Some(270336));
@@ -136,11 +140,12 @@ impl Connection {
                 tungstenite::HandshakeError::Failure(tungstenite::Error::Http(response)) => format!("RelayHttp{}", response.status().as_u16()),
                 _ => "RelayConnection".to_owned(),
             })?;
-        if response
-            .headers()
-            .get("Sec-WebSocket-Protocol")
-            .and_then(|h| h.to_str().ok())
-            != Some("common-relay.v1")
+        if !is_v2
+            && response
+                .headers()
+                .get("Sec-WebSocket-Protocol")
+                .and_then(|h| h.to_str().ok())
+                != Some("common-relay.v1")
         {
             return invalid();
         }
@@ -158,7 +163,12 @@ impl Connection {
         let msg = socket.read().map_err(|_| "RelayConnection")?;
         let v: Value = serde_json::from_str(msg.to_text().map_err(|_| "InvalidData")?)
             .map_err(|_| "InvalidData")?;
-        if v["version"] != 1
+        if is_v2 {
+            let dev = v["from"].as_str().or_else(|| v["device"].as_str());
+            if v["type"] != "hello" || dev != Some(identity.device.as_str()) {
+                return invalid();
+            }
+        } else if v["version"] != 1
             || v["identity"]["app"] != identity.app
             || v["identity"]["group"] != identity.group
             || v["identity"]["device"] != identity.device
@@ -166,7 +176,11 @@ impl Connection {
         {
             return invalid();
         }
-        Ok(Self { socket, identity })
+        Ok(Self {
+            socket,
+            identity,
+            is_v2,
+        })
     }
     pub fn poll_timeout(&mut self) -> Result<()> {
         let s = match self.socket.get_mut() {
@@ -176,6 +190,65 @@ impl Connection {
         };
         s.set_read_timeout(Some(Duration::from_millis(200)))
             .map_err(|_| "RelayConnection".into())
+    }
+    fn translate_incoming_v2(&self, v: Value) -> Value {
+        if !self.is_v2 {
+            return v;
+        }
+        match v["type"].as_str() {
+            Some("presence") => {
+                let devices: Vec<Value> = v["peers"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .filter_map(Value::as_str)
+                    .map(|dev| json!({"app": self.identity.app, "group": self.identity.group, "device": dev}))
+                    .collect();
+                json!({"type": "peers", "id": v["id"], "devices": devices})
+            }
+            Some("msg") => json!({
+                "type": "message",
+                "id": v["id"],
+                "from": v["from"],
+                "body": v["body"],
+                "offline": v["offline"].as_bool().unwrap_or(false),
+            }),
+            Some("ack") => {
+                let kind = v["event"].as_str().unwrap_or("stored");
+                json!({"type": kind, "id": v["id"]})
+            }
+            Some("group.changed") => {
+                json!({"type": "group.changed", "revision": v["seq"].as_u64().unwrap_or(0)})
+            }
+            _ => v,
+        }
+    }
+    fn translate_outgoing_v2(&self, event: Value) -> Value {
+        if !self.is_v2 {
+            return event;
+        }
+        match event["type"].as_str() {
+            Some("peers") => json!({
+                "type": "presence",
+                "space": self.identity.group,
+                "id": event["id"],
+            }),
+            Some("message") => json!({
+                "type": "msg",
+                "space": self.identity.group,
+                "id": event["id"],
+                "to": event["to"],
+                "body": event["body"],
+                "offline": event["offline"].as_bool().unwrap_or(false),
+            }),
+            Some("ack") => json!({
+                "type": "ack",
+                "space": self.identity.group,
+                "id": event["id"],
+                "from": event["from"],
+            }),
+            _ => event,
+        }
     }
     pub fn read_wire(&mut self) -> Result<Value> {
         loop {
@@ -192,7 +265,8 @@ impl Connection {
             })?;
             match message {
                 Message::Text(t) => {
-                    return serde_json::from_str(&t).map_err(|_| "InvalidData".into());
+                    let v: Value = serde_json::from_str(&t).map_err(|_| "InvalidData")?;
+                    return Ok(self.translate_incoming_v2(v));
                 }
                 Message::Ping(_) | Message::Pong(_) => continue,
                 _ => return invalid(),
@@ -207,7 +281,7 @@ impl Connection {
         self.send(json!({"type":"message","id":id,"to":to,"body":body,"offline":false}))
     }
     pub fn send(&mut self, event: Value) -> Result<()> {
-        let text = event.to_string();
+        let text = self.translate_outgoing_v2(event).to_string();
         if text.len() > 270336 {
             return invalid();
         }
@@ -219,7 +293,8 @@ impl Connection {
         loop {
             match self.socket.read().map_err(|_| "RelayConnection")? {
                 Message::Text(t) => {
-                    let mut v: Value = serde_json::from_str(&t).map_err(|_| "InvalidData")?;
+                    let raw: Value = serde_json::from_str(&t).map_err(|_| "InvalidData")?;
+                    let mut v = self.translate_incoming_v2(raw);
                     if v["type"] == "message" {
                         if v["offline"] == true {
                             return Err("PersistentJournalRequired".into());

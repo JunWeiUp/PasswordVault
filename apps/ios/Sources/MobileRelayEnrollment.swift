@@ -127,7 +127,7 @@ struct MobileRelayEnrollmentSheet: View {
             .font(.caption).foregroundStyle(.secondary)
         }
       } else {
-        TextField("wss://host/relay/v1/ws", text: $endpoint).textInputAutocapitalization(.never).autocorrectionDisabled().keyboardType(.URL).disabled(relay.creatingGroup)
+        TextField("wss://host/v2/ws", text: $endpoint).textInputAutocapitalization(.never).autocorrectionDisabled().keyboardType(.URL).disabled(relay.creatingGroup)
         TextField(t("设备组名称（必填）", "Group name (required)"), text: $groupName)
           .disabled(relay.creatingGroup)
       }

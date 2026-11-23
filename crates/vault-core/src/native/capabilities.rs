@@ -54,6 +54,8 @@ impl DiskVault {
                 let preview =
                     preview_import(text("format")?, &source, &mapping, &self.open()?.document)?;
                 if request["op"] == "import-preview" {
+                    let mut preview = preview;
+                    redact_import_preview(&mut preview);
                     return serde_json::to_value(preview).map_err(|_| VaultError::InvalidData);
                 }
                 let choices: BTreeMap<usize, String> =
@@ -69,6 +71,34 @@ impl DiskVault {
                     *doc = next;
                     Ok(result)
                 })
+            }
+            // CXF carries plaintext private keys: always reauthenticate the vault header.
+            "export-cxf" => {
+                let open = self.open()?;
+                let verified = open.header.unlock(text("currentPassword")?)?;
+                if verified.as_ref() != open.root.as_ref() {
+                    return Err(VaultError::Authentication);
+                }
+                let personal = relay::peer::readable_documents(
+                    &open.connection,
+                    &open.root,
+                    &open.header.vault_id,
+                    &open.document,
+                )?
+                .into_iter()
+                .find(|(id, _)| id.is_empty())
+                .map(|(_, doc)| doc)
+                .ok_or(VaultError::InvalidData)?;
+                let hydrated = note_bodies::hydrate(
+                    &open.connection,
+                    &open.root,
+                    &open.header.vault_id,
+                    personal,
+                )?;
+                let exported = cxf_export(&hydrated, "com.securepass.vault", "PasswordVault")?;
+                Ok(
+                    json!({"content":serde_json::to_string(&exported).map_err(|_| VaultError::InvalidData)?,"skipped":exported["skipped"]}),
+                )
             }
             "security-audit" => {
                 let document = &self.open()?.document;

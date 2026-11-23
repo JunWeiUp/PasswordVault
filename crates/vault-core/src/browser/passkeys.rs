@@ -46,7 +46,7 @@ impl BrowserVault {
                 })
                 .collect()
         };
-        let response = if op == "passkey-create" {
+        let response: Value = if op == "passkey-create" {
             if request
                 .get("library")
                 .is_some_and(|v| v.as_str() != Some(""))
@@ -106,8 +106,10 @@ impl BrowserVault {
                 .as_millis() as u64);
             document.format_version = document.format_version.max(6);
             let item_id = item["id"].clone();
+            let credential = item["passkeys"].as_array().and_then(|keys| keys.last()).cloned().unwrap_or_default();
             document.upsert(item)?;
             let mut response = serde_json::to_value(response).map_err(|_| VaultError::InvalidData)?;
+            passkey_attach_prf(&mut response, &credential, request, true)?;
             response["library"] = json!("");
             response["itemId"] = item_id;
             Ok(response)
@@ -128,15 +130,24 @@ impl BrowserVault {
                 .iter()
                 .find(|item| item["id"] == id)
                 .ok_or(VaultError::InvalidData)?;
-            passkey_assert_item(
+            let response = passkey_assert_item(
                 item,
                 text("credentialId")?,
                 text("origin")?,
                 text("clientDataJSON")?.as_bytes(),
                 &list("allowed")?,
                 true,
-            )?
+            )?;
+            let mut response =
+                serde_json::to_value(response).map_err(|_| VaultError::InvalidData)?;
+            if let Some(credential) = item["passkeys"].as_array().and_then(|keys| {
+                keys.iter()
+                    .find(|key| key["credentialId"] == text("credentialId").unwrap_or(""))
+            }) {
+                passkey_attach_prf(&mut response, credential, request, false)?;
+            }
+            response
         };
-        serde_json::to_value(response).map_err(|_| VaultError::InvalidData)
+        Ok(response)
     }
 }

@@ -587,13 +587,15 @@ function Popup() {
                 onChange={(event) => { const enabled = event.currentTarget.checked; void run(() => message({action:"configure-auto-lock", enabled, minutes:state.autoLockMinutes ?? 60})); }} />
               {t("空闲后需要重新输入主密码")}
             </label>
-            {state.autoLockEnabled && <label>{t("空闲时长")}
-              <select id="browser-auto-lock-minutes" value={state.autoLockMinutes ?? 60} disabled={busy}
-                onChange={(event) => { const minutes = Number(event.currentTarget.value); void run(() => message({action:"configure-auto-lock", enabled:true, minutes})); }}>
-                <option value={60}>{t("1 小时")}</option>
-                <option value={120}>{t("2 小时")}</option>
-              </select>
-            </label>}
+            {state.autoLockEnabled && <div class="seg-group"><span class="seg-label">{t("空闲时长")}</span>
+              <div id="browser-auto-lock-minutes" class="seg-bar" role="radiogroup" aria-label={t("空闲时长")}>
+                {([[60, t("1 小时")], [120, t("2 小时")]] as const).map(([minutes, label]) => {
+                  const active = (state.autoLockMinutes ?? 60) === minutes;
+                  return <button type="button" role="radio" aria-checked={active} class={active ? "on" : ""} disabled={busy}
+                    onClick={() => void run(() => message({action:"configure-auto-lock", enabled:true, minutes}))}>{label}</button>;
+                })}
+              </div>
+            </div>}
             <p class="muted">{t("默认保持授权，不因空闲或电脑锁屏要求重新输入。开启后，达到所选空闲时长或电脑锁屏时锁定插件。手动锁定、撤销授权或修改主密码后仍需验证。")}</p>
           </details>)}
       <footer class="popup-footer">
@@ -652,12 +654,34 @@ function CaptureConfirmation({
         {captured.mode === "native" ? t("离线暂存使用此浏览器的设备密钥加密。") : t("数据加密保存在此浏览器的独立资料库中。")}
         {captured.expires ? t("待保存信息将在两分钟后清除。") : t("确认后加密保存。")}
       </p>
-      <label>{t("保存方式")}<select disabled={busy} value={captured.updateId ? JSON.stringify([captured.updateId,captured.updateAccountId ?? null]) : ""} onChange={event=>{
-        const value=event.currentTarget.value;
-        const [updateId,updateAccountId]=value ? JSON.parse(value) : [undefined,undefined];
-        const account=accounts.find(a=>a.id===updateId && (a.accountId??null)===(updateAccountId??null));
-        onChange({...captured,updateId,updateAccountId:updateAccountId??undefined,username:account?.username??captured.username});
-      }}><option value="">{t("另存为新账号")}</option>{accounts.map(account=><option value={JSON.stringify([account.id,account.accountId??null])}>{fmt(t("更新：{title} · {username}"),{title:account.title,username:account.username})}</option>)}</select></label>
+      {accounts.length <= 5 ? (
+        <div class="seg-group">
+          <span class="seg-label">{t("保存方式")}</span>
+          <div class="pick-cards" role="radiogroup" aria-label={t("保存方式")}>
+            <button type="button" role="radio" aria-checked={!captured.updateId} class={`pick-card${!captured.updateId ? " on" : ""}`} disabled={busy}
+              onClick={() => onChange({ ...captured, updateId: undefined, updateAccountId: undefined })}>
+              <span class="dot" /><span><b>{t("另存为新账号")}</b></span>
+            </button>
+            {accounts.map(account => {
+              const val = JSON.stringify([account.id, account.accountId ?? null]);
+              const active = (captured.updateId ? JSON.stringify([captured.updateId, captured.updateAccountId ?? null]) : "") === val;
+              return (
+                <button type="button" role="radio" aria-checked={active} class={`pick-card${active ? " on" : ""}`} disabled={busy}
+                  onClick={() => onChange({ ...captured, updateId: account.id, updateAccountId: account.accountId ?? undefined, username: account.username ?? captured.username })}>
+                  <span class="dot" /><span><b>{fmt(t("更新：{title} · {username}"), { title: account.title, username: account.username })}</b></span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ) : (
+        <label>{t("保存方式")}<select disabled={busy} value={captured.updateId ? JSON.stringify([captured.updateId,captured.updateAccountId ?? null]) : ""} onChange={event=>{
+          const value=event.currentTarget.value;
+          const [updateId,updateAccountId]=value ? JSON.parse(value) : [undefined,undefined];
+          const account=accounts.find(a=>a.id===updateId && (a.accountId??null)===(updateAccountId??null));
+          onChange({...captured,updateId,updateAccountId:updateAccountId??undefined,username:account?.username??captured.username});
+        }}><option value="">{t("另存为新账号")}</option>{accounts.map(account=><option value={JSON.stringify([account.id,account.accountId??null])}>{fmt(t("更新：{title} · {username}"),{title:account.title,username:account.username})}</option>)}</select></label>
+      )}
       {captured.updateId && <p class="muted">{t("更新所选账号并保留旧密码历史；需要资料库在线解锁。")}</p>}
       <label htmlFor="capture-username">{t("账号")}</label>
       <input

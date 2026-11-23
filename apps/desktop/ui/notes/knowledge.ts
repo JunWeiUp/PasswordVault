@@ -1,6 +1,6 @@
 // Pure helpers for the Obsidian-style personal knowledge base: hierarchical categories,
 // canonical Markdown conversion, wikilinks/backlinks, AI writable policy and LCS line diff.
-import { NoteMarkdown } from "passwordvault/native";
+import { noteMarkdownNative } from "../api/nativeBridge";
 import type { Item } from "../store";
 
 export type NoteProperty = { key: string; value: string };
@@ -70,14 +70,14 @@ export function isAiActor(actor: unknown): boolean {
 export function noteToMarkdown(item: Record<string, any>): string {
   if (item.noteFormat === "rich-v1" && item.noteDocument?.type === "doc") {
     try {
-      const readable = (NoteMarkdown as any).toReadableMarkdown;
+      const readable = noteMarkdownNative.toReadableMarkdown;
       if (typeof readable === "function") {
         const md = readable(JSON.stringify(item.noteDocument));
         if (typeof md === "string") return md;
       }
     } catch {}
     try {
-      const res = JSON.parse(NoteMarkdown.toMarkdown(JSON.stringify(item.noteDocument)));
+      const res = JSON.parse(noteMarkdownNative.toMarkdown(JSON.stringify(item.noteDocument)));
       if (typeof res.markdown === "string") return res.markdown;
     } catch {}
   }

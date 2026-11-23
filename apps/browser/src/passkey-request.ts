@@ -7,6 +7,9 @@ export type PasskeyRequest = {
   allowCredentials: string[];
   excludeCredentials: string[];
   clientDataJSON: string;
+  /** WebAuthn PRF salts (base64url), evaluated by the core for the chosen credential. */
+  prf?: { first?: string; second?: string };
+  prfByCredential?: Record<string, { first: string; second?: string }>;
 };
 function decode(value: unknown, min: number, max: number): string {
   if (typeof value !== "string" || !/^[A-Za-z0-9_-]+$/.test(value)) throw new Error("invalid-request");
@@ -35,7 +38,28 @@ export function validatePasskeyRequest(operation: "create" | "get", options: any
     if (typeof options?.user?.name !== "string" || options.user.name.length > 1024) throw new Error("invalid-request");
     user = {id:decode(options.user.id,1,64),name:options.user.name};
   }
-  return {operation,rpId,challenge,user,allowCredentials:list(options?.allowCredentials),excludeCredentials:list(options?.excludeCredentials),clientDataJSON:JSON.stringify({type:`webauthn.${operation}`,origin:source.origin,challenge,crossOrigin:false})};
+  const salts = (value: any) => {
+    if (!value || typeof value !== "object") throw new Error("invalid-request");
+    const out: { first?: string; second?: string } = {};
+    if (value.first !== undefined) out.first = decode(value.first, 0, 4096);
+    if (value.second !== undefined) { if (out.first === undefined) throw new Error("invalid-request"); out.second = decode(value.second, 0, 4096); }
+    return out;
+  };
+  const prf = options?.prf === undefined ? undefined : salts(options.prf);
+  let prfByCredential: PasskeyRequest["prfByCredential"];
+  if (options?.prfByCredential !== undefined) {
+    // Spec: evalByCredential requires a non-empty allowCredentials list containing each key.
+    const allowed = list(options?.allowCredentials);
+    const entries = Object.entries(options.prfByCredential ?? {});
+    if (operation !== "get" || prf === undefined || !allowed.length || entries.length > 64) throw new Error("invalid-request");
+    prfByCredential = {};
+    for (const [id, value] of entries) {
+      const inputs = salts(value);
+      if (!allowed.includes(id) || inputs.first === undefined) throw new Error("invalid-request");
+      prfByCredential[id] = inputs as { first: string; second?: string };
+    }
+  }
+  return {operation,rpId,challenge,user,prf,prfByCredential,allowCredentials:list(options?.allowCredentials),excludeCredentials:list(options?.excludeCredentials),clientDataJSON:JSON.stringify({type:`webauthn.${operation}`,origin:source.origin,challenge,crossOrigin:false})};
 }
 /** One-shot request lifecycle. UI may resolve only a current document's own request. */
 export class PasskeyRequests {

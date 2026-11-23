@@ -29,7 +29,8 @@ public enum RelayInvitationLinks {
     public static func make(_ invitation: [String:Any], key: Data, password: String? = nil) throws -> String {
         guard let url=invitation["url"] as? String,var u=URLComponents(string:url),let id=invitation["id"] as? String else { throw RelayError.invalid("invitation URL") }
         try RelayAccess.validate(password)
-        u.scheme="common-relay";u.path="/i/"+base64url(try Data(relayHex:id));u.fragment=base64url(key)+(password.map { "."+base64url(Data($0.utf8)) } ?? "")
+        let prefix = u.path == "/v2/ws" ? "/v2/i/" : "/i/"
+        u.scheme="common-relay";u.path=prefix+base64url(try Data(relayHex:id));u.fragment=base64url(key)+(password.map { "."+base64url(Data($0.utf8)) } ?? "")
         guard let link=u.string else { throw RelayError.invalid("invitation URL") };return link
     }
     private static func fragmentPassword(_ text: String) throws -> String {
@@ -39,11 +40,13 @@ public enum RelayInvitationLinks {
         try RelayAccess.validate(password);return password
     }
     public static func parse(_ text: String, allowLocalTest: Bool = false) throws -> (url: String,id: String,key: Data,password: String?) {
-        guard text.count<=2048,var u=URLComponents(string:text),u.scheme=="common-relay",let host=u.host,!host.isEmpty,u.user==nil,u.password==nil,u.query==nil,u.percentEncodedPath.hasPrefix("/i/"),let fragment=u.percentEncodedFragment else { throw RelayError.invalid("compact invitation URL") }
+        guard text.count<=2048,var u=URLComponents(string:text),u.scheme=="common-relay",let host=u.host,!host.isEmpty,u.user==nil,u.password==nil,u.query==nil,let fragment=u.percentEncodedFragment else { throw RelayError.invalid("compact invitation URL") }
+        let isV2 = u.percentEncodedPath.hasPrefix("/v2/i/")
+        guard isV2 || u.percentEncodedPath.hasPrefix("/i/") else { throw RelayError.invalid("compact invitation URL") }
         let parts=fragment.split(separator:".",maxSplits:1,omittingEmptySubsequences:false).map(String.init)
-        let id=try decode(String(u.percentEncodedPath.dropFirst(3)),size:16),key=try decode(parts[0],size:32)
+        let id=try decode(String(u.percentEncodedPath.dropFirst(isV2 ? 6 : 3)),size:16),key=try decode(parts[0],size:32)
         let password=parts.count==2 ? try fragmentPassword(parts[1]) : nil // gitleaks:allow -- synthetic fixture or non-secret expression
-        u.scheme=allowLocalTest && host=="127.0.0.1" ? "ws":"wss";u.path="/relay/v1/ws";u.fragment=nil
+        u.scheme=allowLocalTest && host=="127.0.0.1" ? "ws":"wss";u.path=isV2 ? "/v2/ws":"/relay/v1/ws";u.fragment=nil
         guard let url=u.string else { throw RelayError.invalid("invitation URL") };return (url,id.relayHex,key,password)
     }
 }

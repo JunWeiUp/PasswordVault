@@ -57,3 +57,9 @@ test("Quick Access stays open after copying when the preference is off", async (
   await app.submit("id:quick-access");
   await app.waitUntil(() => !app.texts().includes("复制后关闭 · 锁定时关闭"));
 });
+test("account rows mark entries that hold passkeys", async () => {
+  const app = await open("./search-harness.tsx", { width: 1100, height: 850, platform: "macos" });
+  await app.waitFor("text:其他账号");
+  await app.waitFor("id:passkey-badge-other");
+  await app.waitFor("label:已保存 1 个通行密钥");
+});

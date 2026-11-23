@@ -324,11 +324,13 @@ fun SettingsScreen(
                         SettingsLabel(t("外观", "Appearance"))
                         SettingsGroup {
                             val themes = linkedMapOf("system" to t("跟随系统", "System"), "light" to t("浅色", "Light"), "dark" to t("深色", "Dark"))
-                            SettingsOption(t("主题", "Theme")) {
-                                SettingsChoice(themes[state.settings.optString("theme", "system")].orEmpty(), themes.values.toList()) { label ->
-                                    val selected = themes.entries.first { it.value == label }.key
-                                    scope.launch { vault.mutate("settings", JSONObject().put("settings", JSONObject().put("theme", selected))) }
-                                }
+                            SettingsChoiceOption(
+                                title = t("主题", "Theme"),
+                                value = themes[state.settings.optString("theme", "system")].orEmpty(),
+                                options = themes.values.toList(),
+                            ) { label ->
+                                val selected = themes.entries.first { it.value == label }.key
+                                scope.launch { vault.mutate("settings", JSONObject().put("settings", JSONObject().put("theme", selected))) }
                             }
                             SettingsRule()
                             SettingsOption(t("动态取色", "Dynamic color"), t("当前使用品牌蓝", "Currently using brand blue"))
@@ -339,20 +341,25 @@ fun SettingsScreen(
                         }
                         SettingsLabel(t("启动", "Startup"))
                         SettingsGroup {
-                            SettingsOption(t("打开时显示", "Show on open")) {
-                                SettingsChoice(AppPreferences.startLabel(startChoice, t), AppPreferences.START_CHOICES.map { AppPreferences.startLabel(it, t) }) { label ->
-                                    startChoice = AppPreferences.START_CHOICES.first { AppPreferences.startLabel(it, t) == label }
-                                    uiPrefs.edit().putString(AppPreferences.START_PAGE, startChoice).apply()
-                                }
+                            SettingsChoiceOption(
+                                title = t("打开时显示", "Show on open"),
+                                value = AppPreferences.startLabel(startChoice, t),
+                                options = AppPreferences.START_CHOICES.map { AppPreferences.startLabel(it, t) },
+                            ) { label ->
+                                startChoice = AppPreferences.START_CHOICES.first { AppPreferences.startLabel(it, t) == label }
+                                uiPrefs.edit().putString(AppPreferences.START_PAGE, startChoice).apply()
                             }
                         }
                         SettingsLabel(t("剪贴板", "Clipboard"))
                         SettingsGroup {
-                            SettingsOption(t("自动清除剪贴板", "Clear clipboard"), t("仅清除未被替换的内容；锁定时总会清除", "Only if unchanged; always cleared on lock")) {
-                                SettingsChoice(AppPreferences.clipboardLabel(clipboardSeconds, t), AppPreferences.CLIPBOARD_CHOICES.map { AppPreferences.clipboardLabel(it, t) }) { label ->
-                                    clipboardSeconds = AppPreferences.CLIPBOARD_CHOICES.first { AppPreferences.clipboardLabel(it, t) == label }
-                                    uiPrefs.edit().putInt(AppPreferences.CLIPBOARD_SECONDS, clipboardSeconds).apply()
-                                }
+                            SettingsChoiceOption(
+                                title = t("自动清除剪贴板", "Clear clipboard"),
+                                subtitle = t("仅清除未被替换的内容；锁定时总会清除", "Only if unchanged; always cleared on lock"),
+                                value = AppPreferences.clipboardLabel(clipboardSeconds, t),
+                                options = AppPreferences.CLIPBOARD_CHOICES.map { AppPreferences.clipboardLabel(it, t) },
+                            ) { label ->
+                                clipboardSeconds = AppPreferences.CLIPBOARD_CHOICES.first { AppPreferences.clipboardLabel(it, t) == label }
+                                uiPrefs.edit().putInt(AppPreferences.CLIPBOARD_SECONDS, clipboardSeconds).apply()
                             }
                             SettingsRule()
                             SettingsOption(t("标记为敏感内容", "Mark as sensitive"), t("Android 13+ 隐藏秘密预览", "Hide secret previews on Android 13+"))
@@ -385,11 +392,14 @@ fun SettingsScreen(
                         SettingsGroup {
                             val minutes = listOf(1, 5, 15, 30, 60)
                             val current = state.settings.optInt("autoLockMinutes", 60)
-                            SettingsOption(t("闲置后锁定", "Lock after idle"), t("手动锁定和锁屏锁定始终有效", "Manual lock and screen lock always apply")) {
-                                SettingsChoice(t("$current 分钟", "$current min"), minutes.map { t("$it 分钟", "$it min") }) { label ->
-                                    val value = minutes.first { t("$it 分钟", "$it min") == label }
-                                    scope.launch { vault.mutate("settings", JSONObject().put("settings", JSONObject().put("autoLockMinutes", value))) }
-                                }
+                            SettingsChoiceOption(
+                                title = t("闲置后锁定", "Lock after idle"),
+                                subtitle = t("手动锁定和锁屏锁定始终有效", "Manual lock and screen lock always apply"),
+                                value = t("$current 分钟", "$current min"),
+                                options = minutes.map { t("$it 分钟", "$it min") },
+                            ) { label ->
+                                val value = minutes.first { t("$it 分钟", "$it min") == label }
+                                scope.launch { vault.mutate("settings", JSONObject().put("settings", JSONObject().put("autoLockMinutes", value))) }
                             }
                             SettingsRule()
                             SettingsOption(t("切到后台", "In background"), t("在闲置期限内返回无需重新解锁", "Return before the idle timeout without unlocking"))
@@ -502,7 +512,7 @@ fun SettingsScreen(
                         }
                         SettingsLabel(t("从其他应用导入", "Import from other apps"))
                         SettingsGroup {
-                            SettingsDestination(t("导入 CSV / 1Password .1pux", "Import CSV / 1Password .1pux"), t("先预览字段和重复项，再确认写入", "Preview fields and duplicates before writing"), Icons.Default.FileDownload) { capabilityPanel = "import" }
+                            SettingsDestination(t("导入 CSV / 1Password / CXF", "Import CSV / 1Password / CXF"), t("先预览字段和重复项，再确认写入", "Preview fields and duplicates before writing"), Icons.Default.FileDownload) { capabilityPanel = "import" }
                         }
                         SettingsLabel(t("迁移导出", "Migration export"))
                         SettingsDetail {
@@ -813,7 +823,10 @@ private fun PasswordHealthPage(
     } else if (failed) {
         SettingsHint(t("检查未完成，请点右上角重试。", "The check failed. Tap refresh to retry."))
     } else if (results == null) {
-        Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+        SettingsDetail {
+            LinearProgressIndicator(Modifier.fillMaxWidth())
+            SettingsHint(t("正在本地增量计算密码健康指标，可随时切换分类查看…", "Computing local password health metrics; categories remain interactive…"))
+        }
     } else {
         val matching = results.filter { it.optBoolean(selected) }
         if (matching.isEmpty()) Column(Modifier.fillMaxWidth().padding(horizontal = 28.dp, vertical = 49.dp), horizontalAlignment = Alignment.CenterHorizontally) {

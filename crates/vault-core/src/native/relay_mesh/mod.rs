@@ -8,6 +8,30 @@ use super::*;
 const MAX_FUTURE_MS: u64 = 7 * 24 * 60 * 60 * 1000;
 const SKEW_NOTICE_MS: u64 = 5 * 60 * 1000;
 const PACKET_VERSION: u64 = 3;
+/// Attachments larger than 512 KiB sync as L1 metadata stubs (`remoteFiles`) first
+/// and download on demand, eliminating head-of-line blocking for passwords and notes.
+pub(super) const INLINE_ATTACHMENT_LIMIT: usize = 512 * 1024;
+
+fn default_retention_days() -> u32 {
+    30
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct NoteConflict {
+    pub note_id: String,
+    pub local_device: String,
+    pub remote_device: String,
+    pub revision_id: String,
+    pub captured_at: u64,
+    pub section: String,
+    #[serde(default)]
+    pub auto_merged: Vec<String>,
+    #[serde(default)]
+    pub asset_guard: String,
+    #[serde(default = "default_retention_days")]
+    pub retention_days: u32,
+}
 
 /// (wall-clock milliseconds, logical counter, device). Compared lexicographically;
 /// the device identifier only breaks exact ties between different replicas.
@@ -29,7 +53,12 @@ pub(super) struct Mesh {
     clock: (u64, u32),
     seq: u64,
     meta: BTreeMap<String, Meta>,
+    /// Legacy full-record baseline retained only for transparent migration on load.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     baseline: Records,
+    /// Compact SHA-256 content digests per key so `personal_mesh` never duplicates full note bodies.
+    #[serde(default)]
+    baseline_digests: BTreeMap<String, String>,
     peers: BTreeSet<String>,
     /// Highest local sequence each peer has confirmed receiving.
     acked: BTreeMap<String, u64>,
@@ -43,12 +72,21 @@ pub(super) struct Mesh {
     migrated_from: Option<String>,
     #[serde(default)]
     archived_conflicts: usize,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    note_conflicts: BTreeMap<String, NoteConflict>,
 }
 
 pub(super) fn operation(op: &str) -> bool {
     matches!(
         op,
-        "relay-mesh-init" | "relay-mesh-peers" | "relay-mesh-export" | "relay-mesh-receive"
+        "relay-mesh-init"
+            | "relay-mesh-peers"
+            | "relay-mesh-export"
+            | "relay-mesh-receive"
+            | "relay-mesh-conflicts"
+            | "relay-mesh-resolve-conflict"
+            | "relay-mesh-blob-export"
+            | "relay-mesh-blob-receive"
     )
 }
 
@@ -151,6 +189,25 @@ fn value_digest(value: &Value) -> Vec<u8> {
     Sha256::digest(serde_json::to_vec(value).unwrap_or_default()).to_vec()
 }
 
+fn value_digest_hex(value: &Value) -> String {
+    hex::encode(value_digest(value))
+}
+
+fn mesh_digests(doc: &Document) -> BTreeMap<String, String> {
+    let mut out = BTreeMap::new();
+    for item in &doc.items {
+        let key = format!("item:{}", item["id"].as_str().unwrap_or_default());
+        out.insert(key, value_digest_hex(item));
+    }
+    for name in doc.note_categories() {
+        out.insert(format!("category:{name}"), value_digest_hex(&json!(true)));
+    }
+    out
+}
+
+mod merge;
+use merge::merge_concurrent_note;
+
 impl Mesh {
     fn local_stamp(&mut self) -> Stamp {
         let now = now_ms();
@@ -170,9 +227,19 @@ impl Mesh {
         self.seq = self.seq.checked_add(1).ok_or(VaultError::InvalidData)?;
         Ok(self.seq)
     }
+    fn ensure_digests(&mut self) {
+        if self.baseline_digests.is_empty() && !self.baseline.is_empty() {
+            for (k, v) in std::mem::take(&mut self.baseline) {
+                self.baseline_digests.insert(k, value_digest_hex(&v));
+            }
+        } else {
+            self.baseline.clear();
+        }
+    }
 }
 
-/// Records local edits. Returns whether the mesh journal handled this save.
+/// Records local edits using compact content digests (never hydrating untouched split notes).
+/// Expects `doc` after `note_bodies::sync_and_strip` so split notes carry deterministic `_bodyDigest`.
 pub(super) fn capture(
     conn: &Connection,
     root: &[u8; 32],
@@ -189,12 +256,18 @@ pub(super) fn capture(
         return Ok(true);
     }
     let mut mesh = load(conn, root, vault)?;
-    let now = mesh_records(doc);
-    let keys: BTreeSet<_> = now.keys().chain(mesh.baseline.keys()).cloned().collect();
+    let migrated_legacy = !mesh.baseline.is_empty();
+    mesh.ensure_digests();
+    let now = mesh_digests(doc);
+    let keys: BTreeSet<_> = now
+        .keys()
+        .chain(mesh.baseline_digests.keys())
+        .cloned()
+        .collect();
     let mut dirty = false;
     for key in keys {
-        let value = now.get(&key).unwrap_or(&Value::Null);
-        if mesh.baseline.get(&key).unwrap_or(&Value::Null) == value {
+        let digest = now.get(&key);
+        if mesh.baseline_digests.get(&key) == digest {
             continue;
         }
         let stamp = mesh.local_stamp();
@@ -202,8 +275,9 @@ pub(super) fn capture(
         mesh.meta.insert(key, Meta { stamp, seq });
         dirty = true;
     }
-    if dirty {
-        mesh.baseline = now;
+    if dirty || migrated_legacy {
+        mesh.baseline_digests = now;
+        mesh.baseline.clear();
         store(conn, root, vault, &mesh)?;
     }
     Ok(true)
@@ -326,7 +400,15 @@ impl DiskVault {
                 let mut records = serde_json::Map::new();
                 let mut values = serde_json::Map::new();
                 for (key, meta) in mesh.meta.iter().filter(|(_, m)| m.seq > acked) {
-                    let value = current.get(key).cloned().unwrap_or(Value::Null);
+                    let mut value = current.get(key).cloned().unwrap_or(Value::Null);
+                    if !value.is_null() && key.starts_with("item:") {
+                        note_bodies::hydrate_item(
+                            &open.connection,
+                            &open.root,
+                            &open.header.vault_id,
+                            &mut value,
+                        )?;
+                    }
                     values.insert(key.clone(), value.clone());
                     records.insert(key.clone(), json!({"value":value,"stamp":meta.stamp}));
                 }
@@ -334,14 +416,24 @@ impl DiskVault {
                 if records.is_empty() && mesh.ack_sent.get(peer) == Some(&ack) {
                     return Ok(json!({"packet":null}));
                 }
-                let files = attachments(&vault_dir, open, &json!({"records":values}))?;
+                let (files, remote_files) = attachments_split(
+                    &vault_dir,
+                    open,
+                    &json!({"records":values}),
+                    INLINE_ATTACHMENT_LIMIT,
+                    &mesh.device,
+                )?;
                 mesh.ack_sent.insert(peer.into(), ack);
                 store(&open.connection, &open.root, &open.header.vault_id, &mesh)?;
-                Ok(json!({"packet":{
+                let mut packet = json!({
                     "version":PACKET_VERSION,"kind":"mesh","group":mesh.group,
                     "from":mesh.device,"to":peer,"formatVersion":open.document.format_version,
                     "upto":mesh.seq,"ack":ack,"records":records,"files":files
-                }}))
+                });
+                if remote_files.as_array().is_some_and(|a| !a.is_empty()) {
+                    packet["remoteFiles"] = remote_files;
+                }
+                Ok(json!({"packet": packet}))
             }
             "relay-mesh-receive" => {
                 let peer = string(request, "peer")?;
@@ -382,6 +474,13 @@ impl DiskVault {
                     &open.header.vault_id,
                     &packet["files"],
                 )?;
+                receive_remote_files(
+                    &tx,
+                    &open.root,
+                    &open.header.vault_id,
+                    peer,
+                    &packet["remoteFiles"],
+                )?;
                 let mut changed = false;
                 let mut applied = 0usize;
                 for (key, record) in incoming {
@@ -414,7 +513,15 @@ impl DiskVault {
                         )?;
                         validate_files(&tx, &proposed)?;
                     }
-                    let local = working.get(key).cloned().unwrap_or(Value::Null);
+                    let mut local = working.get(key).cloned().unwrap_or(Value::Null);
+                    if !local.is_null() && key.starts_with("item:") {
+                        note_bodies::hydrate_item(
+                            &tx,
+                            &open.root,
+                            &open.header.vault_id,
+                            &mut local,
+                        )?;
+                    }
                     // Existing legacy shared records never acquire new editing permission.
                     if !local.is_null()
                         && local != value
@@ -433,10 +540,106 @@ impl DiskVault {
                         || (stamp == local_stamp
                             && local != value
                             && value_digest(&value) > value_digest(&local));
-                    if wins {
+
+                    let concurrent_note = key.starts_with("item:")
+                        && !local.is_null()
+                        && !value.is_null()
+                        && local != value
+                        && local["type"] == "secureNote"
+                        && value["type"] == "secureNote"
+                        && local["isDeleted"] != true
+                        && value["isDeleted"] != true
+                        && local_stamp.0 > 0
+                        && stamp.0 > 0
+                        && !local_stamp.2.is_empty()
+                        && !stamp.2.is_empty()
+                        && local_stamp.2 != stamp.2;
+
+                    if concurrent_note {
+                        let note_id = key["item:".len()..].to_string();
+                        let (winner, loser, loser_dev, winning_stamp) = if wins {
+                            (&value, &local, mesh.device.as_str(), stamp.clone())
+                        } else {
+                            (&local, &value, peer, local_stamp.clone())
+                        };
+                        let base_item =
+                            history::page(&tx, &open.root, &open.header.vault_id, &note_id, 0, 8)
+                                .ok()
+                                .and_then(|(_, revs)| {
+                                    revs.into_iter().map(|r| r.item).find(|v| {
+                                        v["note"] != winner["note"] && v["note"] != loser["note"]
+                                    })
+                                });
+                        let merged = merge_concurrent_note(base_item.as_ref(), winner, loser);
+                        if merged.has_overlap {
+                            let rev_id = new_id();
+                            history::write(
+                                &tx,
+                                &open.root,
+                                &open.header.vault_id,
+                                &history::Revision {
+                                    id: rev_id.clone(),
+                                    item_id: note_id.clone(),
+                                    captured_at: if wins { local_stamp.0 } else { stamp.0 },
+                                    item: loser.clone(),
+                                    actor_type: Some("sync".into()),
+                                    actor: Some(format!("并行分支 · {loser_dev}")),
+                                    summary: Some(format!(
+                                        "并发编辑保留分支（{}）",
+                                        merged.conflict_section
+                                    )),
+                                    milestone: None,
+                                },
+                            )?;
+                            mesh.note_conflicts.insert(
+                                note_id.clone(),
+                                NoteConflict {
+                                    note_id,
+                                    local_device: mesh.device.clone(),
+                                    remote_device: peer.to_string(),
+                                    revision_id: rev_id,
+                                    captured_at: now,
+                                    section: merged.conflict_section,
+                                    auto_merged: merged.auto_merged,
+                                    asset_guard: merged.asset_guard,
+                                    retention_days: 30,
+                                },
+                            );
+                        }
+                        if merged.item != local {
+                            working.insert(key.clone(), merged.item);
+                            let next_stamp = if wins {
+                                winning_stamp
+                            } else {
+                                mesh.local_stamp()
+                            };
+                            let seq = mesh.bump()?;
+                            mesh.meta.insert(
+                                key.clone(),
+                                Meta {
+                                    stamp: next_stamp,
+                                    seq,
+                                },
+                            );
+                            changed = true;
+                            applied += 1;
+                        } else if wins {
+                            let seq = mesh.bump()?;
+                            mesh.meta.insert(
+                                key.clone(),
+                                Meta {
+                                    stamp: winning_stamp,
+                                    seq,
+                                },
+                            );
+                        }
+                    } else if wins {
                         if local != value {
                             if value.is_null() {
                                 working.remove(key);
+                                if let Some(id) = key.strip_prefix("item:") {
+                                    mesh.note_conflicts.remove(id);
+                                }
                             } else {
                                 working.insert(key.clone(), value);
                             }
@@ -472,18 +675,261 @@ impl DiskVault {
                 if !incoming.is_empty() {
                     mesh.ack_sent.remove(peer);
                 }
+                mesh.ensure_digests();
                 if changed {
                     install_mesh(&mut next, &working)?;
                     validate_files(&tx, &next)?;
-                    mesh.baseline = mesh_records(&next);
+                    let persisted =
+                        note_bodies::sync_and_strip(&tx, &open.root, &open.header.vault_id, &next)?;
+                    mesh.baseline_digests = mesh_digests(&persisted);
+                    mesh.baseline.clear();
+                    store(&tx, &open.root, &open.header.vault_id, &mesh)?;
+                    let saved = save_document_row_with_prev(
+                        &tx,
+                        &open.root,
+                        &open.header.vault_id,
+                        Some(&open.document),
+                        &next,
+                        None,
+                    )?;
+                    storage(tx.commit())?;
+                    open.document = saved;
+                    open.clear_hydrated_cache();
+                } else {
+                    store(&tx, &open.root, &open.header.vault_id, &mesh)?;
+                    if next.format_version != open.document.format_version {
+                        let saved = save_document_row_with_prev(
+                            &tx,
+                            &open.root,
+                            &open.header.vault_id,
+                            Some(&open.document),
+                            &next,
+                            None,
+                        )?;
+                        storage(tx.commit())?;
+                        open.document = saved;
+                    } else {
+                        storage(tx.commit())?;
+                    }
                 }
+                Ok(json!({
+                    "ok": true,
+                    "changed": changed,
+                    "applied": applied,
+                    "conflictCount": mesh.note_conflicts.len()
+                }))
+            }
+            "relay-mesh-conflicts" => {
+                let mut conflicts = Vec::new();
+                let revs = history::read(&open.connection, &open.root, &open.header.vault_id)?;
+                for cf in mesh.note_conflicts.values() {
+                    let Some(mut local_item) = open
+                        .document
+                        .items
+                        .iter()
+                        .find(|i| i["id"] == cf.note_id && i["isDeleted"] != true)
+                        .cloned()
+                    else {
+                        continue;
+                    };
+                    note_bodies::hydrate_item(
+                        &open.connection,
+                        &open.root,
+                        &open.header.vault_id,
+                        &mut local_item,
+                    )?;
+                    let remote_item = revs
+                        .iter()
+                        .find(|r| r.id == cf.revision_id && r.item_id == cf.note_id)
+                        .map(|r| r.item.clone())
+                        .unwrap_or(Value::Null);
+                    conflicts.push(json!({
+                        "noteId": cf.note_id,
+                        "title": local_item["title"],
+                        "localDevice": cf.local_device,
+                        "remoteDevice": cf.remote_device,
+                        "revisionId": cf.revision_id,
+                        "capturedAt": cf.captured_at,
+                        "section": cf.section,
+                        "autoMerged": cf.auto_merged,
+                        "assetGuard": cf.asset_guard,
+                        "retentionDays": cf.retention_days,
+                        "localItem": local_item,
+                        "remoteItem": remote_item,
+                    }));
+                }
+                Ok(json!({"conflicts": conflicts}))
+            }
+            "relay-mesh-resolve-conflict" => {
+                let id = string(request, "id")?;
+                let strategy = request["strategy"].as_str().unwrap_or("local");
+                if !matches!(strategy, "local" | "remote" | "both" | "custom") {
+                    return Err(VaultError::InvalidData);
+                }
+                let cf = mesh
+                    .note_conflicts
+                    .get(id)
+                    .cloned()
+                    .ok_or(VaultError::InvalidData)?;
+                let mut local_item = open
+                    .document
+                    .items
+                    .iter()
+                    .find(|i| i["id"] == id)
+                    .cloned()
+                    .ok_or(VaultError::InvalidData)?;
+                note_bodies::hydrate_item(
+                    &open.connection,
+                    &open.root,
+                    &open.header.vault_id,
+                    &mut local_item,
+                )?;
+                let remote_item =
+                    history::read(&open.connection, &open.root, &open.header.vault_id)?
+                        .into_iter()
+                        .find(|r| r.id == cf.revision_id && r.item_id == id)
+                        .map(|r| r.item);
+                let resolved = match strategy {
+                    "local" => local_item.clone(),
+                    "remote" => {
+                        let mut r = remote_item.ok_or(VaultError::InvalidData)?;
+                        // Preserve R9 attachment union even when picking remote branch.
+                        r = merge_concurrent_note(None, &r, &local_item).item;
+                        r
+                    }
+                    "both" => {
+                        let remote = remote_item.ok_or(VaultError::InvalidData)?;
+                        let mut merged = merge_concurrent_note(None, &local_item, &remote).item;
+                        let a_text = local_item["note"].as_str().unwrap_or("").trim();
+                        let b_text = remote["note"].as_str().unwrap_or("").trim();
+                        if !b_text.is_empty() && a_text != b_text {
+                            let combined = format!(
+                                "{a_text}\n\n---\n### 来自并行分支（{}）\n{b_text}",
+                                cf.remote_device
+                            );
+                            merged["note"] = json!(combined);
+                            if let Some(arr) = merged["noteDocument"]["content"].as_array_mut() {
+                                arr.push(json!({"type":"horizontalRule"}));
+                                arr.push(json!({"type":"heading","attrs":{"level":3},"content":[{"type":"text","text":format!("来自并行分支（{}）", cf.remote_device)}]}));
+                                for line in b_text.lines().filter(|l| !l.trim().is_empty()) {
+                                    arr.push(json!({"type":"paragraph","content":[{"type":"text","text":line}]}));
+                                }
+                            }
+                        }
+                        merged
+                    }
+                    "custom" => {
+                        let custom = request
+                            .get("item")
+                            .cloned()
+                            .ok_or(VaultError::InvalidData)?;
+                        if custom["id"].as_str() != Some(id) {
+                            return Err(VaultError::InvalidData);
+                        }
+                        custom
+                    }
+                    _ => return Err(VaultError::InvalidData),
+                };
+                let mut resolved_item = resolved;
+                resolved_item["lastActor"] = json!("分支合并 · 我");
+                resolved_item["lastSummary"] = json!(format!(
+                    "已解决并行分支（策略：{strategy}，原分支保留 {} 天）",
+                    cf.retention_days
+                ));
+                let mut next = open.document.clone();
+                next.upsert(resolved_item.clone())?;
+                mesh.note_conflicts.remove(id);
+                let tx = storage(open.connection.transaction())?;
                 store(&tx, &open.root, &open.header.vault_id, &mesh)?;
-                if changed || next.format_version != open.document.format_version {
-                    save_document_row(&tx, &open.root, &open.header.vault_id, &next)?;
-                }
+                let meta = history::HistoryMeta {
+                    item_id: Some(id.to_owned()),
+                    actor_type: Some("user".into()),
+                    actor: Some("分支合并 · 我".into()),
+                    summary: Some(format!("解决并行分支（{}）", cf.section)),
+                    milestone: false,
+                    coalesce: false,
+                };
+                let saved = save_document_row_with_prev(
+                    &tx,
+                    &open.root,
+                    &open.header.vault_id,
+                    Some(&open.document),
+                    &next,
+                    Some(&meta),
+                )?;
                 storage(tx.commit())?;
-                open.document = next;
-                Ok(json!({"ok":true,"changed":changed,"applied":applied}))
+                open.document = saved;
+                open.invalidate_hydrated(id);
+                Ok(json!({
+                    "ok": true,
+                    "item": resolved_item,
+                    "conflictCount": mesh.note_conflicts.len()
+                }))
+            }
+            "relay-mesh-blob-export" => {
+                let peer = string(request, "peer")?;
+                let attachment_id = string(request, "attachmentId")?;
+                if !mesh.peers.contains(peer) {
+                    return Err(VaultError::Authentication);
+                }
+                let meta = notes::metas(&open.connection)?
+                    .into_iter()
+                    .find(|m| m.id == attachment_id)
+                    .ok_or(VaultError::InvalidData)?;
+                if notes::is_remote(&open.connection, &meta.id)? {
+                    return Err(VaultError::Unsupported);
+                }
+                let bytes = notes::read(
+                    &vault_dir,
+                    &open.connection,
+                    &open.root,
+                    &open.header.vault_id,
+                    &meta,
+                )?;
+                Ok(json!({
+                    "meta": meta,
+                    "data": STANDARD.encode(bytes.as_slice()),
+                }))
+            }
+            "relay-mesh-blob-receive" => {
+                let peer = string(request, "peer")?;
+                if !mesh.peers.contains(peer) {
+                    return Err(VaultError::Authentication);
+                }
+                let meta: notes::AttachmentMeta = serde_json::from_value(request["meta"].clone())
+                    .map_err(|_| VaultError::InvalidData)?;
+                let bytes = Zeroizing::new(
+                    STANDARD
+                        .decode(string(request, "data")?)
+                        .map_err(|_| VaultError::InvalidData)?,
+                );
+                if bytes.len() != meta.size || bytes.len() > crate::archive::FILE_LIMIT {
+                    return Err(VaultError::InvalidData);
+                }
+                let tx = storage(open.connection.transaction())?;
+                let existing = notes::metas(&tx)?;
+                if let Some(old) = existing.iter().find(|m| m.id == meta.id) {
+                    if serde_json::to_value(old).ok() != serde_json::to_value(&meta).ok() {
+                        return Err(VaultError::InvalidData);
+                    }
+                    if !notes::is_remote(&tx, &old.id)?
+                        && notes::read(&vault_dir, &tx, &open.root, &open.header.vault_id, old)?
+                            .as_slice()
+                            != bytes.as_slice()
+                    {
+                        return Err(VaultError::InvalidData);
+                    }
+                }
+                notes::write(
+                    &vault_dir,
+                    &tx,
+                    &open.root,
+                    &open.header.vault_id,
+                    &meta,
+                    &bytes,
+                )?;
+                storage(tx.commit())?;
+                Ok(json!({"ok": true, "id": meta.id, "state": "ready"}))
             }
             _ => Err(VaultError::Unsupported),
         }
@@ -506,9 +952,12 @@ impl DiskVault {
                 )
             })
             .collect();
+        let remote_assets = notes::count_remote(&open.connection).unwrap_or(0);
+        let note_conflicts: Vec<&NoteConflict> = mesh.note_conflicts.values().collect();
         Ok(Some(json!({
             "enabled":true,"mode":"mesh","group":mesh.group,"device":mesh.device,
-            "peers":peers,"pending":0,"conflictCount":0,"skew":mesh.skew,
+            "peers":peers,"pending":0,"conflictCount":note_conflicts.len(),
+            "noteConflicts":note_conflicts,"remoteAssetCount":remote_assets,"skew":mesh.skew,
             "migratedFrom":mesh.migrated_from,"archivedConflicts":mesh.archived_conflicts
         })))
     }
@@ -585,6 +1034,9 @@ impl DiskVault {
                 })
                 .collect(),
         };
+        let tx = storage(open.connection.transaction())?;
+        let persisted_next =
+            note_bodies::sync_and_strip(&tx, &open.root, &open.header.vault_id, &next)?;
         let mut mesh = Mesh {
             version: 1,
             group: group.into(),
@@ -592,7 +1044,8 @@ impl DiskVault {
             clock: (now, 0),
             seq: 0,
             meta: BTreeMap::new(),
-            baseline: current,
+            baseline: Records::new(),
+            baseline_digests: mesh_digests(&persisted_next),
             peers: BTreeSet::new(),
             acked: BTreeMap::new(),
             received: BTreeMap::new(),
@@ -600,13 +1053,13 @@ impl DiskVault {
             skew: false,
             migrated_from: legacy.as_ref().map(|s| s.role.clone()),
             archived_conflicts: 0,
+            note_conflicts: BTreeMap::new(),
         };
         for (key, stamp) in stamps {
             mesh.observe(&stamp);
             let seq = mesh.bump()?;
             mesh.meta.insert(key, Meta { stamp, seq });
         }
-        let tx = storage(open.connection.transaction())?;
         history::table(&tx)?;
         if legacy.is_some() {
             storage(tx.execute_batch("CREATE TABLE IF NOT EXISTS personal_relay_archive(id INTEGER PRIMARY KEY, payload BLOB NOT NULL); INSERT INTO personal_relay_archive(payload) SELECT payload FROM personal_relay; DROP TABLE personal_relay;"))?;
@@ -616,7 +1069,14 @@ impl DiskVault {
         ))?;
         store(&tx, &open.root, &open.header.vault_id, &mesh)?;
         // Saving first records the current version of every entry in history.
-        save_document_row(&tx, &open.root, &open.header.vault_id, &next)?;
+        let saved = save_document_row_with_prev(
+            &tx,
+            &open.root,
+            &open.header.vault_id,
+            Some(&open.document),
+            &persisted_next,
+            None,
+        )?;
         if let Some(state) = &legacy {
             // Old hub conflicts become recoverable history instead of a blocking list.
             for conflict in state.conflicts.values() {
@@ -641,307 +1101,11 @@ impl DiskVault {
         }
         storage(tx.commit())?;
         let migrated = mesh.migrated_from.clone();
-        open.document = load_document(&open.connection, &open.root, &open.header.vault_id)?;
+        open.document = saved;
+        open.clear_hydrated_cache();
         Ok(json!({"ok":true,"migratedFrom":migrated,"archivedConflicts":mesh.archived_conflicts}))
     }
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn replica(dir: &std::path::Path, device: &str, peers: &[&str]) -> DiskVault {
-        let mut vault = DiskVault::new(dir).unwrap();
-        vault.create("fixture").unwrap();
-        vault
-            .relay_command(&json!({"op":"relay-mesh-init","group":"family","device":device}))
-            .unwrap();
-        vault
-            .relay_command(&json!({"op":"relay-mesh-peers","peers":peers}))
-            .unwrap();
-        vault
-    }
-    fn save(vault: &mut DiskVault, id: &str, title: &str) {
-        vault
-            .command(&json!({"op":"save","item":{"id":id,"type":"password","title":title}}))
-            .unwrap();
-    }
-    fn titles(vault: &mut DiskVault) -> BTreeMap<String, String> {
-        vault
-            .open()
-            .unwrap()
-            .document
-            .items
-            .iter()
-            .map(|i| {
-                (
-                    i["id"].as_str().unwrap().into(),
-                    i["title"].as_str().unwrap_or("").into(),
-                )
-            })
-            .collect()
-    }
-    /// Delivers a pending packet; returns whether anything was sent.
-    fn deliver(from: &mut DiskVault, from_id: &str, to: &mut DiskVault, to_id: &str) -> bool {
-        let packet = from
-            .relay_command(&json!({"op":"relay-mesh-export","peer":to_id}))
-            .unwrap()["packet"]
-            .clone();
-        if packet.is_null() {
-            return false;
-        }
-        to.relay_command(&json!({"op":"relay-mesh-receive","peer":from_id,"packet":packet}))
-            .unwrap();
-        true
-    }
-    fn settle(vaults: &mut [(&str, &mut DiskVault)]) {
-        for _ in 0..8 {
-            let mut sent = false;
-            for i in 0..vaults.len() {
-                for j in 0..vaults.len() {
-                    if i == j {
-                        continue;
-                    }
-                    let (a, b) = if i < j {
-                        let (l, r) = vaults.split_at_mut(j);
-                        (&mut l[i], &mut r[0])
-                    } else {
-                        let (l, r) = vaults.split_at_mut(i);
-                        (&mut r[0], &mut l[j])
-                    };
-                    sent |= deliver(a.1, a.0, b.1, b.0);
-                }
-            }
-            if !sent {
-                return;
-            }
-        }
-        panic!("replicas did not become idle");
-    }
-    fn history_titles(vault: &mut DiskVault, id: &str) -> Vec<String> {
-        let open = vault.open().unwrap();
-        history::read(&open.connection, &open.root, &open.header.vault_id)
-            .unwrap()
-            .into_iter()
-            .filter(|r| r.item_id == id)
-            .map(|r| r.item["title"].as_str().unwrap_or("").to_string())
-            .collect()
-    }
-
-    #[test]
-    fn edits_flow_both_ways_and_newest_wins_with_loser_in_history() {
-        let (da, db) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
-        let mut a = replica(da.path(), "mac", &["phone"]);
-        let mut b = replica(db.path(), "phone", &["mac"]);
-        save(&mut a, "a1", "from mac");
-        save(&mut b, "b1", "from phone");
-        settle(&mut [("mac", &mut a), ("phone", &mut b)]);
-        assert_eq!(titles(&mut a), titles(&mut b));
-        assert_eq!(titles(&mut a).len(), 2);
-        // Concurrent edits of the same record: the later stamp wins on both sides.
-        save(&mut a, "a1", "mac edit");
-        std::thread::sleep(std::time::Duration::from_millis(5));
-        save(&mut b, "a1", "phone edit");
-        settle(&mut [("mac", &mut a), ("phone", &mut b)]);
-        assert_eq!(titles(&mut a)["a1"], "phone edit");
-        assert_eq!(titles(&mut b)["a1"], "phone edit");
-        assert!(history_titles(&mut a, "a1").contains(&"mac edit".to_string()));
-        assert!(history_titles(&mut b, "a1").contains(&"mac edit".to_string()));
-        // Idle replicas exchange nothing further.
-        assert!(!deliver(&mut a, "mac", &mut b, "phone"));
-        assert!(!deliver(&mut b, "phone", &mut a, "mac"));
-    }
-
-    #[test]
-    fn three_replicas_converge_in_any_order_and_delete_versus_edit_uses_stamp() {
-        let dirs: Vec<_> = (0..3).map(|_| tempfile::tempdir().unwrap()).collect();
-        let mut a = replica(dirs[0].path(), "a", &["b", "c"]);
-        let mut b = replica(dirs[1].path(), "b", &["a", "c"]);
-        let mut c = replica(dirs[2].path(), "c", &["a", "b"]);
-        save(&mut a, "x", "base");
-        settle(&mut [("a", &mut a), ("b", &mut b), ("c", &mut c)]);
-        b.command(&json!({"op":"remove","id":"x","richNotes":true}))
-            .unwrap();
-        assert!(!titles(&mut b).contains_key("x"));
-        std::thread::sleep(std::time::Duration::from_millis(5));
-        save(&mut c, "x", "edited after delete");
-        // Deliver c first to a, then b's delete: arrival order must not matter.
-        deliver(&mut c, "c", &mut a, "a");
-        deliver(&mut b, "b", &mut a, "a");
-        settle(&mut [("a", &mut a), ("b", &mut b), ("c", &mut c)]);
-        let (ta, tb, tc) = (titles(&mut a), titles(&mut b), titles(&mut c));
-        assert_eq!(ta, tb);
-        assert_eq!(tb, tc);
-        assert_eq!(ta.get("x").map(String::as_str), Some("edited after delete"));
-    }
-
-    #[test]
-    fn unknown_or_removed_peers_and_future_stamps_are_rejected() {
-        let (da, db) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
-        let mut a = replica(da.path(), "mac", &["phone"]);
-        let mut b = replica(db.path(), "phone", &["mac"]);
-        save(&mut a, "a1", "secret");
-        assert!(matches!(
-            a.relay_command(&json!({"op":"relay-mesh-export","peer":"stranger"})),
-            Err(VaultError::Authentication)
-        ));
-        let packet = a
-            .relay_command(&json!({"op":"relay-mesh-export","peer":"phone"}))
-            .unwrap()["packet"]
-            .clone();
-        assert!(matches!(
-            b.relay_command(&json!({"op":"relay-mesh-receive","peer":"stranger","packet":packet})),
-            Err(VaultError::Authentication)
-        ));
-        let mut forged = packet.clone();
-        forged["records"]["item:a1"]["stamp"] =
-            json!([now_ms() + MAX_FUTURE_MS + 60_000, 0, "mac"]);
-        assert!(b
-            .relay_command(&json!({"op":"relay-mesh-receive","peer":"mac","packet":forged}))
-            .is_err());
-        assert!(titles(&mut b).is_empty());
-        b.relay_command(&json!({"op":"relay-mesh-peers","peers":[]}))
-            .unwrap();
-        assert!(matches!(
-            b.relay_command(&json!({"op":"relay-mesh-receive","peer":"mac","packet":packet})),
-            Err(VaultError::Authentication)
-        ));
-        assert!(titles(&mut b).is_empty());
-    }
-
-    #[test]
-    fn replay_is_idempotent_and_categories_merge() {
-        let (da, db) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
-        let mut a = replica(da.path(), "mac", &["phone"]);
-        let mut b = replica(db.path(), "phone", &["mac"]);
-        a.command(&json!({"op":"category-add","name":"Work"})).ok();
-        b.command(&json!({"op":"category-add","name":"Home"})).ok();
-        save(&mut a, "a1", "one");
-        let packet = a
-            .relay_command(&json!({"op":"relay-mesh-export","peer":"phone"}))
-            .unwrap()["packet"]
-            .clone();
-        b.relay_command(&json!({"op":"relay-mesh-receive","peer":"mac","packet":packet}))
-            .unwrap();
-        let replay = b
-            .relay_command(&json!({"op":"relay-mesh-receive","peer":"mac","packet":packet}))
-            .unwrap();
-        assert_eq!(replay["changed"], false);
-        settle(&mut [("mac", &mut a), ("phone", &mut b)]);
-        let ca: BTreeSet<_> = a
-            .open()
-            .unwrap()
-            .document
-            .note_categories()
-            .into_iter()
-            .collect();
-        let cb: BTreeSet<_> = b
-            .open()
-            .unwrap()
-            .document
-            .note_categories()
-            .into_iter()
-            .collect();
-        assert_eq!(ca, cb);
-        if ca.contains("Work") || cb.contains("Home") {
-            assert!(ca.contains("Work") && ca.contains("Home"));
-        }
-    }
-
-    #[test]
-    fn legacy_hub_and_mobile_journals_migrate_without_losing_pending_edits() {
-        let (dh, dm) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
-        let mut hub = DiskVault::new(dh.path()).unwrap();
-        hub.create("fixture").unwrap();
-        hub.relay_command(
-            &json!({"op":"relay-init","role":"hub","group":"family","device":"mac","hub":"mac"}),
-        )
-        .unwrap();
-        hub.relay_command(&json!({"op":"relay-trust","peer":"phone"}))
-            .unwrap();
-        let mut phone = DiskVault::new(dm.path()).unwrap();
-        phone.create("fixture").unwrap();
-        phone.relay_command(&json!({"op":"relay-init","role":"mobile","group":"family","device":"phone","hub":"mac"})).unwrap();
-        phone
-            .relay_command(&json!({"op":"relay-trust","peer":"mac"}))
-            .unwrap();
-        save(&mut hub, "shared", "synced value");
-        let snap = hub
-            .relay_command(&json!({"op":"relay-export","peer":"phone"}))
-            .unwrap();
-        phone
-            .relay_command(&json!({"op":"relay-receive","peer":"mac","packet":snap}))
-            .unwrap();
-        let changes = phone
-            .relay_command(&json!({"op":"relay-export","peer":"mac"}))
-            .unwrap();
-        hub.relay_command(&json!({"op":"relay-receive","peer":"phone","packet":changes}))
-            .unwrap();
-        let snap = hub
-            .relay_command(&json!({"op":"relay-export","peer":"phone"}))
-            .unwrap();
-        phone
-            .relay_command(&json!({"op":"relay-receive","peer":"mac","packet":snap}))
-            .unwrap();
-        // Unconfirmed phone edit plus a conflicting hub edit made in the old protocol.
-        save(&mut phone, "offline", "phone only, not yet confirmed");
-        save(&mut phone, "shared", "phone conflicting edit");
-        let changes = phone
-            .relay_command(&json!({"op":"relay-export","peer":"mac"}))
-            .unwrap();
-        save(&mut hub, "shared", "mac newer edit");
-        hub.relay_command(&json!({"op":"relay-receive","peer":"phone","packet":changes}))
-            .unwrap();
-        assert!(
-            hub.relay_command(&json!({"op":"relay-status"})).unwrap()["conflicts"]
-                .as_object()
-                .unwrap()
-                .is_empty()
-                .then_some(())
-                .is_none()
-        );
-        assert!(
-            phone.relay_command(&json!({"op":"relay-status"})).unwrap()["pending"]
-                .as_u64()
-                .unwrap()
-                >= 1
-        );
-
-        let migrated = hub
-            .relay_command(&json!({"op":"relay-mesh-init","group":"family","device":"mac"}))
-            .unwrap();
-        assert_eq!(migrated["migratedFrom"], "hub");
-        assert!(migrated["archivedConflicts"].as_u64().unwrap() >= 1);
-        assert!(
-            dh.path()
-                .join("vault/before-mesh-sync/vault.sqlite")
-                .exists()
-                || dh.path().join("before-mesh-sync/vault.sqlite").exists()
-        );
-        phone
-            .relay_command(&json!({"op":"relay-mesh-init","group":"family","device":"phone"}))
-            .unwrap();
-        hub.relay_command(&json!({"op":"relay-mesh-peers","peers":["phone"]}))
-            .unwrap();
-        phone
-            .relay_command(&json!({"op":"relay-mesh-peers","peers":["mac"]}))
-            .unwrap();
-        assert_eq!(
-            hub.relay_command(&json!({"op":"relay-status"})).unwrap()["mode"],
-            "mesh"
-        );
-        settle(&mut [("mac", &mut hub), ("phone", &mut phone)]);
-        let (th, tp) = (titles(&mut hub), titles(&mut phone));
-        assert_eq!(th, tp);
-        assert_eq!(th["offline"], "phone only, not yet confirmed");
-        // The phone edit was still unconfirmed, so it carries a real timestamp stamp and wins;
-        // the hub's version stays recoverable in history.
-        assert_eq!(th["shared"], "phone conflicting edit");
-        let kept = history_titles(&mut hub, "shared");
-        assert!(kept.contains(&"mac newer edit".to_string()), "{kept:?}");
-        // The old conflict list is gone and nothing waits for confirmation.
-        let status = hub.relay_command(&json!({"op":"relay-status"})).unwrap();
-        assert_eq!(status["conflictCount"], 0);
-        assert_eq!(status["pending"], 0);
-    }
-}
+mod tests;

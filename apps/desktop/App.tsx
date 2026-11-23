@@ -4,14 +4,14 @@ import { effect, keymap, mount, platform, signal, View } from "nsh";
 import { Menu, Tray, Window } from "nsh/desktop";
 import { Detail } from "./ui/Detail";
 import { ItemList, newInCurrent, searchFocus } from "./ui/ItemList";
-import { closeSheet, SheetHost, sheetOpen, T, copySecret } from "./ui/kit";
+import { closeSheet, IconBtn, SheetHost, sheetOpen, T, copySecret } from "./ui/kit";
 import { LockScreen, OnboardingScreen } from "./ui/Lock";
 import { openQuickAccess, QuickAccessHost } from "./ui/QuickAccess";
-import { openSettings, SettingsHost } from "./ui/Settings";
+import { closeSettings, openSettings, SettingsHost, settingsOpen } from "./ui/Settings";
 import { Sidebar } from "./ui/Sidebar";
 import { askTrash } from "./ui/sheets";
 import {
-  boot, call, flush, toast, createItem, dest, load, editing, go, items, lock, onLock, phase, query, selected, selection, settings, toastText, toggleFavorite,
+  boot, coreApi, flush, toast, toastAction, dismissToast, createItem, dest, load, editing, go, items, lock, onLock, phase, query, select, selected, selection, settings, toastText, toggleFavorite, visible,
   type Dest,
 } from "./ui/store";
 import { c, TEXT_SCALES, textScale } from "./ui/theme";
@@ -26,7 +26,7 @@ import { pollEvery } from "./ui/polling";
 import { WindowCtl } from "passwordvault/native";
 import { AiApprovalHost, AiWorkspacePage } from "./ui/ai";
 import { codeFor, copyAccountCode } from "./ui/entries/linkedCode";
-import { hideFromCapture, loadPreferences, noteLineNumbers, setNoteLineNumbers, trayIcon } from "./ui/preferences";
+import { hideFromCapture, loadPreferences, noteLineNumbers, setNoteLineNumbers, sidebarCollapsed, toggleSidebar, trayIcon } from "./ui/preferences";
 
 // NSH 0.5 replaced the static window API with WindowRef; `Window.get` is reactive,
 // so this applies once the main window exists.
@@ -83,6 +83,7 @@ effect(() => {
         { label: "回收站", disabled: !on, onSelect: () => go("trash") },
         { type: "separator" },
         { label: editing() ? "完成编辑" : "编辑", shortcut: "mod+e", disabled: !on || !selected(), onSelect: () => editing.update((e) => !e) },
+        { label: sidebarCollapsed() ? "显示边栏" : "隐藏边栏", shortcut: isMac ? "ctrl+mod+s" : "ctrl+alt+s", disabled: !on, onSelect: toggleSidebar },
         { label: "显示笔记行号", checked: noteLineNumbers(), disabled: !on, onSelect: () => setNoteLineNumbers(!noteLineNumbers()) },
         { type: "separator" },
         { role: "toggleFullScreen" },
@@ -106,7 +107,37 @@ effect(() => {
   ]);
 });
 
-keymap.bind("escape", () => sheetOpen() && closeSheet());
+const canNavigateList = () =>
+  unlocked()
+  && !sheetOpen()
+  && !settingsOpen()
+  && !quickAccessOpen()
+  && !editing()
+  && dest() !== "generator"
+  && dest() !== "health"
+  && dest() !== "ai";
+
+function stepSelection(delta: 1 | -1) {
+  if (!canNavigateList()) return;
+  const list = visible();
+  if (!list.length) return;
+  const curId = selected()?.id;
+  const idx = list.findIndex((i) => i.id === curId);
+  const nextIdx = idx < 0 ? 0 : Math.max(0, Math.min(list.length - 1, idx + delta));
+  if (list[nextIdx] && list[nextIdx].id !== curId) select(list[nextIdx].id);
+}
+
+keymap.bind({
+  escape: () => {
+    if (sheetOpen()) { closeSheet(); return; }
+    if (settingsOpen()) { closeSettings(); return; }
+    if (editing()) { editing.set(false); return; }
+    if (query()) query.set("");
+  },
+  down: () => stepSelection(1),
+  up: () => stepSelection(-1),
+  ...(isMac ? { "ctrl+mod+s": () => unlocked() && toggleSidebar() } : { "ctrl+alt+s": () => unlocked() && toggleSidebar() }),
+});
 
 // Automatic locking: system sleep, screen lock/screensaver, session switch and
 // system-wide idle time come from Rust (ui/native.ts). One subscription for the
@@ -178,7 +209,14 @@ function Workspace() {
   const tool = () => dest() === "generator" || dest() === "health" || dest() === "ai";
   return (
     <View style={{ flex: 1, flexDirection: "row" }}>
-      <Sidebar />
+      <If when={!sidebarCollapsed()}>
+        <Sidebar />
+      </If>
+      <If when={sidebarCollapsed() && tool()}>
+        <View style={{ width: 42, backgroundColor: c().side, borderRightWidth: 1, borderRightColor: c().sideLine, alignItems: "center", paddingTop: 46 }}>
+          <IconBtn testID="sidebar-expand-tool-btn" icon="sidebar" label={isMac ? "显示边栏 (⌃⌘S)" : "显示边栏 (Ctrl+Alt+S)"} size={15} onPress={toggleSidebar} />
+        </View>
+      </If>
       <If when={tool()} else={<><ItemList /><Detail /></>}>
         <If when={dest() === "generator"}><Generator /></If>
         <If when={dest() === "health"}><Health /></If>
@@ -191,9 +229,25 @@ function Workspace() {
 function Toast() {
   return (
     <If when={toastText()}>
-      <View style={{ pointerEvents: "none", position: "absolute", bottom: 34, left: 0, right: 0, alignItems: "center" }}>
-        <View style={{ backgroundColor: "#26354b", borderRadius: 10, paddingHorizontal: 18, paddingVertical: 10 }}>
+      <View style={{ pointerEvents: "box-none", position: "absolute", bottom: 34, left: 0, right: 0, alignItems: "center" }}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 12, backgroundColor: "#26354b", borderRadius: 10, paddingHorizontal: 18, paddingVertical: 10, boxShadow: "0 6px 20px rgba(0,0,0,0.22)" }}>
           <T size={12.5} color="#ffffff">{toastText()}</T>
+          <If when={toastAction()}>
+            <View
+              role="button"
+              testID="toast-action"
+              accessibilityLabel={toastAction()?.label ?? "撤销"}
+              onPress={() => {
+                const act = toastAction();
+                dismissToast();
+                act?.onAction();
+              }}
+              style={{ paddingHorizontal: 10, paddingVertical: 3, borderRadius: 6, backgroundColor: "rgba(255,255,255,0.16)", cursor: "pointer" }}
+              hoverStyle={{ backgroundColor: "rgba(255,255,255,0.26)" }}
+            >
+              <T size={12} weight="600" color="#ffffff">{toastAction()?.label}</T>
+            </View>
+          </If>
         </View>
       </View>
     </If>
@@ -231,7 +285,7 @@ let closingWindow = false;
 pollEvery(1000, async (isActive) => {
   const requestedPhase = phase();
   if (requestedPhase !== "locked" && requestedPhase !== "unlocked") return;
-  const status = await call<{ unlocked: boolean }>({ op: "status" });
+  const status = await coreApi.status();
   if (!isActive() || phase() !== requestedPhase) return;
   if (status.unlocked && requestedPhase === "locked") await load();
   else if (!status.unlocked && requestedPhase === "unlocked") await lock();

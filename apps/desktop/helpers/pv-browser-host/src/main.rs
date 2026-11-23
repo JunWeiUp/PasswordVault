@@ -96,7 +96,7 @@ mod implementation {
                 return Err("invalid-peer".into());
             }
             stream
-                .set_read_timeout(Some(Duration::from_secs(45)))
+                .set_read_timeout(Some(Duration::from_secs(58)))
                 .map_err(|_| "unavailable")?;
             stream
                 .set_write_timeout(Some(Duration::from_secs(15)))

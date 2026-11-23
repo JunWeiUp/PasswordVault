@@ -14,7 +14,7 @@ Respond to this repository's owner in Chinese unless asked otherwise. Public doc
 
 ## Documentation structure
 
-Maintain these canonical guides and update the relevant document when behavior changes. `docs/` is local-only: it is ignored by Git and must not be committed or published (the owner removed it from the public history).
+Maintain these canonical guides and update the relevant document when behavior changes. `docs/` is local-only: it is ignored by Git and must not be committed or published (the owner removed it from the public history). For a fast codebase map, invariants, and verification commands across all four client stacks, read `docs/development/AI-MAP.md` first.
 
 ```text
 .

@@ -65,8 +65,9 @@ public final class RelayGroups: @unchecked Sendable {
     /// Builds the HTTP request; `config["password"]` (server access password) is sent as `Relay-Access`.
     func makeRequest(_ method: String, _ path: String, value: [String:Any]? = nil, authorization: String? = nil) throws -> URLRequest {
         let password = config["password"] as? String; try RelayAccess.validate(password)
-        guard let text = config["url"] as? String, var url = URLComponents(string:text), url.user == nil, url.password == nil, url.query == nil, url.fragment == nil, url.path == "/relay/v1/ws", url.scheme == "wss" || (allowLocalTest && url.scheme == "ws" && url.host == "127.0.0.1") else { throw RelayError.invalid("WSS required") }
-        url.scheme = url.scheme == "wss" ? "https" : "http"; url.path = "/relay/v1"
+        guard let text = config["url"] as? String, var url = URLComponents(string:text), url.user == nil, url.password == nil, url.query == nil, url.fragment == nil, url.path == "/relay/v1/ws" || url.path == "/v2/ws", url.scheme == "wss" || (allowLocalTest && url.scheme == "ws" && url.host == "127.0.0.1") else { throw RelayError.invalid("WSS required") }
+        let apiPrefix = url.path == "/v2/ws" ? "/v2" : "/relay/v1"
+        url.scheme = url.scheme == "wss" ? "https" : "http"; url.path = apiPrefix
         guard let base = url.url, let endpoint = URL(string:base.absoluteString + path) else { throw RelayError.invalid("URL") }
         var req = URLRequest(url:endpoint);req.httpMethod = method;req.timeoutInterval = 15
         req.setValue(authorization ?? "Bearer \(config["token"] as? String ?? "")",forHTTPHeaderField:"Authorization")

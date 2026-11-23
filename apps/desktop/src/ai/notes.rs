@@ -158,7 +158,7 @@ fn reserve_note_write(st: &mut State, client: &str, now: Instant) -> Result<()> 
     Ok(())
 }
 
-pub(super) fn note_list(d: &Value, c: &Value, r: &Value) -> Result<Value> {
+pub(super) fn note_list(s: &VaultSession, d: &Value, c: &Value, r: &Value) -> Result<Value> {
     if d["settings"]["aiAccessScopes"]["notes"] != true {
         return Err("UnscopedOrMissing".into());
     }
@@ -181,11 +181,21 @@ pub(super) fn note_list(d: &Value, c: &Value, r: &Value) -> Result<Value> {
         .to_lowercase();
     let limit = r["limit"].as_u64().unwrap_or(50).clamp(1, 100) as usize;
 
-    let mut matched: Vec<&Value> = d["items"]
+    // Only hydrate full note bodies up front when a full-text `query` is supplied;
+    // otherwise filter on L1 summaries and hydrate only the `limit` returned notes.
+    let full_doc_owned;
+    let source = if query.is_empty() {
+        d
+    } else {
+        full_doc_owned = doc_full(s)?;
+        &full_doc_owned
+    };
+
+    let mut matched: Vec<&Value> = source["items"]
         .as_array()
         .into_iter()
         .flatten()
-        .filter(|item| note_readable(d, c, item))
+        .filter(|item| note_readable(source, c, item))
         .filter(|item| {
             if !cat_prefix.is_empty()
                 && !cat_matches(item["category"].as_str().unwrap_or(""), cat_prefix)
@@ -270,11 +280,18 @@ pub(super) fn note_list(d: &Value, c: &Value, r: &Value) -> Result<Value> {
     } else {
         Vec::new()
     };
-    let notes: Vec<Value> = matched
-        .into_iter()
-        .take(limit)
-        .map(|item| summary_projection(d, item))
-        .collect();
+    let mut notes: Vec<Value> = Vec::new();
+    for item in matched.into_iter().take(limit) {
+        if item["noteSummary"] == true {
+            if let Some(nid) = item["id"].as_str() {
+                if let Ok(full) = full_item(s, nid) {
+                    notes.push(summary_projection(source, &full));
+                    continue;
+                }
+            }
+        }
+        notes.push(summary_projection(source, item));
+    }
     Ok(json!({
         "notes": notes,
         "autoWriteEnabled": auto_write,
@@ -283,10 +300,17 @@ pub(super) fn note_list(d: &Value, c: &Value, r: &Value) -> Result<Value> {
 }
 
 pub(super) fn note_read(s: &VaultSession, d: &Value, c: &Value, r: &Value) -> Result<Value> {
-    let item = find_note(d, r)
+    let summary_item = find_note(d, r)
         .filter(|i| note_readable(d, c, i))
         .ok_or("UnscopedOrMissing")?;
-    let note_id = item["id"].as_str().unwrap_or("");
+    let note_id = summary_item["id"].as_str().ok_or("InvalidData")?;
+    let hydrated;
+    let item = if summary_item["noteSummary"] == true {
+        hydrated = full_item(s, note_id)?;
+        &hydrated
+    } else {
+        summary_item
+    };
     let full_md = markdown::item_to_markdown(item);
     let (body, section_out) = if let Some(sec) = r["section"]
         .as_str()
@@ -367,6 +391,10 @@ pub(super) fn note_update(s: &VaultSession, r: &Value, digest: &str) -> Result<V
         let (mut next_item, created) = if let Some(mut item) = existing {
             if !note_writable(&d, &item) {
                 return Err("NoteWriteDenied".into());
+            }
+            if item["noteSummary"] == true {
+                let nid = item["id"].as_str().ok_or("InvalidData")?;
+                item = full_item(s, nid)?;
             }
             let current_ver = note_version_hash(&item);
             if let Some(expected) = r["expectedVersion"].as_str().filter(|s| !s.is_empty()) {
@@ -642,6 +670,9 @@ pub(super) fn note_attach(s: &VaultSession, r: &Value, digest: &str) -> Result<V
             return Err("NoteWriteDenied".into());
         }
         let note_id = item["id"].as_str().ok_or("InvalidData")?.to_owned();
+        if item["noteSummary"] == true {
+            item = full_item(s, &note_id)?;
+        }
         reserve_note_write(&mut state(), &cid, Instant::now())?;
 
         let meta_raw = match s.import_note_attachment_file(

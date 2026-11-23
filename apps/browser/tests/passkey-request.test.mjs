@@ -23,3 +23,14 @@ test("passkey request tokens expire, are single use and cannot cross documents o
  id=requests.add("doc","url",request,100); assert.throws(()=>requests.take(id,"doc","url",60100));
  id=requests.add("doc","url",request,100); requests.clear(); assert.throws(()=>requests.take(id,"doc","url",101));
 });
+test("PRF salts are validated, bound to allowCredentials and forwarded without other extensions",()=>{
+ const salt=Buffer.from("salt").toString("base64url"), id=Buffer.alloc(16,1).toString("base64url");
+ const request=validatePasskeyRequest("get",{challenge,allowCredentials:[{type:"public-key",id}],prf:{first:salt,second:salt},prfByCredential:{[id]:{first:salt}}},"https://example.com/login","https://example.com/login");
+ assert.deepEqual(request.prf,{first:salt,second:salt});
+ assert.deepEqual(request.prfByCredential,{[id]:{first:salt}});
+ const create=validatePasskeyRequest("create",{...options,prf:{}},"https://example.com","https://example.com");
+ assert.deepEqual(create.prf,{});
+ for(const bad of [{prf:{second:salt}},{prf:{first:"***"}},{prf:{first:salt},prfByCredential:{[id]:{first:salt}}},{prf:{first:salt},allowCredentials:[{type:"public-key",id}],prfByCredential:{other:{first:salt}}}])
+  assert.throws(()=>validatePasskeyRequest("get",{challenge,...bad},"https://example.com","https://example.com"));
+ assert.throws(()=>validatePasskeyRequest("get",{challenge,extensions:{largeBlob:{read:true}}},"https://example.com","https://example.com"),/native-fallback/);
+});

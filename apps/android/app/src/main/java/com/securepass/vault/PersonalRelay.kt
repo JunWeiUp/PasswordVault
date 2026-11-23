@@ -28,7 +28,7 @@ internal data class RelayUi(
     val credentialsBlocked: Boolean = false, val automaticJoin: Boolean = false, val managed: Boolean = false, val legacy: Boolean = false, val joining: Boolean = false, val creating: Boolean = false,
     val draftGroupName: String = "", val draftDeviceName: String = "",
     val invalid: Boolean = false, val busy: Boolean = false, val groupFresh: Boolean = false, val groupName: String = "",
-    val members: List<RelayMember> = emptyList(), val groupInvite: String = "", val groupCode: String = "", val applicant: String = "",
+    val members: List<RelayMember> = emptyList(), val groupInvite: String = "", val groupInviteExpires: Long = 0L, val groupCode: String = "", val applicant: String = "",
     val status: String = "未连接 / Disconnected", val error: String? = null,
     val publicKey: String = "", val device: String = "", val group: String = "", val endpoint: String = "",
     val paired: Boolean = false, val paused: Boolean = true, val pending: Int = 0, val conflicts: Int = 0,
@@ -126,6 +126,7 @@ internal class PersonalRelay(private val directory: File, private val vault: Vau
             draftGroupName = creation?.optString("name").orEmpty(), draftDeviceName = creation?.optJSONArray("members")?.optJSONObject(0)?.optString("name").orEmpty(),
             joining = g?.has("pending_join") == true, creating = g?.has("pending_create") == true, invalid = g?.optBoolean("access_invalid") == true,
             groupInvite = if (mutable.value.groupFresh && inv != null && inv.optLong("expires") > System.currentTimeMillis()/1000) inv.optString("short_link").ifEmpty { inv.toString() } else "",
+            groupInviteExpires = if (mutable.value.groupFresh && inv != null && inv.optLong("expires") > System.currentTimeMillis()/1000) inv.optLong("expires") else 0L,
             groupCode = code, applicant = if (mutable.value.groupFresh) g?.optJSONObject("join_request")?.let { RelayGroups.unpack(it).getJSONObject("member").getString("name") }.orEmpty() else "")
         mutable.value = mutable.value.copy(peerLibrary = c.optString("peerLibrary"), peerPending = c.has("peerExpectedLibrary"), publicKey = crypto(c).publicKey(), device = c.getString("device"),
             group = c.getString("group"), endpoint = if (creation != null) g.getString("url") else c.getString("endpoint"))
@@ -218,7 +219,7 @@ internal class PersonalRelay(private val directory: File, private val vault: Vau
     fun importCredential(text: String, endpoint: String) = action { c ->
         require(!c.has("groups"))
         val url = URI(endpoint)
-        require(url.scheme == "wss" && url.host != null && url.path == "/relay/v1/ws" && url.rawUserInfo == null && url.query == null && url.fragment == null)
+        require(url.scheme == "wss" && url.host != null && (url.path == "/relay/v1/ws" || url.path == "/v2/ws") && url.rawUserInfo == null && url.query == null && url.fragment == null)
         val credential = JSONObject(text); val own = credential.getJSONObject("identity")
         require(own.getString("app") == "passwordvault" && own.getString("public_key") == crypto(c).publicKey())
         val current = vault.command("relay-status")
@@ -611,6 +612,20 @@ internal class PersonalRelay(private val directory: File, private val vault: Vau
             mutable.value = mutable.value.copy(status = "已入组，正在与组内设备同步 / Joined; syncing with the group")
         } else mutable.value = mutable.value.copy(status = "请核对两端配对码 / Compare codes on both devices")
     }
+    fun updateServerEndpoint(endpoint: String) = action { c ->
+        val url = validateRelayEndpoint(endpoint)
+        c.put("endpoint", url)
+        c.optJSONObject("groups")?.put("url", url)
+        save(c)
+        val stored = c.optJSONObject("groups")
+        if (stored?.has("group_entry") == true) {
+            val sdk = groups(c)
+            val result = sdk.refresh()
+            applyGroup(c, sdk, result.getJSONArray("online"))
+            sdk.config.remove("access_invalid")
+            saveGroup(c, sdk)
+        }
+    }
     // Updating server access never resets device identity, pinned keys, or vault authorization.
     fun updateServerPassword(password: String) = action { c ->
         updateRelayAccessCredential(c, password)
@@ -668,13 +683,49 @@ internal class PersonalRelay(private val directory: File, private val vault: Vau
     }
     fun renameGroupMember(device: String, name: String) = groupAction { c, g -> g.rename(device, name); applyGroup(c, g) }
     fun removeGroupMember(device: String) = groupAction { c, g -> g.remove(device); applyGroup(c, g) }
-    fun leaveGroup(disband: Boolean) = groupAction { c, g ->
-        if (g.config.has("pending_exit") || g.config.optBoolean("exit_completed")) require(g.config.getBoolean("exit_disband") == disband)
-        g.config.put("exit_disband", disband)
-        if (!g.config.optBoolean("exit_completed")) {
-            g.prepareExit(disband); saveGroup(c, g); g.exit(); g.config.put("exit_completed", true); saveGroup(c, g)
+    fun leaveGroup(disband: Boolean) {
+        scope.launch {
+            var remoteSnapshot: JSONObject? = null
+            var generation = 0
+            actions.withLock {
+                if (!unlocked) return@withLock
+                mutable.value = mutable.value.copy(busy = true, error = null)
+                stop()
+                try {
+                    val c = checkNotNull(config)
+                    val groupsJson = c.optJSONObject("groups")
+                    if (groupsJson?.has("group_entry") == true) {
+                        remoteSnapshot = JSONObject(groupsJson.toString())
+                    }
+                    clearGroupAccess(c)
+                    generation = epoch
+                    publish()
+                    mutable.value = mutable.value.copy(
+                        status = exitPendingMessage(disband, remoteSnapshot != null)
+                    )
+                } catch (cancel: CancellationException) {
+                    throw cancel
+                } catch (error: Exception) {
+                    publish()
+                    mutable.value = mutable.value.copy(error = relayFailure(error))
+                } finally {
+                    mutable.value = mutable.value.copy(busy = false)
+                }
+            }
+            // Best-effort remote notification using only the detached snapshot; never restores local membership.
+            val snapshot = remoteSnapshot ?: return@launch
+            val confirmed = runCatching {
+                val sdk = RelayGroups(snapshot, false, http)
+                if (!sdk.config.optBoolean("exit_completed")) {
+                    sdk.prepareExit(disband)
+                    sdk.exit()
+                }
+                true
+            }.getOrDefault(false)
+            if (unlocked && generation == epoch) {
+                mutable.value = mutable.value.copy(status = exitResultMessage(disband, confirmed))
+            }
         }
-        clearGroupAccess(c)
     }
     fun clearLocalGroup() = action { c -> check(unlocked); clearGroupAccess(c) }
     private suspend fun clearGroupAccess(c: JSONObject) {
@@ -714,6 +765,17 @@ internal class PersonalRelay(private val directory: File, private val vault: Vau
     }
 
     companion object {
+        internal fun exitPendingMessage(disband: Boolean, hasRemote: Boolean): String = when {
+            !hasRemote -> "本机接入已清除，本地资料保留 / Local access cleared; vault retained"
+            disband -> "本机已退出，正在尝试通知服务器解散设备组 / Left locally; notifying server to disband"
+            else -> "本机已退出，正在尝试通知服务器 / Left locally; notifying server"
+        }
+        internal fun exitResultMessage(disband: Boolean, confirmed: Boolean): String = when {
+            confirmed && disband -> "本机已退出，服务器已确认解散设备组 / Left locally; server confirmed disband"
+            confirmed -> "本机已退出，服务器已确认退出 / Left locally; server confirmed"
+            disband -> "本机已退出，服务器解散未完成 / Left locally; server disband not confirmed"
+            else -> "本机已退出，服务器尚未确认退出 / Left locally; server exit not confirmed"
+        }
         private fun hash(bytes: ByteArray) = MessageDigest.getInstance("SHA-256").digest(bytes)
         private fun hex(bytes: ByteArray) = Crypto.hex(bytes)
         private fun encrypt(bytes: ByteArray, key: SecretKey): ByteArray = Cipher.getInstance("AES/GCM/NoPadding").run { init(Cipher.ENCRYPT_MODE, key); iv + doFinal(bytes) }

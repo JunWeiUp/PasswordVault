@@ -24,7 +24,7 @@ struct MobileHistoryView: View {
             try await store.refresh()
             try await load()
           }
-        }
+        }.disabled(working)
       } else {
         ForEach(rows, id: \.self) { revision in
           Button {
@@ -42,6 +42,7 @@ struct MobileHistoryView: View {
         }
         if rows.count < total {
           Button(store.t("加载更多", "Load more")) { run { try await load(append: true) } }
+            .disabled(working)
         }
         if let selected {
           Section(store.t("版本预览", "Version preview")) {
@@ -53,13 +54,18 @@ struct MobileHistoryView: View {
                 .textSelection(.enabled)
             }
             Button(store.t("恢复此版本", "Restore this version")) { action = "restore" }
-              .disabled(selected.object["item"]?.object.isEmpty != false)
+              .disabled(working || selected.object["item"]?.object.isEmpty != false)
+            if selected.object["item"]?.object.isEmpty != false {
+              Text(store.t("门控原因：该历史节点为删除快照，不包含可恢复正文。", "Unavailable: this history entry represents a deleted snapshot."))
+                .font(.caption).foregroundStyle(.secondary)
+            }
           }
         }
         Button(store.t("清理旧版本", "Clear older versions"), role: .destructive) { action = "prune" }
+          .disabled(working)
       }
       if working { ProgressView() }
-    }.navigationTitle(store.t("版本历史", "Version history")).disabled(working)
+    }.navigationTitle(store.t("版本历史", "Version history"))
       .task { do { try await load() } catch { store.report(error) } }
       .confirmationDialog(
         store.t("确认修改历史？", "Confirm history action?"),

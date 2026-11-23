@@ -2,26 +2,38 @@ package com.securepass.vault
 
 import android.graphics.Bitmap
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.Devices
+import androidx.compose.material.icons.outlined.QrCode2
 import androidx.compose.material.icons.outlined.QrCodeScanner
 import androidx.compose.material.icons.outlined.Smartphone
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.MultiFormatWriter
+import kotlinx.coroutines.delay
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun RelayGroupPanel(vault: VaultRepository, state: RelayUi, t: (String, String) -> String) {
     val relay = vault.relay
+    val clipboard = LocalClipboardManager.current
     var endpoint by remember { mutableStateOf(state.endpoint) }
     var createExpanded by remember { mutableStateOf(false) }
     var pasteExpanded by remember { mutableStateOf(false) }
@@ -31,8 +43,12 @@ internal fun RelayGroupPanel(vault: VaultRepository, state: RelayUi, t: (String,
     var input by remember { mutableStateOf("") }
     var scanning by remember { mutableStateOf(false) }
     var showInvite by remember(state.groupInvite) { mutableStateOf(false) }
+    var inviteSheetOpen by remember { mutableStateOf(false) }
+    var inviteCopied by remember(state.groupInvite) { mutableStateOf(false) }
+    var pendingOpenInvite by remember { mutableStateOf(false) }
     var createPassword by remember { mutableStateOf("") }
     var joinPassword by remember { mutableStateOf("") }
+    var savedEndpoint by remember(state.endpoint) { mutableStateOf(state.endpoint) }
     var savedPassword by remember { mutableStateOf("") }
     var preview by remember { mutableStateOf<RelayInvitationPreview?>(null) }
     var formError by remember { mutableStateOf<String?>(null) }
@@ -56,7 +72,15 @@ internal fun RelayGroupPanel(vault: VaultRepository, state: RelayUi, t: (String,
     var newName by remember { mutableStateOf("") }
     val manager = state.groupFresh && state.members.any { it.id == state.device && it.manager }
     LaunchedEffect(state.groupInvite) {
-        if (state.groupInvite.isNotEmpty()) automaticJoin = state.automaticJoin
+        if (state.groupInvite.isNotEmpty()) {
+            automaticJoin = state.automaticJoin
+            if (pendingOpenInvite) {
+                inviteSheetOpen = true
+                pendingOpenInvite = false
+            }
+        } else {
+            inviteSheetOpen = false
+        }
     }
     LaunchedEffect(state.creating, state.endpoint, state.draftGroupName, state.draftDeviceName) {
         if (state.creating) {
@@ -71,6 +95,13 @@ internal fun RelayGroupPanel(vault: VaultRepository, state: RelayUi, t: (String,
     if (state.managed || state.legacy || state.joining || state.invalid) {
         TextButton(onClick = { accessExpanded = !accessExpanded }) { Text(t("服务器访问设置", "Server access settings")) }
         if (accessExpanded || state.invalid) LegacySection {
+        Text(t("服务器地址", "Server endpoint"), style = MaterialTheme.typography.titleMedium)
+        Text(t("支持切换到 wss://…/v2/ws 或 wss://…/relay/v1/ws，保留设备身份与访问密码。", "Switch between wss://…/v2/ws and wss://…/relay/v1/ws while keeping identity and password."))
+        OutlinedTextField(savedEndpoint, { savedEndpoint = it }, label = { Text(t("服务器地址", "Server endpoint")) }, placeholder = { Text("wss://host/v2/ws") }, enabled = ready, singleLine = true, modifier = Modifier.fillMaxWidth())
+        OutlinedButton(onClick = { submit { validateRelayEndpoint(savedEndpoint); relay.updateServerEndpoint(savedEndpoint) } }, enabled = ready && savedEndpoint.isNotBlank()) {
+            Text(t("保存服务器地址", "Save server endpoint"))
+        }
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         Text(t("服务器访问密码", "Server access password"), style = MaterialTheme.typography.titleMedium)
         Text(t("更新密码会保留设备身份与同步。", "Updating this password preserves device identity and sync."))
         RelayPasswordField(savedPassword, { savedPassword = it }, ready, t)
@@ -115,17 +146,125 @@ internal fun RelayGroupPanel(vault: VaultRepository, state: RelayUi, t: (String,
             }
             if (!state.mesh) Text(t("加入设备组后，组内设备会自动双向同步；同时修改时以最后修改为准，另一版本保留在版本历史。", "After joining, devices in the group sync both ways; when both change an item, the last change wins and the other version stays in version history."), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             if (manager) {
-                Row { Checkbox(automaticJoin, { automaticJoin = it }, enabled = ready && state.groupInvite.isEmpty()); Text(t("确认后免审批加入", "Join without approval after confirmation")) }
-                Button(onClick = { grantManager = false; relay.inviteToGroup(automaticJoin) }, enabled = ready) { Text(t("添加设备", "Add device")) }
+                Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surface) {
+                    Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .clickable(enabled = ready) {
+                                    if (state.groupInvite.isNotEmpty()) {
+                                        inviteSheetOpen = true
+                                    } else {
+                                        grantManager = false
+                                        pendingOpenInvite = true
+                                        relay.inviteToGroup(automaticJoin)
+                                    }
+                                },
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Surface(shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.primaryContainer) {
+                                Icon(Icons.Outlined.QrCode2, contentDescription = null, modifier = Modifier.padding(10.dp).size(22.dp), tint = MaterialTheme.colorScheme.primary)
+                            }
+                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                Text(if (state.groupInvite.isNotEmpty()) t("查看邀请设备二维码", "View device invitation QR") else t("邀请设备", "Invite device"), style = MaterialTheme.typography.titleSmall)
+                                Text(t("二维码与邀请链接 · 10 分钟内有效，只能使用一次", "QR code and link · valid for 10 minutes, one use"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(automaticJoin, { automaticJoin = it }, enabled = ready && state.groupInvite.isEmpty())
+                            Text(t("扫码后自动加入（免审批）", "Join automatically after scanning"), style = MaterialTheme.typography.bodySmall)
+                        }
+                        if (state.groupFresh && state.groupInvite.isNotEmpty()) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Button(onClick = { inviteSheetOpen = true }, enabled = ready) { Text(t("打开邀请二维码", "Open invitation QR")) }
+                                if (!state.automaticJoin) OutlinedButton(onClick = relay::checkGroupRequest, enabled = ready) { Text(t("查看加入申请", "Check join request")) }
+                                TextButton(onClick = relay::cancelGroupInvitation, enabled = ready) { Text(t("取消邀请", "Cancel"), color = MaterialTheme.colorScheme.error) }
+                            }
+                        }
+                    }
+                }
             }
-            if (state.groupFresh && state.groupInvite.isNotEmpty()) {
-                GroupQr(state.groupInvite, t("设备组邀请", "Group invitation"))
-                Text(if (state.automaticJoin) t("加入后立即与组内设备双向同步全部密码库内容。", "After joining, the whole vault syncs both ways with the group.") else t("需核对配对码并手动批准。", "Compare codes and approve manually."))
-                Text(t("10 分钟内有效，仅一台设备可认领。请通过可信渠道传递。", "Valid for 10 minutes and one device. Share through a trusted channel."))
-                TextButton(onClick = { showInvite = !showInvite }) { Text(t("查看邀请内容（可复制）", "Show invitation text")) }
-                if (showInvite) SelectionContainer { Text(state.groupInvite, style = MaterialTheme.typography.bodySmall) }
-                if (!state.automaticJoin) OutlinedButton(onClick = relay::checkGroupRequest, enabled = ready) { Text(t("查看加入申请", "Check join request")) }
-                TextButton(onClick = relay::cancelGroupInvitation, enabled = ready) { Text(t("取消邀请", "Cancel invitation")) }
+            if (inviteSheetOpen && state.groupFresh && state.groupInvite.isNotEmpty()) {
+                var nowSec by remember { mutableStateOf(System.currentTimeMillis() / 1000) }
+                LaunchedEffect(state.groupInviteExpires) {
+                    while (true) {
+                        nowSec = System.currentTimeMillis() / 1000
+                        delay(1000)
+                    }
+                }
+                val left = (state.groupInviteExpires - nowSec).coerceAtLeast(0L)
+                val countdown = if (state.groupInviteExpires > 0L) {
+                    if (left > 0L) String.format("%02d:%02d", left / 60, left % 60) else "00:00"
+                } else ""
+                ModalBottomSheet(
+                    onDismissRequest = { inviteSheetOpen = false },
+                    sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+                    containerColor = MaterialTheme.colorScheme.surface
+                ) {
+                    Column(
+                        Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 28.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(t("邀请设备", "Invite device"), style = MaterialTheme.typography.titleLarge, modifier = Modifier.fillMaxWidth())
+                        Text(
+                            if (state.automaticJoin)
+                                t("在新设备上扫描即可加入并立即双向同步全部密码库内容，无需再确认。请只交给你自己的设备。", "Scan on a new device to join and immediately sync the full vault both ways. Share only with your own devices.")
+                            else
+                                t("新设备扫描后提交申请，核对双方配对码一致后再批准加入。请只交给你自己的设备。", "Scan on a new device to submit a request, then compare codes and approve."),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Box(
+                            Modifier
+                                .background(Color.White, RoundedCornerShape(14.dp))
+                                .padding(12.dp)
+                        ) {
+                            GroupQr(state.groupInvite, t("设备组邀请", "Group invitation"))
+                        }
+                        Text(
+                            if (countdown.isNotEmpty())
+                                t("剩余 $countdown · 10 分钟内有效，只能使用一次", "$countdown left · valid 10 minutes, one use")
+                            else
+                                t("10 分钟内有效，只能使用一次", "Valid for 10 minutes, one use"),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.Center
+                        )
+                        OutlinedButton(
+                            onClick = {
+                                clipboard.setText(AnnotatedString(state.groupInvite))
+                                inviteCopied = true
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(Icons.Outlined.ContentCopy, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text(if (inviteCopied) t("已复制邀请链接", "Invitation link copied") else t("复制邀请链接", "Copy invitation link"))
+                        }
+                        Text(
+                            t("邀请链接包含中继地址与中继访问密码，加入方无需另行填写。", "The invitation link includes the relay address and password."),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        TextButton(onClick = { showInvite = !showInvite }) { Text(if (showInvite) t("隐藏邀请原文", "Hide raw link") else t("查看邀请原文", "Show raw link")) }
+                        if (showInvite) SelectionContainer { Text(state.groupInvite, style = MaterialTheme.typography.bodySmall, modifier = Modifier.fillMaxWidth()) }
+                        if (!state.automaticJoin) {
+                            OutlinedButton(onClick = relay::checkGroupRequest, enabled = ready, modifier = Modifier.fillMaxWidth()) {
+                                Text(t("查看加入申请", "Check join request"))
+                            }
+                        }
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                            TextButton(onClick = { inviteSheetOpen = false; relay.cancelGroupInvitation() }, enabled = ready) {
+                                Text(t("取消邀请", "Cancel invitation"), color = MaterialTheme.colorScheme.error)
+                            }
+                            Button(onClick = { inviteSheetOpen = false }) { Text(t("完成", "Done")) }
+                        }
+                    }
+                }
             }
             if (state.groupFresh && !state.automaticJoin && state.applicant.isNotEmpty()) {
                 Text(t("申请设备：", "Applicant: ") + state.applicant)
@@ -135,9 +274,14 @@ internal fun RelayGroupPanel(vault: VaultRepository, state: RelayUi, t: (String,
             }
             Text(t("危险操作", "Danger zone"), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
             Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surface) {
-                Column(Modifier.fillMaxWidth().padding(16.dp)) {
+                Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     TextButton(onClick = { confirmation = "leave" }, enabled = ready) { Text(t("退出设备组", "Leave device group"), color = MaterialTheme.colorScheme.error) }
-                    Text(t("同步记录加密归档并轮换设备 ID；本地资料保留", "Archive encrypted sync history and rotate the device ID; keep local data"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(t("本机先退出并轮换设备 ID，再尝试通知服务器；同步记录加密归档，本地资料保留", "Leave locally first and rotate the device ID, then attempt to notify the server; sync history is archived encrypted and local data is kept"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    if (!state.groupFresh) {
+                        HorizontalDivider(Modifier.padding(vertical = 4.dp), color = MaterialTheme.colorScheme.outlineVariant)
+                        TextButton(onClick = { confirmation = "clear" }, enabled = ready) { Text(t("仅清除本机接入", "Clear local access only"), color = MaterialTheme.colorScheme.error) }
+                        Text(t("服务器不可用或设备组已被移除时，直接清理本机绑定；本地资料保留", "Clear local binding directly when the server is unreachable or the group was already removed; local data is kept"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                 }
             }
             if (manager) TextButton(onClick = { confirmation = "disband" }, enabled = ready) { Text(t("解散设备组…", "Disband group…")) }
@@ -187,7 +331,7 @@ internal fun RelayGroupPanel(vault: VaultRepository, state: RelayUi, t: (String,
                 Text(t("创建新设备组", "Create device group"), style = MaterialTheme.typography.titleMedium)
                 Input(t("这台设备的名称", "This device's name"), deviceName, { deviceName = it }, enabled = ready && !state.creating)
                 Input(t("设备组名称", "Group name"), groupName, { groupName = it }, enabled = ready && !state.creating)
-                OutlinedTextField(endpoint, { endpoint = it }, label = { Text(t("服务器地址（必填）", "Server endpoint (required)")) }, placeholder = { Text("wss://host/relay/v1/ws") }, enabled = ready && !state.creating, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(endpoint, { endpoint = it }, label = { Text(t("服务器地址（必填）", "Server endpoint (required)")) }, placeholder = { Text("wss://host/v2/ws") }, enabled = ready && !state.creating, modifier = Modifier.fillMaxWidth())
                 RelayPasswordField(createPassword, { createPassword = it }, ready, t)
                 Text(t("服务器密码仅用于访问中继，不是主密码或端到端密钥。", "This password grants relay access; it is not your master password or encryption key."), style = MaterialTheme.typography.bodySmall)
                 Button(onClick = { submit { validateRelayEndpoint(endpoint); validateRelayPassword(createPassword); require(groupName.isNotBlank()); relay.createGroup(endpoint, groupName, deviceName, createPassword) } }, enabled = ready && endpoint.isNotBlank() && createPassword.isNotEmpty() && groupName.isNotBlank() && deviceName.isNotBlank()) {
@@ -204,10 +348,10 @@ internal fun RelayGroupPanel(vault: VaultRepository, state: RelayUi, t: (String,
     confirmation?.let { operation ->
         AlertDialog(onDismissRequest = { confirmation = null }, title = { Text(when { operation == "leave" -> t("退出设备组？", "Leave device group?"); operation == "disband" -> t("解散设备组？", "Disband device group?"); operation.startsWith("remove:") -> t("移除此设备？", "Remove this device?"); else -> t("停止本机接入？", "Stop local access?") }) },
             text = { Text(when {
-                operation == "disband" -> t("撤销全组中继访问；已下载资料无法远程删除。", "Revoke access for every member. Downloaded vault data cannot be remotely erased.")
+                operation == "disband" -> t("本机先退出，再尝试通知服务器解散设备组；本地资料保留，其他设备已保存的资料不会被远程删除。", "Leave locally first, then attempt to disband the group on the server. Local data is kept; data already on other devices cannot be remotely erased.")
                 operation.startsWith("remove:") -> t("撤销此设备的中继访问。已下载资料无法远程删除。", "Revoke this device's relay access. Downloaded data remains on that device.")
-                operation == "clear" -> t("仅取消本机申请或接入，不能撤回已发送的申请，也不能代替服务器撤销。本地资料保留，旧同步记录加密归档，新接入使用新设备 ID。", "Cancel locally only; this cannot withdraw a sent request or revoke remote access. Keep local data, archive sync history and rotate the device ID.")
-                else -> t("本机停止中继同步，其他成员继续使用。本地资料保留，旧同步记录加密归档。最后一名管理员需先添加其他管理员或解散。", "Stop local sync and retain data and encrypted sync history. Other members stay connected. The last manager must add another manager or disband.")
+                operation == "clear" -> t("仅清除本机接入，不请求服务器。本地资料保留，旧同步记录加密归档，新接入使用新设备 ID。", "Clear local access only without contacting the server. Keep local data, archive sync history and rotate the device ID.")
+                else -> t("本机先退出并保留本地资料（同步记录加密归档并轮换设备 ID），随后尝试通知服务器。即使服务器已失效或离线，本机也能完成退出。", "Leave locally first while keeping local data (sync history is archived encrypted and the device ID rotates), then attempt to notify the server. Local departure completes even if the server is unavailable or credentials were revoked.")
             }) }, confirmButton = { TextButton(onClick = {
                 confirmation = null
                 when { operation == "clear" -> relay.clearLocalGroup(); operation.startsWith("remove:") -> relay.removeGroupMember(operation.removePrefix("remove:")); else -> relay.leaveGroup(operation == "disband") }

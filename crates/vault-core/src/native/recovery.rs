@@ -85,7 +85,7 @@ impl DiskVault {
                     .unlock(string("key")?, &header.vault_id)?;
                 let mut connection =
                     open_database(&self.directory.join("vault.sqlite"), &root, false)?;
-                let document = load_document(&connection, &root, &header.vault_id)?;
+                let document = load_document_raw(&connection, &root, &header.vault_id)?;
                 let next = Header::create(string("newPassword")?, &root, header.vault_id)?;
                 // Projection failure must leave the current password envelope intact.
                 let tx = storage(connection.transaction())?;
@@ -101,6 +101,7 @@ impl DiskVault {
                     header: next,
                     document,
                     document_loaded: true,
+                    hydrated_notes: Vec::new(),
                 });
                 Ok(json!({"ok":true}))
             }

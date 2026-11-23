@@ -2,6 +2,7 @@ mod archive;
 #[cfg(feature = "browser")]
 mod browser;
 mod crypto;
+mod cxf;
 mod devices;
 mod import;
 mod legacy;
@@ -20,6 +21,7 @@ mod structured;
 mod utilities;
 
 pub use crypto::*;
+pub use cxf::{cxf_export, redact_import_preview};
 pub use devices::*;
 pub use import::*;
 pub use legacy::*;

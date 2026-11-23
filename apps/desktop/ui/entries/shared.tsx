@@ -1,6 +1,5 @@
 import { signal, View } from "nsh";
-import { Menu } from "nsh/desktop";
-import { Btn, Field, Group, Row, SectionHead, T, TextBox, openSheet, SheetTitle, SheetFooter } from "../kit";
+import { Btn, Field, Group, Row, SectionHead, SegmentedChoice, T, TextBox, openSheet, SheetTitle, SheetFooter } from "../kit";
 import { edit, call, load, flush, errorText, type Item } from "../store";
 import { openItemHistory } from "../history";
 import { colors, hostOf, newID, websites } from "./model";
@@ -39,7 +38,17 @@ export function EntryMeta(p: EntryProps) {
     <SectionHead title="记录" /><Group>
     <Field label="分类" value={p.item.category ?? ""} editing={p.editing} onChange={change(p.item,"category")} nocopy />
     <Field label="标签" value={(p.item.tags ?? []).join("、")} editing={p.editing} onChange={v => edit(p.item.id,d => { d.tags=v.split(/[、,，]/).map(s=>s.trim()).filter(Boolean); })} nocopy />
-    <Field label="颜色标记" value={p.item.colorLabel || "无"} nocopy actions={<If when={p.editing}><Btn label="选择颜色" onPress={() => void Menu.popup(colors.map(value=>({label:value || "无",checked:p.item.colorLabel===value,onSelect:()=>edit(p.item.id,d=>{d.colorLabel=value;})})))} /></If>} />
+    <Field label="颜色标记" value={p.item.colorLabel || "无"} nocopy actions={
+      <If when={p.editing}>
+        <SegmentedChoice
+          compact
+          wrap
+          value={p.item.colorLabel ?? ""}
+          options={colors.map((value) => [value, value || "无"] as const)}
+          onChange={(value) => edit(p.item.id, (d) => { d.colorLabel = value; })}
+        />
+      </If>
+    } />
     <Field label="修改时间" value={p.item.updatedAt ?? ""} nocopy />
     <Field label="版本历史" value="加密版本记录" nocopy actions={<Btn label="打开版本历史" onPress={()=>openItemHistory(p.item)} />} />
     </Group></>;
@@ -51,7 +60,17 @@ export function CustomFields(p: EntryProps & { skip?: (field: any) => boolean })
     <Each of={(p.item.customFields ?? []).map((_:any,i:number)=>i).filter((i:number)=>!p.skip?.(p.item.customFields[i]))}>{(index: () => number)=><Group>
       <Field label="字段名称" value={p.item.customFields[index()].label??""} editing={p.editing} onChange={v=>update(index(),"label",v)} />
       <Field label="分组" value={p.item.customFields[index()].group??""} editing={p.editing} onChange={v=>update(index(),"group",v)} />
-      <Field label="类型" value={p.item.customFields[index()].kind??"text"} nocopy actions={<If when={p.editing}><Btn label="选择类型" onPress={()=>void Menu.popup(["text","concealed","url","email","date"].map(kind=>({label:kind,onSelect:()=>update(index(),"kind",kind)})))} /></If>} />
+      <Field label="类型" value={p.item.customFields[index()].kind??"text"} nocopy actions={
+        <If when={p.editing}>
+          <SegmentedChoice
+            compact
+            wrap
+            value={p.item.customFields[index()].kind ?? "text"}
+            options={[["text", "文字"], ["concealed", "隐藏"], ["url", "网址"], ["email", "邮箱"], ["date", "日期"]] as const}
+            onChange={(kind) => update(index(), "kind", kind)}
+          />
+        </If>
+      } />
       <Each of={[p.item.customFields[index()].kind]} key={k=>k}>{()=> <Field label="内容" value={p.item.customFields[index()].value??""} secret={p.item.customFields[index()].kind==="concealed"} editing={p.editing} onChange={v=>update(index(),"value",v)} />}</Each>
       <If when={p.editing}><Btn label="移除字段" kind="danger" onPress={()=>edit(p.item.id,d=>{d.customFields.splice(index(),1);})} /></If>
     </Group>}</Each></>;

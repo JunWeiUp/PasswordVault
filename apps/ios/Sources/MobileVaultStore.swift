@@ -411,7 +411,17 @@ final class MobileVaultStore: ObservableObject {
     let generation = epoch
     let document = try await core.document()
     guard generation == epoch, unlocked else { throw VaultError.Locked }
-    items = document.items
+    // Preserve already-hydrated note bodies whose updatedAt has not changed.
+    let hydratedByID = Dictionary(
+      uniqueKeysWithValues: items.filter { $0.type == "secureNote" && !$0.bool("noteSummary") }.map { ($0.id, $0) }
+    )
+    items = document.items.map { incoming in
+      if incoming.bool("noteSummary"), let cached = hydratedByID[incoming.id],
+         cached.string("updatedAt") == incoming.string("updatedAt") {
+        return cached
+      }
+      return incoming
+    }
     settings = document.settings
     sharedMembers = document.sharedMembers
     var passkeys: [JSONValue] = []
@@ -422,6 +432,31 @@ final class MobileVaultStore: ObservableObject {
     }
     lastPasskeyIndex = passkeys
     syncCredentialIndex()
+  }
+  /// Hydrates a single lazy `secureNote` summary on demand via `op: "get"`.
+  @discardableResult
+  func ensureFull(_ id: String) async -> VaultItem? {
+    if let existing = items.first(where: { $0.id == id }), !existing.bool("noteSummary") {
+      return existing
+    }
+    guard unlocked, let core else { return nil }
+    let generation = epoch
+    guard let full = try? await core.getItem(id: id) else { return nil }
+    guard generation == epoch, unlocked else { return nil }
+    if let idx = items.firstIndex(where: { $0.id == id }) {
+      items[idx] = full
+    }
+    return full
+  }
+  /// Merges metadata changes made on a summary onto the hydrated full note before saving.
+  private func materializeForSave(_ item: VaultItem) async throws -> VaultItem {
+    guard item.bool("noteSummary") else { return item }
+    guard var full = await ensureFull(item.id) else { throw VaultError.InvalidData }
+    let summaryOnly: Set<String> = ["noteDocument", "noteOriginal", "note", "noteFormat", "noteSummary", "__noteSearchText"]
+    for (key, value) in item.fields where !summaryOnly.contains(key) && !key.hasPrefix("_") {
+      full.fields[key] = value
+    }
+    return full
   }
   /// Re-syncs the system identity store after the QuickType setting changes.
   func refreshCredentialSuggestions() async {
@@ -472,7 +507,7 @@ final class MobileVaultStore: ObservableObject {
     busy = true
     defer { busy = false }
     do {
-      var item = item
+      var item = try await materializeForSave(item)
       let time = ISO8601DateFormatter().string(from: Date())
       item.set("updatedAt", time)
       // New entries record when they were created (used by the notes sort); existing ones keep theirs.
@@ -521,7 +556,8 @@ final class MobileVaultStore: ObservableObject {
     let time = ISO8601DateFormatter().string(from: Date())
     var saved = 0
     do {
-      for var item in items where ids.contains(item.id) && !item.isDeleted && canEdit(item) && include(item) {
+      for rawItem in items where ids.contains(rawItem.id) && !rawItem.isDeleted && canEdit(rawItem) && include(rawItem) {
+        var item = try await materializeForSave(rawItem)
         change(&item)
         item.set("updatedAt", time)
         _ = try await perform(["op": .string("save"), "item": try .from(item)])
@@ -653,6 +689,14 @@ enum ClipboardClear {
     case 60: return t("1 分钟", "1 minute")
     case 120: return t("2 分钟", "2 minutes")
     default: return t("\(seconds) 秒", "\(seconds) seconds")
+    }
+  }
+  static func shortLabel(_ seconds: Int, t: (String, String) -> String) -> String {
+    switch seconds {
+    case 0: return t("从不", "Never")
+    case 60: return t("1分", "1m")
+    case 120: return t("2分", "2m")
+    default: return t("\(seconds)秒", "\(seconds)s")
     }
   }
   static func notice(_ seconds: Int, t: (String, String) -> String) -> String {

@@ -195,13 +195,22 @@ export async function openSite(value: string) {
   }
 }
 
-export function Pill(props: { children: any; tone?: "blue" | "green" | "orange" | "red" | "gray" }) {
-  const tone = () => props.tone ?? "gray";
+export type PillTone = "blue" | "green" | "orange" | "red" | "gray" | "info" | "ok" | "warn" | "err" | "neutral";
+export function Pill(props: { children: any; tone?: PillTone }) {
+  const tone = (): "blue" | "green" | "orange" | "red" | "gray" => {
+    const t = props.tone ?? "gray";
+    if (t === "info") return "blue";
+    if (t === "ok") return "green";
+    if (t === "warn") return "orange";
+    if (t === "err") return "red";
+    if (t === "neutral") return "gray";
+    return t;
+  };
   const bg = () => ({ blue: c().blueSoft, green: c().greenSoft, orange: c().orangeSoft, red: c().redSoft, gray: c().soft })[tone()];
   const fg = () => ({ blue: c().blue, green: c().green, orange: c().orange, red: c().red, gray: c().ink2 })[tone()];
   return (
-    <View style={{ backgroundColor: bg(), borderRadius: 20, paddingHorizontal: 8, paddingVertical: 2 }}>
-      <T size={11} color={fg()}>{props.children}</T>
+    <View style={{ backgroundColor: bg(), borderRadius: 20, paddingHorizontal: 8, paddingVertical: 2, flexShrink: 0 }}>
+      <T size={11} weight="500" color={fg()}>{props.children}</T>
     </View>
   );
 }
@@ -221,9 +230,9 @@ export function Banner(props: { tone: "warn" | "info" | "ok" | "err"; icon?: Ico
   );
 }
 
-export function Toggle(props: { title: string; note?: string; checked: boolean; onChange: (v: boolean) => void; disabled?: boolean }) {
+export function Toggle(props: { title: string; note?: string; checked: boolean; onChange: (v: boolean) => void; disabled?: boolean; last?: boolean }) {
   return (
-    <Row style={{ paddingVertical: 11, borderBottomWidth: 1, borderBottomColor: c().line2, gap: 14 }}>
+    <Row style={{ paddingVertical: 11, borderBottomWidth: props.last ? 0 : 1, borderBottomColor: c().line2, gap: 14 }}>
       <View style={{ flex: 1, gap: 2 }}>
         <T size={13}>{props.title}</T>
         {props.note && <T size={11} color={c().muted}>{props.note}</T>}
@@ -240,15 +249,72 @@ export function Toggle(props: { title: string; note?: string; checked: boolean; 
   );
 }
 
-export function OptionRow(props: { title: string; note?: string; children: any }) {
+export function OptionRow(props: { title: string; note?: string; badge?: JSX.Element; last?: boolean; children: any }) {
   return (
-    <Row style={{ paddingVertical: 11, borderBottomWidth: 1, borderBottomColor: c().line2, gap: 14 }}>
-      <View style={{ flex: 1, gap: 2 }}>
-        <T size={13}>{props.title}</T>
-        {props.note && <T size={11} color={c().muted}>{props.note}</T>}
+    <Row wrap style={{ paddingVertical: 11, borderBottomWidth: props.last ? 0 : 1, borderBottomColor: c().line2, gap: 14, justifyContent: "space-between" }}>
+      <View style={{ flex: 1, minWidth: 160, gap: 3 }}>
+        <Row gap={6} wrap>
+          <T size={13} weight="500">{props.title}</T>
+          {props.badge}
+        </Row>
+        {props.note && <T size={11.5} color={c().muted}>{props.note}</T>}
       </View>
       {props.children}
     </Row>
+  );
+}
+
+/** Direct-selection segmented bar for ≤6 fixed discrete choices (1 click, zero dropdown). */
+export function SegmentedChoice<T extends string>(props: {
+  value: T;
+  options: readonly (readonly [T, string])[];
+  onChange: (v: T) => void;
+  compact?: boolean;
+  wrap?: boolean;
+  disabled?: boolean;
+  testID?: string;
+}) {
+  return (
+    <View
+      testID={props.testID}
+      style={{
+        flexDirection: "row",
+        flexWrap: props.wrap ? "wrap" : "nowrap",
+        alignItems: "center",
+        backgroundColor: c().field,
+        borderRadius: radius.control,
+        padding: 2,
+        gap: 2,
+        flexShrink: 0,
+        opacity: props.disabled ? 0.5 : 1,
+      }}
+    >
+      {props.options.map(([val, label]) => {
+        const active = () => props.value === val;
+        return (
+          <View
+            role="button"
+            accessibilityLabel={label}
+            accessibilityState={{ selected: active(), disabled: !!props.disabled }}
+            onPress={props.disabled ? undefined : () => props.onChange(val)}
+            style={{
+              paddingHorizontal: props.compact ? 8 : 11,
+              height: fs(props.compact ? 24 : 26),
+              borderRadius: 5,
+              justifyContent: "center",
+              alignItems: "center",
+              backgroundColor: active() ? c().surface : "transparent",
+              cursor: props.disabled ? "default" : "pointer",
+            }}
+            hoverStyle={props.disabled || active() ? undefined : { backgroundColor: c().soft }}
+          >
+            <T size={props.compact ? 11.5 : 12} weight={active() ? "600" : "400"} color={active() ? c().blue : c().muted}>
+              {label}
+            </T>
+          </View>
+        );
+      })}
+    </View>
   );
 }
 

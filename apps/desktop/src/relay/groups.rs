@@ -54,11 +54,16 @@ impl Api for Http {
             "http"
         })
         .map_err(|_| "InvalidData")?;
+        let prefix = if url.path() == "/v2/ws" {
+            "/v2"
+        } else {
+            "/relay/v1"
+        };
         let base = format!(
             "{}://{}{}",
             url.scheme(),
             &url[url::Position::BeforeHost..url::Position::AfterPort],
-            "/relay/v1"
+            prefix
         );
         if !path.starts_with('/') || path.contains('#') || path.contains("..") {
             return invalid();

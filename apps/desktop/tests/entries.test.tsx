@@ -22,7 +22,7 @@ test("account editing, import and next-code preview work against a synthetic vau
  await app.press("text:移除附加账号");await app.press("text:确认移除");await app.waitFor("text:附加数量 0");
  await app.type("label:设置链接","otpauth://totp/Example:qa?secret=JBSWY3DPEHPK3PXP&issuer=Example&period=60");await app.press("text:导入链接");await app.wait(500);
  await app.press("text:复制设置链接");expect(app.clipboard()??"").toContain("otpauth://totp/Example%3Aqa?");
- await app.press("text:选择颜色");await app.chooseMenuItem("蓝色");await app.press("text:保存并重读");await app.wait(500);expect(app.texts()).toContain("蓝色");
+ await app.press("text:蓝色");await app.press("text:保存并重读");await app.wait(500);expect(app.texts()).toContain("蓝色");
  await app.press("text:验证码视图");await app.wait(800);
  expect(app.texts().some(t=>/^下一个 \d{3} \d{3}$/.test(t))).toBe(true);
  await app.press("text:显示设置二维码…");await app.waitFor("text:显示设置二维码？");await app.press("text:取消");

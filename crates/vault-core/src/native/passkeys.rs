@@ -174,8 +174,12 @@ impl DiskVault {
                 item["updatedAt"]=json!(web_time::SystemTime::now().duration_since(web_time::UNIX_EPOCH).map_err(|_|VaultError::InvalidData)?.as_millis() as u64);
                 doc.format_version=doc.format_version.max(6);
                 let item_id = item["id"].clone();
+                let credential = item["passkeys"].as_array().and_then(|keys| keys.last()).cloned().unwrap_or_default();
                 doc.upsert(item)?;
                 let mut response = serde_json::to_value(response).map_err(|_|VaultError::InvalidData)?;
+                if hash.is_none() {
+                    passkey_attach_prf(&mut response, &credential, request, true)?;
+                }
                 response["library"] = json!("");
                 response["itemId"] = item_id;
                 Ok(response)
@@ -219,14 +223,23 @@ impl DiskVault {
                 record.backup_state = self.passkey_has_backup(&record)?;
                 passkey_assert_system(&record, text("rpId")?, hash)?
             } else {
-                passkey_assert_item(
+                let response = passkey_assert_item(
                     item,
                     id,
                     text("origin")?,
                     text("clientDataJSON")?.as_bytes(),
                     &allowed,
                     true,
-                )?
+                )?;
+                let mut response =
+                    serde_json::to_value(response).map_err(|_| VaultError::InvalidData)?;
+                if let Some(credential) = item["passkeys"]
+                    .as_array()
+                    .and_then(|keys| keys.iter().find(|key| key["credentialId"] == id))
+                {
+                    passkey_attach_prf(&mut response, credential, request, false)?;
+                }
+                return Ok(response);
             };
             serde_json::to_value(response).map_err(|_| VaultError::InvalidData)
         }
@@ -344,5 +357,49 @@ mod tests {
             .as_array()
             .unwrap()
             .is_empty());
+    }
+    #[test]
+    fn cxf_export_needs_reauthentication_and_import_round_trips_with_prf() {
+        use base64::engine::general_purpose::STANDARD;
+        let temp = tempfile::tempdir().unwrap();
+        let mut vault = DiskVault::new(temp.path()).unwrap();
+        vault.create("Synthetic fixture only 2026!").unwrap();
+        let client = json!({"type":"webauthn.create","origin":"https://example.com","challenge":URL_SAFE_NO_PAD.encode([7u8;32]),"crossOrigin":false}).to_string();
+        let created = vault.command(&json!({"op":"passkey-create","origin":"https://example.com","rpId":"example.com","userHandle":URL_SAFE_NO_PAD.encode(b"alice"),"userName":"Alice","clientDataJSON":client,"currentPassword":"Synthetic fixture only 2026!","prf":{"first":URL_SAFE_NO_PAD.encode(b"salt")}})).unwrap();
+        assert_eq!(created["prf"]["enabled"], true);
+        let first = created["prf"]["results"]["first"].clone();
+        assert!(first.is_string());
+        assert!(vault
+            .command(&json!({"op":"export-cxf","currentPassword":"wrong"}))
+            .is_err());
+        let exported = vault
+            .command(&json!({"op":"export-cxf","currentPassword":"Synthetic fixture only 2026!"}))
+            .unwrap();
+        let content = exported["content"].as_str().unwrap().to_owned();
+        // Import into a second vault: preview hides keys, commit keeps signing and PRF identical.
+        let other = tempfile::tempdir().unwrap();
+        let mut target = DiskVault::new(other.path()).unwrap();
+        target.create("Synthetic fixture only 2026!").unwrap();
+        let data = STANDARD.encode(content.as_bytes());
+        let preview = target
+            .command(&json!({"op":"import-preview","format":"cxf","data":data}))
+            .unwrap();
+        assert!(preview["rows"][0]["item"]["passkeys"][0]
+            .get("privateKey")
+            .is_none());
+        target
+            .command(&json!({"op":"import-commit","format":"cxf","data":data}))
+            .unwrap();
+        // A second import of the same credential is a duplicate and skipped by default.
+        assert_eq!(
+            target
+                .command(&json!({"op":"import-commit","format":"cxf","data":data}))
+                .unwrap()["added"],
+            0
+        );
+        let item = target.open().unwrap().document.items[0].clone();
+        let get = json!({"type":"webauthn.get","origin":"https://example.com","challenge":URL_SAFE_NO_PAD.encode([5u8;32]),"crossOrigin":false}).to_string();
+        let signed = target.command(&json!({"op":"passkey-assert","origin":"https://example.com","rpId":"example.com","itemId":item["id"],"credentialId":created["id"],"library":"","clientDataJSON":get,"currentPassword":"Synthetic fixture only 2026!","prf":{"first":URL_SAFE_NO_PAD.encode(b"salt")}})).unwrap();
+        assert_eq!(signed["prf"]["results"]["first"], first);
     }
 }

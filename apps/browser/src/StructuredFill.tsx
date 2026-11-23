@@ -12,7 +12,18 @@ export function StructuredFill(){
   <button disabled={busy} onClick={()=>void list()}>{t("选择银行卡 / 身份资料填充")}</button>
   {state&&<>
    <p>{t("仅填入 HTTPS 页面：")}{state.origin}</p>
-   <select value={selected} disabled={confirming} onChange={e=>{setSelected(e.currentTarget.value);setSecurity(false);}}><option value="">{t("选择资料")}</option>{state.items.map((entry:any)=><option value={entry.id}>{entry.title} · {entry.type==="creditCard"?t("银行卡"):t("身份资料")}</option>)}</select>
+   {state.items.length <= 6 ? (
+    <div class="pick-cards" role="radiogroup" aria-label={t("选择资料")}>
+     {state.items.map((entry:any)=>{
+      const active=selected===entry.id;
+      return <button type="button" role="radio" aria-checked={active} class={`pick-card${active?" on":""}`} disabled={confirming} onClick={()=>{setSelected(entry.id);setSecurity(false);}}>
+       <span class="dot"/><span><b>{entry.title}</b><small>{entry.type==="creditCard"?t("银行卡"):t("身份资料")}</small></span>
+      </button>;
+     })}
+    </div>
+   ) : (
+    <select value={selected} disabled={confirming} onChange={e=>{setSelected(e.currentTarget.value);setSecurity(false);}}><option value="">{t("选择资料")}</option>{state.items.map((entry:any)=><option value={entry.id}>{entry.title} · {entry.type==="creditCard"?t("银行卡"):t("身份资料")}</option>)}</select>
+   )}
    {item?.type==="creditCard"&&<label><input type="checkbox" checked={security} disabled={confirming} onChange={e=>setSecurity(e.currentTarget.checked)}/>{t("本次也填入安全码")}</label>}
    {confirming&&item?<div class="confirm-card" role="alertdialog" aria-label={t("确认填入所选资料")}>
      <p>{fmt(t("确认将所选资料填入 {origin}？网页可以读取已填入的内容。"),{origin:state.origin})}</p>

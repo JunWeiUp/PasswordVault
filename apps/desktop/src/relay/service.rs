@@ -71,7 +71,7 @@ pub fn display(c: &Value) -> Result<Value> {
     };
     // No secret, token, pending signed grant or delegate key leaves Rust.
     Ok(
-        json!({"legacy":!c["token"].as_str().unwrap_or("").is_empty()&&g.as_object().is_some_and(|g|g.is_empty()),"device":c["device"],"role":c["role"],"peerLibrary":c["peerLibrary"],"paused":c["paused"],"state":state,"transport":"not-connected","joining":g["pending_join"].is_object(),"creating":g["pending_create"].is_object(),"code":code,"applicant":unpack(&g["join_request"]).ok().map(|r|r["member"]["name"].clone()),"invitationLink":link,"hasPassword":super::protocol::configured_password(&c).ok().flatten().is_some(),"invitationMode":inv["mode"],"invitationExpires":inv["expires"]}),
+        json!({"legacy":!c["token"].as_str().unwrap_or("").is_empty()&&g.as_object().is_some_and(|g|g.is_empty()),"endpoint":c["endpoint"],"device":c["device"],"role":c["role"],"peerLibrary":c["peerLibrary"],"paused":c["paused"],"state":state,"transport":"not-connected","joining":g["pending_join"].is_object(),"creating":g["pending_create"].is_object(),"code":code,"applicant":unpack(&g["join_request"]).ok().map(|r|r["member"]["name"].clone()),"invitationLink":link,"hasPassword":super::protocol::configured_password(&c).ok().flatten().is_some(),"invitationMode":inv["mode"],"invitationExpires":inv["expires"]}),
     )
 }
 pub fn execute(s: &VaultSession, request: Value, local: bool) -> Result<String> {
@@ -89,6 +89,17 @@ pub fn execute(s: &VaultSession, request: Value, local: bool) -> Result<String> 
         return Ok(display(&c)?.to_string());
     }
     let mut g = group(&c)?;
+    if op == "update-endpoint" {
+        let ep = text(&request, "endpoint")?.trim().to_owned();
+        super::transport::endpoint(&ep, local)?;
+        if g.as_object().ok_or("InvalidData")?.is_empty() {
+            return Err("NotEnrolled".into());
+        }
+        g["url"] = json!(ep);
+        c["endpoint"] = json!(ep);
+        stash(s, &mut c, &g)?;
+        return Ok(display(&c)?.to_string());
+    }
     if op == "update-password" {
         let password = super::protocol::access_password(text(&request, "relayPassword")?)?;
         if g.as_object().ok_or("InvalidData")?.is_empty() {

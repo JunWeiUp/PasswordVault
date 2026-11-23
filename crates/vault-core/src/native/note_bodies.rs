@@ -73,8 +73,22 @@ fn note_preview(text: &str) -> String {
     text.chars().take(240).collect()
 }
 
+pub(super) fn is_split(item: &Value) -> bool {
+    item.get("_bodySplit") == Some(&Value::Bool(true))
+}
+
+pub(super) fn strip_internal_markers(item: &mut Value) {
+    if let Some(obj) = item.as_object_mut() {
+        obj.remove("_bodySplit");
+        obj.remove("_bodyDigest");
+        obj.remove("_hasRichBody");
+        obj.remove("_searchMeta");
+    }
+}
+
 /// Writes changed `secureNote` bodies into `note_bodies`, removes deleted note rows,
 /// and returns a lightweight `Document` for `vault_state` with bulky note bodies stripped.
+/// Notes already in split (`_bodySplit: true`) form are left untouched in O(1).
 pub(super) fn sync_and_strip(
     conn: &Connection,
     root: &[u8; 32],
@@ -98,6 +112,11 @@ pub(super) fn sync_and_strip(
         }
         let note_id = item["id"].as_str().ok_or(VaultError::InvalidData)?;
         live_ids.insert(note_id.to_owned());
+        if is_split(item) {
+            // Untouched lazy note: retain existing encrypted row in `note_bodies` without re-hashing.
+            stripped_items.push(item.clone());
+            continue;
+        }
         let record = extract_record(item);
         let clear =
             Zeroizing::new(serde_json::to_vec(&record).map_err(|_| VaultError::InvalidData)?);
@@ -122,6 +141,19 @@ pub(super) fn sync_and_strip(
                 rusqlite::params![note_id, encoded, digest],
             ))?;
         }
+        let has_rich = item.get("noteDocument").is_some() || item.get("noteOriginal").is_some();
+        let search_meta = if let Some(note_doc) = item.get("noteDocument") {
+            let mut metadata = Vec::new();
+            note_search_metadata(note_doc, 0, &mut metadata);
+            let joined = metadata.join("\n");
+            if joined.is_empty() {
+                None
+            } else {
+                Some(joined.chars().take(4096).collect::<String>())
+            }
+        } else {
+            None
+        };
         let mut lite = item.clone();
         if let Some(obj) = lite.as_object_mut() {
             obj.remove("noteDocument");
@@ -130,6 +162,17 @@ pub(super) fn sync_and_strip(
                 obj.insert("note".into(), json!(note_preview(note_text)));
             }
             obj.insert("_bodySplit".into(), Value::Bool(true));
+            obj.insert("_bodyDigest".into(), json!(hex::encode(&digest)));
+            if has_rich {
+                obj.insert("_hasRichBody".into(), Value::Bool(true));
+            } else {
+                obj.remove("_hasRichBody");
+            }
+            if let Some(meta_text) = search_meta {
+                obj.insert("_searchMeta".into(), json!(meta_text));
+            } else {
+                obj.remove("_searchMeta");
+            }
         }
         stripped_items.push(lite);
     }
@@ -152,6 +195,62 @@ pub(super) fn sync_and_strip(
     })
 }
 
+/// Hydrates a single `secureNote` marked `_bodySplit` from `note_bodies`, verifying AAD & integrity.
+pub(super) fn hydrate_item(
+    conn: &Connection,
+    root: &[u8; 32],
+    vault_id: &str,
+    item: &mut Value,
+) -> Result<bool> {
+    if !is_split(item) {
+        return Ok(false);
+    }
+    if !enabled(conn)? {
+        return Err(VaultError::InvalidData);
+    }
+    let note_id = item["id"]
+        .as_str()
+        .ok_or(VaultError::InvalidData)?
+        .to_owned();
+    let bytes: Vec<u8> = storage(
+        conn.query_row(
+            "SELECT payload FROM note_bodies WHERE note_id=?1",
+            [&note_id],
+            |r| r.get(0),
+        )
+        .optional(),
+    )?
+    .ok_or(VaultError::InvalidData)?;
+    let sealed: Sealed = serde_json::from_slice(&bytes).map_err(|_| VaultError::InvalidData)?;
+    let clear = unseal(
+        &subkey(root, b"note-bodies-v1"),
+        &sealed,
+        &body_aad(vault_id, &note_id)?,
+    )?;
+    let record: NoteBodyRecord =
+        serde_json::from_slice(&clear).map_err(|_| VaultError::InvalidData)?;
+    let obj = item.as_object_mut().ok_or(VaultError::InvalidData)?;
+    obj.remove("_bodySplit");
+    obj.remove("_bodyDigest");
+    obj.remove("_hasRichBody");
+    obj.remove("_searchMeta");
+    if let Some(note_text) = record.note {
+        obj.insert("note".into(), json!(note_text));
+    } else {
+        obj.remove("note");
+    }
+    if let Some(fmt) = record.note_format {
+        obj.insert("noteFormat".into(), json!(fmt));
+    }
+    if let Some(doc_node) = record.note_document {
+        obj.insert("noteDocument".into(), doc_node);
+    }
+    if let Some(orig) = record.note_original {
+        obj.insert("noteOriginal".into(), orig);
+    }
+    Ok(true)
+}
+
 /// Hydrates any `secureNote` marked `_bodySplit` from `note_bodies`, verifying AAD & integrity.
 pub(super) fn hydrate(
     conn: &Connection,
@@ -159,10 +258,7 @@ pub(super) fn hydrate(
     vault_id: &str,
     mut doc: Document,
 ) -> Result<Document> {
-    let needs_hydrate = doc
-        .items
-        .iter()
-        .any(|item| item.get("_bodySplit") == Some(&Value::Bool(true)));
+    let needs_hydrate = doc.items.iter().any(is_split);
     if !needs_hydrate {
         return Ok(doc);
     }
@@ -170,46 +266,7 @@ pub(super) fn hydrate(
         return Err(VaultError::InvalidData);
     }
     for item in &mut doc.items {
-        if item.get("_bodySplit") != Some(&Value::Bool(true)) {
-            continue;
-        }
-        let note_id = item["id"]
-            .as_str()
-            .ok_or(VaultError::InvalidData)?
-            .to_owned();
-        let bytes: Vec<u8> = storage(
-            conn.query_row(
-                "SELECT payload FROM note_bodies WHERE note_id=?1",
-                [&note_id],
-                |r| r.get(0),
-            )
-            .optional(),
-        )?
-        .ok_or(VaultError::InvalidData)?;
-        let sealed: Sealed = serde_json::from_slice(&bytes).map_err(|_| VaultError::InvalidData)?;
-        let clear = unseal(
-            &subkey(root, b"note-bodies-v1"),
-            &sealed,
-            &body_aad(vault_id, &note_id)?,
-        )?;
-        let record: NoteBodyRecord =
-            serde_json::from_slice(&clear).map_err(|_| VaultError::InvalidData)?;
-        let obj = item.as_object_mut().ok_or(VaultError::InvalidData)?;
-        obj.remove("_bodySplit");
-        if let Some(note_text) = record.note {
-            obj.insert("note".into(), json!(note_text));
-        } else {
-            obj.remove("note");
-        }
-        if let Some(fmt) = record.note_format {
-            obj.insert("noteFormat".into(), json!(fmt));
-        }
-        if let Some(doc_node) = record.note_document {
-            obj.insert("noteDocument".into(), doc_node);
-        }
-        if let Some(orig) = record.note_original {
-            obj.insert("noteOriginal".into(), orig);
-        }
+        hydrate_item(conn, root, vault_id, item)?;
     }
     Ok(doc)
 }

@@ -17,6 +17,10 @@
     "无法填入：请解锁资料库或关闭后重新选择": "Couldn't fill: unlock the vault, or close and choose again",
     "未填写用户名": "No username",
     "本站暂无可用账号": "No logins for this site",
+    "使用通行密钥登录": "Sign in with a passkey",
+    "在 PasswordVault 中确认并选择通行密钥": "Confirm and choose a passkey in PasswordVault",
+    "正在等待确认…": "Waiting for confirmation…",
+    "未完成通行密钥登录，可重新选择": "Passkey sign-in not completed; you can choose again",
     "正在查找账号…": "Finding logins…",
     "特殊字符 !@#$%&*+-": "Symbols !@#$%&*+-",
     "生成并填入 {length} 位密码": "Generate and fill a {length}-character password",
@@ -341,6 +345,28 @@
       });
       lengthInput.focus();
       return;
+    }
+    // Conditional mediation: the page asked for passkey autofill; offer it first.
+    const conditional = (globalThis as any).pvConditionalPasskey;
+    if (window === top && conditional?.available() && !c.input.autocomplete.split(/\s+/).includes("one-time-code")) {
+      const button = document.createElement("button");
+      button.type = "button";
+      const title = document.createElement("strong");
+      title.textContent = inlineText("使用通行密钥登录");
+      const note = document.createElement("small");
+      note.textContent = inlineText("在 PasswordVault 中确认并选择通行密钥");
+      button.append(title, note);
+      button.onclick = async (e) => {
+        if (!e.isTrusted || ownRevision !== revision || href !== location.href || !conditional.available()) return;
+        button.disabled = true;
+        status.textContent = inlineText("正在等待确认…");
+        const outcome = await conditional.start();
+        if (panel !== host) return;
+        if (outcome?.ok) { close(); return; }
+        button.disabled = false;
+        status.textContent = inlineText("未完成通行密钥登录，可重新选择");
+      };
+      list.append(button);
     }
     const result = await send("inline-accounts", {field: c.input.autocomplete.split(/\s+/).includes("one-time-code") ? "otp" : "login"});
     if (ownRevision !== revision || panel !== host) return;

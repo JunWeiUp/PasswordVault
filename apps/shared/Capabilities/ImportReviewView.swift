@@ -23,7 +23,7 @@ struct ImportReviewView: View {
       #else
       Form {
       Section {
-        Text(t("支持浏览器 CSV 和 1Password .1pux。原文件不会删除；重复条目默认跳过。", "Import browser CSV or 1Password .1pux. Source files are retained; duplicates are skipped by default."))
+        Text(t("支持浏览器 CSV、1Password .1pux 和 FIDO CXF（.json，含通行密钥）。原文件不会删除；重复条目默认跳过。", "Import browser CSV, 1Password .1pux or FIDO CXF (.json, including passkeys). Source files are retained; duplicates are skipped by default."))
         Button(t("选择文件", "Choose file")) { picker = true }.disabled(busy)
         if !message.isEmpty { Text(message).accessibilityIdentifier("import.message") }
       }
@@ -69,7 +69,8 @@ struct ImportReviewView: View {
           let size = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
           guard size <= 64 * 1024 * 1024 else { throw CocoaError(.fileReadTooLarge) }
           let data = try Data(contentsOf: url)
-          format = url.pathExtension.lowercased() == "1pux" ? "1pux" : "csv"
+          let ext = url.pathExtension.lowercased()
+          format = ext == "1pux" ? "1pux" : (ext == "json" || ext == "cxf") ? "cxf" : "csv"
           fileName = url.lastPathComponent
           mappingExpanded = false
           source = data.base64EncodedString(); mapping = [:]; choices = [:]; await inspect()
@@ -118,7 +119,7 @@ struct ImportReviewView: View {
           VStack(alignment: .leading, spacing: 5) {
             Text(fileName.isEmpty ? t("选择要导入的文件", "Choose a file to import") : fileName).font(.headline).lineLimit(1).truncationMode(.middle).help(fileName)
             HStack(spacing: 8) {
-              if !fileName.isEmpty { Text(format == "1pux" ? "1Password · 1PUX" : "CSV").font(.caption.weight(.medium)).padding(.horizontal, 7).padding(.vertical, 3).background(Color.primary.opacity(0.07), in: Capsule()) }
+              if !fileName.isEmpty { Text(format == "1pux" ? "1Password · 1PUX" : format == "cxf" ? "FIDO · CXF" : "CSV").font(.caption.weight(.medium)).padding(.horizontal, 7).padding(.vertical, 3).background(Color.primary.opacity(0.07), in: Capsule()) }
               Text(t("原文件保留 · 最多 64 MiB", "Source file retained · Up to 64 MiB")).font(.caption).foregroundStyle(.secondary)
             }
           }
@@ -192,7 +193,7 @@ struct ImportReviewView: View {
         VStack(spacing: 12) {
           Image(systemName: "doc.text.magnifyingglass").font(.system(size: 36)).foregroundStyle(.tertiary)
           Text(busy ? t("正在检查文件…", "Checking your file…") : t("先选择文件，再检查导入内容", "Choose a file, then review its contents")).font(.headline)
-          Text(t("支持浏览器 CSV 和 1Password .1pux。不会覆盖已有的同名条目。", "Supports browser CSV and 1Password .1pux. Existing same-title records will not be overwritten.")).foregroundStyle(.secondary).multilineTextAlignment(.center).frame(maxWidth: 420)
+          Text(t("支持浏览器 CSV、1Password .1pux 和 FIDO CXF。不会覆盖已有的同名条目。", "Supports browser CSV, 1Password .1pux and FIDO CXF. Existing same-title records will not be overwritten.")).foregroundStyle(.secondary).multilineTextAlignment(.center).frame(maxWidth: 420)
         }.padding(30).frame(maxWidth: .infinity, maxHeight: .infinity)
       }
       Divider()

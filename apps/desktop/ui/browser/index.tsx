@@ -6,6 +6,7 @@ import { Browser } from "passwordvault/native";
 import { Banner, Btn, Group, OptionRow, T, Toggle, confirm } from "../kit";
 import { call, errorText, items, load, refreshItems, reveal, settings, phase, toast, vaultInstance } from "../store";
 import { c } from "../theme";
+import { openPasskeyPrompt, type PasskeyPrompt } from "./passkey";
 
 let pendingId = "";
 let openedNonce = "";
@@ -46,6 +47,12 @@ export function connectBrowser(): () => void {
     if (!id) { pendingId = ""; return; }
     if (id === pendingId) return;
     pendingId = id;
+    if (request!.kind === "passkey-create" || request!.kind === "passkey-assert") {
+      openPasskeyPrompt(request as unknown as PasskeyPrompt,
+        (selection) => void Browser.approvePasskey(id, JSON.stringify(selection)),
+        () => void Browser.approve(id, false));
+      return;
+    }
     const prompt = consentText(request!);
     confirm({ ...prompt, onCancel: () => void Browser.approve(id, false), onConfirm: async () => { await Browser.approve(id, true); if (request!.kind === "pair" || !request!.kind) await load(); } });
   });

@@ -51,34 +51,55 @@ struct MobileGeneralSettings: View {
   var body: some View {
     Form {
       Section(store.t("外观与语言", "Appearance & language")) {
-        Picker(
-          store.t("主题", "Theme"),
-          selection: Binding(
-            get: { store.settings["theme"]?.string ?? "system" },
-            set: { theme in Task { await store.saveSettings(["theme": .string(theme)]) } })
-        ) {
-          Text(store.t("跟随系统", "System")).tag("system")
-          Text(store.t("浅色", "Light")).tag("light")
-          Text(store.t("深色", "Dark")).tag("dark")
+        VStack(alignment: .leading, spacing: 8) {
+          Text(store.t("主题", "Theme"))
+          Picker(
+            store.t("主题", "Theme"),
+            selection: Binding(
+              get: { store.settings["theme"]?.string ?? "system" },
+              set: { theme in Task { await store.saveSettings(["theme": .string(theme)]) } })
+          ) {
+            Text(store.t("跟随系统", "System")).tag("system")
+            Text(store.t("浅色", "Light")).tag("light")
+            Text(store.t("深色", "Dark")).tag("dark")
+          }
+          .pickerStyle(.segmented)
         }
-        Picker(store.t("语言 / Language", "Language"), selection: $store.language) {
-          Text("简体中文").tag("zh")
-          Text("English").tag("en")
-        }.onChange(of: store.language) { UserDefaults.standard.set($0, forKey: "language") }
+        .padding(.vertical, 2)
+        VStack(alignment: .leading, spacing: 8) {
+          Text(store.t("语言 / Language", "Language"))
+          Picker(store.t("语言 / Language", "Language"), selection: $store.language) {
+            Text("简体中文").tag("zh")
+            Text("English").tag("en")
+          }
+          .pickerStyle(.segmented)
+          .onChange(of: store.language) { UserDefaults.standard.set($0, forKey: "language") }
+        }
+        .padding(.vertical, 2)
       }
       Section {
-        Picker(store.t("打开时显示", "Open to"), selection: $startTab) {
-          ForEach(StartTab.options) { Text($0.title(chinese: store.chinese)).tag($0.rawValue) }
+        VStack(alignment: .leading, spacing: 8) {
+          Text(store.t("打开时显示", "Open to"))
+          Picker(store.t("打开时显示", "Open to"), selection: $startTab) {
+            ForEach(StartTab.options) { Text($0.title(chinese: store.chinese)).tag($0.rawValue) }
+          }
+          .pickerStyle(.segmented)
         }
+        .padding(.vertical, 2)
       } header: {
         Text(store.t("启动", "Startup"))
       } footer: {
         Text(store.t("解锁后先显示这个页面。仅保存在本机。", "Shown first after unlocking. Saved on this device only."))
       }
       Section {
-        Picker(store.t("自动清除剪贴板", "Clear clipboard"), selection: $clipboardSeconds) {
-          ForEach(ClipboardClear.options, id: \.self) { Text(ClipboardClear.label($0, t: store.t)).tag($0) }
+        VStack(alignment: .leading, spacing: 8) {
+          Text(store.t("自动清除剪贴板", "Clear clipboard"))
+          Picker(store.t("自动清除剪贴板", "Clear clipboard"), selection: $clipboardSeconds) {
+            ForEach(ClipboardClear.options, id: \.self) { Text(ClipboardClear.shortLabel($0, t: store.t)).tag($0) }
+          }
+          .pickerStyle(.segmented)
         }
+        .padding(.vertical, 2)
       } header: {
         Text(store.t("剪贴板", "Clipboard"))
       } footer: {
@@ -99,18 +120,23 @@ struct MobileSecuritySettings: View {
   var body: some View {
     Form {
       Section {
-        Picker(
-          store.t("空闲锁定", "Idle lock"),
-          selection: Binding(
-            get: { Int(store.settings["autoLockMinutes"]?.number ?? 60) },
-            set: { minutes in
-              Task { await store.saveSettings(["autoLockMinutes": .number(Double(minutes))]) }
-            })
-        ) {
-          ForEach([1, 5, 15, 30, 60], id: \.self) {
-            Text("\($0) \(store.t("分钟", "minutes"))").tag($0)
+        VStack(alignment: .leading, spacing: 8) {
+          Text(store.t("空闲锁定", "Idle lock"))
+          Picker(
+            store.t("空闲锁定", "Idle lock"),
+            selection: Binding(
+              get: { Int(store.settings["autoLockMinutes"]?.number ?? 60) },
+              set: { minutes in
+                Task { await store.saveSettings(["autoLockMinutes": .number(Double(minutes))]) }
+              })
+          ) {
+            ForEach([1, 5, 15, 30, 60], id: \.self) {
+              Text("\($0)\(store.t("分", "m"))").tag($0)
+            }
           }
+          .pickerStyle(.segmented)
         }
+        .padding(.vertical, 2)
         if MobileBiometrics.available {
           Button(store.t("启用 / 更新 Face ID 或 Touch ID", "Enable / renew Face ID or Touch ID")) {
             Task { await store.enrollBiometrics() }
@@ -208,7 +234,7 @@ struct MobileBackupSettings: View {
       Section {
         NavigationLink(store.t("加密备份", "Encrypted backups")) { MobileBackupView() }
         NavigationLink("WebDAV") { MobileWebDAVView() }
-        NavigationLink(store.t("迁入 CSV / 1Password .1pux", "Import CSV / 1Password .1pux")) {
+        NavigationLink(store.t("迁入 CSV / 1Password / CXF", "Import CSV / 1Password / CXF")) {
           ImportReviewView(perform: { request in let result = try await store.perform(request); if request["op"]?.string == "import-commit" { try await store.refresh() }; return result }, t: store.t)
         }
       }
@@ -323,11 +349,16 @@ struct MobileGeneratorView: View {
             Text("\(store.t("单词数", "Words")): \(options.words)")
           }
           .accessibilityIdentifier("generator.words")
-          Picker(store.t("分隔符", "Separator"), selection: $options.separator) {
-            ForEach(GeneratorOptions.separators, id: \.self) { separator in
-              Text(separator == " " ? store.t("空格", "Space") : separator).tag(separator)
+          VStack(alignment: .leading, spacing: 8) {
+            Text(store.t("分隔符", "Separator"))
+            Picker(store.t("分隔符", "Separator"), selection: $options.separator) {
+              ForEach(GeneratorOptions.separators, id: \.self) { separator in
+                Text(separator == " " ? store.t("空格", "Space") : separator).tag(separator)
+              }
             }
+            .pickerStyle(.segmented)
           }
+          .padding(.vertical, 2)
           Toggle(store.t("首字母大写", "Capitalize words"), isOn: $options.capitalize)
           Toggle(store.t("加入一个数字", "Include a number"), isOn: $options.number)
         } else {

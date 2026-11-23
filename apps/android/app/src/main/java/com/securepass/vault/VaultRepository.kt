@@ -117,18 +117,58 @@ class VaultRepository(
 
     private fun reload() {
         val generation = epoch
-        val data = raw("list")
+        val data = raw("list", JSONObject().put("summaries", true))
+        val incoming = data.getJSONArray("items").objects()
         mutable.update { previous ->
-            if (generation == epoch)
+            if (generation == epoch) {
+                val hydratedById = previous.entries
+                    .filter { !it.optBoolean("noteSummary") && it.optString("type") == "secureNote" }
+                    .associateBy { it.optString("id") }
+                val merged = incoming.map { item ->
+                    val id = item.optString("id")
+                    val cached = hydratedById[id]
+                    if (cached != null && item.optBoolean("noteSummary") && cached.optString("updatedAt") == item.optString("updatedAt")) {
+                        cached
+                    } else {
+                        item
+                    }
+                }
                 previous.copy(
-                    entries = data.getJSONArray("items").objects(),
+                    entries = merged,
                     settings = data.getJSONObject("settings"),
                     sharedVaults = data.optJSONArray("sharedVaults")?.objects().orEmpty(),
                     sharedMembers = data.optJSONArray("sharedMembers")?.objects().orEmpty(),
                 )
-            else previous
+            } else previous
         }
     }
+
+    /** Hydrates one lazy `secureNote` summary on demand (`op: "get"`) and updates in-memory state. */
+    suspend fun loadFullNote(id: String): JSONObject? {
+        if (id.isEmpty()) return null
+        val existing = state.value.entries.firstOrNull { it.optString("id") == id }
+        if (existing != null && !existing.optBoolean("noteSummary")) return existing
+        return mutex.withLock {
+            if (!mutable.value.unlocked) return@withLock null
+            val generation = epoch
+            val full = runCatching {
+                withContext(Dispatchers.IO) { raw("get", JSONObject().put("id", id)) }
+            }.getOrNull() ?: return@withLock null
+            if (generation == epoch && mutable.value.unlocked) {
+                mutable.update { prev ->
+                    prev.copy(entries = prev.entries.map { if (it.optString("id") == id) full else it })
+                }
+            }
+            full
+        }
+    }
+
+    suspend fun meshConflicts(): List<JSONObject> = runCatching {
+        command("relay-mesh-conflicts").optJSONArray("conflicts")?.objects().orEmpty()
+    }.getOrDefault(emptyList())
+
+    suspend fun resolveMeshConflict(noteId: String, strategy: String): Boolean =
+        mutate("relay-mesh-resolve-conflict", JSONObject().put("id", noteId).put("strategy", strategy))
 
     suspend fun close() {
         relay.close()
@@ -450,12 +490,29 @@ class VaultRepository(
             }
         }
 
-    suspend fun save(item: JSONObject): Boolean =
-        mutate(
+    suspend fun save(item: JSONObject): Boolean {
+        val payload = JSONObject(item.toString())
+        if (payload.optBoolean("noteSummary")) {
+            val id = payload.optString("id")
+            val full = loadFullNote(id) ?: return false
+            val merged = JSONObject(full.toString())
+            val skip = setOf("noteDocument", "noteOriginal", "note", "noteFormat", "noteSummary", "__noteSearchText")
+            val keys = payload.keys()
+            while (keys.hasNext()) {
+                val k = keys.next()
+                if (k !in skip && !k.startsWith("_")) merged.put(k, payload.get(k))
+            }
+            return mutate(
+                "save",
+                JSONObject().put("item", merged.put("updatedAt", Instant.now().toString())),
+            )
+        }
+        return mutate(
             "save",
             JSONObject()
-                .put("item", JSONObject(item.toString()).put("updatedAt", Instant.now().toString())),
+                .put("item", payload.put("updatedAt", Instant.now().toString())),
         )
+    }
 
     suspend fun mutate(op: String, values: JSONObject): Boolean =
         mutex.withLock {

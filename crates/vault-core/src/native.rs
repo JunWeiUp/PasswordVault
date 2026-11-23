@@ -22,12 +22,53 @@ use std::{
 };
 use zeroize::{Zeroize, Zeroizing};
 
+const HYDRATED_NOTE_CACHE_CAP: usize = 16;
+
 struct OpenVault {
     connection: Connection,
     root: Secret,
     header: Header,
     document: Document,
     document_loaded: bool,
+    hydrated_notes: Vec<(String, Value)>,
+}
+
+impl OpenVault {
+    fn get_hydrated(&mut self, id: &str) -> Option<Value> {
+        let pos = self.hydrated_notes.iter().position(|(k, _)| k == id)?;
+        let entry = self.hydrated_notes.remove(pos);
+        let cloned = entry.1.clone();
+        self.hydrated_notes.push(entry);
+        Some(cloned)
+    }
+    fn put_hydrated(&mut self, id: String, item: Value) {
+        if let Some(pos) = self.hydrated_notes.iter().position(|(k, _)| k == &id) {
+            let mut old = self.hydrated_notes.remove(pos);
+            wipe_value(&mut old.1);
+        }
+        while self.hydrated_notes.len() >= HYDRATED_NOTE_CACHE_CAP {
+            let mut evicted = self.hydrated_notes.remove(0);
+            wipe_value(&mut evicted.1);
+        }
+        self.hydrated_notes.push((id, item));
+    }
+    fn invalidate_hydrated(&mut self, id: &str) {
+        if let Some(pos) = self.hydrated_notes.iter().position(|(k, _)| k == id) {
+            let mut old = self.hydrated_notes.remove(pos);
+            wipe_value(&mut old.1);
+        }
+    }
+    fn clear_hydrated_cache(&mut self) {
+        for (_, value) in &mut self.hydrated_notes {
+            wipe_value(value);
+        }
+        self.hydrated_notes.clear();
+    }
+    /// Installs the persisted (`_bodySplit`-stripped) document and wipes the hydrated note LRU cache.
+    fn commit_persisted(&mut self, persisted: Document) {
+        self.document = persisted;
+        self.clear_hydrated_cache();
+    }
 }
 pub struct DiskVault {
     directory: PathBuf,
@@ -88,41 +129,47 @@ fn open_database(path: &Path, root: &[u8; 32], create: bool) -> Result<Connectio
     }
     Ok(conn)
 }
+#[must_use = "assign the returned stripped Document to open.document via commit_persisted()"]
 fn save_document(
     conn: &mut Connection,
     root: &[u8; 32],
     vault_id: &str,
     doc: &Document,
-) -> Result<()> {
-    save_document_with_history(conn, root, vault_id, doc, None)
+) -> Result<Document> {
+    save_document_with_history(conn, root, vault_id, None, doc, None)
 }
+#[must_use = "assign the returned stripped Document to open.document via commit_persisted()"]
 fn save_document_with_history(
     conn: &mut Connection,
     root: &[u8; 32],
     vault_id: &str,
+    previous: Option<&Document>,
     doc: &Document,
     meta: Option<&history::HistoryMeta>,
-) -> Result<()> {
+) -> Result<Document> {
     let tx = storage(conn.transaction())?;
-    save_document_row_with_meta(&tx, root, vault_id, doc, meta)?;
+    let persisted = save_document_row_with_prev(&tx, root, vault_id, previous, doc, meta)?;
     storage(tx.commit())?;
-    Ok(())
+    Ok(persisted)
 }
+#[must_use = "assign the returned stripped Document to open.document via commit_persisted()"]
 fn save_document_row(
     conn: &Connection,
     root: &[u8; 32],
     vault_id: &str,
     doc: &Document,
-) -> Result<()> {
-    save_document_row_with_meta(conn, root, vault_id, doc, None)
+) -> Result<Document> {
+    save_document_row_with_prev(conn, root, vault_id, None, doc, None)
 }
-fn save_document_row_with_meta(
+#[must_use = "assign the returned stripped Document to open.document via commit_persisted()"]
+fn save_document_row_with_prev(
     conn: &Connection,
     root: &[u8; 32],
     vault_id: &str,
+    previous: Option<&Document>,
     doc: &Document,
     meta: Option<&history::HistoryMeta>,
-) -> Result<()> {
+) -> Result<Document> {
     let mut guarded = doc.clone();
     if relay::enabled(conn)? {
         guarded.format_version = guarded.format_version.max(4);
@@ -133,18 +180,19 @@ fn save_document_row_with_meta(
     }
     let doc = &guarded;
     history::capture_with_meta(conn, root, vault_id, doc, meta)?;
-    relay::capture(conn, root, vault_id, doc)?;
     let persisted = note_bodies::sync_and_strip(conn, root, vault_id, doc)?;
+    relay::capture_with_stripped(conn, root, vault_id, doc, &persisted)?;
     let bytes =
         Zeroizing::new(serde_json::to_vec(&persisted).map_err(|_| VaultError::InvalidData)?);
     let sealed = seal(&subkey(root, b"document"), &bytes, vault_id.as_bytes())?;
     let encrypted = serde_json::to_vec(&sealed).map_err(|_| VaultError::InvalidData)?;
     storage(conn.execute("INSERT INTO vault_state(id,payload) VALUES(1,?1) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload",[encrypted]))?;
-    queries::rebuild(conn, root, vault_id, doc)?;
-    Ok(())
+    queries::update_incremental(conn, root, vault_id, previous, &persisted)?;
+    Ok(persisted)
 }
 
-fn load_document(conn: &Connection, root: &[u8; 32], vault_id: &str) -> Result<Document> {
+/// Loads `vault_state` without hydrating `note_bodies`, keeping split notes in L1 summary form.
+fn load_document_raw(conn: &Connection, root: &[u8; 32], vault_id: &str) -> Result<Document> {
     let bytes: Vec<u8> = storage(conn.query_row(
         "SELECT payload FROM vault_state WHERE id=1",
         [],
@@ -161,6 +209,12 @@ fn load_document(conn: &Connection, root: &[u8; 32], vault_id: &str) -> Result<D
     {
         return Err(VaultError::InvalidData);
     }
+    Ok(document)
+}
+
+#[cfg(test)]
+fn load_document(conn: &Connection, root: &[u8; 32], vault_id: &str) -> Result<Document> {
+    let document = load_document_raw(conn, root, vault_id)?;
     note_bodies::hydrate(conn, root, vault_id, document)
 }
 
@@ -208,7 +262,7 @@ impl DiskVault {
         storage(connection.execute_batch(
             "CREATE TABLE vault_state(id INTEGER PRIMARY KEY CHECK(id=1),payload BLOB NOT NULL);",
         ))?;
-        save_document(&mut connection, &root, &header.vault_id, &doc)?;
+        let _ = save_document(&mut connection, &root, &header.vault_id, &doc)?;
         drop(connection);
         atomic_write(
             &temp.path().join("header.json"),
@@ -231,7 +285,7 @@ impl DiskVault {
         {
             (Document::default(), false)
         } else {
-            let document = load_document(&connection, &root, &header.vault_id)?;
+            let document = load_document_raw(&connection, &root, &header.vault_id)?;
             let tx = storage(connection.transaction())?;
             queries::rebuild(&tx, &root, &header.vault_id, &document)?;
             storage(tx.commit())?;
@@ -244,11 +298,13 @@ impl DiskVault {
             header,
             document,
             document_loaded,
+            hydrated_notes: Vec::new(),
         });
         Ok(())
     }
     fn lock(&mut self) {
         if let Some(mut open) = self.unlocked.take() {
+            open.clear_hydrated_cache();
             for value in &mut open.document.items {
                 wipe_value(value);
             }
@@ -267,13 +323,15 @@ impl DiskVault {
     fn open(&mut self) -> Result<&mut OpenVault> {
         let open = self.unlocked.as_mut().ok_or(VaultError::Locked)?;
         if !open.document_loaded {
-            open.document = load_document(&open.connection, &open.root, &open.header.vault_id)?;
+            open.document = load_document_raw(&open.connection, &open.root, &open.header.vault_id)?;
             open.document_loaded = true;
+            open.clear_hydrated_cache();
         }
         Ok(open)
     }
     fn release_document(&mut self) {
         if let Some(open) = &mut self.unlocked {
+            open.clear_hydrated_cache();
             queries::wipe_document(&mut open.document);
             open.document = Document::default();
             open.document_loaded = false;
@@ -281,6 +339,27 @@ impl DiskVault {
     }
     fn mutate(&mut self, f: impl FnOnce(&mut Document) -> Result<Value>) -> Result<Value> {
         self.mutate_with_history(None, f)
+    }
+    fn mutate_hydrated(&mut self, f: impl FnOnce(&mut Document) -> Result<Value>) -> Result<Value> {
+        let open = self.open()?;
+        let mut next = note_bodies::hydrate(
+            &open.connection,
+            &open.root,
+            &open.header.vault_id,
+            open.document.clone(),
+        )?;
+        let result = f(&mut next)?;
+        let persisted = save_document_with_history(
+            &mut open.connection,
+            &open.root,
+            &open.header.vault_id,
+            Some(&open.document),
+            &next,
+            None,
+        )?;
+        open.document = persisted;
+        open.clear_hydrated_cache();
+        Ok(result)
     }
     fn mutate_with_history(
         &mut self,
@@ -290,14 +369,20 @@ impl DiskVault {
         let open = self.open()?;
         let mut next = open.document.clone();
         let result = f(&mut next)?;
-        save_document_with_history(
+        let persisted = save_document_with_history(
             &mut open.connection,
             &open.root,
             &open.header.vault_id,
+            Some(&open.document),
             &next,
             meta,
         )?;
-        open.document = next;
+        open.document = persisted;
+        if let Some(id) = meta.and_then(|m| m.item_id.as_deref()) {
+            open.invalidate_hydrated(id);
+        } else {
+            open.clear_hydrated_cache();
+        }
         Ok(result)
     }
     fn command(&mut self, request: &Value) -> Result<Value> {
@@ -325,6 +410,7 @@ impl DiskVault {
         if [
             "import-preview",
             "import-commit",
+            "export-cxf",
             "security-audit",
             "security-ignore",
             "security-catalog",
@@ -414,48 +500,80 @@ impl DiskVault {
             }
             "list" => {
                 let open = self.open()?;
-                // Summaries keep the plain-text projection for lists and search but omit
-                // rich note structures, which interfaces load per note with "get". They
-                // are stripped before any copy so large notes are never duplicated here.
-                let summary;
-                let source = if request["summaries"] == true {
-                    summary = summary_document(&open.document);
-                    &summary
+                // Summaries stay zero-hydration: split notes are served directly from L1 metadata
+                // in `vault_state` without decrypting `note_bodies`.
+                if request["summaries"] == true {
+                    let summary = summary_document(&open.document);
+                    Ok(json!(relay::peer::editable_document(
+                        &open.connection,
+                        &open.root,
+                        &open.header.vault_id,
+                        &summary
+                    )?))
                 } else {
-                    &open.document
-                };
-                Ok(json!(relay::peer::editable_document(
-                    &open.connection,
-                    &open.root,
-                    &open.header.vault_id,
-                    source
-                )?))
+                    let hydrated = note_bodies::hydrate(
+                        &open.connection,
+                        &open.root,
+                        &open.header.vault_id,
+                        open.document.clone(),
+                    )?;
+                    Ok(json!(relay::peer::editable_document(
+                        &open.connection,
+                        &open.root,
+                        &open.header.vault_id,
+                        &hydrated
+                    )?))
+                }
             }
             "get" => {
                 let open = self.open()?;
                 let id = string("id")?;
-                let document = json!(relay::peer::editable_document(
+                let mut item = if let Some(cached) = open.get_hydrated(id) {
+                    cached
+                } else {
+                    let mut found = open
+                        .document
+                        .items
+                        .iter()
+                        .find(|item| item["id"] == id)
+                        .cloned()
+                        .ok_or(VaultError::InvalidData)?;
+                    if note_bodies::hydrate_item(
+                        &open.connection,
+                        &open.root,
+                        &open.header.vault_id,
+                        &mut found,
+                    )? {
+                        open.put_hydrated(id.to_owned(), found.clone());
+                    }
+                    found
+                };
+                item = relay::peer::editable_item(
                     &open.connection,
                     &open.root,
                     &open.header.vault_id,
-                    &open.document
-                )?);
-                document["items"]
-                    .as_array()
-                    .and_then(|items| items.iter().find(|item| item["id"] == id))
-                    .cloned()
-                    .ok_or(VaultError::InvalidData)
+                    &open.document,
+                    item,
+                )?;
+                Ok(item)
             }
             "share-options" => {
                 let open = self.open()?;
-                let item = open
+                let mut item = open
                     .document
                     .items
                     .iter()
                     .find(|i| i["id"] == string("id").unwrap_or("") && i["isDeleted"] != true)
+                    .cloned()
                     .ok_or(VaultError::InvalidData)?;
+                note_bodies::hydrate_item(
+                    &open.connection,
+                    &open.root,
+                    &open.header.vault_id,
+                    &mut item,
+                )?;
                 let mut used = std::collections::HashSet::new();
-                crate::archive::item_attachment_refs(item, &mut used)?;
+                crate::archive::item_attachment_refs(&item, &mut used)?;
                 let files: Vec<_> = notes::metas(&open.connection)?
                     .into_iter()
                     .filter(|m| m.note_id == item["id"] && used.contains(&m.id))
@@ -479,14 +597,21 @@ impl DiskVault {
                 }
                 let vault_dir = self.directory.clone();
                 let open = self.open()?;
-                let item = open
+                let mut item = open
                     .document
                     .items
                     .iter()
                     .find(|i| i["id"] == id && i["isDeleted"] != true)
+                    .cloned()
                     .ok_or(VaultError::InvalidData)?;
+                note_bodies::hydrate_item(
+                    &open.connection,
+                    &open.root,
+                    &open.header.vault_id,
+                    &mut item,
+                )?;
                 let mut used = std::collections::HashSet::new();
-                crate::archive::item_attachment_refs(item, &mut used)?;
+                crate::archive::item_attachment_refs(&item, &mut used)?;
                 let metas = notes::metas(&open.connection)?;
                 let mut attachments = Vec::new();
                 let mut bytes_total = 0;
@@ -512,7 +637,7 @@ impl DiskVault {
                         &bytes,
                     ));
                 }
-                seal_share(item, &fields, &attachments)
+                seal_share(&item, &fields, &attachments)
             }
             "collect-note-attachments" if request["richNotes"] == true => {
                 self.collect_note_attachments()
@@ -524,6 +649,52 @@ impl DiskVault {
             "note-attachments-list" => {
                 let note_id = string("noteId")?;
                 notes::list_note_attachments(&self.open()?.connection, note_id)
+            }
+            "note-attachment-cache-put" => {
+                let note_id = string("noteId")?;
+                let id = string("id")?;
+                let excerpt = request.get("excerpt").filter(|v| !v.is_null());
+                let thumb = request.get("thumb").filter(|v| !v.is_null());
+                let open = self.open()?;
+                notes::put_cache(
+                    &open.connection,
+                    &open.root,
+                    &open.header.vault_id,
+                    note_id,
+                    id,
+                    excerpt,
+                    thumb,
+                )?;
+                Ok(json!({"ok":true}))
+            }
+            "note-attachment-cache-get" => {
+                let note_id = string("noteId")?;
+                let id = string("id")?;
+                let open = self.open()?;
+                notes::get_cache(
+                    &open.connection,
+                    &open.root,
+                    &open.header.vault_id,
+                    note_id,
+                    id,
+                )
+            }
+            "note-attachment-state" => {
+                let note_id = string("noteId")?;
+                let id = string("id")?;
+                let state = string("state")?;
+                let source_device = request["sourceDevice"].as_str();
+                let error_reason = request["errorReason"].as_str();
+                let open = self.open()?;
+                notes::set_state(
+                    &open.connection,
+                    note_id,
+                    id,
+                    state,
+                    source_device,
+                    error_reason,
+                )?;
+                Ok(json!({"ok":true}))
             }
             "category-add" => {
                 self.mutate(|doc| Ok(json!({"name":doc.add_note_category(string("name")?)?})))
@@ -548,11 +719,26 @@ impl DiskVault {
                     &open.document,
                     &request["item"],
                 )?;
+                note_bodies::strip_internal_markers(&mut item);
                 preserve_passkeys_for_edit(&open.document, &mut item)?;
+                let item_id = item["id"].as_str().ok_or(VaultError::InvalidData)?.to_owned();
+                // Optimistic concurrency guard: if caller supplies `expectedUpdatedAt`, refuse
+                // silently clobbering concurrent AI / sync writes.
+                if let Some(expected_at) = request["expectedUpdatedAt"]
+                    .as_str()
+                    .filter(|s| !s.is_empty())
+                {
+                    if let Some(existing) = open.document.items.iter().find(|v| v["id"] == item_id)
+                    {
+                        let actual_at = existing["updatedAt"].as_str().unwrap_or("");
+                        if !actual_at.is_empty() && actual_at != expected_at {
+                            return Err(VaultError::StaleEdit);
+                        }
+                    }
+                }
                 let mut cleaned = request.clone();
                 cleaned["item"] = item.clone();
                 self.validate_note_save(&cleaned)?;
-                let item_id = item["id"].as_str().ok_or(VaultError::InvalidData)?.to_owned();
                 let history_meta = history::HistoryMeta::parse(&request["historyMeta"], Some(&item_id))?;
                 // AI writes and explicit milestones auto-enable history so every update is reversible.
                 if history_meta
@@ -570,6 +756,7 @@ impl DiskVault {
                     Ok(json!({"ok":true}))
                 })?;
                 let open = self.open()?;
+                open.invalidate_hydrated(&item_id);
                 relay::peer::save_result(
                     &open.connection,
                     &open.root,
@@ -631,6 +818,7 @@ impl DiskVault {
                 }
                 self.mutate(|doc| {
                     for mut item in items {
+                        note_bodies::strip_internal_markers(&mut item);
                         preserve_passkeys_for_edit(doc, &mut item)?;
                         authorize_item_write(doc, &item)?;
                         doc.upsert(item)?;
@@ -662,10 +850,10 @@ impl DiskVault {
                 self.mutate(|doc| remove_member(doc, string("vaultId")?, string("publicKey")?))
             }
             "sync-request" => {
-                self.mutate(|doc| create_sync_request(doc, string("peerKey")?, string("vaultId")?))
+                self.mutate_hydrated(|doc| create_sync_request(doc, string("peerKey")?, string("vaultId")?))
             }
-            "sync-respond" => self.mutate(|doc| respond_sync(doc, &request["packet"])),
-            "sync-apply" => self.mutate(|doc| {
+            "sync-respond" => self.mutate_hydrated(|doc| respond_sync(doc, &request["packet"])),
+            "sync-apply" => self.mutate_hydrated(|doc| {
                 apply_sync(
                     doc,
                     &request["packet"],
@@ -680,9 +868,15 @@ impl DiskVault {
                     }
                     return Ok(json!({"content":self.archive(string("password")?)?}));
                 }
+                let open = self.open()?;
+                let hydrated = note_bodies::hydrate(
+                    &open.connection,
+                    &open.root,
+                    &open.header.vault_id,
+                    open.document.clone(),
+                )?;
                 let data = Zeroizing::new(
-                    serde_json::to_vec(&self.open()?.document)
-                        .map_err(|_| VaultError::InvalidData)?,
+                    serde_json::to_vec(&hydrated).map_err(|_| VaultError::InvalidData)?,
                 );
                 Ok(json!({"content":encrypt_backup(&data,string("password")?)?}))
             }
@@ -690,7 +884,14 @@ impl DiskVault {
                 if self.open()?.document.format_version >= 3 {
                     return Err(VaultError::Unsupported);
                 }
-                let csv = Zeroizing::new(export_csv(&self.open()?.document)?);
+                let open = self.open()?;
+                let hydrated = note_bodies::hydrate(
+                    &open.connection,
+                    &open.root,
+                    &open.header.vault_id,
+                    open.document.clone(),
+                )?;
+                let csv = Zeroizing::new(export_csv(&hydrated)?);
                 let envelope: Value =
                     serde_json::from_str(&encrypt_backup(csv.as_bytes(), string("password")?)?)
                         .map_err(|_| VaultError::InvalidData)?;
@@ -702,11 +903,17 @@ impl DiskVault {
                 if self.open()?.document.format_version >= 3 {
                     return Err(VaultError::Unsupported);
                 }
-                let doc = &self.open()?.document;
+                let open = self.open()?;
+                let hydrated = note_bodies::hydrate(
+                    &open.connection,
+                    &open.root,
+                    &open.header.vault_id,
+                    open.document.clone(),
+                )?;
                 let content = if request["kind"] == "csv" {
-                    export_csv(doc)?
+                    export_csv(&hydrated)?
                 } else {
-                    serde_json::to_string(doc).map_err(|_| VaultError::InvalidData)?
+                    serde_json::to_string(&hydrated).map_err(|_| VaultError::InvalidData)?
                 };
                 Ok(json!({"content":content}))
             }
@@ -946,10 +1153,18 @@ impl DiskVault {
                 )?;
             }
             let tx = storage(open.connection.transaction())?;
-            save_document_row(&tx, &open.root, &open.header.vault_id, &doc)?;
+            let saved = save_document_row_with_prev(
+                &tx,
+                &open.root,
+                &open.header.vault_id,
+                Some(&open.document),
+                &doc,
+                None,
+            )?;
             storage(tx.execute("INSERT INTO browser_sync_receipts(id) VALUES(?1)", [id]))?;
             storage(tx.commit())?;
-            open.document = doc;
+            open.document = saved;
+            open.clear_hydrated_cache();
             Ok(json!({"saved":true}))
         })();
         if was_locked {
@@ -1119,11 +1334,41 @@ fn note_search_metadata(node: &Value, depth: usize, output: &mut Vec<String>) {
 
 /// A copy of `doc` whose items omit rich note structures (marked `noteSummary`),
 /// built item by item so no full copy of the large structures is made.
+/// Handles both hydrated notes and lazily split `_bodySplit: true` notes with zero DB decryption.
 fn summary_document(doc: &Document) -> Document {
     let items = doc
         .items
         .iter()
         .map(|item| match item.as_object() {
+            Some(object) if object.get("_bodySplit") == Some(&Value::Bool(true)) => {
+                let mut lite: serde_json::Map<String, Value> = object
+                    .iter()
+                    .filter(|(key, _)| {
+                        !matches!(
+                            key.as_str(),
+                            "_bodySplit"
+                                | "_bodyDigest"
+                                | "_hasRichBody"
+                                | "_searchMeta"
+                                | "noteDocument"
+                                | "noteOriginal"
+                        )
+                    })
+                    .map(|(key, value)| (key.clone(), value.clone()))
+                    .collect();
+                let search_meta = object
+                    .get("_searchMeta")
+                    .and_then(Value::as_str)
+                    .unwrap_or("");
+                if !search_meta.is_empty()
+                    || object.get("_hasRichBody") == Some(&Value::Bool(true))
+                    || object.get("noteFormat").and_then(Value::as_str) == Some("rich-v1")
+                {
+                    lite.insert("__noteSearchText".into(), json!(search_meta));
+                }
+                lite.insert("noteSummary".into(), Value::Bool(true));
+                Value::Object(lite)
+            }
             Some(object)
                 if object.contains_key("noteDocument") || object.contains_key("noteOriginal") =>
             {

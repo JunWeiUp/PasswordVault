@@ -252,12 +252,16 @@ fn approval_is_bound_to_its_request() {
         challenge: "current".into(),
         kind: "pair",
         detail: String::new(),
+        extra: Value::Null,
         reply: tx,
     });
     approve_native("expired".into(), true);
     assert!(rx.try_recv().is_err());
+    // A passkey answer cannot satisfy a non-passkey prompt.
+    approve_passkey_native("current".into(), json!({"currentPassword":"x"}));
+    assert!(rx.try_recv().is_err());
     approve_native("current".into(), false);
-    assert_eq!(rx.recv().unwrap(), false);
+    assert_eq!(rx.recv().unwrap(), None);
     PENDING.lock().unwrap().take();
 }
 #[test]
@@ -490,4 +494,92 @@ fn startup_owner_key_isolates_adhoc_spoofing_and_tampered_binaries_while_preserv
     bytes[pos] ^= 0xff;
     std::fs::write(&b1, bytes).unwrap();
     assert!(security::signing_identity(&b1).is_none());
+}
+
+/// Answer the next passkey prompt with a selection, as the window would.
+fn answer_passkey(pick: impl Fn(&Value) -> Value + Send + 'static) -> std::thread::JoinHandle<Value> {
+    std::thread::spawn(move || {
+        for _ in 0..500 {
+            let shown = pending_native();
+            if !shown.is_empty() {
+                let prompt: Value = serde_json::from_str(&shown).unwrap();
+                approve_passkey_native(prompt["challenge"].as_str().unwrap().into(), pick(&prompt));
+                return prompt;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        panic!("no passkey prompt");
+    })
+}
+fn ceremony(op: &str, kind: &str) -> Value {
+    use base64::Engine;
+    let challenge = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode([9u8; 32]);
+    let mut m = message(op, "paired");
+    m["request"]["origin"] = "https://login.example.com".into();
+    m["request"]["rpId"] = "example.com".into();
+    m["request"]["clientDataJSON"] = json!({"type":kind,"origin":"https://login.example.com","challenge":challenge,"crossOrigin":false}).to_string().into();
+    m
+}
+#[test]
+fn passkeys_need_window_selection_and_master_password() {
+    use base64::Engine;
+    use p256::ecdsa::{Signature, VerifyingKey, signature::Verifier};
+    use p256::pkcs8::DecodePublicKey;
+    let _serial = TEST_SERIAL.lock().unwrap();
+    let b64 = base64::engine::general_purpose::URL_SAFE_NO_PAD;
+    let f = Fixture::new();
+    command(&f.session, json!({"op":"settings","settings":{"browserPairings":{"test":"paired"}}})).unwrap();
+    // No credential yet: assertion falls back to the browser without prompting.
+    assert_eq!(dispatch(&f.session, "test", ceremony("passkey-assert", "webauthn.get")).unwrap_err(), "no-credentials");
+    assert_eq!(pending_native(), "");
+    // RP outside the origin's registrable domain never reaches the window.
+    let mut bad = ceremony("passkey-create", "webauthn.create");
+    bad["request"]["rpId"] = "evil.com".into();
+    assert_eq!(dispatch(&f.session, "test", bad).unwrap_err(), "unsupported-rp");
+    let mut create = ceremony("passkey-create", "webauthn.create");
+    create["request"]["userName"] = "alice".into();
+    create["request"]["userHandle"] = b64.encode(b"user-1").into();
+    // Rejecting or a wrong master password creates nothing.
+    let prompt = answer(false);
+    assert_eq!(dispatch(&f.session, "test", create.clone()).unwrap_err(), "cancelled");
+    assert_eq!(prompt.join().unwrap()["kind"], "passkey-create");
+    let prompt = answer_passkey(|_| json!({"currentPassword":"wrong"}));
+    assert_eq!(dispatch(&f.session, "test", create.clone()).unwrap_err(), "authentication");
+    prompt.join().unwrap();
+    assert!(command(&f.session, json!({"op":"passkey-matches","rpId":"example.com"})).unwrap().as_array().unwrap().is_empty());
+    let prompt = answer_passkey(|_| json!({"currentPassword":"synthetic-browser-test"}));
+    let created = dispatch(&f.session, "test", create.clone()).unwrap()["data"].clone();
+    let shown = prompt.join().unwrap();
+    assert_eq!(shown["passkey"]["rpId"], "example.com");
+    assert_eq!(shown["passkey"]["userName"], "alice");
+    assert!(!created.to_string().contains("privateKey"));
+    let public = VerifyingKey::from_public_key_der(&b64.decode(created["publicKey"].as_str().unwrap()).unwrap()).unwrap();
+    let id = created["id"].as_str().unwrap().to_owned();
+    // A repeat registration listed in excludeCredentials is refused before prompting.
+    let mut again = create.clone();
+    again["request"]["excluded"] = json!([id]);
+    assert_eq!(dispatch(&f.session, "test", again).unwrap_err(), "already-registered");
+    // The window cannot substitute a credential it was not shown.
+    let assert = ceremony("passkey-assert", "webauthn.get");
+    let prompt = answer_passkey(|_| json!({"currentPassword":"synthetic-browser-test","credentialId":"forged","itemId":"forged","library":""}));
+    assert_eq!(dispatch(&f.session, "test", assert.clone()).unwrap_err(), "invalid-entry");
+    prompt.join().unwrap();
+    let prompt = answer_passkey(|p| {
+        let m = &p["passkey"]["matches"][0];
+        json!({"currentPassword":"synthetic-browser-test","credentialId":m["id"],"itemId":m["itemId"],"library":m["library"]})
+    });
+    let signed = dispatch(&f.session, "test", assert.clone()).unwrap()["data"].clone();
+    let shown = prompt.join().unwrap();
+    assert_eq!(shown["passkey"]["matches"].as_array().unwrap().len(), 1);
+    assert_eq!(signed["id"], id);
+    let mut message = b64.decode(signed["authenticatorData"].as_str().unwrap()).unwrap();
+    assert_eq!(message[32] & 4, 4, "master password reauthentication sets UV");
+    use sha2::Digest;
+    message.extend_from_slice(&sha2::Sha256::digest(assert["request"]["clientDataJSON"].as_str().unwrap().as_bytes()));
+    let signature = Signature::from_der(&b64.decode(signed["signature"].as_str().unwrap()).unwrap()).unwrap();
+    public.verify(&message, &signature).unwrap();
+    // allowCredentials that exclude every stored key also fall back without a prompt.
+    let mut other = assert;
+    other["request"]["allowed"] = json!(["b3RoZXItY3JlZGVudGlhbA"]);
+    assert_eq!(dispatch(&f.session, "test", other).unwrap_err(), "no-credentials");
 }

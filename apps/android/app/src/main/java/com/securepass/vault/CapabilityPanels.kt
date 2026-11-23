@@ -72,11 +72,11 @@ internal fun ImportReviewPanel(vault: VaultRepository, t: (String, String) -> St
         try {
             val data = withContext(Dispatchers.IO) { context.contentResolver.openInputStream(uri)?.use { input -> val bytes = input.readBytesLimited(64 * 1024 * 1024); Base64.encodeToString(bytes, Base64.NO_WRAP) } ?: error("Cannot open file") }
             var name = ""; context.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { if (it.moveToFirst()) name = it.getString(0) }
-            source = data; format = if (name.endsWith(".1pux", true)) "1pux" else "csv"; mappingText = "{}"; inspect(data, format)
+            source = data; format = when { name.endsWith(".1pux", true) -> "1pux"; name.endsWith(".json", true) || name.endsWith(".cxf", true) -> "cxf"; else -> "csv" }; mappingText = "{}"; inspect(data, format)
         } catch (_: Exception) { message = t("无法读取文件，原文件未修改", "Could not read file; source unchanged") } finally { busy = false }
     } }
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(t("导入 CSV / 1Password .1pux", "Import CSV / 1Password .1pux"), style = MaterialTheme.typography.titleMedium)
+        Text(t("导入 CSV / 1Password .1pux / FIDO CXF", "Import CSV / 1Password .1pux / FIDO CXF"), style = MaterialTheme.typography.titleMedium)
         Text(t("重复条目默认跳过，不覆盖同名记录；原文件不会删除。", "Duplicates are skipped by default; existing records and source files are retained."))
         Button(enabled = !busy, onClick = { picker.launch(arrayOf("*/*")) }) { Text(t("选择文件", "Choose file")) }
         if (message.isNotEmpty()) Text(message)

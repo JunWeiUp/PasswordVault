@@ -123,7 +123,11 @@ impl<'a> Files<'a> {
         let mut u = endpoint(url, local)?;
         u.set_scheme(if u.scheme() == "wss" { "https" } else { "http" })
             .map_err(|_| "InvalidData")?;
-        u.set_path("/relay/v1/files");
+        u.set_path(if u.path() == "/v2/ws" {
+            "/v2/files"
+        } else {
+            "/relay/v1/files"
+        });
         Ok(Self {
             base: u.to_string(),
             token: token.into(),

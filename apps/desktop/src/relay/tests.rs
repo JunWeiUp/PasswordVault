@@ -208,3 +208,70 @@ fn credentials_stay_encrypted_and_summary_is_lock_gated() {
     drop(session);
     std::fs::remove_dir_all(directory).unwrap();
 }
+#[test]
+fn local_v2_websocket_hello_presence_and_message_translation() {
+    use std::net::TcpListener;
+    use tungstenite::{
+        Message, accept_hdr,
+        handshake::server::{Request, Response},
+    };
+    sodiumoxide::init().unwrap();
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let address = listener.local_addr().unwrap();
+    let (_, secret) = sodiumoxide::crypto::box_::gen_keypair();
+    let server = std::thread::spawn(move || {
+        let (socket, _) = listener.accept().unwrap();
+        socket
+            .set_read_timeout(Some(std::time::Duration::from_secs(3)))
+            .unwrap();
+        let mut socket = accept_hdr(socket, |req: &Request, response: Response| {
+            assert_eq!(req.headers()["authorization"], "Bearer synthetic-token");
+            assert_eq!(req.headers()["relay-access"], "synthetic-access");
+            assert!(req.headers().get("sec-websocket-protocol").is_none());
+            Ok(response)
+        })
+        .unwrap();
+        // Exact v2 server hello frame (from = device ID, no spaces array)
+        socket
+            .send(Message::Text(
+                json!({"type":"hello","from":"mac"}).to_string().into(),
+            ))
+            .unwrap();
+        // Receive translated presence query and answer with v2 presence event
+        let raw = socket.read().unwrap();
+        let req: Value = serde_json::from_str(raw.to_text().unwrap()).unwrap();
+        assert_eq!(req["type"], "presence");
+        assert_eq!(req["space"], "qa");
+        let rid = req["id"].as_str().unwrap().to_owned();
+        socket
+            .send(Message::Text(
+                json!({"type":"presence","space":"qa","id":rid,"peers":["mac","phone"]})
+                    .to_string()
+                    .into(),
+            ))
+            .unwrap();
+        let _ = socket.read();
+    });
+    let identity = Identity {
+        app: "passwordvault".into(),
+        group: "qa".into(),
+        device: "mac".into(),
+        secret,
+        trusted: Default::default(),
+    };
+    let mut conn = Connection::connect(
+        &format!("ws://{address}/v2/ws"),
+        "synthetic-token",
+        Some("synthetic-access"),
+        identity,
+        true,
+    )
+    .unwrap();
+    conn.send(json!({"type":"peers","id":"p1"})).unwrap();
+    let ev = conn.read_wire().unwrap();
+    assert_eq!(ev["type"], "peers");
+    assert_eq!(ev["id"], "p1");
+    assert_eq!(ev["devices"].as_array().unwrap().len(), 2);
+    drop(conn);
+    server.join().unwrap();
+}

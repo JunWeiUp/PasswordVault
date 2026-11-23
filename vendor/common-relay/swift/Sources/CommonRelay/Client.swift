@@ -4,6 +4,7 @@ import Foundation
 public actor RelayClient {
     public let identity: RelayIdentity
     private var socket: URLSessionWebSocketTask?
+    private var isV2 = false
     private var session: URLSession?
     private var reader: Task<Void, Never>?
     private var pending: [String: CheckedContinuation<RelayEvent, Error>] = [:]
@@ -17,19 +18,26 @@ public actor RelayClient {
     public func cleanup() throws { try journal?.cleanup() }
     static func upgradeRequest(url: URL, token: String, password: String?) throws -> URLRequest {
         try RelayAccess.validate(password)
-        var request = URLRequest(url: url); request.setValue("Bearer " + token, forHTTPHeaderField: "Authorization"); request.setValue("common-relay.v1", forHTTPHeaderField: "Sec-WebSocket-Protocol")
+        var request = URLRequest(url: url); request.setValue("Bearer " + token, forHTTPHeaderField: "Authorization")
+        if url.path != "/v2/ws" { request.setValue("common-relay.v1", forHTTPHeaderField: "Sec-WebSocket-Protocol") }
         RelayAccess.apply(password, to: &request); return request
     }
     /// `password` is the server-wide access password (sent as `Relay-Access`); required by production relays.
     public func connect(url: URL, token: String, password: String? = nil, allowLocalTest: Bool = false) async throws -> AsyncThrowingStream<RelayEvent, Error> {
         guard socket == nil, url.scheme == "wss" || (allowLocalTest && url.scheme == "ws" && url.host == "127.0.0.1") else { throw RelayError.invalid("WSS required") }
+        isV2 = url.path == "/v2/ws"
         let request = try Self.upgradeRequest(url: url, token: token, password: password)
         let session = URLSession(configuration: .ephemeral); self.session = session
         let socket = session.webSocketTask(with: request); socket.maximumMessageSize = 270336; self.socket = socket; socket.resume()
         do {
             let welcome = try await socket.receive(); guard case .string(let text) = welcome else { throw RelayError.invalid("welcome") }
             let object = try dictionary(Data(text.utf8))
-            guard object["version"] as? Int == 1, let own = object["identity"] as? [String: Any], own["app"] as? String == identity.app, own["group"] as? String == identity.group, own["device"] as? String == identity.device, own["public_key"] as? String == identity.publicKey.relayHex else { throw RelayError.invalid("identity mismatch") }
+            if isV2 {
+                let dev = (object["from"] as? String) ?? (object["device"] as? String)
+                guard object["type"] as? String == "hello", dev == identity.device else { throw RelayError.invalid("identity mismatch") }
+            } else {
+                guard object["version"] as? Int == 1, let own = object["identity"] as? [String: Any], own["app"] as? String == identity.app, own["group"] as? String == identity.group, own["device"] as? String == identity.device, own["public_key"] as? String == identity.publicKey.relayHex else { throw RelayError.invalid("identity mismatch") }
+            }
             let events = AsyncThrowingStream<RelayEvent, Error>(bufferingPolicy: .bufferingOldest(64)) { eventContinuation = $0 }
             reader = Task { [weak self] in
                 do { while !Task.isCancelled { let message = try await socket.receive(); try await self?.dispatch(message) } }
@@ -47,7 +55,16 @@ public actor RelayClient {
             return events
         } catch { await close(error: error); throw error }
     }
-    func send(_ event: [String: Any]) async throws { guard let socket else { throw RelayError.closed }; let data = try json(event); guard data.count <= 270336, let text = String(data: data, encoding: .utf8) else { throw RelayError.invalid("frame size") }; try await socket.send(.string(text)) }
+    private func translateOutgoingV2(_ event: [String: Any]) -> [String: Any] {
+        guard isV2, let type = event["type"] as? String else { return event }
+        switch type {
+        case "peers": return ["type": "presence", "space": identity.group, "id": event["id"] as? String ?? ""]
+        case "message": return ["type": "msg", "space": identity.group, "id": event["id"] as? String ?? "", "to": event["to"] as? String ?? "", "body": event["body"] as? String ?? "", "offline": event["offline"] as? Bool ?? false]
+        case "ack": return ["type": "ack", "space": identity.group, "id": event["id"] as? String ?? "", "from": event["from"] as? String ?? ""]
+        default: return event
+        }
+    }
+    func send(_ event: [String: Any]) async throws { guard let socket else { throw RelayError.closed }; let data = try json(translateOutgoingV2(event)); guard data.count <= 270336, let text = String(data: data, encoding: .utf8) else { throw RelayError.invalid("frame size") }; try await socket.send(.string(text)) }
     func binary(_ data: Data) async throws { guard let socket else { throw RelayError.closed }; try await socket.send(.data(data)) }
     public func request(_ original: [String: Any]) async throws -> RelayEvent {
         var event = original; let id = event["id"] as? String ?? UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased(); event["id"] = id
@@ -121,7 +138,20 @@ public actor RelayClient {
             let id = data.subdata(in: 1..<17).relayHex; let sequence = data[17..<25].reduce(UInt64(0)) { ($0 << 8) | UInt64($1) }
             try await streams[id]?.enqueue(sequence: sequence, data: data.subdata(in: 25..<data.count))
         case .string(let text):
-            var e = try dictionary(Data(text.utf8)); let id = e["id"] as? String ?? ""; let type = e["type"] as? String ?? ""
+            var e = try dictionary(Data(text.utf8)); let id = e["id"] as? String ?? ""; var type = e["type"] as? String ?? ""
+            if isV2 {
+                if type == "presence" {
+                    let peers = (e["peers"] as? [String] ?? []).map { ["app": identity.app, "group": identity.group, "device": $0] }
+                    e = ["type": "peers", "id": id, "devices": peers]; type = "peers"
+                } else if type == "msg" {
+                    e = ["type": "message", "id": id, "from": e["from"] as? String ?? "", "body": e["body"] as? String ?? "", "offline": e["offline"] as? Bool ?? false]; type = "message"
+                } else if type == "ack" {
+                    let kind = e["event"] as? String ?? "stored"
+                    e = ["type": kind, "id": id]; type = kind
+                } else if type == "group.changed" {
+                    e = ["type": "group.changed", "revision": e["seq"] ?? 0]
+                }
+            }
             if type == "stream.credit" { guard let n = e["sequence"] as? UInt64 else { throw RelayError.invalid("credit") }; try await streams[id]?.credit(n); return }
             if type == "stream.close" { await streams.removeValue(forKey: id)?.abort(); failRequest(id, error: RelayError.closed); return }
             if type != "message", type != "stream.open", let continuation = pending.removeValue(forKey: id) { requestTokens.removeValue(forKey: id); if type == "error" { continuation.resume(throwing: RelayError.invalid(e["code"] as? String ?? "error")) } else { continuation.resume(returning: try RelayEvent(e)) }; return }

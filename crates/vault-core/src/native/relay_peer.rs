@@ -119,6 +119,26 @@ fn selected_library(
     }
     Ok(None)
 }
+pub(in crate::native) fn editable_item(
+    conn: &Connection,
+    root: &[u8; 32],
+    vault: &str,
+    doc: &Document,
+    mut item: Value,
+) -> Result<Value> {
+    if let Some(l) = selected_library(conn, root, vault, doc)? {
+        let key = format!("item:{}", item["id"].as_str().unwrap_or(""));
+        item["_peerBaseHeads"] = json!(l
+            .replica
+            .heads(&key)
+            .iter()
+            .map(|o| &o.id)
+            .collect::<Vec<_>>());
+        item["_peerLibrary"] = json!(l.replica.library);
+    }
+    Ok(item)
+}
+
 pub(in crate::native) fn editable_document(
     conn: &Connection,
     root: &[u8; 32],
@@ -424,7 +444,8 @@ pub(super) fn capture(
         if !selected(doc, &l) || l.replica.controls.is_empty() {
             continue;
         }
-        let now = records(doc);
+        let hydrated = note_bodies::hydrate(conn, root, vault, doc.clone())?;
+        let now = records(&hydrated);
         let known = committed_attachment_refs(&l)?;
         let keys: BTreeSet<_> = now.keys().chain(l.baseline.keys()).cloned().collect();
         for k in keys {
@@ -512,13 +533,13 @@ impl DiskVault {
         let tx = storage(open.connection.transaction())?;
         // History must compare against the personal source, not the visible family.
         save_view(&tx, &open.root, &open.header.vault_id, &before)?;
-        save_document_row(&tx, &open.root, &open.header.vault_id, &next)?;
+        let _personal_saved = save_document_row(&tx, &open.root, &open.header.vault_id, &next)?;
         store_personal(&tx, &open.root, &open.header.vault_id, &records(&next))?;
         let mut visible = open.document.clone();
         visible.format_version = visible.format_version.max(next.format_version);
         save_view(&tx, &open.root, &open.header.vault_id, &visible)?;
         storage(tx.commit())?;
-        open.document = visible;
+        open.commit_persisted(visible);
         Ok(result)
     }
 }
@@ -701,9 +722,9 @@ pub(super) fn command(session: &mut DiskVault, request: &Value) -> Result<Value>
             storage(tx.execute_batch("CREATE TABLE IF NOT EXISTS personal_relay_archive(id INTEGER PRIMARY KEY,payload BLOB NOT NULL); INSERT INTO personal_relay_archive(payload) SELECT payload FROM personal_relay; DROP TABLE personal_relay;"))?;
         }
         save(&tx, &open.root, &open.header.vault_id, &l)?;
-        save_document_row(&tx, &open.root, &open.header.vault_id, &next)?;
+        let persisted = save_document_row(&tx, &open.root, &open.header.vault_id, &next)?;
         storage(tx.commit())?;
-        open.document = next;
+        open.commit_persisted(persisted);
         return Ok(out);
     }
     let id = string(request, "library")?;
@@ -973,11 +994,13 @@ pub(super) fn command(session: &mut DiskVault, request: &Value) -> Result<Value>
         storage(tx.execute("DELETE FROM peer_libraries WHERE id=?1", [id]))?;
     }
     save(&tx, &open.root, &open.header.vault_id, &l)?;
-    if is_selected {
-        save_document_row(&tx, &open.root, &open.header.vault_id, &next)?;
-    }
+    let persisted = if is_selected {
+        save_document_row(&tx, &open.root, &open.header.vault_id, &next)?
+    } else {
+        next
+    };
     storage(tx.commit())?;
-    open.document = next;
+    open.commit_persisted(persisted);
     Ok(
         json!({"ok":true,"library":l.replica.library,"generation":l.replica.generation(),"publicKey":l.replica.public_key(),"device":l.replica.device,"personal":l.personal}),
     )

@@ -1944,7 +1944,7 @@ dependencies = [
 
 [[package]]
 name = "nsh-app-passwordvault"
-version = "2.5.7"
+version = "2.5.8"
 dependencies = [
  "aes-gcm",
  "base64 0.22.1",
@@ -1962,6 +1962,7 @@ dependencies = [
  "objc2-app-kit",
  "objc2-foundation",
  "objc2-service-management",
+ "p256",
  "percent-encoding",
  "qrcode",
  "reqwest",

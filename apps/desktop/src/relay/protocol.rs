@@ -299,8 +299,15 @@ pub fn parse_link(link: &str) -> Result<(String, String, Vec<u8>, Option<String>
     {
         return invalid();
     }
+    let (is_v2, id_part) = if let Some(rest) = u.path().strip_prefix("/v2/i/") {
+        (true, rest)
+    } else if let Some(rest) = u.path().strip_prefix("/i/") {
+        (false, rest)
+    } else {
+        return invalid();
+    };
     let id = URL_SAFE_NO_PAD
-        .decode(u.path().strip_prefix("/i/").ok_or("InvalidData")?)
+        .decode(id_part)
         .map_err(|_| "InvalidData")?;
     let fragment = u.fragment().ok_or("InvalidData")?.to_owned();
     let (raw_key, raw_password) = match fragment.split_once('.') {
@@ -327,7 +334,8 @@ pub fn parse_link(link: &str) -> Result<(String, String, Vec<u8>, Option<String>
     let host = u.host_str().ok_or("InvalidData")?.to_owned();
     let port = u.port().map(|p| format!(":{p}")).unwrap_or_default();
     u.set_fragment(None);
-    Ok((format!("wss://{host}{port}/relay/v1/ws"), hex(&id), key, password))
+    let ws_path = if is_v2 { "/v2/ws" } else { "/relay/v1/ws" };
+    Ok((format!("wss://{host}{port}{ws_path}"), hex(&id), key, password))
 }
 pub fn read_token(key: &[u8]) -> Result<String> {
     if key.len() != 32 {
@@ -353,8 +361,13 @@ pub fn make_link(invitation: &Value, key: &[u8], password: Option<&str>) -> Resu
         Some(p) => format!(".{}", URL_SAFE_NO_PAD.encode(access_password(p)?)),
         None => String::new(),
     };
+    let link_prefix = if endpoint.path() == "/v2/ws" {
+        "/v2/i/"
+    } else {
+        "/i/"
+    };
     Ok(format!(
-        "common-relay://{authority}/i/{}#{}{suffix}",
+        "common-relay://{authority}{link_prefix}{}#{}{suffix}",
         URL_SAFE_NO_PAD.encode(id),
         URL_SAFE_NO_PAD.encode(key)
     ))

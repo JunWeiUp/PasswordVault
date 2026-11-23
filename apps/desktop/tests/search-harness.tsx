@@ -10,7 +10,7 @@ batch(() => {
   dest.set("accounts");
   items.set([
     { id: "primary", type: "password", title: "主账号", email: "billing@example.test", accounts: [{ label: "备用", username: "backup-user" }], isFavorite: true },
-    { id: "other", type: "password", title: "其他账号", username: "other", password: "fixture-pass" },
+    { id: "other", type: "password", title: "其他账号", username: "other", passkeys: [{ credentialId: "fixture", rpId: "example.test", userName: "other" }], password: "fixture-pass" },
     { id: "deleted", type: "password", title: "回收账号", email: "billing@example.test", isDeleted: true },
     { id: "note", type: "secureNote", title: "项目笔记", note: "发布计划", __noteSearchText: "receipt.png" },
     { id: "card", type: "creditCard", title: "付款卡", card: { cardholder: "Fixture Holder" } },

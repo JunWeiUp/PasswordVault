@@ -116,7 +116,10 @@ test("notes support hierarchical folders, properties/slug, MD wikilinks/backlink
   await app.press("id:note-line-numbers-toggle");
   await app.waitFor("id:note-line-gutter");
 
-  // Add slug & structured property
+  // Note properties panel auto-collapses when no custom properties exist; expand to add slug & property
+  await app.waitFor("id:note-properties-toggle");
+  await app.press("id:note-properties-toggle");
+  await app.waitFor("id:note-slug-input");
   await app.type("id:note-slug-input", "family-guide");
   await app.submit("id:note-slug-input");
   await app.press("text:添加属性");

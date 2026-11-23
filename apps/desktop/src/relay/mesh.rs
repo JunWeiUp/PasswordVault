@@ -55,17 +55,66 @@ pub fn outgoing(s: &VaultSession, peers: &[String]) -> Result<Vec<(String, Strin
     Ok(packets)
 }
 
+/// Applies a peer packet (mesh sync, on-demand blob request, or blob response).
+/// Returns `(changed, optional_reply_packet)` so the transport can answer on-demand
+/// attachment requests without blocking metadata sync.
+pub fn receive_with_reply(
+    s: &VaultSession,
+    from: &str,
+    data: &[u8],
+) -> Result<(bool, Option<Vec<u8>>)> {
+    let _guard = service::CONTROL.lock().map_err(|_| "Storage")?;
+    let packet: Value = serde_json::from_slice(data).map_err(|_| "InvalidData")?;
+    if packet["version"] != VERSION {
+        return Ok((false, None));
+    }
+    match packet["kind"].as_str() {
+        Some("mesh") => {
+            let result =
+                service::core(s, json!({"op":"relay-mesh-receive","peer":from,"packet":packet}))?;
+            Ok((result["changed"] == true, None))
+        }
+        Some("mesh-blob-req") => {
+            let Some(aid) = packet["attachmentId"].as_str().filter(|a| !a.is_empty()) else {
+                return Ok((false, None));
+            };
+            match service::core(
+                s,
+                json!({"op":"relay-mesh-blob-export","peer":from,"attachmentId":aid}),
+            ) {
+                Ok(exported) => {
+                    let resp = json!({
+                        "version": VERSION,
+                        "kind": "mesh-blob-resp",
+                        "meta": exported["meta"],
+                        "data": exported["data"],
+                    });
+                    Ok((false, Some(canonical(&resp))))
+                }
+                Err(_) => Ok((false, None)),
+            }
+        }
+        Some("mesh-blob-resp") => {
+            let res = service::core(
+                s,
+                json!({
+                    "op": "relay-mesh-blob-receive",
+                    "peer": from,
+                    "meta": packet["meta"],
+                    "data": packet["data"],
+                }),
+            )?;
+            Ok((res["ok"] == true, None))
+        }
+        _ => Ok((false, None)),
+    }
+}
+
 /// Applies a peer packet. Returns whether visible vault content changed. Packets
 /// from older protocol versions are ignored so a not-yet-updated device cannot
 /// stall the connection; it resumes once that device is updated.
 pub fn receive(s: &VaultSession, from: &str, data: &[u8]) -> Result<bool> {
-    let _guard = service::CONTROL.lock().map_err(|_| "Storage")?;
-    let packet: Value = serde_json::from_slice(data).map_err(|_| "InvalidData")?;
-    if packet["version"] != VERSION || packet["kind"] != "mesh" {
-        return Ok(false);
-    }
-    let result = service::core(s, json!({"op":"relay-mesh-receive","peer":from,"packet":packet}))?;
-    Ok(result["changed"] == true)
+    Ok(receive_with_reply(s, from, data)?.0)
 }
 
 #[cfg(test)]

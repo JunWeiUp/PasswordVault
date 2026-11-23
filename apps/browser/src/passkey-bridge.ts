@@ -14,7 +14,7 @@ export async function handlePasskey(request:any,sender:chrome.runtime.MessageSen
   const id=crypto.randomUUID(), generation=epoch, started=Date.now();pending.set(sender.documentId,id);
   try {
     // Native host provides its own trusted approval and account picker for every ceremony.
-    const result=await core({op:request.operation==="create"?"passkey-create":"passkey-assert",origin:new URL(sender.url).origin,rpId:validated.rpId,userHandle:validated.user?.id,userName:validated.user?.name,clientDataJSON:validated.clientDataJSON,excluded:validated.excludeCredentials,allowed:validated.allowCredentials});
+    const result=await core({op:request.operation==="create"?"passkey-create":"passkey-assert",origin:new URL(sender.url).origin,rpId:validated.rpId,userHandle:validated.user?.id,userName:validated.user?.name,clientDataJSON:validated.clientDataJSON,excluded:validated.excludeCredentials,allowed:validated.allowCredentials,...(validated.prf?{prf:validated.prf}:{}),...(validated.prfByCredential?{prfByCredential:validated.prfByCredential}:{})});
     const current=await chrome.tabs.get(sender.tab.id);
     if(epoch!==generation || pending.get(sender.documentId)!==id || current.url!==sender.url || Date.now()-started>=60000)throw new Error("expired");
     const ack=await chrome.tabs.sendMessage(sender.tab.id,{action:"passkey-document-check"},{documentId:sender.documentId});

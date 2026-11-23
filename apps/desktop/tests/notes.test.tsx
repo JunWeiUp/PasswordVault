@@ -61,7 +61,7 @@ test("official RichEditor edits and keeps legacy original", async () => {
   await app.waitFor("id:note-rich-editor");
   expect(app.texts()).toContain("saves:0");
   await app.type("id:note-rich-editor", "中文追加");
-  await app.wait(200);
+  await app.waitFor("text:saves:1");
   expect(app.texts().some(t => t.includes('"noteFormat":"rich-v1"') && t.includes('"source":"original"') && t.includes("中文追加"))).toBe(true);
 });
 

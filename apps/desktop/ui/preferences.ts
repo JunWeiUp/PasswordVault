@@ -20,8 +20,18 @@ export const listDensity = signal<ListDensity>("standard");
 export const quickCloseAfterCopy = signal(true);
 /** Show line numbers in the note rich editor and Markdown source pane (default on). */
 export const noteLineNumbers = signal(true);
+/** Collapse the left navigation sidebar to maximize list/detail space (⌃⌘S). */
+export const sidebarCollapsed = signal(false);
 /** Vertical padding of an item list row for a density. */
 export const rowPadding = (density: ListDensity) => (density === "compact" ? 5 : 10);
+
+export function setSidebarCollapsed(on: boolean) {
+  sidebarCollapsed.set(on);
+  void Storage.setItem("sidebarCollapsed", on ? "1" : "0");
+}
+export function toggleSidebar() {
+  setSidebarCollapsed(!sidebarCollapsed());
+}
 
 export function setListDensity(value: ListDensity) {
   if (!(value in DENSITY_LABEL)) return;
@@ -58,9 +68,9 @@ export function setHideFromCapture(on: boolean) {
 }
 
 export async function loadPreferences() {
-  const [seconds, sort, tray, capture, density, quickClose, lineNumbers] = await Promise.all([
+  const [seconds, sort, tray, capture, density, quickClose, lineNumbers, collapsed] = await Promise.all([
     Storage.getItem("clipboardSeconds"), Storage.getItem("sortMode"), Storage.getItem("trayIcon"), Storage.getItem("hideFromCapture"),
-    Storage.getItem("listDensity"), Storage.getItem("quickCloseAfterCopy"), Storage.getItem("noteLineNumbers"),
+    Storage.getItem("listDensity"), Storage.getItem("quickCloseAfterCopy"), Storage.getItem("noteLineNumbers"), Storage.getItem("sidebarCollapsed"),
   ]);
   const n = Number(seconds);
   if (seconds !== null && CLIPBOARD_CHOICES.some(([v]) => v === n)) clipboardSeconds.set(n);
@@ -70,4 +80,5 @@ export async function loadPreferences() {
   if (density && density in DENSITY_LABEL) listDensity.set(density as ListDensity);
   quickCloseAfterCopy.set(quickClose !== "0");
   noteLineNumbers.set(lineNumbers !== "0");
+  sidebarCollapsed.set(collapsed === "1");
 }

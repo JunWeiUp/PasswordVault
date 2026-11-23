@@ -324,7 +324,7 @@ final class VaultRelay: ObservableObject {
         let identity = try identity(), connection = RelayClient(identity: identity, journal: journal)
         client = connection; ownedClient = connection
         guard let ws = URL(string: config.endpoint), var components = URLComponents(url: ws, resolvingAgainstBaseURL: false) else { throw RelayError.invalid("URL") }
-        components.scheme = allowLocalGroupTest && ws.scheme == "ws" ? "http" : "https"; components.path = "/relay/v1/files"
+        components.scheme = allowLocalGroupTest && ws.scheme == "ws" ? "http" : "https"; components.path = ws.path == "/v2/ws" ? "/v2/files" : "/relay/v1/files"
         let fileClient = try RelayFiles(base: components.url!, token: config.token, password: config.serverPassword, allowLocalTest: allowLocalGroupTest); files = fileClient; ownedFiles = fileClient
         status = "正在连接 / Connecting"; connecting = true
         let events = try await connection.connect(url: ws, token: config.token, password: config.serverPassword, allowLocalTest: allowLocalGroupTest)
@@ -662,8 +662,8 @@ extension VaultRelay {
   static func validateEndpoint(_ value: String, allowLocalTest: Bool = false) throws -> String {
     guard let u = URLComponents(string: value), let host = u.host, !host.isEmpty,
           u.scheme == "wss" || (allowLocalTest && u.scheme == "ws" && host == "127.0.0.1"),
-          u.path == "/relay/v1/ws", u.user == nil, u.password == nil, u.query == nil, u.fragment == nil else {
-      throw RelayError.invalid("WSS endpoint required: wss://host/relay/v1/ws")
+          (u.path == "/relay/v1/ws" || u.path == "/v2/ws"), u.user == nil, u.password == nil, u.query == nil, u.fragment == nil else {
+      throw RelayError.invalid("WSS endpoint required: wss://host/v2/ws or wss://host/relay/v1/ws")
     }
     return value
   }

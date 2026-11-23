@@ -28,6 +28,7 @@ public final class RelayClient implements AutoCloseable {
     private final Map<String,Stream> streams=new ConcurrentHashMap<>();
     private final AtomicBoolean closed=new AtomicBoolean();
     private WebSocket socket;
+    private volatile boolean isV2;
     private final RelayJournal journal;
     private ScheduledExecutorService cleaner;
     private String scope(){return crypto.app+"/"+crypto.group+"/"+crypto.device;}
@@ -43,11 +44,13 @@ public final class RelayClient implements AutoCloseable {
         java.net.URI uri=java.net.URI.create(url);
         boolean local=allowLocalTest&&"ws".equals(uri.getScheme())&&"127.0.0.1".equals(uri.getHost());
         if((!"wss".equals(uri.getScheme())&&!local)||token.length()<32)throw new IllegalArgumentException("WSS and device credential required");
+        isV2="/v2/ws".equals(uri.getPath());
         if(journal!=null){cleaner=Executors.newSingleThreadScheduledExecutor(r->{Thread t=new Thread(r,"relay-cleanup");t.setDaemon(true);return t;});cleaner.scheduleAtFixedRate(()->{try{cleanup();}catch(Exception e){fail(e);}},1,1,TimeUnit.HOURS);}
-        Request.Builder upgrade=new Request.Builder().url(url).header("Authorization","Bearer "+token).header("Sec-WebSocket-Protocol","common-relay.v1");
+        Request.Builder upgrade=new Request.Builder().url(url).header("Authorization","Bearer "+token);
+        if(!isV2)upgrade.header("Sec-WebSocket-Protocol","common-relay.v1");
         if(password!=null)upgrade.header(RelayAccess.HEADER,password);
         socket=http.newWebSocket(upgrade.build(),new WebSocketListener(){
-            @Override public void onOpen(WebSocket ws,Response response){if(!"common-relay.v1".equals(response.header("Sec-WebSocket-Protocol")))fail(new IOException("Protocol mismatch"));}
+            @Override public void onOpen(WebSocket ws,Response response){if(!isV2&&!"common-relay.v1".equals(response.header("Sec-WebSocket-Protocol")))fail(new IOException("Protocol mismatch"));}
             @Override public void onMessage(WebSocket ws,String text){try{dispatch(new JSONObject(text));}catch(Exception e){fail(e);}}
             @Override public void onMessage(WebSocket ws,ByteString bytes){try{binary(bytes.toByteArray());}catch(Exception e){fail(e);}}
             @Override public void onFailure(WebSocket ws,Throwable error,Response response){fail(error);}
@@ -55,7 +58,23 @@ public final class RelayClient implements AutoCloseable {
             @Override public void onClosing(WebSocket ws,int code,String reason){ws.close(code,reason);fail(new IOException("Connection closing"));}
         });
     }
-    public void send(JSONObject event)throws IOException {if(closed.get()||socket==null||socket.queueSize()>4<<20||!socket.send(event.toString()))throw new IOException("Connection unavailable or backpressure");}
+    private JSONObject translateOutgoingV2(JSONObject event)throws IOException{
+        if(!isV2)return event;
+        try{
+            String type=event.optString("type");
+            if("peers".equals(type)){
+                return new JSONObject().put("type","presence").put("space",crypto.group).put("id",event.optString("id"));
+            }
+            if("message".equals(type)){
+                return new JSONObject().put("type","msg").put("space",crypto.group).put("id",event.optString("id")).put("to",event.optString("to")).put("body",event.optString("body")).put("offline",event.optBoolean("offline",false));
+            }
+            if("ack".equals(type)){
+                return new JSONObject().put("type","ack").put("space",crypto.group).put("id",event.optString("id")).put("from",event.optString("from"));
+            }
+            return event;
+        }catch(JSONException e){throw new IOException(e);}
+    }
+    public void send(JSONObject event)throws IOException {if(closed.get()||socket==null||socket.queueSize()>4<<20||!socket.send(translateOutgoingV2(event).toString()))throw new IOException("Connection unavailable or backpressure");}
     public CompletableFuture<JSONObject> request(JSONObject event)throws Exception{
         String id=event.optString("id",UUID.randomUUID().toString().replace("-",""));event.put("id",id);CompletableFuture<JSONObject> result=new CompletableFuture<>();
         if(pending.putIfAbsent(id,result)!=null)throw new IllegalStateException("Request already pending");
@@ -98,6 +117,29 @@ public final class RelayClient implements AutoCloseable {
     public void rejectStream(JSONObject event)throws Exception{send(new JSONObject().put("type","stream.close").put("id",event.getString("id")));}
     private void dispatch(JSONObject event)throws Exception{
         String type=event.getString("type"),id=event.optString("id");
+        if(isV2){
+            if(type.equals("hello")){
+                String dev=event.optString("from",event.optString("device"));
+                if(!crypto.device.equals(dev))throw new IOException("Identity mismatch");
+                listener.onReady();
+                return;
+            }
+            if(type.equals("presence")){
+                JSONArray peers=event.optJSONArray("peers");
+                JSONArray devices=new JSONArray();
+                if(peers!=null)for(int i=0;i<peers.length();i++)devices.put(new JSONObject().put("app",crypto.app).put("group",crypto.group).put("device",peers.optString(i)));
+                event=new JSONObject().put("type","peers").put("id",id).put("devices",devices);
+                type="peers";
+            }else if(type.equals("msg")){
+                event=new JSONObject().put("type","message").put("id",id).put("from",event.optString("from")).put("body",event.optString("body")).put("offline",event.optBoolean("offline",false));
+                type="message";
+            }else if(type.equals("ack")){
+                type=event.optString("event","stored");
+                event=new JSONObject().put("type",type).put("id",id);
+            }else if(type.equals("group.changed")){
+                event=new JSONObject().put("type","group.changed").put("revision",event.optLong("seq",0));
+            }
+        }
         if(type.equals("welcome")){JSONObject d=event.getJSONObject("identity");if(event.getInt("version")!=1||!d.getString("app").equals(crypto.app)||!d.getString("group").equals(crypto.group)||!d.getString("device").equals(crypto.device)||!d.getString("public_key").equals(crypto.publicKey()))throw new IOException("Identity mismatch");listener.onReady();return;}
         if(type.equals("stream.credit")){Stream s=streams.get(id);if(s!=null)s.credit(event.getLong("sequence"));return;}
         if(type.equals("stream.close")){Stream s=streams.remove(id);if(s!=null)s.abort();CompletableFuture<JSONObject> p=pending.remove(id);if(p!=null)p.completeExceptionally(new IOException("Stream closed"));return;}

@@ -332,7 +332,12 @@ impl BrowserVault {
                         .map_err(|_| VaultError::InvalidData)?;
                 let preview = preview_import(text("format")?, &data, &mapping, &self.document)?;
                 if op == "import-preview" {
-                    serde_json::to_value(preview).map_err(|_| VaultError::InvalidData)
+                    serde_json::to_value({
+                        let mut preview = preview;
+                        redact_import_preview(&mut preview);
+                        preview
+                    })
+                    .map_err(|_| VaultError::InvalidData)
                 } else {
                     let choices = serde_json::from_value(
                         request.get("choices").cloned().unwrap_or(json!({})),

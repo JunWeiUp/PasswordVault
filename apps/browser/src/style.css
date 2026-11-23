@@ -1371,3 +1371,107 @@ fieldset {
   border: 1px solid var(--line);
   border-radius: 8px;
 }
+.seg-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 10px 0;
+}
+.seg-label {
+  font-size: 12px;
+  color: var(--ink2, var(--muted));
+}
+.seg-bar {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  background: var(--field, var(--soft));
+  border-radius: 8px;
+  padding: 2px;
+  width: fit-content;
+  max-width: 100%;
+}
+.seg-bar button {
+  border: 0;
+  background: transparent;
+  padding: 4px 10px;
+  font-size: 12px;
+  border-radius: 6px;
+  color: var(--muted);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.seg-bar button:hover:not(.on):not(:disabled) {
+  color: var(--ink);
+}
+.seg-bar button.on {
+  background: var(--surface);
+  color: var(--blue);
+  box-shadow: var(--shadow);
+  font-weight: 600;
+}
+.pick-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin: 6px 0 8px;
+}
+.pick-card {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  text-align: left;
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  font-size: 12px;
+  color: var(--ink);
+  justify-content: flex-start;
+  cursor: pointer;
+}
+.pick-card:hover:not(:disabled) {
+  border-color: var(--blue-line, var(--blue));
+}
+.pick-card.on {
+  border-color: var(--blue);
+  background: var(--blue-soft);
+}
+.pick-card .dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 1.5px solid var(--line);
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+}
+.pick-card.on .dot {
+  border-color: var(--blue);
+}
+.pick-card.on .dot::after {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--blue);
+}
+.pick-card small {
+  display: block;
+  font-size: 11px;
+  color: var(--muted);
+  font-weight: 400;
+}
+.pk-acct {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--blue-line, var(--blue));
+  background: var(--surface);
+  font-size: 12.5px;
+  margin: 6px 0;
+}

@@ -89,7 +89,7 @@ fn ensure_index(conn: &Connection, root: &[u8; 32], vault: &str) -> Result<()> {
     }
     result
 }
-fn page(
+pub(super) fn page(
     conn: &Connection,
     root: &[u8; 32],
     vault: &str,
@@ -274,7 +274,7 @@ pub(super) fn capture_with_meta(
         r.get::<_, i64>(0)
     }))? > 0;
     let previous = if exists {
-        load_document(conn, root, vault)?
+        load_document_raw(conn, root, vault)?
     } else {
         Document::default()
     };
@@ -303,16 +303,13 @@ pub(super) fn capture_with_meta(
             root,
             item["id"].as_str().ok_or(VaultError::InvalidData)?,
         )) {
+            let mut full = item.clone();
+            note_bodies::hydrate_item(conn, root, vault, &mut full)?;
             write(
                 conn,
                 root,
                 vault,
-                &Revision::plain(
-                    new_id(),
-                    item["id"].as_str().unwrap().into(),
-                    now,
-                    item.clone(),
-                ),
+                &Revision::plain(new_id(), item["id"].as_str().unwrap().into(), now, full),
             )?;
         }
     }
@@ -320,16 +317,19 @@ pub(super) fn capture_with_meta(
         let id = item["id"].as_str().ok_or(VaultError::InvalidData)?;
         let item_meta = meta.filter(|m| m.item_id.as_deref().is_none_or(|target| target == id));
         let force_milestone = item_meta.is_some_and(|m| m.milestone);
+        // Untouched split notes skip hydration in O(1); non-split notes compare directly when previous wasn't split.
         if !force_milestone && previous_items.get(id).copied() == Some(item) {
             continue;
         }
+        let mut full = item.clone();
+        note_bodies::hydrate_item(conn, root, vault, &mut full)?;
         let (total, latest_rows) = page(conn, root, vault, id, 0, 1)?;
-        if !force_milestone && latest_rows.first().is_some_and(|r| r.item == *item) {
+        if !force_milestone && latest_rows.first().is_some_and(|r| r.item == full) {
             continue;
         }
         // Coalesce continuous manual note drafts within 5 minutes, while keeping the baseline,
         // milestones, AI updates, restores, and attachment changes intact.
-        if item["type"] == "secureNote"
+        if full["type"] == "secureNote"
             && total >= 2
             && item_meta.is_some_and(|m| {
                 m.coalesce && !m.milestone && matches!(m.actor_type.as_deref(), None | Some("user"))
@@ -343,7 +343,7 @@ pub(super) fn capture_with_meta(
                 let mut new_refs = std::collections::HashSet::new();
                 let same_attachments =
                     crate::archive::item_attachment_refs(&latest.item, &mut old_refs).is_ok()
-                        && crate::archive::item_attachment_refs(item, &mut new_refs).is_ok()
+                        && crate::archive::item_attachment_refs(&full, &mut new_refs).is_ok()
                         && old_refs == new_refs;
                 if latest_is_manual && within_window && same_attachments {
                     storage(conn.execute("DELETE FROM entry_history WHERE id=?1", [&latest.id]))?;
@@ -358,7 +358,7 @@ pub(super) fn capture_with_meta(
                 id: new_id(),
                 item_id: id.into(),
                 captured_at: now,
-                item: item.clone(),
+                item: full,
                 actor_type: item_meta.and_then(|m| m.actor_type.clone()),
                 actor: item_meta.and_then(|m| m.actor.clone()),
                 summary: item_meta.and_then(|m| m.summary.clone()),
@@ -423,9 +423,17 @@ impl DiskVault {
         next.settings["entryHistoryEnabled"] = json!(true);
         let tx = storage(open.connection.transaction())?;
         table(&tx)?;
-        save_document_row(&tx, &open.root, &open.header.vault_id, &next)?;
+        let saved = save_document_row_with_prev(
+            &tx,
+            &open.root,
+            &open.header.vault_id,
+            Some(&open.document),
+            &next,
+            None,
+        )?;
         storage(tx.commit())?;
-        open.document = next;
+        open.document = saved;
+        open.clear_hydrated_cache();
         Ok(())
     }
     pub(super) fn history_command(&mut self, request: &Value) -> Result<Value> {
@@ -472,13 +480,19 @@ impl DiskVault {
                 }
                 self.ensure_history_enabled()?;
                 let open = self.open()?;
-                let current = open
+                let mut current = open
                     .document
                     .items
                     .iter()
                     .find(|i| i["id"] == id && i["isDeleted"] != true)
                     .cloned()
                     .ok_or(VaultError::InvalidData)?;
+                note_bodies::hydrate_item(
+                    &open.connection,
+                    &open.root,
+                    &open.header.vault_id,
+                    &mut current,
+                )?;
                 authorize_item_write(&open.document, &current)?;
                 let now = std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
@@ -504,13 +518,20 @@ impl DiskVault {
                 let keep_milestones = request["keepMilestones"].as_bool().unwrap_or(false);
                 let vault_dir = self.directory.clone();
                 let open = self.open()?;
-                let current = open
+                let mut current = open
                     .document
                     .items
                     .iter()
                     .find(|i| i["id"] == id)
+                    .cloned()
                     .ok_or(VaultError::InvalidData)?;
-                authorize_item_write(&open.document, current)?;
+                note_bodies::hydrate_item(
+                    &open.connection,
+                    &open.root,
+                    &open.header.vault_id,
+                    &mut current,
+                )?;
+                authorize_item_write(&open.document, &current)?;
                 let revisions = read(&open.connection, &open.root, &open.header.vault_id)?;
                 let tx = storage(open.connection.transaction())?;
                 for revision in revisions
@@ -520,7 +541,7 @@ impl DiskVault {
                     storage(tx.execute("DELETE FROM entry_history WHERE id=?1", [&revision.id]))?;
                 }
                 let (_, remaining) = page(&tx, &open.root, &open.header.vault_id, id, 0, 1)?;
-                if !remaining.first().is_some_and(|r| r.item == *current) {
+                if !remaining.first().is_some_and(|r| r.item == current) {
                     let now = std::time::SystemTime::now()
                         .duration_since(std::time::UNIX_EPOCH)
                         .map_err(|_| VaultError::InvalidData)?
@@ -529,16 +550,20 @@ impl DiskVault {
                         &tx,
                         &open.root,
                         &open.header.vault_id,
-                        &Revision::plain(new_id(), id.into(), now, current.clone()),
+                        &Revision::plain(new_id(), id.into(), now, current),
                     )?;
                 }
                 capture(&tx, &open.root, &open.header.vault_id, &open.document)?;
                 let retains = relay::retains_attachments(&tx)?;
                 if !retains {
-                    let retained = with_history(
-                        &open.document,
-                        &read(&tx, &open.root, &open.header.vault_id)?,
-                    );
+                    let hydrated = note_bodies::hydrate(
+                        &tx,
+                        &open.root,
+                        &open.header.vault_id,
+                        open.document.clone(),
+                    )?;
+                    let retained =
+                        with_history(&hydrated, &read(&tx, &open.root, &open.header.vault_id)?);
                     let mut used = std::collections::HashSet::new();
                     for item in &retained.items {
                         crate::archive::item_attachment_refs(item, &mut used)?;
@@ -548,6 +573,10 @@ impl DiskVault {
                             storage(
                                 tx.execute("DELETE FROM note_attachments WHERE id=?1", [&meta.id]),
                             )?;
+                            storage(tx.execute(
+                                "DELETE FROM note_attachment_state WHERE attachment_id=?1",
+                                [&meta.id],
+                            ))?;
                             note_blobs::delete_ref(&tx, &meta.id)?;
                         }
                     }

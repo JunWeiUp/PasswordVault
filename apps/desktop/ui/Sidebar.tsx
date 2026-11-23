@@ -13,6 +13,7 @@ import { openQuickAccess } from "./QuickAccess";
 import { openSettings } from "./Settings";
 import { appVersion } from "./version";
 import { SHORTCUT_LABEL, shortcut } from "./hotkey";
+import { toggleSidebar } from "./preferences";
 import { syncStatus, syncTone } from "./relay";
 import { aiSettings, aiWritableCategories, setCategoryAiWritable } from "./ai";
 import { buildCatTree, catMatches, isAiWritableCategory, type CatNode } from "./notes/knowledge";
@@ -37,8 +38,8 @@ function NavRow(props: { testID?: string; icon: IconName; label: string; active:
       onPress={props.onPress}
       onContextMenu={props.onContextMenu}
       style={{
-        flexDirection: "row", alignItems: "center", gap: 10, height: fs(props.indent ? 26 : 30),
-        paddingLeft: props.indent ? 36 : 10, paddingRight: 10, borderRadius: 7, marginBottom: 1,
+        flexDirection: "row", alignItems: "center", gap: 8, height: fs(props.indent ? 26 : 30),
+        paddingLeft: props.indent ? 28 : 8, paddingRight: 8, borderRadius: 7, marginBottom: 1,
         backgroundColor: props.active ? c().blueLine : "transparent", cursor: "pointer",
       }}
       hoverStyle={props.active ? undefined : { backgroundColor: c().field }}
@@ -63,7 +64,7 @@ const MAIN: [Dest, string, IconName][] = [
 
 function Label(props: { text: string; right?: any }) {
   return (
-    <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 10, marginBottom: 3, paddingHorizontal: 10, minHeight: 18 }}>
+    <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 10, marginBottom: 3, paddingHorizontal: 8, minHeight: 18 }}>
       <T size={11} color={c().faint}>{props.text}</T>
       {props.right}
     </View>
@@ -101,8 +102,8 @@ function CategoryTreeRow(props: { node: CatNode; count: number }) {
       onPress={() => { noteCategory.set(node().path); query.set(""); }}
       onContextMenu={(e: any) => void Menu.popup(menu(), e?.pagePosition)}
       style={{
-        flexDirection: "row", alignItems: "center", gap: 6, height: fs(26),
-        paddingLeft: 20 + node().depth * 14, paddingRight: 10, borderRadius: 7, marginBottom: 1,
+        flexDirection: "row", alignItems: "center", gap: 5, height: fs(26),
+        paddingLeft: 14 + node().depth * 12, paddingRight: 8, borderRadius: 7, marginBottom: 1,
         backgroundColor: active() ? c().blueLine : "transparent", cursor: "pointer",
       }}
       hoverStyle={active() ? undefined : { backgroundColor: c().field }}
@@ -137,14 +138,15 @@ export function Sidebar() {
   const aiOn = () => desktopCapabilities.ai && aiSettings().aiAccessEnabled === true;
   const aiClientCount = () => (desktopCapabilities.ai && Array.isArray(aiSettings().aiAccessClients) ? aiSettings().aiAccessClients.length : 0);
   return (
-    <View testID="sidebar" style={{ width: layout.sidebar, backgroundColor: c().side, borderRightWidth: 1, borderRightColor: c().sideLine, paddingHorizontal: 10, paddingBottom: 10 }}>
+    <View testID="sidebar" style={{ width: layout.sidebar, backgroundColor: c().side, borderRightWidth: 1, borderRightColor: c().sideLine, paddingHorizontal: 8, paddingBottom: 10 }}>
       <View desktop={{ windowDrag: true }} style={{ height: Math.max(titleBar().height, 40) }} />
-      <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginHorizontal: 8, marginBottom: 8 }}>
-        <Logo />
-        <View>
-          <T size={14} weight="600">PasswordVault</T>
-          <T size={10.5} color={c().muted}>{appVersion}</T>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginHorizontal: 6, marginBottom: 8 }}>
+        <Logo size={28} />
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <T size={13.5} weight="600" lines={1}>PasswordVault</T>
+          <T size={10} color={c().muted}>{appVersion}</T>
         </View>
+        <IconBtn testID="sidebar-collapse-btn" icon="sidebar" label={isMac ? "隐藏边栏 (⌃⌘S)" : "隐藏边栏 (Ctrl+Alt+S)"} size={14} onPress={toggleSidebar} />
       </View>
       {/* Pinned above the scrollable vault destinations so AI access stays visible even with long note trees. */}
       <View style={{ flexShrink: 0, paddingBottom: 6, marginBottom: 4, borderBottomWidth: 1, borderBottomColor: c().sideLine }}>
@@ -167,7 +169,7 @@ export function Sidebar() {
             <NavRow testID={`nav-${d}`} icon={icon} label={label} active={dest() === d && !(d === "notes" && noteCategory())} count={countIn(d)}
               onPress={() => { go(d); noteCategory.set(null); }} />
             <If when={d === "notes" && dest() === "notes"}>
-              <View style={{ flexDirection: "row", alignItems: "center", paddingLeft: 34, paddingRight: 4, height: 22 }}>
+              <View style={{ flexDirection: "row", alignItems: "center", paddingLeft: 26, paddingRight: 2, height: 22 }}>
                 <T size={10.5} color={c().faint} style={{ flex: 1 }}>目录</T>
                 <IconBtn testID="add-category" icon="plus" label="新增分类" size={12} onPress={() => askCategory()} />
                 <IconBtn icon="minus" label="删除所选分类，保留笔记" size={12} disabled={!noteCategory()} onPress={() => noteCategory() && askRemoveCategory(noteCategory()!)} />
@@ -188,7 +190,7 @@ export function Sidebar() {
       </Scroll>
       <View style={{ flexShrink: 0, borderTopWidth: 1, borderTopColor: c().sideLine, paddingTop: 8, gap: 1, backgroundColor: c().side }}>
         <View role="button" accessibilityLabel={`同步状态：${syncStatus()}`} tooltip="打开同步设置" onPress={() => openSettings("relay")}
-          style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 10, height: 26, borderRadius: 7, cursor: "pointer" }} hoverStyle={{ backgroundColor: c().field }}>
+          style={{ flexDirection: "row", alignItems: "center", gap: 7, paddingHorizontal: 8, height: 26, borderRadius: 7, cursor: "pointer" }} hoverStyle={{ backgroundColor: c().field }}>
           <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: ({ ok: c().green, busy: c().orange, warn: c().red, off: c().faint })[syncTone()] }} />
           <T size={11.5} color={c().muted} lines={1}>{syncStatus()}</T>
         </View>

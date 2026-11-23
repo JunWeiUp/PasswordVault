@@ -24,8 +24,8 @@ public final class RelayGroups {
     /** @param http optional shared client; redirects are always disabled. */
     public RelayGroups(JSONObject config, boolean allowLocalTest, OkHttpClient http) throws Exception {
         this.allowLocalTest=allowLocalTest;this.config=config;this.password=RelayAccess.validate(config.isNull("password")?null:config.getString("password"));URI u=new URI(config.getString("url"));
-        if(u.getUserInfo()!=null||u.getQuery()!=null||u.getFragment()!=null||!"/relay/v1/ws".equals(u.getPath())||!("wss".equals(u.getScheme())||(allowLocalTest&&"ws".equals(u.getScheme())&&"127.0.0.1".equals(u.getHost()))))throw new IOException("WSS required");
-        base=("wss".equals(u.getScheme())?"https":"http")+"://"+u.getRawAuthority()+"/relay/v1";
+        if(u.getUserInfo()!=null||u.getQuery()!=null||u.getFragment()!=null||(!"/relay/v1/ws".equals(u.getPath())&&!"/v2/ws".equals(u.getPath()))||!("wss".equals(u.getScheme())||(allowLocalTest&&"ws".equals(u.getScheme())&&"127.0.0.1".equals(u.getHost()))))throw new IOException("WSS required");
+        base=("wss".equals(u.getScheme())?"https":"http")+"://"+u.getRawAuthority()+("/v2/ws".equals(u.getPath())?"/v2":"/relay/v1");
         this.http=http==null||http==SHARED_HTTP?SHARED_HTTP:http.newBuilder().followRedirects(false).followSslRedirects(false).build();
     }
     private static byte[] bytes(String s){return s.getBytes(StandardCharsets.UTF_8);}

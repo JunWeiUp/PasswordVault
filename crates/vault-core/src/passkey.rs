@@ -19,6 +19,9 @@ pub struct PasskeyRecord {
     pub private_key: String,
     #[serde(default)]
     pub backup_state: bool,
+    /// WebAuthn PRF (CTAP hmac-secret CredRandom). Absent on credentials created before PRF.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prf_secret: Option<String>,
 }
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -119,6 +122,13 @@ fn create_credential(
         user_name: user_name.into(),
         private_key: URL_SAFE_NO_PAD.encode(key.to_bytes()),
         backup_state: false,
+        prf_secret: Some({
+            let mut secret = [0u8; 32];
+            OsRng.fill_bytes(&mut secret);
+            let encoded = URL_SAFE_NO_PAD.encode(secret);
+            secret.zeroize();
+            encoded
+        }),
     };
     let response = passkey_registration_response(&record, data, verified)?;
     Ok((record, response))
@@ -568,4 +578,176 @@ pub fn passkey_fingerprint(record: &PasskeyRecord) -> Result<String> {
     let key = key?;
     let bytes=serde_json::to_vec(&serde_json::json!({"id":record.credential_id,"rp":record.rp_id,"user":record.user_handle,"key":URL_SAFE_NO_PAD.encode(key.verifying_key().to_encoded_point(false).as_bytes())})).map_err(|_|VaultError::InvalidData)?;
     Ok(hex::encode(Sha256::digest(bytes)))
+}
+
+/// WebAuthn PRF evaluation for one stored credential (JSON form, as kept in the item).
+/// `inputs` is `{"first": b64url, "second"?: b64url}` already selected for this credential.
+/// Output = HMAC-SHA256(CredRandom, SHA-256("WebAuthn PRF" || 0x00 || input)), per WebAuthn L3.
+pub fn passkey_prf_evaluate(
+    credential: &serde_json::Value,
+    inputs: &serde_json::Value,
+) -> Result<Option<serde_json::Value>> {
+    use hmac::{Hmac, Mac};
+    let Some(secret) = credential["prfSecret"].as_str() else {
+        return Ok(None);
+    };
+    let mut key = URL_SAFE_NO_PAD
+        .decode(secret)
+        .map_err(|_| VaultError::InvalidData)?;
+    if key.len() != 32 {
+        key.zeroize();
+        return Err(VaultError::InvalidData);
+    }
+    let eval = |name: &str| -> Result<Option<String>> {
+        let Some(value) = inputs.get(name).filter(|v| !v.is_null()) else {
+            return Ok(None);
+        };
+        let input = value
+            .as_str()
+            .filter(|s| s.len() <= 8192)
+            .and_then(|s| URL_SAFE_NO_PAD.decode(s).ok())
+            .ok_or(VaultError::InvalidData)?;
+        let mut salt = Sha256::new();
+        salt.update(b"WebAuthn PRF");
+        salt.update([0u8]);
+        salt.update(&input);
+        let mut mac =
+            <Hmac<Sha256> as Mac>::new_from_slice(&key).map_err(|_| VaultError::InvalidData)?;
+        mac.update(&salt.finalize());
+        Ok(Some(URL_SAFE_NO_PAD.encode(mac.finalize().into_bytes())))
+    };
+    let first = eval("first");
+    let second = eval("second");
+    key.zeroize();
+    let Some(first) = first? else {
+        if inputs.get("second").is_some_and(|v| !v.is_null()) {
+            return Err(VaultError::InvalidData);
+        }
+        return Ok(None);
+    };
+    let mut results = serde_json::json!({ "first": first });
+    if let Some(second) = second? {
+        results["second"] = second.into();
+    }
+    Ok(Some(results))
+}
+/// Adds `prf` client-extension output to a ceremony response when the request asked for it.
+pub fn passkey_attach_prf(
+    response: &mut serde_json::Value,
+    credential: &serde_json::Value,
+    request: &serde_json::Value,
+    create: bool,
+) -> Result<()> {
+    let Some(requested) = request.get("prf").filter(|v| v.is_object()) else {
+        return Ok(());
+    };
+    // evalByCredential (keyed by base64url credential ID) overrides eval for the chosen credential.
+    let inputs = credential["credentialId"]
+        .as_str()
+        .and_then(|id| request["prfByCredential"].get(id))
+        .filter(|v| v.is_object() && !create)
+        .unwrap_or(requested);
+    let mut output = serde_json::json!({});
+    if create {
+        output["enabled"] = credential
+            .get("prfSecret")
+            .is_some_and(|v| v.is_string())
+            .into();
+    }
+    if let Some(results) = passkey_prf_evaluate(credential, inputs)? {
+        output["results"] = results;
+    }
+    response["prf"] = output;
+    Ok(())
+}
+#[cfg(test)]
+mod prf_tests {
+    use super::*;
+    use hmac::{Hmac, Mac};
+    #[test]
+    fn prf_matches_the_webauthn_definition_and_is_stable_per_credential() {
+        let (record, _) = passkey_create(
+            "example.com",
+            "https://example.com",
+            b"u",
+            "u",
+            &tests_data(),
+        )
+        .unwrap();
+        let credential = serde_json::to_value(&record).unwrap();
+        let input = URL_SAFE_NO_PAD.encode(b"salt-one");
+        let out = passkey_prf_evaluate(
+            &credential,
+            &serde_json::json!({"first":input,"second":URL_SAFE_NO_PAD.encode(b"two")}),
+        )
+        .unwrap()
+        .unwrap();
+        let secret = URL_SAFE_NO_PAD
+            .decode(record.prf_secret.as_ref().unwrap())
+            .unwrap();
+        let mut salt = Sha256::new();
+        salt.update(b"WebAuthn PRF\0salt-one");
+        let mut mac = <Hmac<Sha256> as Mac>::new_from_slice(&secret).unwrap();
+        mac.update(&salt.finalize());
+        assert_eq!(
+            out["first"],
+            URL_SAFE_NO_PAD.encode(mac.finalize().into_bytes())
+        );
+        assert_ne!(out["first"], out["second"]);
+        // Same input, same credential: same output; another credential differs.
+        let again = passkey_prf_evaluate(&credential, &serde_json::json!({"first":input}))
+            .unwrap()
+            .unwrap();
+        assert_eq!(again["first"], out["first"]);
+        assert!(again.get("second").is_none());
+        let (other, _) = passkey_create(
+            "example.com",
+            "https://example.com",
+            b"u",
+            "u",
+            &tests_data(),
+        )
+        .unwrap();
+        let other = passkey_prf_evaluate(
+            &serde_json::to_value(&other).unwrap(),
+            &serde_json::json!({"first":input}),
+        )
+        .unwrap()
+        .unwrap();
+        assert_ne!(other["first"], out["first"]);
+        // Legacy credentials report no PRF; malformed input is rejected.
+        let mut legacy = credential.clone();
+        legacy.as_object_mut().unwrap().remove("prfSecret");
+        assert!(
+            passkey_prf_evaluate(&legacy, &serde_json::json!({"first":input}))
+                .unwrap()
+                .is_none()
+        );
+        assert!(passkey_prf_evaluate(&credential, &serde_json::json!({"first":"***"})).is_err());
+        assert!(passkey_prf_evaluate(&credential, &serde_json::json!({"second":input})).is_err());
+        let mut response = serde_json::json!({});
+        passkey_attach_prf(&mut response, &legacy, &serde_json::json!({"prf":{}}), true).unwrap();
+        assert_eq!(response["prf"], serde_json::json!({"enabled":false}));
+        // The secret never appears in a public response.
+        let mut response = serde_json::json!({});
+        passkey_attach_prf(
+            &mut response,
+            &credential,
+            &serde_json::json!({"prf":{"first":input}}),
+            true,
+        )
+        .unwrap();
+        assert_eq!(response["prf"]["enabled"], true);
+        assert!(!response
+            .to_string()
+            .contains(record.prf_secret.as_ref().unwrap()));
+        // evalByCredential applies to assertions of that credential only.
+        let by = serde_json::json!({"prf":{"first":input},"prfByCredential":{record.credential_id.clone():{"first":URL_SAFE_NO_PAD.encode(b"two")}}});
+        let mut response = serde_json::json!({});
+        passkey_attach_prf(&mut response, &credential, &by, false).unwrap();
+        assert_eq!(response["prf"]["results"]["first"], out["second"]);
+    }
+    fn tests_data() -> Vec<u8> {
+        serde_json::to_vec(&serde_json::json!({"type":"webauthn.create","origin":"https://example.com","challenge":URL_SAFE_NO_PAD.encode([7u8;32]),"crossOrigin":false})).unwrap()
+    }
 }

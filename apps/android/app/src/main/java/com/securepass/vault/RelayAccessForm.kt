@@ -27,8 +27,8 @@ internal data class RelayInvitationPreview(val input: String, val endpoint: Stri
 internal fun validateRelayEndpoint(text: String): String {
     val value = text.trim()
     val uri = URI(value)
-    require(uri.scheme == "wss" && !uri.host.isNullOrBlank() && uri.rawUserInfo == null && uri.rawQuery == null && uri.rawFragment == null && uri.path == "/relay/v1/ws") {
-        "请输入 wss://服务器/relay/v1/ws / Enter a WSS relay endpoint"
+    require(uri.scheme == "wss" && !uri.host.isNullOrBlank() && uri.rawUserInfo == null && uri.rawQuery == null && uri.rawFragment == null && (uri.path == "/relay/v1/ws" || uri.path == "/v2/ws")) {
+        "请输入 wss://服务器/v2/ws 或 wss://服务器/relay/v1/ws / Enter a WSS relay endpoint"
     }
     return value
 }
