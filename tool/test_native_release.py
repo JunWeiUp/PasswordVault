@@ -13,6 +13,25 @@ import zipfile
 
 from native_release import ROOT, validate_versions, verify_android_metadata, verify_app_archive, package, public_asset_names, verify_windows_archive
 
+VERSION_FILES = ['native-version.json', 'apps/browser/package.json', 'apps/browser/package-lock.json',
+                 'apps/desktop/nsh.json', 'apps/android/app/build.gradle.kts', 'apps/ios/project.yml']
+
+
+def release_fixture(root, extra=()):
+    """Copy the version files into `root` in release state. Between releases the browser
+    package is bumped on its own (`npm run release:local`), so align it to the native
+    version here instead of making these tests depend on the working tree's release state."""
+    for name in [*VERSION_FILES, *extra]:
+        target = root / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes((ROOT / name).read_bytes())
+    version = json.loads((root / 'native-version.json').read_text())['version']
+    package_path, lock_path = root / 'apps/browser/package.json', root / 'apps/browser/package-lock.json'
+    package_json = json.loads(package_path.read_text()); package_json['version'] = version
+    package_path.write_text(json.dumps(package_json))
+    lock = json.loads(lock_path.read_text()); lock['version'] = version; lock['packages']['']['version'] = version
+    lock_path.write_text(json.dumps(lock))
+
 
 def windows_fixture(path, version, machine=0x8664, extra=None):
     exe = bytearray(128)
@@ -55,20 +74,19 @@ class NativeReleaseTests(unittest.TestCase):
             self.assertFalse((root / 'apps/macos-legacy').exists())
 
     def test_coordinated_versions_and_wrong_tag(self):
-        data = validate_versions(ROOT)
-        validate_versions(ROOT, 'v' + data['version'])
-        with self.assertRaises(SystemExit):
-            validate_versions(ROOT, 'v99.0.0')
-
-    def test_mismatched_browser_lock_is_rejected(self):
-        files = ['native-version.json', 'apps/browser/package.json', 'apps/browser/package-lock.json',
-                 'apps/desktop/nsh.json', 'apps/android/app/build.gradle.kts', 'apps/ios/project.yml']
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
-            for name in files:
-                target = root / name
-                target.parent.mkdir(parents=True, exist_ok=True)
-                target.write_bytes((ROOT / name).read_bytes())
+            release_fixture(root)
+            data = validate_versions(root)
+            validate_versions(root, 'v' + data['version'])
+            with self.assertRaises(SystemExit):
+                validate_versions(root, 'v99.0.0')
+
+    def test_mismatched_browser_lock_is_rejected(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            release_fixture(root)
+            validate_versions(root)
             lock_path = root / 'apps/browser/package-lock.json'
             lock = json.loads(lock_path.read_text())
             lock['packages']['']['version'] = '0.0.0'
@@ -80,11 +98,7 @@ class NativeReleaseTests(unittest.TestCase):
         from validate_release_ref import resolve_release
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
-            for name in ['native-version.json', 'apps/browser/package.json', 'apps/browser/package-lock.json',
-                         'apps/desktop/nsh.json', 'apps/android/app/build.gradle.kts', 'apps/ios/project.yml']:
-                target = root / name
-                target.parent.mkdir(parents=True, exist_ok=True)
-                target.write_bytes((ROOT / name).read_bytes())
+            release_fixture(root)
             def git(*args):
                 return subprocess.check_output(['git', *args], cwd=root, text=True, stderr=subprocess.DEVNULL).strip()
             git('init', '-q')
@@ -178,12 +192,7 @@ class NativeReleaseTests(unittest.TestCase):
     def test_release_packages_exactly_one_download_per_platform(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
-            for name in ['native-version.json', 'apps/browser/package.json', 'apps/browser/package-lock.json',
-                         'apps/desktop/nsh.json', 'apps/android/app/build.gradle.kts', 'apps/ios/project.yml',
-                         'config/signing/android-release-certificate.sha256']:
-                target = root / name
-                target.parent.mkdir(parents=True, exist_ok=True)
-                target.write_bytes((ROOT / name).read_bytes())
+            release_fixture(root, ['config/signing/android-release-certificate.sha256'])
             data = validate_versions(root)
             tag = 'v' + data['version']
             inputs = root / 'incoming'
