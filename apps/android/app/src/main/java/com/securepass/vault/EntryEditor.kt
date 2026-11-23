@@ -369,7 +369,7 @@ fun EntryEditor(
                     if (saveFailed) SaveFailureBanner(existing, t, ::save, ::copyFailureDetails, enabled = !busy, stale = failureKind == "StaleEdit")
                     error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                     if (working || deriving) LinearProgressIndicator(Modifier.fillMaxWidth())
-                    LegacyCredentialForm(
+                    CredentialForm(
                         draft,
                         vault,
                         t,

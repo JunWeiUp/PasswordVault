@@ -1,5 +1,8 @@
 package com.securepass.vault
 
+// The entry editor form for every credential type (ported from the former Flutter client;
+// the `legacy*` option lists keep their stored values for compatibility).
+
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -39,7 +42,7 @@ internal val legacyColors =
 
 @OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
-internal fun LegacyCredentialForm(
+internal fun CredentialForm(
     draft: JSONObject,
     vault: VaultRepository,
     t: (String, String) -> String,

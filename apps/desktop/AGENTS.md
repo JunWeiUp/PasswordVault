@@ -14,6 +14,15 @@ OS services and IPC policy.
 - `src/ai/`, `helpers/pv-mcp`, `helpers/pv-browser-host` — MCP and browser-host helpers.
 - `tests/*.test.tsx` — NSH UI tests with harnesses in `ui/**/TestHarness.tsx`.
 
+## Where new logic goes
+- Used by more than one client (desktop + a phone, or the browser) → `crates/vault-core`, exposed
+  as a registered command (`tool/new_op.py`). Relay protocol, group state machine and retry/exit
+  policy already live there (`vault_core::relay_protocol`).
+- Desktop-only behaviour → TypeScript in `ui/` first; Rust in `src/` only for OS services, file
+  streaming, crypto/storage access or IPC policy. Existing desktop-only Rust (`markdown.rs`,
+  `text_extract.rs`, `backup.rs`, `src/relay/journal.rs`, ...) stays here until a second client
+  needs it — move it into the core then, with its tests, instead of porting it.
+
 ## Checks
 - `bash tool/nsh_mac.sh check` — typecheck + Rust check.
 - `bash tool/nsh_mac.sh test-fast <suite|path|--rust filter>` — one suite on a cached `/tmp`
@@ -22,7 +31,8 @@ OS services and IPC policy.
 
 ## Rules
 - Do NOT run `cargo fmt` in `apps/desktop`: the crate is not rustfmt-clean and ~50 files would
-  be rewritten. Format only what you touch.
+  be rewritten. Format only what you touch (TS/TSX: `prettier --write <file>` with the local
+  `.prettierrc.json`).
 - Tests: wait for positive conditions with `app.waitUntil(...)`/`waitFor`, not fixed
   `app.wait(ms)` (debounced saves make sleeps flaky). Fixed waits are fine before asserting
   that something did NOT appear.
