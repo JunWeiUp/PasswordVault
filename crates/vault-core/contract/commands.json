@@ -1,6 +1,21 @@
 {
-  "$comment": "Single source of truth for the vault-core JSON command API (Vault::command). Ops not listed here are rejected with Unsupported. Edit this file, then run `python3 tool/core_contract.py generate`. Param names ending in '?' are optional; types: string|number|bool|object|array|any. `result` is documentation only.",
+  "$comment": "Single source of truth for the vault-core JSON command API (Vault::command). Ops not listed here are rejected with Unsupported. Edit this file, then run `python3 tool/core_contract.py generate` (TypeScript, Kotlin and Swift request builders). Param names ending in '?' are optional; types: string|number|bool|object|array|any. `result` documents the response in a TypeScript-like notation that the generator parses and validates; named shapes live in `types` (opaque ones are `object`).",
   "version": 1,
+  "types": {
+    "Item": "object",
+    "Revision": "{id:string,itemId:string,capturedAt:number,item:Item,actorType?:string,actor?:string,summary?:string,milestone?:bool}",
+    "Sealed": "object",
+    "AttachmentMeta": "object",
+    "MeshPacket": "object",
+    "MeshStatus": "object",
+    "PeerPacket": "object",
+    "PeerResult": "object",
+    "RelayPacket": "object",
+    "SystemAssertionResponse": "object",
+    "SystemRegistrationResponse": "object",
+    "WebAuthnAssertionResponse": "object",
+    "WebAuthnRegistrationResponse": "object"
+  },
   "commands": {
     "change-password": {
       "group": "vault",
@@ -514,7 +529,7 @@
       "params": {
         "uri": "string"
       },
-      "result": "{id,type:'totp',title,username,secret,period}"
+      "result": "{id:string,type:'totp',title:string,username:string,secret:string,period:number}"
     },
     "structured-fill": {
       "group": "tools",

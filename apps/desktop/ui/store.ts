@@ -8,7 +8,7 @@ import { bindNativeVault } from "./native";
 import { clearSearchIndex, searchItems } from "./search";
 import { catMatches, isAiActor } from "./notes/knowledge";
 import { sortMode } from "./preferences";
-import { createCoreApi, type CoreRequest, type MeshNoteConflictDto } from "./api/core";
+import { createCoreApi, type CoreRequest, type CoreResults, type MeshNoteConflictDto } from "./api/core";
 import { attachmentsNative } from "./api/nativeBridge";
 import {
   DEST_NAME,
@@ -34,8 +34,12 @@ export const vaultDirectory = vault.directory;
 /** Strongly-typed facade for `vault.command` JSON-RPC calls into `crates/vault-core`. */
 export const coreApi = createCoreApi(vault);
 
-export async function call<T = any>(request: CoreRequest): Promise<T> {
-  return coreApi.raw<T>(request);
+/** Without a type argument the result is the documented shape from commands.json
+ *  (`CoreResults`); an explicit `call<T>()` keeps a hand-written local type. */
+export function call<R extends CoreRequest>(request: R): Promise<CoreResults[R["op"]]>;
+export function call<T = any>(request: CoreRequest): Promise<T>;
+export function call(request: CoreRequest): Promise<unknown> {
+  return coreApi.raw(request);
 }
 
 // --- State -----------------------------------------------------------------

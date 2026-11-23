@@ -5,7 +5,7 @@ import type { Vault } from "passwordvault/native";
 import type { Item } from "./vaultMeta";
 import type { CoreRequest } from "./coreContract.generated";
 
-export type { CoreOp, CoreParams, CoreRequest } from "./coreContract.generated";
+export type { CoreOp, CoreParams, CoreRequest, CoreResults } from "./coreContract.generated";
 
 export type VaultStatus = { exists: boolean; unlocked: boolean };
 export type VaultListResult = { items: Item[]; settings: Record<string, any> };
