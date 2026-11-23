@@ -26,3 +26,7 @@ paths = ['(^|/)Cargo\.lock$']
 regexTarget = "match"
 regexes = ['crypto_secretbox']
 
+
+[[allowlists]]
+description = "SHA-256 checksums of the former vendored SDK sources (removed), not credentials"
+paths = ['''(^|/)vendor/common-relay/[^/]+/SOURCE\.json$''']
