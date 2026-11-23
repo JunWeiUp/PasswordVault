@@ -9,6 +9,7 @@
 //! changed without a full re-admission (only renames are allowed), matching the strict
 //! desktop rule.
 mod command;
+pub mod groups;
 pub mod policy;
 mod strict;
 
