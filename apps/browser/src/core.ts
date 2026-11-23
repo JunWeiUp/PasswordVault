@@ -9,18 +9,6 @@ let idleMinutes = 60;
 let checkpoint: string | undefined;
 let queue: Promise<unknown> = Promise.resolve();
 const readOnly = new Set([
-  "relay-peer-list",
-  "relay-peer-status",
-  "relay-peer-export",
-  "peer-transport-status",
-  "peer-transport-open",
-  "peer-transport-seal",
-  "relay-peer-status",
-  "relay-peer-list",
-  "relay-peer-export",
-  "peer-transport-status",
-  "peer-transport-open",
-  "peer-transport-seal",
   "list",
   "draft-read",
   "structured-list",
@@ -106,9 +94,7 @@ async function execute(request: Request): Promise<any> {
   }
   if (generation !== epoch || engine !== current) throw new Error("locked");
   if (
-    !["totp", "list", "matches"].includes(request.op) &&
-    !request.op.startsWith("relay-peer-") &&
-    !request.op.startsWith("peer-transport-")
+    !["totp", "list", "matches"].includes(request.op)
   )
     lastActivity = Date.now();
   const before = checkpoint!;
