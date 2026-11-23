@@ -24,6 +24,8 @@ internal data class RelayInvitationPreview(val input: String, val endpoint: Stri
 /** Debug builds only: instrumented tests may point the relay at ws://127.0.0.1 (via adb reverse). */
 internal object RelayLocalTest {
     @Volatile var enabled = false
+    /** Debug-only probe: store packets the core rejects in app-private cache for local reproduction. */
+    @Volatile var capturePackets = false
     val active: Boolean get() = enabled && BuildConfig.DEBUG
 }
 

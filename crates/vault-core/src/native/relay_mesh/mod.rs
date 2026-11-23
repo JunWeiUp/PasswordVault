@@ -466,6 +466,7 @@ impl DiskVault {
                 let mut next = open.document.clone();
                 next.format_version = next.format_version.max(format);
                 let mut working = mesh_records(&next);
+                let original = working.clone();
                 let tx = storage(open.connection.transaction())?;
                 receive_files(
                     &vault_dir,
@@ -697,7 +698,23 @@ impl DiskVault {
                 mesh.ensure_digests();
                 if changed {
                     install_mesh(&mut next, &working)?;
-                    validate_files(&tx, &next)?;
+                    // Validate attachments only for items this packet changed (including merged
+                    // concurrent notes). A pre-existing local item with a dangling attachment
+                    // reference must not block every future sync.
+                    let changed_items = Document {
+                        format_version: next.format_version,
+                        items: working
+                            .iter()
+                            .filter(|(key, value)| {
+                                key.starts_with("item:")
+                                    && !value.is_null()
+                                    && original.get(*key) != Some(*value)
+                            })
+                            .map(|(_, value)| value.clone())
+                            .collect(),
+                        ..Document::default()
+                    };
+                    validate_files(&tx, &changed_items)?;
                     let persisted =
                         note_bodies::sync_and_strip(&tx, &open.root, &open.header.vault_id, &next)?;
                     mesh.baseline_digests = mesh_digests(&persisted);

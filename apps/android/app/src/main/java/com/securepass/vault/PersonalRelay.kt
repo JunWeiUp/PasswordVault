@@ -488,7 +488,11 @@ internal class PersonalRelay(private val directory: File, private val vault: Vau
         val packet = JSONObject(String(data))
         if (packet.optInt("version") != 3 || packet.optString("kind") != "mesh") return false
         progress(generation, RelaySyncPhase.RECEIVING)
-        val result = vault.command(CoreRequest.relayMeshReceive(from, packet))
+        val result = try { vault.command(CoreRequest.relayMeshReceive(from, packet)) } catch (error: com.securepass.vault.core.VaultException) {
+            // Debug builds only, opt-in (instrumented probe): keep the rejected packet in app-private cache to reproduce it.
+            if (BuildConfig.DEBUG && RelayLocalTest.capturePackets) File(storage.parentFile, "mesh-rejected-${System.currentTimeMillis()}.json").writeText(packet.toString())
+            throw error
+        }
         val changed = result.optBoolean("changed")
         // Invalid individual records are skipped by vault-core; log their keys (ids only).
         result.optJSONArray("rejected")?.takeIf { it.length() > 0 }?.let { android.util.Log.w("PersonalRelay", "mesh records skipped from $from: $it") }

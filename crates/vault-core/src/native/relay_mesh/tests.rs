@@ -318,3 +318,20 @@ fn one_invalid_record_is_skipped_and_reported_instead_of_stalling_sync() {
     assert_eq!(titles.get("good").map(String::as_str), Some("Good"));
     assert!(!titles.contains_key("other") && !titles.contains_key("bad"));
 }
+
+#[test]
+fn a_local_note_with_a_dangling_attachment_does_not_block_unrelated_sync() {
+    let (da, db) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+    let mut a = replica(da.path(), "a", &["b"]);
+    let mut b = replica(db.path(), "b", &["a"]);
+    // A pre-existing local rich note whose attachment metadata never arrived on this device.
+    b.open().unwrap().document.items.push(json!({
+        "id":"legacy-note","type":"secureNote","title":"Legacy","noteFormat":"rich-v1","note":"",
+        "noteDocument":{"type":"doc","content":[{"type":"vaultAttachment","attrs":{"attachmentId":"missing"}}]}
+    }));
+    save(&mut a, "fresh", "Fresh");
+    assert!(deliver(&mut a, "a", &mut b, "b"));
+    let titles = titles(&mut b);
+    assert_eq!(titles.get("fresh").map(String::as_str), Some("Fresh"));
+    assert!(titles.contains_key("legacy-note"));
+}
