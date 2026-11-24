@@ -1982,7 +1982,7 @@ dependencies = [
 
 [[package]]
 name = "nsh-app-passwordvault"
-version = "2.5.8"
+version = "2.5.11"
 dependencies = [
  "aes-gcm",
  "base64 0.22.1",

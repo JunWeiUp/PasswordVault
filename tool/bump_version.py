@@ -27,7 +27,7 @@ def parse_semver(value: str) -> tuple[int, int, int]:
 
 def compute_metadata(current: dict, new_version: str) -> dict:
     major, minor, patch = parse_semver(new_version)
-    derived_code = major * 10000 + minor * 100 + patch
+    derived_code = major * 10000 + minor * 1000 + patch
     android_code = max(derived_code, int(current["android_version_code"]) + 1)
     return {
         "version": new_version,
@@ -84,6 +84,15 @@ def apply_bump(root: Path, new_version: str, dry_run: bool = False) -> dict:
     if count != 1:
         raise SystemExit("apps/desktop/Cargo.toml: failed to update [package] version.")
     desktop_cargo.write_text(updated_head + sep + tail, encoding="utf-8")
+
+    desktop_lock = root / "apps/desktop/Cargo.lock"
+    if desktop_lock.is_file():
+        replace_exact(
+            desktop_lock,
+            r'(name = "nsh-app-passwordvault"\nversion = )"[^"]+"',
+            rf'\g<1>"{new_version}"',
+            1,
+        )
 
     # 3. Android build.gradle.kts
     android_gradle = root / "apps/android/app/build.gradle.kts"

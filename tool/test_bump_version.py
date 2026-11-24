@@ -15,6 +15,7 @@ VERSION_FILES = [
     "apps/browser/package-lock.json",
     "apps/desktop/nsh.json",
     "apps/desktop/Cargo.toml",
+    "apps/desktop/Cargo.lock",
     "apps/android/app/build.gradle.kts",
     "apps/ios/project.yml",
 ]
@@ -24,8 +25,8 @@ class BumpVersionTests(unittest.TestCase):
     def test_compute_metadata_increments_builds_and_android_code(self):
         current = {"version": "2.5.8", "android_version_code": 25008, "macos_build": 48, "ios_build": 24}
         self.assertEqual(
-            compute_metadata(current, "2.5.9"),
-            {"version": "2.5.9", "android_version_code": 25009, "macos_build": 49, "ios_build": 25},
+            compute_metadata(current, "2.5.11"),
+            {"version": "2.5.11", "android_version_code": 25011, "macos_build": 49, "ios_build": 25},
         )
         # Same version still monotonically bumps build numbers / android versionCode
         self.assertEqual(
