@@ -4,12 +4,6 @@ on:
   pull_request:
     branches: [main, master]
     types: [opened, synchronize, reopened]
-  workflow_call:
-    inputs:
-      checks_only:
-        description: Run quality and security gates when the caller builds its own artifacts
-        type: boolean
-        default: false
   workflow_dispatch:
 
 permissions:

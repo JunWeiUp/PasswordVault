@@ -13,8 +13,16 @@ esac
 mobile_editor_built=false
 bundle_editor() {
   if [[ "$mobile_editor_built" == true ]]; then return; fi
-  npm --prefix apps/shared/note-editor ci --ignore-scripts
-  npm --prefix apps/shared/note-editor run build
+  local dir="apps/shared/note-editor"
+  local lock="$dir/package-lock.json"
+  local stamp="$dir/node_modules/.package-lock.stamp"
+  if [[ -n "${CI:-}" || ! -d "$dir/node_modules" || ! -f "$stamp" ]] || ! cmp -s "$lock" "$stamp"; then
+    npm --prefix "$dir" ci --ignore-scripts
+    if [[ -d "$dir/node_modules" && -f "$lock" ]]; then
+      cp "$lock" "$stamp"
+    fi
+  fi
+  npm --prefix "$dir" run build
   mobile_editor_built=true
 }
 bindings() {
@@ -24,7 +32,7 @@ bindings() {
     --config crates/vault-core/uniffi.toml
 }
 ios() {
-  local simulator_arch="${PASSWORDVAULT_IOS_SIM_ARCH:-universal}"
+  local simulator_arch="${PASSWORDVAULT_IOS_SIM_ARCH:-host}"
   if [[ "$simulator_arch" == host ]]; then simulator_arch="$(uname -m)"; fi
   local simulator_targets
   case "$simulator_arch" in
@@ -33,12 +41,19 @@ ios() {
     x86_64) simulator_targets=(x86_64-apple-ios) ;;
     *) echo 'Invalid PASSWORDVAULT_IOS_SIM_ARCH; use universal, host, arm64 or x86_64.' >&2; return 2 ;;
   esac
+  local ios_targets_mode="${PASSWORDVAULT_IOS_TARGETS:-all}"
+  local build_targets=()
+  case "$ios_targets_mode" in
+    all) build_targets=(aarch64-apple-ios "${simulator_targets[@]}") ;;
+    simulator) build_targets=("${simulator_targets[@]}") ;;
+    *) echo 'Invalid PASSWORDVAULT_IOS_TARGETS; use all or simulator.' >&2; return 2 ;;
+  esac
   bundle_editor
   mkdir -p apps/ios/Generated/Headers
   bindings swift apps/ios/Generated
   cp apps/ios/Generated/VaultCoreFFI.h apps/ios/Generated/Headers/
   cp apps/ios/Generated/VaultCoreFFI.modulemap apps/ios/Generated/Headers/module.modulemap
-  for mobile_target in aarch64-apple-ios "${simulator_targets[@]}"; do
+  for mobile_target in "${build_targets[@]}"; do
     IPHONEOS_DEPLOYMENT_TARGET=16.0 cargo build -p vault-core --release --locked --target "$mobile_target"
   done
   mkdir -p target/ios-simulator
@@ -50,14 +65,20 @@ ios() {
   if [[ -d apps/ios/Generated/VaultCore.xcframework ]]; then
     rm -rf apps/ios/Generated/VaultCore.xcframework
   fi
-  xcodebuild -create-xcframework \
-    -library target/aarch64-apple-ios/release/libvault_core.a -headers apps/ios/Generated/Headers \
-    -library target/ios-simulator/libvault_core.a -headers apps/ios/Generated/Headers \
-    -output apps/ios/Generated/VaultCore.xcframework
+  if [[ "$ios_targets_mode" == simulator ]]; then
+    xcodebuild -create-xcframework \
+      -library target/ios-simulator/libvault_core.a -headers apps/ios/Generated/Headers \
+      -output apps/ios/Generated/VaultCore.xcframework
+  else
+    xcodebuild -create-xcframework \
+      -library target/aarch64-apple-ios/release/libvault_core.a -headers apps/ios/Generated/Headers \
+      -library target/ios-simulator/libvault_core.a -headers apps/ios/Generated/Headers \
+      -output apps/ios/Generated/VaultCore.xcframework
+  fi
 }
 android() {
   local android_targets
-  case "${PASSWORDVAULT_ANDROID_ABI:-all}" in
+  case "${PASSWORDVAULT_ANDROID_ABI:-arm64-v8a}" in
     all) android_targets=(aarch64-linux-android x86_64-linux-android) ;;
     arm64-v8a) android_targets=(aarch64-linux-android) ;;
     x86_64) android_targets=(x86_64-linux-android) ;;

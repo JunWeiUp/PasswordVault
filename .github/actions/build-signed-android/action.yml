@@ -1,0 +1,73 @@
+name: Build signed Android ARM64 APK
+description: Install pinned Android/Rust toolchains, build vault-core, sign and verify the release ARM64 APK.
+inputs:
+  run_core_tests:
+    description: Run vault-core tests before building the Android library
+    required: false
+    default: 'false'
+  android_keystore_base64:
+    required: true
+  android_store_password:
+    required: true
+  android_key_alias:
+    required: true
+  android_key_password:
+    required: true
+  android_cert_sha256:
+    required: true
+runs:
+  using: composite
+  steps:
+    - uses: ./.github/actions/ci-rust-cache
+      with:
+        component: android
+    - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+      with:
+        distribution: temurin
+        java-version: '17'
+    - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4
+    - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
+      with:
+        packages: platform-tools
+        log-accepted-android-sdk-licenses: false
+    - name: Install pinned native targets
+      shell: bash
+      run: |
+        rustup toolchain install 1.98.0 --profile minimal --target aarch64-linux-android
+        sdkmanager 'platforms;android-36' 'build-tools;36.0.0' 'ndk;27.0.12077973'
+    - if: inputs.run_core_tests == 'true'
+      shell: bash
+      run: bash tool/check_native.sh core
+    - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+      with:
+        node-version: '22'
+        cache: npm
+        cache-dependency-path: apps/shared/note-editor/package-lock.json
+    - name: Build Android vault-core library
+      shell: bash
+      env:
+        PASSWORDVAULT_ANDROID_ABI: arm64-v8a
+      run: bash tool/build_mobile_core.sh android
+    - name: Configure private signing key
+      shell: bash
+      env:
+        ANDROID_KEYSTORE_BASE64: ${{ inputs.android_keystore_base64 }}
+        ANDROID_STORE_PASSWORD: ${{ inputs.android_store_password }}
+        ANDROID_KEY_ALIAS: ${{ inputs.android_key_alias }}
+        ANDROID_KEY_PASSWORD: ${{ inputs.android_key_password }}
+      run: python3 tool/configure_signing.py
+    - name: Build the non-debuggable signed ARM64 APK
+      shell: bash
+      run: |
+        mkdir -p release-input
+        ./apps/android/gradlew -p apps/android :app:assemblePreviewRelease -PtargetAbi=arm64-v8a
+        cp apps/android/app/build/outputs/apk/previewRelease/app-previewRelease.apk release-input/android-arm64-v8a.apk
+    - name: Verify signatures, package identity, versions and architectures
+      shell: bash
+      env:
+        ANDROID_CERT_SHA256: ${{ inputs.android_cert_sha256 }}
+      run: python3 tool/native_release.py android
+    - name: Remove ephemeral signing material
+      if: always()
+      shell: bash
+      run: rm -f private/signing/android/key.properties "$RUNNER_TEMP/passwordvault-release.jks"

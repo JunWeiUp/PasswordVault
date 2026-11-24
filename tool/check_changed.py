@@ -34,7 +34,7 @@ STEPS = {
     "browser": ["bash", "tool/check_native.sh", "browser"],
     "android-core": ["bash", "tool/build_mobile_core.sh", "android"],
     "android": ["bash", "tool/check_quick.sh", "android"],
-    "ios-core": ["bash", "tool/build_mobile_core.sh", "ios"],
+    "ios-core": ["env", "PASSWORDVAULT_IOS_TARGETS=simulator", "bash", "tool/build_mobile_core.sh", "ios"],
     "ios": ["bash", "tool/check_quick.sh", "ios-test"],
 }
 ORDER = list(STEPS)

@@ -63,26 +63,32 @@ elif name=='xcodebuild': Path(args[args.index('-output')+1]).mkdir(parents=True)
             ['npm', '--prefix', 'apps/shared/note-editor', 'run', 'build']])
         self.assertLess(calls.index(npm[-1]), next(i for i, call in enumerate(calls) if call[0] == 'cargo'))
 
-    def test_android_default_keeps_both_abis(self):
+    def test_android_default_builds_arm64_for_fast_local_dev(self):
         result, targets, _ = self.build('android')
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(targets, ['aarch64-linux-android', 'x86_64-linux-android'])
-
-    def test_android_ci_builds_only_packaged_abi(self):
-        result, targets, _ = self.build('android', PASSWORDVAULT_ANDROID_ABI='arm64-v8a')
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(targets, ['aarch64-linux-android'])
 
-    def test_ios_default_keeps_device_and_universal_simulator(self):
+    def test_android_all_builds_both_abis(self):
+        result, targets, _ = self.build('android', PASSWORDVAULT_ANDROID_ABI='all')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(targets, ['aarch64-linux-android', 'x86_64-linux-android'])
+
+    def test_ios_default_builds_device_and_host_simulator(self):
         result, targets, calls = self.build('ios')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(targets, ['aarch64-apple-ios', 'aarch64-apple-ios-sim'])
+        self.assertFalse(any(call[0]=='lipo' for call in calls))
+
+    def test_ios_universal_builds_device_and_both_simulators(self):
+        result, targets, calls = self.build('ios', PASSWORDVAULT_IOS_SIM_ARCH='universal')
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(targets, ['aarch64-apple-ios', 'aarch64-apple-ios-sim', 'x86_64-apple-ios'])
         self.assertTrue(any(call[0]=='lipo' for call in calls))
 
-    def test_ios_host_still_compiles_device(self):
-        result, targets, calls = self.build('ios', PASSWORDVAULT_IOS_SIM_ARCH='host')
+    def test_ios_simulator_only_skips_device_build(self):
+        result, targets, calls = self.build('ios', PASSWORDVAULT_IOS_TARGETS='simulator')
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(targets, ['aarch64-apple-ios', 'aarch64-apple-ios-sim'])
+        self.assertEqual(targets, ['aarch64-apple-ios-sim'])
         self.assertFalse(any(call[0]=='lipo' for call in calls))
 
     def test_ios_intel_simulator(self):
@@ -92,7 +98,8 @@ elif name=='xcodebuild': Path(args[args.index('-output')+1]).mkdir(parents=True)
 
     def test_invalid_architectures_fail_before_compilation(self):
         for platform, options in [('android', {'PASSWORDVAULT_ANDROID_ABI': 'invalid'}),
-                                  ('ios', {'PASSWORDVAULT_IOS_SIM_ARCH': 'invalid'})]:
+                                  ('ios', {'PASSWORDVAULT_IOS_SIM_ARCH': 'invalid'}),
+                                  ('ios', {'PASSWORDVAULT_IOS_TARGETS': 'invalid'})]:
             result, targets, _ = self.build(platform, **options)
             self.assertEqual(result.returncode, 2)
             self.assertEqual(targets, [])

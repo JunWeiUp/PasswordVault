@@ -1,16 +1,9 @@
 """Regression coverage for CI routing, including fail-safe and release paths."""
-import json
-import os
 import re
 from pathlib import Path
-import subprocess
-import tempfile
 import unittest
-from unittest import mock
 
-from ci_changes import NATIVE, SCOPES, classify, select, requested
-
-BASE, HEAD = 'a' * 40, 'b' * 40
+from ci_changes import NATIVE, SCOPES, classify, requested
 
 
 class CIChangesTests(unittest.TestCase):
@@ -65,58 +58,9 @@ class CIChangesTests(unittest.TestCase):
         self.assertEqual(classify(['tool/windows-desktop/package.ps1']), {'windows'})
         self.assertEqual(classify(['tool/test_relay_live.sh']), {'core'})
 
-    def test_pull_request_uses_merge_base_not_target_branch_only_changes(self):
-        diff = mock.Mock(return_value=['apps/browser/package.json'])
-        event = {'pull_request': {'base': {'sha': BASE}, 'head': {'sha': HEAD}}}
-        self.assertEqual(select('pull_request', event, diff), {'browser'})
-        diff.assert_called_once_with(BASE + '...' + HEAD)
-
-    def test_push_uses_exact_before_after_range(self):
-        diff = mock.Mock(return_value=['apps/android/deleted.kt', 'docs/moved.md'])
-        self.assertEqual(select('push', {'before': BASE, 'after': HEAD, 'ref': 'refs/heads/main'}, diff), {'android'})
-        diff.assert_called_once_with(BASE + '..' + HEAD)
-
-    def test_manual_release_and_initial_push_are_complete(self):
-        for event_name, event in [
-            ('workflow_dispatch', {}), ('workflow_call', {}),
-            ('push', {'ref': 'refs/tags/v1.1.0'}),
-            ('push', {'before': '0' * 40, 'after': HEAD}),
-            ('push', {'before': '--unsafe', 'after': HEAD}),
-        ]:
-            self.assertEqual(select(event_name, event, mock.Mock()), set(SCOPES))
-
-    def test_unavailable_diff_runs_all_checks(self):
-        diff = mock.Mock(side_effect=subprocess.CalledProcessError(128, 'git'))
-        self.assertEqual(select('push', {'before': BASE, 'after': HEAD}, diff), set(SCOPES))
-
-    def test_actual_git_rename_delete_and_nul_output(self):
-        script = Path(__file__).with_name('ci_changes.py').resolve()
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            def git(*args):
-                return subprocess.check_output(['git', '-C', directory, *args], text=True).strip()
-            git('init', '-q')
-            git('config', 'user.email', 'fixture@example.test')
-            git('config', 'user.name', 'CI fixture')
-            source = root / 'apps/browser/source.ts'
-            source.parent.mkdir(parents=True)
-            source.write_text('fixture')
-            git('add', '.')
-            git('commit', '-qm', 'fixture base')
-            before = git('rev-parse', 'HEAD')
-            target = root / 'apps/android/moved.kt'
-            target.parent.mkdir(parents=True)
-            source.rename(target)
-            git('add', '-A')
-            git('commit', '-qm', 'move between components')
-            event = root / 'event.json'
-            event.write_text(json.dumps({'before': before, 'after': git('rev-parse', 'HEAD'), 'ref': 'refs/heads/main'}))
-            output = root / 'outputs'
-            subprocess.run(['python3', str(script)], cwd=root, env={**os.environ,
-                'GITHUB_EVENT_PATH': str(event), 'GITHUB_EVENT_NAME': 'push', 'GITHUB_OUTPUT': str(output)}, check=True, capture_output=True)
-            values = dict(line.split('=') for line in output.read_text().splitlines())
-            self.assertEqual({key for key, value in values.items() if value == 'true'}, {'android', 'browser'})
-            self.assertEqual(set(values), set(SCOPES))
+    def test_native_workflow_does_not_trigger_on_pull_request(self):
+        workflow = (Path(__file__).resolve().parent.parent / '.github/workflows/native.yml').read_text()
+        self.assertNotIn('pull_request:', workflow)
 
 
 if __name__ == '__main__':

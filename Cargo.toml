@@ -2,11 +2,14 @@
 members = ["crates/vault-core"]
 resolver = "2"
 
-# Keep local Debug/test artifacts small; opt in to debug info when needed.
+# Keep local Debug/test artifacts small while keeping fast incremental rebuilds.
 [profile.dev]
 debug = 0
-incremental = false
 strip = "debuginfo"
+
+# Optimize dependencies (crypto/SQLCipher) once so dev tests run near release speed.
+[profile.dev.package."*"]
+opt-level = 2
 
 # Prefer smaller release code while retaining loop vectorization for crypto.
 [profile.release]
