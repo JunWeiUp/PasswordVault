@@ -50,7 +50,8 @@ mod implementation {
     }
 
     fn schema_doc() -> Value {
-        serde_json::from_str(TOOLS_SCHEMA_JSON).expect("embedded tools.schema.json must be valid JSON")
+        serde_json::from_str(TOOLS_SCHEMA_JSON)
+            .expect("embedded tools.schema.json must be valid JSON")
     }
 
     fn instructions() -> String {
@@ -93,7 +94,9 @@ mod implementation {
             "AppUnavailable" => "PasswordVault is not running",
             "ApprovalDenied" => "the user declined",
             "ApprovalTimeout" => "the user did not answer in time",
-            "UnscopedOrMissing" => "no such entry, or its category is not shared; use find to get a valid id",
+            "UnscopedOrMissing" => {
+                "no such entry, or its category is not shared; use find to get a valid id"
+            }
             "DeniedField" | "MissingField" => {
                 "that field is not available; use a name from secretFields returned by read"
             }
@@ -129,8 +132,12 @@ mod implementation {
             }
             "UnsupportedFormat" => "could not extract plain text from this file format",
             "MissingFile" => "attachmentId not found on this note",
-            "AmbiguousReference" => "several entries share that title; call find and pass the exact id",
-            "UseNoteContent" => "this is a Markdown note; update it with content and mode instead of note",
+            "AmbiguousReference" => {
+                "several entries share that title; call find and pass the exact id"
+            }
+            "UseNoteContent" => {
+                "this is a Markdown note; update it with content and mode instead of note"
+            }
             "PlaceholderNotResolved" => {
                 "your shell did not resolve the chat placeholders either, so this client cannot deliver the real values; tell the user which fields are missing and stop retrying"
             }
@@ -162,7 +169,12 @@ mod implementation {
     /// processes can see) and redeems the ticket instead of a token.
     fn ticket_cli(ticket: &str) -> i32 {
         let mut input = String::new();
-        if io::stdin().lock().take(65_000).read_to_string(&mut input).is_err() {
+        if io::stdin()
+            .lock()
+            .take(65_000)
+            .read_to_string(&mut input)
+            .is_err()
+        {
             eprintln!("InvalidData: could not read stdin");
             return 1;
         }
@@ -252,7 +264,9 @@ mod implementation {
                     let (error, text) = match rpc(req) {
                         Ok(v) if v["ok"] == true => (false, v["result"].to_string()),
                         Ok(v) => match v["ticket"].as_str() {
-                            Some(t) if v["error"] == "RedactedPlaceholderDetected" => (true, shell_retry_hint(t)),
+                            Some(t) if v["error"] == "RedactedPlaceholderDetected" => {
+                                (true, shell_retry_hint(t))
+                            }
                             _ => (true, explain(v["error"].as_str().unwrap_or(""))),
                         },
                         Err(e) => (true, explain(&e)),

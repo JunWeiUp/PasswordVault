@@ -89,11 +89,18 @@ fn invitation_vectors_and_tamper() {
     assert_eq!(none, None);
     // The server access password may ride in the fragment as `#key.<base64url>`.
     let access = v["access_password"].as_str().unwrap();
-    assert_eq!(make_link(&v["invitation"], &key, Some(access)).unwrap(), v["link_with_password"]);
+    assert_eq!(
+        make_link(&v["invitation"], &key, Some(access)).unwrap(),
+        v["link_with_password"]
+    );
     let (_, _, with_key, with) = parse_link(v["link_with_password"].as_str().unwrap()).unwrap();
     assert_eq!((with_key, with.as_deref()), (key.clone(), Some(access)));
     for suffix in v["invalid_link_suffixes"].as_array().unwrap() {
-        let link = format!("{}{}", v["link"].as_str().unwrap(), suffix.as_str().unwrap());
+        let link = format!(
+            "{}{}",
+            v["link"].as_str().unwrap(),
+            suffix.as_str().unwrap()
+        );
         assert!(parse_link(&link).is_err(), "{link}");
     }
     assert!(open_invitation(&packet, &[0; 32]).is_err());
@@ -180,7 +187,10 @@ fn local_v2_websocket_hello_identity_and_presence() {
                 .set_read_timeout(Some(std::time::Duration::from_secs(3)))
                 .unwrap();
             let mut socket = accept_hdr(socket, |req: &Request, response: Response| {
-                assert_eq!(req.headers()["authorization"], format!("Bearer {}", "t".repeat(48)).as_str());
+                assert_eq!(
+                    req.headers()["authorization"],
+                    format!("Bearer {}", "t".repeat(48)).as_str()
+                );
                 assert_eq!(req.headers()["relay-access"], "synthetic-access");
                 assert!(req.headers().get("sec-websocket-protocol").is_none());
                 Ok(response)
@@ -188,7 +198,9 @@ fn local_v2_websocket_hello_identity_and_presence() {
             .unwrap();
             let device = if mismatch { "impostor" } else { "mac" };
             socket
-                .send(Message::Text(json!({"type":"hello","from":device}).to_string().into()))
+                .send(Message::Text(
+                    json!({"type":"hello","from":device}).to_string().into(),
+                ))
                 .unwrap();
             if mismatch {
                 let _ = socket.read();

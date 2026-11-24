@@ -37,8 +37,12 @@ pub fn write(w: &mut impl Write, value: &Value) -> Result<(), String> {
 pub fn bundle() -> Result<PathBuf, String> {
     let exe = std::env::current_exe().map_err(|_| "unavailable")?;
     exe.ancestors()
-        .find(|p| p.file_name().is_some_and(|v|v=="Contents") && p.join("Resources/BrowserIdentity.json").is_file())
-        .map(Path::to_path_buf).ok_or("Signed preview bundle required".into())
+        .find(|p| {
+            p.file_name().is_some_and(|v| v == "Contents")
+                && p.join("Resources/BrowserIdentity.json").is_file()
+        })
+        .map(Path::to_path_buf)
+        .ok_or("Signed preview bundle required".into())
 }
 pub fn identity(contents: &Path) -> Result<String, String> {
     let value: Value = serde_json::from_slice(

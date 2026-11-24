@@ -257,9 +257,9 @@ pub(crate) fn write_new(path: &Path, bytes: &[u8]) -> Result<(), String> {
     let result: Result<(), &str> = (|| {
         let mut options = std::fs::OpenOptions::new();
         options.write(true).create_new(true);
-        #[cfg(unix)] options.mode(0o600);
-        let mut file = options.open(&staging)
-            .map_err(|_| "Storage")?;
+        #[cfg(unix)]
+        options.mode(0o600);
+        let mut file = options.open(&staging).map_err(|_| "Storage")?;
         file.write_all(bytes)
             .and_then(|_| file.sync_all())
             .map_err(|_| "Storage")?;
@@ -337,7 +337,8 @@ impl Backup {
                 json!({"op":"export-cxf","currentPassword":password.as_str()}),
             )?);
             let mut value: Value = serde_json::from_str(&output).map_err(|_| "InvalidData")?;
-            let content = Zeroizing::new(value["content"].as_str().ok_or("InvalidData")?.to_owned());
+            let content =
+                Zeroizing::new(value["content"].as_str().ok_or("InvalidData")?.to_owned());
             value["content"] = Value::Null;
             write_new(Path::new(&path), content.as_bytes())?;
             Ok(json!({"skipped":value["skipped"]}).to_string())
@@ -371,8 +372,11 @@ impl Backup {
     pub async fn webdav(vault: Instance<Vault>, options: String) -> Result<String, String> {
         let session = vault.with(|v| v.session.clone()).ok_or("Locked")?;
         blocking(move || {
-            let status: Value = serde_json::from_str(&command(&session, json!({"op":"status"}))?).map_err(|_| "InvalidData")?;
-            if status["unlocked"] != true { return Err("Locked".into()); }
+            let status: Value = serde_json::from_str(&command(&session, json!({"op":"status"}))?)
+                .map_err(|_| "InvalidData")?;
+            if status["unlocked"] != true {
+                return Err("Locked".into());
+            }
             let options = Zeroizing::new(options);
             let o: Value = serde_json::from_str(&options).map_err(|_| "InvalidData")?;
             let dav = Dav::new(&o["config"])?;
@@ -461,7 +465,8 @@ mod tests {
         let root = std::env::temp_dir().join(format!("pv-backup-test-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir(&root).unwrap();
         let source =
-            crate::session::VaultSession::new(root.join("source").to_string_lossy().into()).unwrap();
+            crate::session::VaultSession::new(root.join("source").to_string_lossy().into())
+                .unwrap();
         let destination =
             crate::session::VaultSession::new(root.join("destination").to_string_lossy().into())
                 .unwrap();

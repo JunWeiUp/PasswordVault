@@ -5,10 +5,10 @@ use super::{
     invalid,
     protocol::*,
 };
+use crate::session::VaultSession;
 use base64::{Engine, engine::general_purpose::STANDARD};
 use serde_json::{Value, json};
 use std::sync::Mutex;
-use crate::session::VaultSession;
 pub static CONTROL: Mutex<()> = Mutex::new(());
 // Serialize remote group operations without holding the local commit lock over HTTP.
 static NETWORK: Mutex<()> = Mutex::new(());
@@ -129,7 +129,9 @@ pub fn execute(s: &VaultSession, request: Value, local: bool) -> Result<String> 
     let mut save = |g: &Value| {
         let _commit = CONTROL.lock().map_err(|_| "Storage")?;
         let latest = read(s)?;
-        if latest["device"] != expected_device { return Err("RelayIdentityChanged".into()); }
+        if latest["device"] != expected_device {
+            return Err("RelayIdentityChanged".into());
+        }
         // HTTP must not roll back concurrent pause, grant, receipt or revocation.
         c = latest;
         stash(s, &mut c, g)
@@ -194,7 +196,9 @@ pub fn execute(s: &VaultSession, request: Value, local: bool) -> Result<String> 
     drop(save);
     let _commit = CONTROL.lock().map_err(|_| "Storage")?;
     c = read(s)?;
-    if c["device"] != expected_device { return Err("RelayIdentityChanged".into()); }
+    if c["device"] != expected_device {
+        return Err("RelayIdentityChanged".into());
+    }
     if matches!(op, "leave" | "disband") {
         clear_local(s, &mut c)?;
     } else if g["group_entry"].is_object() {
@@ -242,13 +246,25 @@ pub fn exit_local(s: &VaultSession, disband: bool) -> Result<(String, Value)> {
     let remote = group(&c)?;
     // Never orphan a group: validate the signed exit offline before clearing local state.
     let mut discard = |_: &Value| Ok(());
-    Groups { config: remote.clone(), api: Http { local: false }, save: &mut discard, local: false }.check_exit(disband)?;
+    Groups {
+        config: remote.clone(),
+        api: Http { local: false },
+        save: &mut discard,
+        local: false,
+    }
+    .check_exit(disband)?;
     clear_local(s, &mut c)?;
     Ok((display(&c)?.to_string(), remote))
 }
 pub fn notify_exit(config: Value, disband: bool, local: bool) -> Result<()> {
     let mut discard = |_: &Value| Ok(());
-    Groups { config, api: Http { local }, save: &mut discard, local }.exit(disband)
+    Groups {
+        config,
+        api: Http { local },
+        save: &mut discard,
+        local,
+    }
+    .exit(disband)
 }
 
 fn clear_local(s: &VaultSession, c: &mut Value) -> Result<()> {
@@ -265,8 +281,12 @@ fn clear_local(s: &VaultSession, c: &mut Value) -> Result<()> {
         "pendingAdmission",
         "accessRevision",
         "accessEnabled",
-        "peerExpectedLibrary", "peerPendingLocalLibrary", "peerFounderKey",
-        "peerPreviousLibrary", "peerPreviousPeers", "peerPreviousPaused",
+        "peerExpectedLibrary",
+        "peerPendingLocalLibrary",
+        "peerFounderKey",
+        "peerPreviousLibrary",
+        "peerPreviousPeers",
+        "peerPreviousPaused",
     ] {
         c.as_object_mut().ok_or("InvalidData")?.remove(k);
     }

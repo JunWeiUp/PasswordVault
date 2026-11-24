@@ -219,7 +219,10 @@ impl Attachments {
                 json!({"op":"note-attachment-cache-get","noteId":note_id,"id":id}).to_string(),
             ) {
                 if let Ok(parsed) = serde_json::from_str::<Value>(&raw) {
-                    if let Some(url) = parsed["thumb"]["dataUrl"].as_str().filter(|s| !s.is_empty()) {
+                    if let Some(url) = parsed["thumb"]["dataUrl"]
+                        .as_str()
+                        .filter(|s| !s.is_empty())
+                    {
                         return Ok(json!({
                             "dataUrl": url,
                             "width": parsed["thumb"]["width"],
@@ -324,9 +327,8 @@ impl Attachments {
                             .as_u64()
                             .unwrap_or(ex_text.chars().count() as u64)
                             as usize;
-                        let cached_truncated = cached["excerpt"]["truncated"]
-                            .as_bool()
-                            .unwrap_or(false);
+                        let cached_truncated =
+                            cached["excerpt"]["truncated"].as_bool().unwrap_or(false);
                         if !cached_truncated || cap <= CACHE_EXCERPT_CHARS {
                             let snippet: String = ex_text.chars().take(cap).collect();
                             return Ok(json!({
@@ -350,7 +352,10 @@ impl Attachments {
                 .and_then(|arr| arr.iter().find(|a| a["id"] == id))
                 .ok_or("InvalidData")?;
             if meta["state"].as_str() == Some("remote") {
-                return Ok(json!({"text": null, "totalChars": 0, "truncated": false, "remote": true}).to_string());
+                return Ok(
+                    json!({"text": null, "totalChars": 0, "truncated": false, "remote": true})
+                        .to_string(),
+                );
             }
             let name = meta["name"].as_str().unwrap_or("");
             let mime = meta["mime"].as_str().unwrap_or("");
@@ -391,7 +396,9 @@ impl Attachments {
                     })
                     .to_string())
                 }
-                Err(_) => Ok(json!({"text": null, "totalChars": 0, "truncated": false}).to_string()),
+                Err(_) => {
+                    Ok(json!({"text": null, "totalChars": 0, "truncated": false}).to_string())
+                }
             }
         })
         .await
@@ -405,11 +412,9 @@ impl Attachments {
         id: String,
     ) -> Result<String, String> {
         let session = vault.with(|v| v.session.clone()).ok_or("Locked")?;
-        blocking(move || {
-            asset_sessions::quick_look(&session, &note_id, &id).map(|v| v.to_string())
-        })
-        .await
-        .map_err(|_| "Storage".to_string())?
+        blocking(move || asset_sessions::quick_look(&session, &note_id, &id).map(|v| v.to_string()))
+            .await
+            .map_err(|_| "Storage".to_string())?
     }
 
     /// Tier 2 external open in a third-party app with change watching for one-click write-back.

@@ -57,7 +57,11 @@ fn attachment(url: &str, title: &str, label: &str, is_image: bool) -> Option<Val
         if id.is_empty() || id.len() > 128 || id.chars().any(char::is_control) {
             return None;
         }
-        let name = if label.trim().is_empty() { "attachment" } else { label.trim() };
+        let name = if label.trim().is_empty() {
+            "attachment"
+        } else {
+            label.trim()
+        };
         return Some(if is_image {
             json!({
                 "type": "vaultImage",
@@ -276,7 +280,13 @@ fn url(s: &str) -> String {
 }
 /// Markdown strips line-edge whitespace; encode it as entities so it survives a round trip.
 fn protect_edges(s: &str) -> String {
-    let ent = |c: char| if c == '\t' { "&#9;".to_string() } else { "&#32;".to_string() };
+    let ent = |c: char| {
+        if c == '\t' {
+            "&#9;".to_string()
+        } else {
+            "&#32;".to_string()
+        }
+    };
     s.split('\n')
         .map(|line| {
             let body = line.trim_matches([' ', '\t']);
@@ -420,7 +430,9 @@ fn render(n: &Value) -> String {
                         .iter()
                         .map(|cell| content(cell)
                             .iter()
-                            .map(|p| protect_edges(&trimmed(p).iter().map(inline).collect::<String>()))
+                            .map(|p| protect_edges(
+                                &trimmed(p).iter().map(inline).collect::<String>()
+                            ))
                             .collect::<Vec<_>>()
                             .join(" ")
                             .replace('\n', " "))
@@ -483,7 +495,11 @@ fn normalize(n: &Value) -> Value {
     if let Some(marks) = n["marks"].as_array() {
         // An empty textStyle (all attributes null) carries no formatting.
         let blank_style = |m: &Value| m["type"] == "textStyle" && m.get("attrs").is_none();
-        let mut m: Vec<_> = marks.iter().map(normalize).filter(|m| !blank_style(m)).collect();
+        let mut m: Vec<_> = marks
+            .iter()
+            .map(normalize)
+            .filter(|m| !blank_style(m))
+            .collect();
         m.sort_by_key(Value::to_string);
         if m.is_empty() {
             v.as_object_mut().unwrap().remove("marks");
@@ -499,7 +515,9 @@ fn normalize(n: &Value) -> Value {
             children
         };
         // Blank paragraphs are spacing only; Markdown collapses them.
-        let empty = |c: &Value| c["type"] == "paragraph" && c.get("content").is_none() && c.get("attrs").is_none();
+        let empty = |c: &Value| {
+            c["type"] == "paragraph" && c.get("content").is_none() && c.get("attrs").is_none()
+        };
         for child in children.iter().map(normalize).filter(|c| !empty(c)) {
             if let Some(last) = out.last_mut() {
                 let mut a = last.clone();
@@ -654,7 +672,13 @@ fn readable_block(n: &Value) -> String {
         ),
         "blockquote" => join_children()
             .lines()
-            .map(|l| if l.is_empty() { ">".into() } else { format!("> {l}") })
+            .map(|l| {
+                if l.is_empty() {
+                    ">".into()
+                } else {
+                    format!("> {l}")
+                }
+            })
             .collect::<Vec<_>>()
             .join("\n"),
         "bulletList" => content(n)
@@ -689,7 +713,14 @@ fn readable_block(n: &Value) -> String {
                 .iter()
                 .map(|c| c["text"].as_str().unwrap_or(""))
                 .collect();
-            let fence = "`".repeat(body.split(|c| c != '`').map(str::len).max().unwrap_or(0).max(2) + 1);
+            let fence = "`".repeat(
+                body.split(|c| c != '`')
+                    .map(str::len)
+                    .max()
+                    .unwrap_or(0)
+                    .max(2)
+                    + 1,
+            );
             format!("{fence}{lang}\n{body}\n{fence}")
         }
         "horizontalRule" => "---".into(),
@@ -732,7 +763,10 @@ fn readable_block(n: &Value) -> String {
 }
 
 fn collect_attachment_nodes(node: &Value, map: &mut std::collections::HashMap<String, Value>) {
-    if matches!(node["type"].as_str(), Some("vaultImage" | "vaultAttachment")) {
+    if matches!(
+        node["type"].as_str(),
+        Some("vaultImage" | "vaultAttachment")
+    ) {
         if let Some(id) = node["attrs"]["attachmentId"].as_str() {
             map.insert(id.to_owned(), node.clone());
         }
@@ -749,16 +783,17 @@ fn apply_attachment_attrs(
     known: &std::collections::HashMap<String, Value>,
     metas: &std::collections::HashMap<String, Value>,
 ) {
-    if matches!(node["type"].as_str(), Some("vaultImage" | "vaultAttachment")) {
+    if matches!(
+        node["type"].as_str(),
+        Some("vaultImage" | "vaultAttachment")
+    ) {
         if let Some(id) = node["attrs"]["attachmentId"].as_str().map(str::to_owned) {
             if let Some(prev) = known.get(&id) {
                 *node = prev.clone();
                 return;
             }
             if let Some(meta) = metas.get(&id) {
-                let mime = meta["mime"]
-                    .as_str()
-                    .unwrap_or("application/octet-stream");
+                let mime = meta["mime"].as_str().unwrap_or("application/octet-stream");
                 let name = meta["name"]
                     .as_str()
                     .or_else(|| node["attrs"]["name"].as_str())
@@ -923,7 +958,10 @@ pub(crate) fn append_markdown(
         if base.is_empty() {
             return Ok(add.to_owned());
         }
-        let table_join = base.lines().last().is_some_and(|l| l.trim_start().starts_with('|'))
+        let table_join = base
+            .lines()
+            .last()
+            .is_some_and(|l| l.trim_start().starts_with('|'))
             && add.starts_with('|');
         return Ok(format!(
             "{base}{}{add}",
@@ -944,7 +982,11 @@ pub(crate) fn append_markdown(
     while insert_at > 0 && lines[insert_at - 1].trim().is_empty() {
         insert_at -= 1;
     }
-    let prev_line = if insert_at > 0 { lines[insert_at - 1] } else { "" };
+    let prev_line = if insert_at > 0 {
+        lines[insert_at - 1]
+    } else {
+        ""
+    };
     let tight_join = (prev_line.trim_start().starts_with('|') && add.starts_with('|'))
         || (prev_line.trim_start().starts_with("- ") && add.starts_with("- "));
     let mut out = Vec::new();
@@ -1017,7 +1059,10 @@ mod tests {
     use super::*;
     #[test]
     fn html_export_escapes_the_title_and_drops_raw_html() {
-        let page = html_page("# 标题\n\n<script>alert(1)</script>\n\n**粗体**", "a<b>&\"c");
+        let page = html_page(
+            "# 标题\n\n<script>alert(1)</script>\n\n**粗体**",
+            "a<b>&\"c",
+        );
         assert!(page.contains("<title>a&lt;b&gt;&amp;&quot;c</title>"));
         assert!(page.contains("<strong>粗体</strong>"));
         assert!(!page.contains("<script>"));
@@ -1155,13 +1200,15 @@ mod tests {
         assert!(extracted.contains("[[年度复盘]]"));
         assert!(!extracted.contains("调仓日志"));
 
-        let appended =
-            append_markdown(&readable, Some("调仓日志"), "- 2026-10-05: 增持").unwrap();
+        let appended = append_markdown(&readable, Some("调仓日志"), "- 2026-10-05: 增持").unwrap();
         assert!(appended.contains("- 2026-10-01: 初始建仓\n- 2026-10-05: 增持"));
 
-        let replaced =
-            replace_section(&appended, "持仓明细", "| 日期 | 标的 |\n| --- | --- |\n| 2026-10-05 | NVDA |")
-                .unwrap();
+        let replaced = replace_section(
+            &appended,
+            "持仓明细",
+            "| 日期 | 标的 |\n| --- | --- |\n| 2026-10-05 | NVDA |",
+        )
+        .unwrap();
         assert!(replaced.contains("## 持仓明细"));
         assert!(replaced.contains("| 2026-10-05 | NVDA |"));
         assert!(replaced.contains("## 调仓日志"));

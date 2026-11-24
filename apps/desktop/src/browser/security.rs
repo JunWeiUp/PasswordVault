@@ -112,9 +112,16 @@ pub fn signing_identity(path: &Path) -> Option<Vec<u8>> {
 fn cached_code_hash(path: &Path) -> Option<Vec<u8>> {
     use std::os::unix::fs::MetadataExt;
     type Key = (u64, u64, u64, i64, i64);
-    static CACHE: std::sync::Mutex<Option<(std::path::PathBuf, Key, Vec<u8>)>> = std::sync::Mutex::new(None);
+    static CACHE: std::sync::Mutex<Option<(std::path::PathBuf, Key, Vec<u8>)>> =
+        std::sync::Mutex::new(None);
     let meta = std::fs::metadata(path).ok()?;
-    let key: Key = (meta.dev(), meta.ino(), meta.size(), meta.mtime(), meta.mtime_nsec());
+    let key: Key = (
+        meta.dev(),
+        meta.ino(),
+        meta.size(),
+        meta.mtime(),
+        meta.mtime_nsec(),
+    );
     if let Ok(cache) = CACHE.lock() {
         if let Some((cached, k, hash)) = cache.as_ref() {
             if cached == path && *k == key {

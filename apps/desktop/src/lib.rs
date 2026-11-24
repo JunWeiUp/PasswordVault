@@ -33,12 +33,12 @@ mod markdown;
 mod qr_import;
 mod recovery_io;
 mod rich_notes;
-mod text_extract;
 #[cfg(target_os = "macos")]
 mod script_runner;
 #[cfg(not(target_os = "macos"))]
 #[path = "windows/scripts.rs"]
 mod script_runner;
+mod text_extract;
 
 use crate::session::VaultSession;
 use nsh_core::prelude::*;
@@ -204,9 +204,11 @@ fn shared_session(directory: &std::path::Path) -> Result<Arc<VaultSession>, Stri
         .map_err(|_| "Storage".to_string())?;
     if let Some(session) = sessions.get(directory).and_then(Weak::upgrade) {
         // Component fixtures start locked; a packaged UI reconnect preserves state.
-        #[cfg(target_os="macos")]
+        #[cfg(target_os = "macos")]
         if std::env::var_os("PV_ALLOW_LOCAL_SESSION").is_some() {
-            session.command(r#"{"op":"lock"}"#.into()).map_err(error_code)?;
+            session
+                .command(r#"{"op":"lock"}"#.into())
+                .map_err(error_code)?;
         }
         return Ok(session);
     }
@@ -259,7 +261,11 @@ impl Platform {
     pub fn version() -> String {
         serde_json::from_str::<serde_json::Value>(include_str!("../nsh.json"))
             .ok()
-            .and_then(|v| v.get("version").and_then(|s| s.as_str()).map(str::to_string))
+            .and_then(|v| {
+                v.get("version")
+                    .and_then(|s| s.as_str())
+                    .map(str::to_string)
+            })
             .unwrap_or_else(|| env!("CARGO_PKG_VERSION").to_string())
     }
 

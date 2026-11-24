@@ -1,4 +1,5 @@
 //! App-owned AI policy. The transport never opens a vault or executes content.
+use crate::session::VaultSession;
 use crate::{Vault, error_code};
 use nsh_core::prelude::*;
 use serde_json::{Value, json};
@@ -8,7 +9,6 @@ use std::{
     sync::{Arc, Mutex, OnceLock},
     time::{Duration, Instant},
 };
-use crate::session::VaultSession;
 #[cfg(target_os = "macos")]
 mod socket;
 #[cfg(not(target_os = "macos"))]
@@ -234,7 +234,9 @@ pub(super) fn request(s: &VaultSession, r: Value) -> Result<Value> {
     let digest = hash(r["token"].as_str().unwrap_or(""));
     let op = r["op"].as_str().unwrap_or("").to_string();
     match request_digest(s, r, &digest) {
-        Err(e) if e == "RedactedPlaceholderDetected" && matches!(op.as_str(), "create" | "update") => {
+        Err(e)
+            if e == "RedactedPlaceholderDetected" && matches!(op.as_str(), "create" | "update") =>
+        {
             match mint_ticket(s, &digest, &op) {
                 Some(t) => Err(format!("{e}#{t}")),
                 None => Err(e),
@@ -256,7 +258,11 @@ fn mint_ticket(s: &VaultSession, digest: &str, op: &str) -> Option<String> {
     let ticket = uuid::Uuid::new_v4().simple().to_string();
     st.tickets.insert(
         ticket.clone(),
-        Ticket { digest: digest.to_string(), op: op.to_string(), expires: now + Duration::from_secs(TICKET_SECONDS) },
+        Ticket {
+            digest: digest.to_string(),
+            op: op.to_string(),
+            expires: now + Duration::from_secs(TICKET_SECONDS),
+        },
     );
     Some(ticket)
 }
@@ -301,7 +307,9 @@ fn request_digest(s: &VaultSession, r: Value, digest: &str) -> Result<Value> {
         Err(e) => (r, Some(e)),
     };
     let initial = doc(s).ok();
-    let c = initial.as_ref().and_then(|d| find_client_by_digest(d, digest));
+    let c = initial
+        .as_ref()
+        .and_then(|d| find_client_by_digest(d, digest));
     let cid = c
         .and_then(|c| c["id"].as_str())
         .unwrap_or("unknown")
@@ -338,7 +346,10 @@ fn request_digest(s: &VaultSession, r: Value, digest: &str) -> Result<Value> {
         let final_check = (|| {
             let d = doc(s)?;
             let c = client_digest(&d, digest)?;
-            if matches!(op.as_str(), "add" | "note_update" | "note_attach" | "entry_update" | "entry_delete") {
+            if matches!(
+                op.as_str(),
+                "add" | "note_update" | "note_attach" | "entry_update" | "entry_delete"
+            ) {
                 // Added/auto-saved entries need no approval; only the client must still be valid.
             } else if op == "note_list" {
                 if d["settings"]["aiAccessScopes"]["notes"] != true {
@@ -370,7 +381,13 @@ fn request_digest(s: &VaultSession, r: Value, digest: &str) -> Result<Value> {
     }
     let outcome = result
         .as_ref()
-        .map(|v| if v["approval"] == "lease" { "AllowedByLease" } else { "Allowed" })
+        .map(|v| {
+            if v["approval"] == "lease" {
+                "AllowedByLease"
+            } else {
+                "Allowed"
+            }
+        })
         .unwrap_or_else(|e| e.as_str());
     if doc(s).is_ok() {
         audit(s, &cid, &item, &tool, &rid, outcome)?;
@@ -404,7 +421,10 @@ fn request_inner(s: &VaultSession, r: Value, request_id: &str, digest: &str) -> 
     if op == "note_attach" {
         return notes::note_attach(s, &r, digest);
     }
-    if matches!(op, "note_list" | "note_read" | "note_read_asset" | "note_history") {
+    if matches!(
+        op,
+        "note_list" | "note_read" | "note_read_asset" | "note_history"
+    ) {
         let _guard = SERIAL.lock().unwrap();
         let d = doc(s)?;
         let c = client_digest(&d, digest)?;
@@ -435,9 +455,14 @@ fn request_inner(s: &VaultSession, r: Value, request_id: &str, digest: &str) -> 
             let item = i.ok_or("UnscopedOrMissing")?;
             secret(item, &field)?;
         }
-        let item_id = i.map(|i| i["id"].as_str().unwrap_or("").to_string()).unwrap_or_default();
+        let item_id = i
+            .map(|i| i["id"].as_str().unwrap_or("").to_string())
+            .unwrap_or_default();
         let leased = op == "get_secret"
-            && state().leases.iter().any(|l| lease_matches(l, &cid, &item_id, &field, reveal));
+            && state()
+                .leases
+                .iter()
+                .any(|l| lease_matches(l, &cid, &item_id, &field, reveal));
         if op == "get_secret" && !leased {
             let i = i.unwrap();
             let mut st = state();
@@ -462,7 +487,11 @@ fn request_inner(s: &VaultSession, r: Value, request_id: &str, digest: &str) -> 
             });
             (true, hash(&i.to_string()), false)
         } else {
-            (false, i.map_or(String::new(), |i| hash(&i.to_string())), leased)
+            (
+                false,
+                i.map_or(String::new(), |i| hash(&i.to_string())),
+                leased,
+            )
         }
     };
     let mut decision: Result<()> = Ok(());
@@ -508,7 +537,13 @@ fn request_inner(s: &VaultSession, r: Value, request_id: &str, digest: &str) -> 
                                 i["tags"],
                                 i["device"]["aliases"],
                                 i["device"]["host"],
-                                i["device"]["services"].as_array().into_iter().flatten().map(|svc| svc["name"].as_str().unwrap_or("")).collect::<Vec<_>>().join(" "),
+                                i["device"]["services"]
+                                    .as_array()
+                                    .into_iter()
+                                    .flatten()
+                                    .map(|svc| svc["name"].as_str().unwrap_or(""))
+                                    .collect::<Vec<_>>()
+                                    .join(" "),
                                 d["settings"]["aiAccessAliases"][i["id"].as_str().unwrap_or("")]
                             )
                             .to_lowercase()
@@ -529,13 +564,14 @@ fn request_inner(s: &VaultSession, r: Value, request_id: &str, digest: &str) -> 
                 };
                 let mut out = projection(target, true);
                 out["version"] = target["updatedAt"].clone();
-                let files: Vec<&String> = d["settings"]["aiAccessOrdinaryFiles"][target["id"].as_str().unwrap_or("")]
-                    .as_object()
-                    .into_iter()
-                    .flatten()
-                    .filter(|(fid, _)| approved_file(&d, c, target, fid))
-                    .map(|(fid, _)| fid)
-                    .collect();
+                let files: Vec<&String> = d["settings"]["aiAccessOrdinaryFiles"]
+                    [target["id"].as_str().unwrap_or("")]
+                .as_object()
+                .into_iter()
+                .flatten()
+                .filter(|(fid, _)| approved_file(&d, c, target, fid))
+                .map(|(fid, _)| fid)
+                .collect();
                 if !files.is_empty() {
                     out["files"] = json!(files);
                 }
@@ -558,16 +594,31 @@ fn request_inner(s: &VaultSession, r: Value, request_id: &str, digest: &str) -> 
                     let entry_id = i["id"].as_str().unwrap_or("").to_string();
                     let cid = c["id"].as_str().unwrap_or("").to_string();
                     let mut st = state();
-                    st.leases.retain(|l| !(l.client == cid && l.entry == entry_id && l.field == field));
-                    st.leases.push(Lease { client: cid, entry: entry_id, field: field.clone(), reveal,
-                        expires: (seconds > 0).then(|| Instant::now() + Duration::from_secs(seconds)) });
+                    st.leases
+                        .retain(|l| !(l.client == cid && l.entry == entry_id && l.field == field));
+                    st.leases.push(Lease {
+                        client: cid,
+                        entry: entry_id,
+                        field: field.clone(),
+                        reveal,
+                        expires: (seconds > 0)
+                            .then(|| Instant::now() + Duration::from_secs(seconds)),
+                    });
                 }
-                let approval = if leased { "lease" } else if lease.is_some() { "leaseStarted" } else { "once" };
+                let approval = if leased {
+                    "lease"
+                } else if lease.is_some() {
+                    "leaseStarted"
+                } else {
+                    "once"
+                };
                 if reveal {
                     return Ok(json!({"value":value,"approval":approval}));
                 }
                 clipboard::put(value, CLIPBOARD_SECONDS)?;
-                Ok(json!({"delivered": "clipboard", "clearsAfterSeconds": CLIPBOARD_SECONDS, "approval": approval}))
+                Ok(
+                    json!({"delivered": "clipboard", "clearsAfterSeconds": CLIPBOARD_SECONDS, "approval": approval}),
+                )
             }
             "get" => {
                 let i = entry(&d, c, &r)?;
@@ -584,9 +635,7 @@ fn request_inner(s: &VaultSession, r: Value, request_id: &str, digest: &str) -> 
                 let limit = r["limit"].as_u64().unwrap_or(4096).clamp(1, 16384) as usize;
                 let chunk: String = text.chars().skip(offset).take(limit).collect();
                 let next = offset.saturating_add(chunk.chars().count());
-                Ok(
-                    json!({"text":chunk,"nextOffset":next,"eof":next>=text.chars().count()}),
-                )
+                Ok(json!({"text":chunk,"nextOffset":next,"eof":next>=text.chars().count()}))
             }
             _ => Err("ReadOnlyUnsupportedOperation".into()),
         }
@@ -598,8 +647,14 @@ fn grant_entry(s: &VaultSession, digest: &str, entry_id: &str) -> Result<()> {
     let _guard = SERIAL.lock().unwrap();
     let d = doc(s)?;
     let cid = client_digest(&d, digest)?["id"].clone();
-    let mut cs = d["settings"]["aiAccessClients"].as_array().cloned().unwrap_or_default();
-    let c = cs.iter_mut().find(|c| c["id"] == cid).ok_or("RevokedOrUnknownClient")?;
+    let mut cs = d["settings"]["aiAccessClients"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
+    let c = cs
+        .iter_mut()
+        .find(|c| c["id"] == cid)
+        .ok_or("RevokedOrUnknownClient")?;
     if !c["entries"].is_object() {
         c["entries"] = json!({});
     }
@@ -624,7 +679,10 @@ fn add(s: &VaultSession, r: &Value, digest: &str) -> Result<Value> {
     {
         let _guard = SERIAL.lock().unwrap();
         let d = doc(s)?;
-        let cid = client_digest(&d, digest)?["id"].as_str().unwrap_or("").to_string();
+        let cid = client_digest(&d, digest)?["id"]
+            .as_str()
+            .unwrap_or("")
+            .to_string();
         if item["type"] == "device" && core(s, json!({"op":"devices-status"}))?["enabled"] != true {
             return Err("DevicesNotEnabled".into());
         }
@@ -710,7 +768,9 @@ fn control(s: &VaultSession, r: Value) -> Result<Value> {
     // and account across the service connection to display an empty status.
     let d = if r["op"] == "status" {
         json!({"settings":core(s, json!({"op":"read-settings"}))?})
-    } else { doc(s)? };
+    } else {
+        doc(s)?
+    };
     match r["op"].as_str().unwrap_or("") {
         "status" => {
             if !state().deferred_audit.is_empty() {
@@ -739,7 +799,8 @@ fn control(s: &VaultSession, r: Value) -> Result<Value> {
                 }
             }
             let mut st = state();
-            st.leases.retain(|l| l.expires.is_none_or(|t| t > Instant::now()));
+            st.leases
+                .retain(|l| l.expires.is_none_or(|t| t > Instant::now()));
             let leases: Vec<Value> = st.leases.iter().map(|l| json!({
                 "client": l.client, "entryId": l.entry, "field": l.field, "reveal": l.reveal,
                 "secondsLeft": l.expires.map(|t| t.saturating_duration_since(Instant::now()).as_secs()),
@@ -753,13 +814,22 @@ fn control(s: &VaultSession, r: Value) -> Result<Value> {
             if d["settings"]["aiAccessEnabled"] != true {
                 return Err("Disabled".into());
             }
-            let name: String = r["name"].as_str().unwrap_or("").trim().chars().take(80).collect();
+            let name: String = r["name"]
+                .as_str()
+                .unwrap_or("")
+                .trim()
+                .chars()
+                .take(80)
+                .collect();
             let token = format!("{}{}", id(), id());
             let token_hash = hash(&token);
             let fp = client_fingerprint(&token_hash);
             let cid = id();
             let created = now_unix();
-            let mut clients = d["settings"]["aiAccessClients"].as_array().cloned().unwrap_or_default();
+            let mut clients = d["settings"]["aiAccessClients"]
+                .as_array()
+                .cloned()
+                .unwrap_or_default();
             clients.push(json!({
                 "id": cid,
                 "name": if name.is_empty() { "Local client".into() } else { name },
@@ -876,8 +946,14 @@ fn control(s: &VaultSession, r: Value) -> Result<Value> {
                 .cloned()
                 .unwrap_or_default();
             let before = cs.len();
-            cs.retain(|c| !c["id"].as_str().is_some_and(|cid| ids.iter().any(|x| x == cid)));
-            state().leases.retain(|l| !ids.iter().any(|x| x == &l.client));
+            cs.retain(|c| {
+                !c["id"]
+                    .as_str()
+                    .is_some_and(|cid| ids.iter().any(|x| x == cid))
+            });
+            state()
+                .leases
+                .retain(|l| !ids.iter().any(|x| x == &l.client));
             save(s, json!({"aiAccessClients":cs}))?;
             Ok(json!({"ok":true,"removed":before.saturating_sub(cs.len())}))
         }
@@ -903,7 +979,9 @@ fn control(s: &VaultSession, r: Value) -> Result<Value> {
         "end_leases" => {
             let mut st = state();
             match r["entryId"].as_str() {
-                Some(entry) => st.leases.retain(|l| l.entry != entry || r["field"].as_str().is_some_and(|f| f != l.field)),
+                Some(entry) => st.leases.retain(|l| {
+                    l.entry != entry || r["field"].as_str().is_some_and(|f| f != l.field)
+                }),
                 None => st.leases.clear(),
             }
             Ok(json!({"ok":true}))

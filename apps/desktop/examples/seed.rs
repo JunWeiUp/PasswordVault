@@ -3,15 +3,20 @@
 //!   cargo run --example seed -- /tmp/pv-nsh-qa/vault
 //!
 //! Master password: `synthetic-preview-password`.
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use vault_core::VaultSession;
 
 const PASSWORD: &str = "synthetic-preview-password";
 
 fn main() {
-    let dir = std::env::args().nth(1).expect("usage: seed <new vault directory>");
+    let dir = std::env::args()
+        .nth(1)
+        .expect("usage: seed <new vault directory>");
     let path = std::path::Path::new(&dir);
-    assert!(!path.exists(), "refusing to touch an existing directory: {dir}");
+    assert!(
+        !path.exists(),
+        "refusing to touch an existing directory: {dir}"
+    );
     #[cfg(not(windows))]
     assert!(
         dir.starts_with("/tmp/") || dir.starts_with("/private/tmp/"),
@@ -22,7 +27,9 @@ fn main() {
         path.is_absolute()
             && path.starts_with(std::env::temp_dir())
             && path != std::env::temp_dir()
-            && !path.components().any(|c| matches!(c, std::path::Component::ParentDir)),
+            && !path
+                .components()
+                .any(|c| matches!(c, std::path::Component::ParentDir)),
         "synthetic vaults must live beneath the user's TEMP directory"
     );
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -51,10 +58,34 @@ fn main() {
     a["passwordHistory"] = json!([{"password":"old-demo-2025","changedAt":"2025-06-01T08:00:00Z"}]);
     items.push(a);
     for (id, title, user, pw, url) in [
-        ("a2", "Apple ID", "lin@example.com", "demo-Apple-91x-long", "https://appleid.apple.com"),
-        ("a3", "公司邮箱", "lin@company.example", "Spring2024", "https://mail.company.example"),
-        ("a4", "Figma", "lin@company.example", "Spring2024", "https://figma.com"),
-        ("a5", "家庭 Wi-Fi", "Home-Example", "demo-wifi-2026-home", ""),
+        (
+            "a2",
+            "Apple ID",
+            "lin@example.com",
+            "demo-Apple-91x-long",
+            "https://appleid.apple.com",
+        ),
+        (
+            "a3",
+            "公司邮箱",
+            "lin@company.example",
+            "Spring2024",
+            "https://mail.company.example",
+        ),
+        (
+            "a4",
+            "Figma",
+            "lin@company.example",
+            "Spring2024",
+            "https://figma.com",
+        ),
+        (
+            "a5",
+            "家庭 Wi-Fi",
+            "Home-Example",
+            "demo-wifi-2026-home",
+            "",
+        ),
     ] {
         let mut v = base(id, "password", title);
         v["username"] = json!(user);
@@ -63,8 +94,20 @@ fn main() {
         items.push(v);
     }
     for (id, title, issuer, user, secret) in [
-        ("c1", "Google", "Google", "lin@example.com", "GEZDGNBVGY3TQOJQ"),
-        ("c2", "Cloudflare", "Cloudflare", "ops@example.com", "MFRGGZDFMZTWQ2LK"),
+        (
+            "c1",
+            "Google",
+            "Google",
+            "lin@example.com",
+            "GEZDGNBVGY3TQOJQ",
+        ),
+        (
+            "c2",
+            "Cloudflare",
+            "Cloudflare",
+            "ops@example.com",
+            "MFRGGZDFMZTWQ2LK",
+        ),
     ] {
         let mut v = base(id, "totp", title);
         v["issuer"] = json!(issuer);
@@ -77,17 +120,34 @@ fn main() {
     card["card"] = json!({"cardholder":"LIN XIAO","number":"4111 1111 1111 1111","expiryMonth":"08","expiryYear":"2029","securityCode":"123","brand":"Visa"});
     items.push(card);
     let mut ident = base("w2", "identity", "个人身份信息");
-    ident["identity"] = json!({"lastName":"林","firstName":"晓","email":"lin@example.com","city":"示例市"});
+    ident["identity"] =
+        json!({"lastName":"林","firstName":"晓","email":"lin@example.com","city":"示例市"});
     items.push(ident);
     let mut crypto = base("w3", "crypto", "以太坊钱包（示例）");
     crypto["network"] = json!("Ethereum");
     crypto["address"] = json!("0x8a3F1c9E2b7D4a6C0e5F9b1A2d3C4e5F6a7B8c9D");
-    crypto["mnemonic"] = json!("orbit canvas meadow tiny verify lunar oyster bridge famous quote ribbon velvet");
+    crypto["mnemonic"] =
+        json!("orbit canvas meadow tiny verify lunar oyster bridge famous quote ribbon velvet");
     items.push(crypto);
     for (id, title, cat, body) in [
-        ("n1", "家庭重要资料", "家庭", "紧急联系\n• 家庭邮箱：family@example.com\n• 物业服务：示例联系人\n\n重要文件\n• 证件与合同：书房文件柜 · 第二层"),
-        ("n2", "旅行准备清单", "个人", "出发前\n☑ 护照有效期检查\n☐ 换汇\n☐ 充电宝与转换插头"),
-        ("n3", "工作交接备忘", "工作", "交接时只分享条目链接，不直接复制密码到聊天工具。"),
+        (
+            "n1",
+            "家庭重要资料",
+            "家庭",
+            "紧急联系\n• 家庭邮箱：family@example.com\n• 物业服务：示例联系人\n\n重要文件\n• 证件与合同：书房文件柜 · 第二层",
+        ),
+        (
+            "n2",
+            "旅行准备清单",
+            "个人",
+            "出发前\n☑ 护照有效期检查\n☐ 换汇\n☐ 充电宝与转换插头",
+        ),
+        (
+            "n3",
+            "工作交接备忘",
+            "工作",
+            "交接时只分享条目链接，不直接复制密码到聊天工具。",
+        ),
     ] {
         let mut v = base(id, "secureNote", title);
         v["category"] = json!(cat);
