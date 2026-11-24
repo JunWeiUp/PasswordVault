@@ -1,6 +1,6 @@
 [package]
 name = "pv-browser-host"
-version = "2.5.11"
+version = "2.5.12"
 edition = "2024"
 license = "MIT"
 publish = false
