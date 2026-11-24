@@ -13,8 +13,8 @@ class MobileBuildSelectionTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)
             (root / 'tool').mkdir()
-            shutil.copy(Path(__file__).with_name('build_mobile_core.sh'), root / 'tool/build_mobile_core.sh')
-            shutil.copy(Path(__file__).with_name('cargo_fork_env.sh'), root / 'tool/cargo_fork_env.sh')
+            shutil.copy(Path(__file__).resolve().parent.parent / 'build_mobile_core.sh', root / 'tool/build_mobile_core.sh')
+            shutil.copy(Path(__file__).resolve().parent.parent / 'cargo_fork_env.sh', root / 'tool/cargo_fork_env.sh')
             binaries = root / 'bin'
             binaries.mkdir()
             # Fake binaries produce just the files copied/packaged by the real script.

@@ -1,4 +1,4 @@
-.PHONY: help check repo core core-release desktop desktop-test desktop-ui desktop-deploy browser browser-release android android-core android-install ios ios-core ios-test ios-install-sim contract bump
+.PHONY: help check repo core core-release desktop desktop-test desktop-ui desktop-deploy browser browser-release android android-core android-install ios ios-core ios-test ios-install-sim ios-install-device contract bump
 
 help: ## Show common fast-iteration commands
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}'
@@ -45,9 +45,8 @@ android-core: ## Rebuild Android arm64 vault-core bindings
 android: ## Compile Android app + tests and run JVM unit tests
 	bash tool/check_quick.sh android
 
-android-install: ## Build arm64 debug APK and install onto connected emulator/device
-	./apps/android/gradlew -p apps/android :app:assembleDebug -PtargetAbi=arm64-v8a --quiet
-	adb install -r apps/android/app/build/outputs/apk/debug/app-debug.apk
+android-install: ## Build matching-signature arm64 APK and install onto connected Android phone(s)
+	bash tool/install_android_device.sh
 
 ios-core: ## Rebuild iOS simulator vault-core bindings (fast host-only)
 	PASSWORDVAULT_IOS_TARGETS=simulator bash tool/build_mobile_core.sh ios
@@ -59,6 +58,9 @@ ios-install-sim: ## Build iOS simulator app and install onto booted simulator
 	xcodegen generate --quiet --spec apps/ios/project.yml
 	xcodebuild -project apps/ios/PasswordVault.xcodeproj -scheme PasswordVault -configuration Debug -derivedDataPath /tmp/pv-ios-build -destination 'generic/platform=iOS Simulator' ARCHS=arm64 ONLY_ACTIVE_ARCH=YES CODE_SIGNING_ALLOWED=NO build | tail -n 10
 	xcrun simctl install booted /tmp/pv-ios-build/Build/Products/Debug-iphonesimulator/PasswordVault.app
+
+ios-install-device: ## Build personal-team iOS app and install onto connected iPhone
+	bash tool/install_ios_device.sh
 
 ios-test: ## Run iOS unit tests on the nearest simulator
 	bash tool/check_quick.sh ios-test

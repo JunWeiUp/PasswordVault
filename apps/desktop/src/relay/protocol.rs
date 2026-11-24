@@ -1,6 +1,7 @@
 //! Wire-compatible common-relay protocol. Implemented once in `vault_core::relay_protocol`
 //! (shared with the mobile clients and pinned by the common-relay vectors); the desktop
 //! re-exports it so relay orchestration keeps a single import path.
+#[allow(unused_imports)] // `parse_link` is used by the UI target, not `pv-background`.
 pub use vault_core::relay_protocol::{
     access_password, canonical, configured_password, digest, hex, parse_link, payload, text, unhex,
     unpack,

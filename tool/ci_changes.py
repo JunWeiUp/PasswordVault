@@ -17,10 +17,14 @@ def classify(paths):
             continue
         if path.startswith(('crates/', '.cargo/')) or path in {'Cargo.toml', 'Cargo.lock', 'rust-toolchain.toml'}:
             selected |= NATIVE
-        elif path in {'.github/workflows/native.yml', '.github/workflows/native-release.yml', 'tool/check_native.sh', 'native-version.json', 'tool/native_release.py', 'tool/test_native_release.py'}:
+        elif path in {'.github/workflows/native.yml', '.github/workflows/native-release.yml', 'tool/check_native.sh', 'native-version.json', 'tool/native_release.py', 'tool/tests/test_native_release.py'}:
             selected |= NATIVE
         elif path == 'tool/build_mobile_core.sh':
             selected |= {'android', 'ios'}
+        elif path == 'tool/install_android_device.sh':
+            selected |= {'android'}
+        elif path == 'tool/install_ios_device.sh':
+            selected |= {'ios'}
         elif path.startswith('apps/shared/note-editor/'):
             selected |= {'ios', 'android', 'browser'}  # Desktop uses NSH's own editor.
         elif path.startswith('apps/desktop/'):
@@ -29,7 +33,7 @@ def classify(paths):
             selected |= {'macos'}
         elif path.startswith('tool/windows-desktop/') or path == 'tool/nsh_windows.ps1':
             selected |= {'windows'}
-        elif path in {'tool/test_relay_live.sh', 'tool/core_contract.py', 'tool/new_op.py', 'tool/test_core_contract.py'}:
+        elif path in {'tool/test_relay_live.sh', 'tool/core_contract.py', 'tool/new_op.py', 'tool/tests/test_core_contract.py'}:
             selected |= {'core'}
         elif path == 'tool/select_ios_simulator.py':
             selected |= {'ios'}

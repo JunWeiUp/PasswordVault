@@ -8,7 +8,7 @@ from pathlib import Path
 from bump_version import apply_bump, compute_metadata
 from native_release import validate_versions
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parents[2]
 VERSION_FILES = [
     "native-version.json",
     "apps/browser/package.json",
@@ -16,6 +16,8 @@ VERSION_FILES = [
     "apps/desktop/nsh.json",
     "apps/desktop/Cargo.toml",
     "apps/desktop/Cargo.lock",
+    "apps/desktop/helpers/pv-mcp/Cargo.toml",
+    "apps/desktop/helpers/pv-browser-host/Cargo.toml",
     "apps/android/app/build.gradle.kts",
     "apps/ios/project.yml",
 ]

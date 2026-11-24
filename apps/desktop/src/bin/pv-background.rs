@@ -11,7 +11,6 @@ mod signals;
 #[cfg(target_os = "macos")]
 mod platform {
     pub use crate::signals::*;
-    pub use vault_core::native_file_ops::replace_synced;
 }
 #[cfg(target_os = "macos")]
 #[path = "../background.rs"]

@@ -75,24 +75,30 @@ def apply_bump(root: Path, new_version: str, dry_run: bool = False) -> dict:
     nsh["build"] = next_meta["macos_build"]
     nsh_path.write_text(json.dumps(nsh, indent=2) + "\n", encoding="utf-8")
 
-    desktop_cargo = root / "apps/desktop/Cargo.toml"
-    cargo_text = desktop_cargo.read_text(encoding="utf-8")
-    head, sep, tail = cargo_text.partition("\n[")
-    updated_head, count = re.subn(
-        r'^version\s*=\s*"[^"]+"', f'version = "{new_version}"', head, count=1, flags=re.MULTILINE
-    )
-    if count != 1:
-        raise SystemExit("apps/desktop/Cargo.toml: failed to update [package] version.")
-    desktop_cargo.write_text(updated_head + sep + tail, encoding="utf-8")
-
-    desktop_lock = root / "apps/desktop/Cargo.lock"
-    if desktop_lock.is_file():
-        replace_exact(
-            desktop_lock,
-            r'(name = "nsh-app-passwordvault"\nversion = )"[^"]+"',
-            rf'\g<1>"{new_version}"',
-            1,
+    for rel_toml, pkg_name in (
+        ("apps/desktop/Cargo.toml", "nsh-app-passwordvault"),
+        ("apps/desktop/helpers/pv-mcp/Cargo.toml", "pv-mcp"),
+        ("apps/desktop/helpers/pv-browser-host/Cargo.toml", "pv-browser-host"),
+    ):
+        cargo_path = root / rel_toml
+        if not cargo_path.is_file():
+            continue
+        cargo_text = cargo_path.read_text(encoding="utf-8")
+        head, sep, tail = cargo_text.partition("\n[")
+        updated_head, count = re.subn(
+            r'^version\s*=\s*"[^"]+"', f'version = "{new_version}"', head, count=1, flags=re.MULTILINE
         )
+        if count != 1:
+            raise SystemExit(f"{rel_toml}: failed to update [package] version.")
+        cargo_path.write_text(updated_head + sep + tail, encoding="utf-8")
+        desktop_lock = root / "apps/desktop/Cargo.lock"
+        if desktop_lock.is_file():
+            replace_exact(
+                desktop_lock,
+                rf'(name = "{re.escape(pkg_name)}"\nversion = )"[^"]+"',
+                rf'\g<1>"{new_version}"',
+                1,
+            )
 
     # 3. Android build.gradle.kts
     android_gradle = root / "apps/android/app/build.gradle.kts"
