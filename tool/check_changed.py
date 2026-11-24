@@ -25,7 +25,8 @@ from ci_changes import classify  # noqa: E402
 # Tooling scripts own unit tests; they do not need native builds.
 TOOL_ONLY = ("tool/core_contract.py", "tool/check_changed.py", "tool/select_ios_simulator.py",
              "tool/ci_changes.py", "tool/native_release.py", "tool/package_release.py",
-             "tool/validate_release_ref.py", "tool/update_security_catalog.py")
+             "tool/validate_release_ref.py", "tool/update_security_catalog.py",
+             "tool/bump_version.py")
 
 STEPS = {
     "tools": ["python3", "-m", "unittest", "discover", "-s", "tool", "-p", "test_*.py", "-q"],

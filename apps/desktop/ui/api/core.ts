@@ -67,13 +67,13 @@ export function createCoreApi(vault: Vault) {
 
     audit: () => exec<AuditResult>({ op: "audit" }),
     totp: (secret: string, period: number, time: number) =>
-      exec<{ code: string }>({ op: "totp", secret, period, time }),
+      exec<CoreResults["totp"]>({ op: "totp", secret, period, time }),
     generate: (options: { length: number; upper: boolean; lower: boolean; digits: boolean; symbols: boolean }) =>
-      exec<{ password: string }>({ op: "generate", ...options }),
+      exec<CoreResults["generate"]>({ op: "generate", ...options }),
 
     categoryAdd: (name: string) => exec<{ ok?: boolean }>({ op: "category-add", name }),
     categoryRename: (name: string, to: string, time: string) =>
-      exec<{ updated: number }>({ op: "category-rename", name, to, time }),
+      exec<CoreResults["category-rename"]>({ op: "category-rename", name, to, time }),
     categoryRemove: (name: string, time: string) =>
       exec<{ ok?: boolean }>({ op: "category-remove", name, time }),
 
@@ -90,7 +90,7 @@ export function createCoreApi(vault: Vault) {
       exec<{ ok?: boolean }>({ op: "history-prune", id, keepMilestones }),
 
     recoveryStatus: () => exec<RecoveryStatus>({ op: "recovery-status" }),
-    recoveryGenerate: () => exec<{ key: string }>({ op: "recovery-generate" }),
+    recoveryGenerate: () => exec<CoreResults["recovery-generate"]>({ op: "recovery-generate" }),
     recoveryEnable: (key: string, currentPassword: string) =>
       exec<{ ok?: boolean }>({ op: "recovery-enable", key, currentPassword }),
     recoveryDisable: (currentPassword: string) =>
@@ -103,7 +103,7 @@ export function createCoreApi(vault: Vault) {
     noteAttachmentsList: (noteId: string) =>
       exec<{ attachments?: Record<string, any>[] }>({ op: "note-attachments-list", noteId }),
 
-    devicesStatus: () => exec<{ formatVersion?: number; enabled?: boolean }>({ op: "devices-status" }),
+    devicesStatus: () => exec<Partial<CoreResults["devices-status"]>>({ op: "devices-status" }),
     relayStatus: () => exec<RelaySummary>({ op: "relay-status" }),
     relayMeshConflicts: () => exec<{ conflicts?: MeshNoteConflictDto[] }>({ op: "relay-mesh-conflicts" }),
     relayMeshResolveConflict: (id: string, strategy: "local" | "remote" | "both" | "custom", item?: Item) =>
