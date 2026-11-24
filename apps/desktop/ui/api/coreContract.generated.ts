@@ -15,11 +15,9 @@ export const CORE_OPS = [
   "list",
   "open-drafts",
   "remove",
-  "restore-drafts",
   "save",
   "seal-drafts",
   "update-login",
-  "collect-note-attachments",
   "note-attachment-cache-get",
   "note-attachment-cache-put",
   "note-attachment-state",
@@ -63,9 +61,6 @@ export const CORE_OPS = [
   "wallet",
   "breach-request",
   "breach-response",
-  "relay-capabilities-accept",
-  "relay-capabilities-challenge",
-  "relay-capabilities-prove",
   "security-audit",
   "security-catalog",
   "security-ignore",
@@ -85,8 +80,6 @@ export const CORE_OPS = [
   "add-member",
   "create-shared",
   "identity",
-  "remove-member",
-  "share-options",
   "share-seal",
   "sync-apply",
   "sync-request",
@@ -97,13 +90,9 @@ export const CORE_OPS = [
   "relay-export",
   "relay-init",
   "relay-receive",
-  "relay-resolve",
   "relay-resolve-batch",
-  "relay-revoke",
   "relay-status",
   "relay-trust",
-  "relay-mesh-blob-export",
-  "relay-mesh-blob-receive",
   "relay-mesh-conflicts",
   "relay-mesh-export",
   "relay-mesh-init",
@@ -112,16 +101,10 @@ export const CORE_OPS = [
   "relay-mesh-resolve-conflict",
   "relay-protocol-keys",
   "relay-protocol-unpack",
-  "relay-protocol-verify",
   "relay-protocol-advance",
   "relay-protocol-sign",
-  "relay-protocol-seal-invitation",
-  "relay-protocol-open-invitation",
-  "relay-protocol-read-token",
   "relay-protocol-make-link",
   "relay-protocol-parse-link",
-  "relay-protocol-envelope-seal",
-  "relay-protocol-envelope-open",
   "relay-protocol-retry",
   "relay-protocol-exit-identity",
 ] as const;
@@ -157,15 +140,11 @@ export interface CoreParams {
   /** items · unlocked → {ok:true} */
   "remove": { id: string; richNotes?: boolean };
   /** items · unlocked → {ok:true} */
-  "restore-drafts": { payload: object; richNotes?: boolean };
-  /** items · unlocked → {ok:true} */
   "save": { item: object; richNotes?: boolean; expectedUpdatedAt?: string; historyMeta?: object };
   /** items · unlocked → {payload:Sealed} */
   "seal-drafts": { items: readonly unknown[] };
   /** items · unlocked → {saved:true,updated:true} */
   "update-login": { origin: string; id: string; accountId?: string; username: string; password: string; time: string };
-  /** notes · unlocked → {ok:true} */
-  "collect-note-attachments": { richNotes: boolean };
   /** notes · unlocked → {excerpt:any|null,thumb:any|null} */
   "note-attachment-cache-get": { noteId: string; id: string };
   /** notes · unlocked → {ok:true} */
@@ -252,12 +231,6 @@ export interface CoreParams {
   "breach-request": { password: string };
   /** capabilities · unlocked → {count:number} */
   "breach-response": { suffix: string; response: string };
-  /** capabilities · unlocked → {ok:true} */
-  "relay-capabilities-accept": { peer: string; proof: object };
-  /** capabilities · unlocked → {challenge:string} */
-  "relay-capabilities-challenge": { peer: string };
-  /** capabilities · unlocked → {proof:{nonce:string,ciphertext:string}} */
-  "relay-capabilities-prove": { peer: string; challenge: string };
   /** capabilities · unlocked → {findings:object[],catalogUpdatedAt,catalogCoverage,catalogSources,catalogLicense,catalogLicenseText:string,networkBreachStatus:'notChecked',siteCoverageStatus:string} */
   "security-audit": {};
   /** capabilities · unlocked → {ok:true} */
@@ -296,10 +269,6 @@ export interface CoreParams {
   "create-shared": { name: string; time: string };
   /** sharing · unlocked → {publicKey:string} */
   "identity": {};
-  /** sharing · unlocked → {ok:true} */
-  "remove-member": { vaultId: string; publicKey: string };
-  /** sharing · unlocked → {fields:string[],attachments:AttachmentMeta[]} */
-  "share-options": { id: string };
   /** sharing · unlocked → {version:1,id:string,nonce:string,ciphertext:string,key:string} */
   "share-seal": { id: string; fields: readonly unknown[]; attachmentIds?: readonly unknown[] };
   /** sharing · unlocked → {imported:number} */
@@ -321,19 +290,11 @@ export interface CoreParams {
   /** relay · unlocked → {ok:true,stale?:true} */
   "relay-receive": { peer: string; packet: object };
   /** relay · unlocked → {ok:true} */
-  "relay-resolve": { conflict: string; choice: string };
-  /** relay · unlocked → {ok:true} */
   "relay-resolve-batch": { conflicts: readonly unknown[]; choice: string };
-  /** relay · unlocked → {ok:true} */
-  "relay-revoke": { peer: string };
   /** relay · unlocked → {enabled:false}|{enabled:true,role,group,device,hub,peers,revision,cursor,pending,conflictCount,conflicts,capabilities}|MeshStatus */
   "relay-status": {};
   /** relay · unlocked → {ok:true} */
   "relay-trust": { peer: string };
-  /** relay-mesh · unlocked → {meta:AttachmentMeta,data:string} */
-  "relay-mesh-blob-export": { peer: string; attachmentId: string };
-  /** relay-mesh · unlocked → {ok:true,id:string,state:'ready'} */
-  "relay-mesh-blob-receive": { peer: string; meta: object; data: string };
   /** relay-mesh · unlocked → {conflicts:{noteId,title,localDevice,remoteDevice,revisionId,capturedAt,section,autoMerged,assetGuard,retentionDays,localItem,remoteItem}[]} */
   "relay-mesh-conflicts": {};
   /** relay-mesh · unlocked → {packet:MeshPacket|null} */
@@ -350,26 +311,14 @@ export interface CoreParams {
   "relay-protocol-keys": { secret: string };
   /** relay-protocol · none → {state:object} */
   "relay-protocol-unpack": { entry: object };
-  /** relay-protocol · none → {ok:true} */
-  "relay-protocol-verify": { entry: object; key: string };
   /** relay-protocol · none → {entry:object} */
   "relay-protocol-advance": { current: object; entry: object };
   /** relay-protocol · none → {entry:{payload,signature,signer}} */
   "relay-protocol-sign": { value: object; secret: string; device: string };
-  /** relay-protocol · none → {packet:string} */
-  "relay-protocol-seal-invitation": { invitation: object; key: string; nonce: string };
-  /** relay-protocol · none → {invitation:object} */
-  "relay-protocol-open-invitation": { packet: string; key: string };
-  /** relay-protocol · none → {token:string} */
-  "relay-protocol-read-token": { key: string };
   /** relay-protocol · none → {link:string} */
   "relay-protocol-make-link": { invitation: object; key: string; password?: string; allowLocal?: boolean };
   /** relay-protocol · none → {url:string,id:string,key:string,password:string|null} */
   "relay-protocol-parse-link": { link: string; allowLocal?: boolean };
-  /** relay-protocol · none → {body:string} */
-  "relay-protocol-envelope-seal": { app: string; group: string; device: string; secret: string; to: string; peerKey: string; kind: string; id: string; value: object };
-  /** relay-protocol · none → {value:object} */
-  "relay-protocol-envelope-open": { app: string; group: string; device: string; secret: string; from: string; peerKey: string; kind: string; id: string; body: string };
   /** relay-protocol · none → {stop:bool,delay?:number} */
   "relay-protocol-retry": { error: string; previousDelay?: number; connectedSeconds?: number };
   /** relay-protocol · none → {device:string,secret:string,publicKey:string,cleared:string[]} */
@@ -407,11 +356,9 @@ export interface CoreResults {
   "list": { formatVersion: number; items: Array<CoreItem>; sharedVaults: Array<Record<string, unknown>>; sharedMembers: Array<Record<string, unknown>>; settings: Record<string, unknown> };
   "open-drafts": { items: Array<CoreItem> };
   "remove": { ok: true };
-  "restore-drafts": { ok: true };
   "save": { ok: true };
   "seal-drafts": { payload: CoreSealed };
   "update-login": { saved: true; updated: true };
-  "collect-note-attachments": { ok: true };
   "note-attachment-cache-get": { excerpt: unknown | null; thumb: unknown | null };
   "note-attachment-cache-put": { ok: true };
   "note-attachment-state": { ok: true };
@@ -455,9 +402,6 @@ export interface CoreResults {
   "wallet": { privateKey: string; address: string; mnemonic: string | null; network: "ETH" };
   "breach-request": { prefix: string; suffix: string };
   "breach-response": { count: number };
-  "relay-capabilities-accept": { ok: true };
-  "relay-capabilities-challenge": { challenge: string };
-  "relay-capabilities-prove": { proof: { nonce: string; ciphertext: string } };
   "security-audit": { findings: Array<Record<string, unknown>>; catalogUpdatedAt: unknown; catalogCoverage: unknown; catalogSources: unknown; catalogLicense: unknown; catalogLicenseText: string; networkBreachStatus: "notChecked"; siteCoverageStatus: string };
   "security-catalog": { ok: true };
   "security-ignore": { ok: true };
@@ -477,8 +421,6 @@ export interface CoreResults {
   "add-member": { id: unknown; vaultId: unknown; userPublicKey: unknown; encryptedVaultKey: unknown; role: unknown; name: unknown };
   "create-shared": { id: unknown; name: unknown; encryptedVaultKey: unknown; createdAt: unknown; updatedAt: unknown; isDiscoverable: false };
   "identity": { publicKey: string };
-  "remove-member": { ok: true };
-  "share-options": { fields: Array<string>; attachments: Array<CoreAttachmentMeta> };
   "share-seal": { version: 1; id: string; nonce: string; ciphertext: string; key: string };
   "sync-apply": { imported: number };
   "sync-request": { context: Record<string, unknown>; payload: CoreSealed };
@@ -489,13 +431,9 @@ export interface CoreResults {
   "relay-export": CoreRelayPacket;
   "relay-init": { ok: true };
   "relay-receive": { ok: true; stale?: true };
-  "relay-resolve": { ok: true };
   "relay-resolve-batch": { ok: true };
-  "relay-revoke": { ok: true };
   "relay-status": { enabled: false } | { enabled: true; role: unknown; group: unknown; device: unknown; hub: unknown; peers: unknown; revision: unknown; cursor: unknown; pending: unknown; conflictCount: unknown; conflicts: unknown; capabilities: unknown } | CoreMeshStatus;
   "relay-trust": { ok: true };
-  "relay-mesh-blob-export": { meta: CoreAttachmentMeta; data: string };
-  "relay-mesh-blob-receive": { ok: true; id: string; state: "ready" };
   "relay-mesh-conflicts": { conflicts: Array<{ noteId: unknown; title: unknown; localDevice: unknown; remoteDevice: unknown; revisionId: unknown; capturedAt: unknown; section: unknown; autoMerged: unknown; assetGuard: unknown; retentionDays: unknown; localItem: unknown; remoteItem: unknown }> };
   "relay-mesh-export": { packet: CoreMeshPacket | null };
   "relay-mesh-init": { ok: true; already?: true; migratedFrom?: unknown; archivedConflicts?: unknown };
@@ -504,16 +442,10 @@ export interface CoreResults {
   "relay-mesh-resolve-conflict": { ok: true; item: CoreItem; conflictCount: number };
   "relay-protocol-keys": { publicKey: string; signingKey: string };
   "relay-protocol-unpack": { state: Record<string, unknown> };
-  "relay-protocol-verify": { ok: true };
   "relay-protocol-advance": { entry: Record<string, unknown> };
   "relay-protocol-sign": { entry: { payload: unknown; signature: unknown; signer: unknown } };
-  "relay-protocol-seal-invitation": { packet: string };
-  "relay-protocol-open-invitation": { invitation: Record<string, unknown> };
-  "relay-protocol-read-token": { token: string };
   "relay-protocol-make-link": { link: string };
   "relay-protocol-parse-link": { url: string; id: string; key: string; password: string | null };
-  "relay-protocol-envelope-seal": { body: string };
-  "relay-protocol-envelope-open": { value: Record<string, unknown> };
   "relay-protocol-retry": { stop: boolean; delay?: number };
   "relay-protocol-exit-identity": { device: string; secret: string; publicKey: string; cleared: Array<string> };
 }

@@ -132,7 +132,8 @@
         "richNotes?": "bool"
       },
       "result": "{ok:true}",
-      "notes": "Requires richNotes=true once formatVersion>=3"
+      "notes": "Requires richNotes=true once formatVersion>=3",
+      "internal": true
     },
     "save": {
       "group": "items",
@@ -176,7 +177,8 @@
         "richNotes": "bool"
       },
       "result": "{ok:true}",
-      "notes": "Only matches when richNotes=true (else Unsupported); GC of unreferenced attachments, no-op when relay retains attachments"
+      "notes": "Only matches when richNotes=true (else Unsupported); GC of unreferenced attachments, no-op when relay retains attachments",
+      "internal": true
     },
     "note-attachment-cache-get": {
       "group": "notes",
@@ -593,7 +595,8 @@
         "proof": "object"
       },
       "result": "{ok:true}",
-      "notes": "proof {nonce,ciphertext} base64"
+      "notes": "proof {nonce,ciphertext} base64",
+      "internal": true
     },
     "relay-capabilities-challenge": {
       "group": "capabilities",
@@ -602,7 +605,8 @@
         "peer": "string"
       },
       "result": "{challenge:string}",
-      "notes": "Requires relay credentials identity (relay-credentials-write)"
+      "notes": "Requires relay credentials identity (relay-credentials-write)",
+      "internal": true
     },
     "relay-capabilities-prove": {
       "group": "capabilities",
@@ -612,7 +616,8 @@
         "challenge": "string"
       },
       "result": "{proof:{nonce:string,ciphertext:string}}",
-      "notes": "Requires relay credentials identity"
+      "notes": "Requires relay credentials identity",
+      "internal": true
     },
     "security-audit": {
       "group": "capabilities",
@@ -832,7 +837,8 @@
         "vaultId": "string",
         "publicKey": "string"
       },
-      "result": "{ok:true}"
+      "result": "{ok:true}",
+      "internal": true
     },
     "share-options": {
       "group": "sharing",
@@ -841,7 +847,8 @@
         "id": "string"
       },
       "result": "{fields:string[],attachments:AttachmentMeta[]}",
-      "notes": "id read with unwrap_or(\"\"): effectively required"
+      "notes": "id read with unwrap_or(\"\"): effectively required",
+      "internal": true
     },
     "share-seal": {
       "group": "sharing",
@@ -948,7 +955,8 @@
         "choice": "string"
       },
       "result": "{ok:true}",
-      "notes": "Hub only; choice local|remote|both"
+      "notes": "Hub only; choice local|remote|both",
+      "internal": true
     },
     "relay-resolve-batch": {
       "group": "relay",
@@ -966,7 +974,8 @@
       "params": {
         "peer": "string"
       },
-      "result": "{ok:true}"
+      "result": "{ok:true}",
+      "internal": true
     },
     "relay-status": {
       "group": "relay",
@@ -991,7 +1000,8 @@
         "attachmentId": "string"
       },
       "result": "{meta:AttachmentMeta,data:string}",
-      "notes": "data base64"
+      "notes": "data base64",
+      "internal": true
     },
     "relay-mesh-blob-receive": {
       "group": "relay-mesh",
@@ -1001,7 +1011,8 @@
         "meta": "object",
         "data": "string"
       },
-      "result": "{ok:true,id:string,state:'ready'}"
+      "result": "{ok:true,id:string,state:'ready'}",
+      "internal": true
     },
     "relay-mesh-conflicts": {
       "group": "relay-mesh",
@@ -1083,7 +1094,8 @@
         "key": "string"
       },
       "result": "{ok:true}",
-      "notes": "Detached Ed25519 signature check. Stateless; runs without the vault lock. Byte strings are lower-case hex."
+      "notes": "Detached Ed25519 signature check. Stateless; runs without the vault lock. Byte strings are lower-case hex.",
+      "internal": true
     },
     "relay-protocol-advance": {
       "group": "relay-protocol",
@@ -1115,7 +1127,8 @@
         "nonce": "string"
       },
       "result": "{packet:string}",
-      "notes": "Stateless; runs without the vault lock. Byte strings are lower-case hex."
+      "notes": "Stateless; runs without the vault lock. Byte strings are lower-case hex.",
+      "internal": true
     },
     "relay-protocol-open-invitation": {
       "group": "relay-protocol",
@@ -1125,7 +1138,8 @@
         "key": "string"
       },
       "result": "{invitation:object}",
-      "notes": "Stateless; runs without the vault lock. Byte strings are lower-case hex."
+      "notes": "Stateless; runs without the vault lock. Byte strings are lower-case hex.",
+      "internal": true
     },
     "relay-protocol-read-token": {
       "group": "relay-protocol",
@@ -1134,7 +1148,8 @@
         "key": "string"
       },
       "result": "{token:string}",
-      "notes": "Stateless; runs without the vault lock. Byte strings are lower-case hex."
+      "notes": "Stateless; runs without the vault lock. Byte strings are lower-case hex.",
+      "internal": true
     },
     "relay-protocol-make-link": {
       "group": "relay-protocol",
@@ -1173,7 +1188,8 @@
         "value": "object"
       },
       "result": "{body:string}",
-      "notes": "Stateless; runs without the vault lock. Byte strings are lower-case hex."
+      "notes": "Stateless; runs without the vault lock. Byte strings are lower-case hex.",
+      "internal": true
     },
     "relay-protocol-envelope-open": {
       "group": "relay-protocol",
@@ -1190,7 +1206,8 @@
         "body": "string"
       },
       "result": "{value:object}",
-      "notes": "Authentication on tamper/wrong key; InvalidData on context mismatch. Stateless; runs without the vault lock. Byte strings are lower-case hex."
+      "notes": "Authentication on tamper/wrong key; InvalidData on context mismatch. Stateless; runs without the vault lock. Byte strings are lower-case hex.",
+      "internal": true
     },
     "relay-protocol-retry": {
       "group": "relay-protocol",

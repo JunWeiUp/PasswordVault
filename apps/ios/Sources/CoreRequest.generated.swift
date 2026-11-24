@@ -49,9 +49,6 @@ enum CoreRequest {
   static func remove(id: String, richNotes: Bool? = nil) -> [String: JSONValue] { request("remove", [("id", .string(id)), ("richNotes", richNotes.map { .bool($0) })]) }
 
   /// items · unlocked → `{ok:true}`
-  static func restoreDrafts(payload: JSONValue, richNotes: Bool? = nil) -> [String: JSONValue] { request("restore-drafts", [("payload", payload), ("richNotes", richNotes.map { .bool($0) })]) }
-
-  /// items · unlocked → `{ok:true}`
   static func save(item: JSONValue, richNotes: Bool? = nil, expectedUpdatedAt: String? = nil, historyMeta: JSONValue? = nil) -> [String: JSONValue] { request("save", [("item", item), ("richNotes", richNotes.map { .bool($0) }), ("expectedUpdatedAt", expectedUpdatedAt.map { .string($0) }), ("historyMeta", historyMeta)]) }
 
   /// items · unlocked → `{payload:Sealed}`
@@ -59,9 +56,6 @@ enum CoreRequest {
 
   /// items · unlocked → `{saved:true,updated:true}`
   static func updateLogin(origin: String, id: String, username: String, password: String, time: String, accountId: String? = nil) -> [String: JSONValue] { request("update-login", [("origin", .string(origin)), ("id", .string(id)), ("username", .string(username)), ("password", .string(password)), ("time", .string(time)), ("accountId", accountId.map { .string($0) })]) }
-
-  /// notes · unlocked → `{ok:true}`
-  static func collectNoteAttachments(richNotes: Bool) -> [String: JSONValue] { request("collect-note-attachments", [("richNotes", .bool(richNotes))]) }
 
   /// notes · unlocked → `{excerpt:any|null,thumb:any|null}`
   static func noteAttachmentCacheGet(noteId: String, id: String) -> [String: JSONValue] { request("note-attachment-cache-get", [("noteId", .string(noteId)), ("id", .string(id))]) }
@@ -192,15 +186,6 @@ enum CoreRequest {
   /// capabilities · unlocked → `{count:number}`
   static func breachResponse(suffix: String, response: String) -> [String: JSONValue] { request("breach-response", [("suffix", .string(suffix)), ("response", .string(response))]) }
 
-  /// capabilities · unlocked → `{ok:true}`
-  static func relayCapabilitiesAccept(peer: String, proof: JSONValue) -> [String: JSONValue] { request("relay-capabilities-accept", [("peer", .string(peer)), ("proof", proof)]) }
-
-  /// capabilities · unlocked → `{challenge:string}`
-  static func relayCapabilitiesChallenge(peer: String) -> [String: JSONValue] { request("relay-capabilities-challenge", [("peer", .string(peer))]) }
-
-  /// capabilities · unlocked → `{proof:{nonce:string,ciphertext:string}}`
-  static func relayCapabilitiesProve(peer: String, challenge: String) -> [String: JSONValue] { request("relay-capabilities-prove", [("peer", .string(peer)), ("challenge", .string(challenge))]) }
-
   /// capabilities · unlocked → `{findings:object[],catalogUpdatedAt,catalogCoverage,catalogSources,catalogLicense,catalogLicenseText:string,networkBreachStatus:'notChecked',siteCoverageStatus:string}`
   static func securityAudit() -> [String: JSONValue] { request("security-audit") }
 
@@ -258,12 +243,6 @@ enum CoreRequest {
   /// sharing · unlocked → `{publicKey:string}`
   static func identity() -> [String: JSONValue] { request("identity") }
 
-  /// sharing · unlocked → `{ok:true}`
-  static func removeMember(vaultId: String, publicKey: String) -> [String: JSONValue] { request("remove-member", [("vaultId", .string(vaultId)), ("publicKey", .string(publicKey))]) }
-
-  /// sharing · unlocked → `{fields:string[],attachments:AttachmentMeta[]}`
-  static func shareOptions(id: String) -> [String: JSONValue] { request("share-options", [("id", .string(id))]) }
-
   /// sharing · unlocked → `{version:1,id:string,nonce:string,ciphertext:string,key:string}`
   static func shareSeal(id: String, fields: JSONValue, attachmentIds: JSONValue? = nil) -> [String: JSONValue] { request("share-seal", [("id", .string(id)), ("fields", fields), ("attachmentIds", attachmentIds)]) }
 
@@ -295,25 +274,13 @@ enum CoreRequest {
   static func relayReceive(peer: String, packet: JSONValue) -> [String: JSONValue] { request("relay-receive", [("peer", .string(peer)), ("packet", packet)]) }
 
   /// relay · unlocked → `{ok:true}`
-  static func relayResolve(conflict: String, choice: String) -> [String: JSONValue] { request("relay-resolve", [("conflict", .string(conflict)), ("choice", .string(choice))]) }
-
-  /// relay · unlocked → `{ok:true}`
   static func relayResolveBatch(conflicts: JSONValue, choice: String) -> [String: JSONValue] { request("relay-resolve-batch", [("conflicts", conflicts), ("choice", .string(choice))]) }
-
-  /// relay · unlocked → `{ok:true}`
-  static func relayRevoke(peer: String) -> [String: JSONValue] { request("relay-revoke", [("peer", .string(peer))]) }
 
   /// relay · unlocked → `{enabled:false}|{enabled:true,role,group,device,hub,peers,revision,cursor,pending,conflictCount,conflicts,capabilities}|MeshStatus`
   static func relayStatus() -> [String: JSONValue] { request("relay-status") }
 
   /// relay · unlocked → `{ok:true}`
   static func relayTrust(peer: String) -> [String: JSONValue] { request("relay-trust", [("peer", .string(peer))]) }
-
-  /// relay-mesh · unlocked → `{meta:AttachmentMeta,data:string}`
-  static func relayMeshBlobExport(peer: String, attachmentId: String) -> [String: JSONValue] { request("relay-mesh-blob-export", [("peer", .string(peer)), ("attachmentId", .string(attachmentId))]) }
-
-  /// relay-mesh · unlocked → `{ok:true,id:string,state:'ready'}`
-  static func relayMeshBlobReceive(peer: String, meta: JSONValue, data: String) -> [String: JSONValue] { request("relay-mesh-blob-receive", [("peer", .string(peer)), ("meta", meta), ("data", .string(data))]) }
 
   /// relay-mesh · unlocked → `{conflicts:{noteId,title,localDevice,remoteDevice,revisionId,capturedAt,section,autoMerged,assetGuard,retentionDays,localItem,remoteItem}[]}`
   static func relayMeshConflicts() -> [String: JSONValue] { request("relay-mesh-conflicts") }
@@ -339,35 +306,17 @@ enum CoreRequest {
   /// relay-protocol · none → `{state:object}`
   static func relayProtocolUnpack(entry: JSONValue) -> [String: JSONValue] { request("relay-protocol-unpack", [("entry", entry)]) }
 
-  /// relay-protocol · none → `{ok:true}`
-  static func relayProtocolVerify(entry: JSONValue, key: String) -> [String: JSONValue] { request("relay-protocol-verify", [("entry", entry), ("key", .string(key))]) }
-
   /// relay-protocol · none → `{entry:object}`
   static func relayProtocolAdvance(current: JSONValue, entry: JSONValue) -> [String: JSONValue] { request("relay-protocol-advance", [("current", current), ("entry", entry)]) }
 
   /// relay-protocol · none → `{entry:{payload,signature,signer}}`
   static func relayProtocolSign(value: JSONValue, secret: String, device: String) -> [String: JSONValue] { request("relay-protocol-sign", [("value", value), ("secret", .string(secret)), ("device", .string(device))]) }
 
-  /// relay-protocol · none → `{packet:string}`
-  static func relayProtocolSealInvitation(invitation: JSONValue, key: String, nonce: String) -> [String: JSONValue] { request("relay-protocol-seal-invitation", [("invitation", invitation), ("key", .string(key)), ("nonce", .string(nonce))]) }
-
-  /// relay-protocol · none → `{invitation:object}`
-  static func relayProtocolOpenInvitation(packet: String, key: String) -> [String: JSONValue] { request("relay-protocol-open-invitation", [("packet", .string(packet)), ("key", .string(key))]) }
-
-  /// relay-protocol · none → `{token:string}`
-  static func relayProtocolReadToken(key: String) -> [String: JSONValue] { request("relay-protocol-read-token", [("key", .string(key))]) }
-
   /// relay-protocol · none → `{link:string}`
   static func relayProtocolMakeLink(invitation: JSONValue, key: String, password: String? = nil, allowLocal: Bool? = nil) -> [String: JSONValue] { request("relay-protocol-make-link", [("invitation", invitation), ("key", .string(key)), ("password", password.map { .string($0) }), ("allowLocal", allowLocal.map { .bool($0) })]) }
 
   /// relay-protocol · none → `{url:string,id:string,key:string,password:string|null}`
   static func relayProtocolParseLink(link: String, allowLocal: Bool? = nil) -> [String: JSONValue] { request("relay-protocol-parse-link", [("link", .string(link)), ("allowLocal", allowLocal.map { .bool($0) })]) }
-
-  /// relay-protocol · none → `{body:string}`
-  static func relayProtocolEnvelopeSeal(app: String, group: String, device: String, secret: String, to: String, peerKey: String, kind: String, id: String, value: JSONValue) -> [String: JSONValue] { request("relay-protocol-envelope-seal", [("app", .string(app)), ("group", .string(group)), ("device", .string(device)), ("secret", .string(secret)), ("to", .string(to)), ("peerKey", .string(peerKey)), ("kind", .string(kind)), ("id", .string(id)), ("value", value)]) }
-
-  /// relay-protocol · none → `{value:object}`
-  static func relayProtocolEnvelopeOpen(app: String, group: String, device: String, secret: String, from: String, peerKey: String, kind: String, id: String, body: String) -> [String: JSONValue] { request("relay-protocol-envelope-open", [("app", .string(app)), ("group", .string(group)), ("device", .string(device)), ("secret", .string(secret)), ("from", .string(from)), ("peerKey", .string(peerKey)), ("kind", .string(kind)), ("id", .string(id)), ("body", .string(body))]) }
 
   /// relay-protocol · none → `{stop:bool,delay?:number}`
   static func relayProtocolRetry(error: String, previousDelay: Double? = nil, connectedSeconds: Double? = nil) -> [String: JSONValue] { request("relay-protocol-retry", [("error", .string(error)), ("previousDelay", previousDelay.map { .number($0) }), ("connectedSeconds", connectedSeconds.map { .number($0) })]) }
