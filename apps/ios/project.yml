@@ -21,8 +21,8 @@ targets:
     platform: iOS
     sources:
       - Sources
-      - path: ../shared/Relay
-      - path: ../shared/Capabilities
+      - Relay
+      - Capabilities
       - path: Generated/VaultCore.swift
       - path: ../shared/note-editor/dist/NoteEditor.html
         buildPhase: resources
@@ -65,7 +65,7 @@ targets:
     platform: iOS
     sources:
       - Tests
-      - path: ../shared/RelayTests
+      - RelayTests
       - path: ../../crates/vault-core/tests/fixtures/relay-protocol/group-vectors.json
         buildPhase: resources
     dependencies:

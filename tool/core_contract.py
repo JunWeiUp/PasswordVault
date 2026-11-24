@@ -447,7 +447,7 @@ MATRIX_CLIENTS: list[tuple[str, tuple[str, ...], tuple[str, ...], list[re.Patter
      [re.compile(r'\bop:\s*"([a-z0-9-]+)"'), re.compile(r'\\?"op\\?"\s*:\s*\\?"([a-z0-9-]+)')]),
     ("android", ("apps/android/app/src/main",), (".kt",),
      [*SCANS[0][2], re.compile(r'\bCoreRequest\.`?([A-Za-z0-9]+)`?\(')]),
-    ("ios", ("apps/ios/Sources", "apps/ios/Autofill", "apps/shared/Relay", "apps/shared/Capabilities"), (".swift",),
+    ("ios", ("apps/ios/Sources", "apps/ios/Autofill", "apps/ios/Relay", "apps/ios/Capabilities"), (".swift",),
      [*SCANS[1][2], re.compile(r'\bCoreRequest\.`?([A-Za-z0-9]+)`?\(')]),
     ("browser*", ("apps/browser/src",), (".ts", ".tsx"),
      [re.compile(r'\bop:\s*"([a-z0-9-]+)"'), re.compile(r'op\s*===?\s*"([a-z0-9-]+)"')]),

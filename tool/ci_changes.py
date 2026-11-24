@@ -12,7 +12,7 @@ def classify(paths):
         if not path:
             continue
         if path.startswith('docs/') or path.endswith('.md') or path in {
-            'LICENSE', '.gitignore', '.gitleaks.toml', '.gitattributes',
+            'LICENSE', '.gitignore', '.gitleaks.toml', '.gitattributes', 'Makefile',
         }:
             continue
         if path.startswith(('crates/', '.cargo/')) or path in {'Cargo.toml', 'Cargo.lock', 'rust-toolchain.toml'}:
@@ -21,8 +21,6 @@ def classify(paths):
             selected |= NATIVE
         elif path == 'tool/build_mobile_core.sh':
             selected |= {'android', 'ios'}
-        elif path.startswith(('apps/shared/Relay/', 'apps/shared/RelayTests/', 'apps/shared/Capabilities/')):
-            selected |= {'ios'}  # Swift sources compiled only by apps/ios/project.yml.
         elif path.startswith('apps/shared/note-editor/'):
             selected |= {'ios', 'android', 'browser'}  # Desktop uses NSH's own editor.
         elif path.startswith('apps/desktop/'):

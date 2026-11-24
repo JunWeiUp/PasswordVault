@@ -1,9 +1,0 @@
-{
-  "name": "PasswordVault Mobile UI",
-  "id": "com.securepass.vault.mobileui",
-  "version": "2.5.4",
-  "appearance": "system",
-  "capabilities": {
-    "host": ["vault.*", "clipboard.copy"]
-  }
-}

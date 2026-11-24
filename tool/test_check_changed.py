@@ -22,8 +22,8 @@ class CheckChangedPlanTests(unittest.TestCase):
     def test_tool_script_runs_only_tool_tests(self):
         self.assertEqual(plan(["tool/select_ios_simulator.py"]), ["tools"])
 
-    def test_shared_relay_code_checks_ios(self):
-        self.assertIn("ios", plan(["apps/shared/Relay/VaultRelay.swift"]))
+    def test_ios_relay_code_checks_ios(self):
+        self.assertIn("ios", plan(["apps/ios/Relay/VaultRelay.swift"]))
 
 
 if __name__ == "__main__":
