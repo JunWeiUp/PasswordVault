@@ -1,7 +1,8 @@
 ## Changes
 
-- Mac and Windows (NSH 0.6.0): Optional line numbers in the note rich editor and Markdown source pane (Settings toggle, on by default).
-- Local AI (MCP): Tools consolidate into five — `find`, `read`, `create`, `update` and `delete` — across entries and knowledge-base notes, with `passwordvault:<id|slug|title>` references. Reading a password or other secret still needs approval; writes save an AI-attributed encrypted history revision and deletion only moves to the Trash, so every change is restorable. Non-secret extras are kept as `Label: value` lines in the note instead of scattered custom fields, and `update` can remove fields.
+- Unified personal relay sync across macOS, Windows, iOS and Android on top of the `common-relay` Rust SDK in `vault-core`, removing legacy peer libraries and aligning device-group state, retry/exit policy and transport behavior.
+- Tightened the `vault-core` JSON command contract across all clients (including browser WASM dispatcher validation) and synchronized all four client stacks to `2.5.11`.
+- Streamlined local build, device installation and release workflows, and modularized large browser extension and `vault-core` native modules.
 
 ## Downloads
 
