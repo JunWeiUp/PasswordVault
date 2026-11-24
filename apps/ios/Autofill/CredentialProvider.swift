@@ -90,10 +90,8 @@ final class CredentialProvider: ASCredentialProviderViewController {
         guard let self, self.requests.isCurrent(requestGeneration), let core else {
           throw VaultError.Locked
         }
-        let response = try await core.call([
-          "op": .string("fill"), "origin": .string(choice.origin),
-          "id": choice.fields["id"] ?? .null, "accountId": choice.fields["accountId"] ?? .null,
-        ])
+        let response = try await core.call(CoreRequest.fill(
+          origin: choice.origin, id: choice.fields["id"]?.string ?? "", accountId: choice.fields["accountId"]?.string))
         guard self.requests.isCurrent(requestGeneration) else { throw VaultError.Locked }
         let credential = ASPasswordCredential(
           user: response.object["username"]?.string ?? "",
@@ -288,15 +286,16 @@ extension CredentialProvider {
             $0.object["id"] == result.object["id"] && $0.object["rpId"] == .string(rp)
               && $0.object["library"] == expectedLibrary && $0.object["itemId"] == expectedItem
           }) else { throw VaultError.InvalidData }
-        let export = try await core.call(["op": .string("passkey-backup-export"), "credentialId": result.object["id"] ?? .null,
-          "itemId": source.object["itemId"] ?? .null, "library": source.object["library"] ?? .string(""),
-          "currentPassword": .string(secret), "backupPassword": .string(backupSecret)])
+        let credentialID = result.object["id"]?.string ?? "", itemID = source.object["itemId"]?.string ?? ""
+        let library = source.object["library"]?.string ?? ""
+        let export = try await core.call(CoreRequest.passkeyBackupExport(currentPassword: secret, backupPassword: backupSecret,
+          credentialId: credentialID, library: library, itemId: itemID))
         guard self.requests.isCurrent(generation), let content = export.object["content"]?.string else { throw VaultError.Locked }
         try await self.savePasskeyBackup(content)
         guard self.requests.isCurrent(generation) else { throw VaultError.Locked }
-        _ = try await core.call(["op": .string("passkey-backup-confirm"), "receipt": export.object["receipt"] ?? .null, "currentPassword": .string(secret),
-          "credentialId": result.object["id"] ?? .null, "itemId": source.object["itemId"] ?? .null, "library": source.object["library"] ?? .string(""),
-          "actualArchiveHash": .string(SHA256.hash(data: Data(content.utf8)).map { String(format: "%02x", $0) }.joined())])
+        _ = try await core.call(CoreRequest.passkeyBackupConfirm(currentPassword: secret, receipt: export.object["receipt"] ?? .null,
+          credentialId: credentialID, library: library, itemId: itemID,
+          actualArchiveHash: SHA256.hash(data: Data(content.utf8)).map { String(format: "%02x", $0) }.joined()))
         query["credentialId"] = result.object["id"]
         query["itemId"] = source.object["itemId"]; query["library"] = source.object["library"]
         if registration != nil { query["op"] = .string("passkey-system-registration-response") }

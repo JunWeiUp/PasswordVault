@@ -5,12 +5,10 @@ export function HistoryDialog({
   id,
   close,
   refresh,
-  readOnly=false,
 }: {
   id: string;
   close: () => void;
   refresh: () => Promise<void>;
-  readOnly?: boolean;
 }) {
   useLocale();
   const [enabled, setEnabled] = useState(false);
@@ -75,7 +73,7 @@ export function HistoryDialog({
           </>
         ) : (
           <>
-            <p>{t("保留当前内容。个人库清理本机旧版本；对等资料库仅隐藏旧版本，旧内容仍在同步日志中。已有备份不受影响。")}</p>
+            <p>{t("保留当前内容，清理本机旧版本。已有备份不受影响。")}</p>
             <select
               aria-label={t("选择历史版本")}
               value={selected?.id ?? ""}
@@ -113,7 +111,7 @@ export function HistoryDialog({
                   </pre>
                 )}
                 <button
-                  disabled={!selected.item || readOnly}
+                  disabled={!selected.item}
                   onClick={() => setAction("restore")}
                 >
                   {t("恢复此版本")}</button>

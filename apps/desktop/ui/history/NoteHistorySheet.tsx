@@ -7,7 +7,7 @@ import { Menu, type MenuItem } from "nsh/desktop";
 import { Icon } from "../icons";
 import { Banner, Btn, copySecret, Pill, Row, SheetFooter, SheetTitle, SmallAction, T, TextBox } from "../kit";
 import { askEnableHistory, historyWarning } from "../recovery";
-import { call, errorText, flush, items, load, now, onLock, phase, saveMilestone, type Item } from "../store";
+import { call, coreApi, errorText, flush, items, load, now, onLock, phase, saveMilestone, type Item } from "../store";
 import { c, MONO } from "../theme";
 import { documentFor } from "../notes/model";
 import { project } from "../notes/projection";
@@ -93,12 +93,7 @@ export function NoteHistorySheet(props: { item: Item; close: () => void; reopen:
     await flush();
     const status = await call({ op: "history-status" });
     const page = status.enabled
-      ? await call<{ revisions: NoteRevision[]; total: number }>({
-          op: "history-list",
-          id: props.item.id,
-          offset: append ? revisions().length : 0,
-          limit: 40,
-        })
+      ? await coreApi.historyList<NoteRevision>(props.item.id, append ? revisions().length : 0, 40)
       : { revisions: [], total: 0 };
     if (!alive) return;
     enabled.set(!!status.enabled);

@@ -8,49 +8,6 @@ let lastActivity = 0;
 let idleMinutes = 60;
 let checkpoint: string | undefined;
 let queue: Promise<unknown> = Promise.resolve();
-const readOnly = new Set([
-  "relay-peer-list",
-  "relay-peer-status",
-  "relay-peer-export",
-  "peer-transport-status",
-  "peer-transport-open",
-  "peer-transport-seal",
-  "relay-peer-status",
-  "relay-peer-list",
-  "relay-peer-export",
-  "peer-transport-status",
-  "peer-transport-open",
-  "peer-transport-seal",
-  "list",
-  "draft-read",
-  "structured-list",
-  "structured-fill",
-  "totp",
-  "parse-totp",
-  "generate",
-  "passkey-index",
-            "passkey-matches",
-  "passkey-assert",
-  "audit",
-  "import-preview",
-  "security-audit",
-  "breach-request",
-  "breach-response",
-  "otp-matches",
-  "otp-fill",
-  "matches",
-  "fill",
-  "export",
-  "export-plain",
-  "share-options",
-  "share-seal",
-  "history-status",
-  "history-list",
-  "recovery-status",
-  "recovery-generate",
-  "recovery-export",
-  "attachment-read",
-]);
 export function locked() {
   if (engine && Date.now() - lastActivity > idleMinutes * 60_000) lock();
   return !engine;
@@ -99,22 +56,20 @@ async function execute(request: Request): Promise<any> {
   }
   const current = engine;
   const epoch = generation;
-  // A different standalone Web tab may have committed a newer document. Never overwrite it.
+  // Another extension page may have committed a newer document. Never overwrite it.
   if ((await readStorage()) !== checkpoint) {
     lock();
     throw new Error("stale-storage");
   }
   if (generation !== epoch || engine !== current) throw new Error("locked");
   if (
-    !["totp", "list", "matches"].includes(request.op) &&
-    !request.op.startsWith("relay-peer-") &&
-    !request.op.startsWith("peer-transport-")
+    !["totp", "list", "matches"].includes(request.op)
   )
     lastActivity = Date.now();
   const before = checkpoint!;
   try {
     const result = JSON.parse(engine.command(JSON.stringify(request)));
-    if (!readOnly.has(request.op)) {
+    if (!wasm.isReadOnlyOp(request.op)) {
       const next = engine.snapshot();
       await writeStorage(
         next,

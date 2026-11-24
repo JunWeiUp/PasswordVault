@@ -109,6 +109,9 @@ class VaultRepository(
         }
     }
 
+    /** The open core session, for the relay's shared sync session (vault-core `RelayMeshSync`). */
+    internal fun coreSession(): VaultSession = checkNotNull(session) { "Locked" }
+
     /** Sends one typed [CoreRequest]; rich-note ops always carry `richNotes=true`. */
     private fun raw(request: JSONObject): JSONObject {
         if (request.getString("op") in listOf("export", "import", "create-from-backup", "remove", "save")) request.put("richNotes", true)
@@ -270,9 +273,6 @@ class VaultRepository(
     }
 
     fun canWriteLibrary(): Boolean {
-        val settings=state.value.settings
-        if(settings.optBoolean("_peerLibraryReadOnly")) return false
-        if(settings.optString("activePeerLibrary").isNotEmpty()) return settings.optString("_peerLibraryRole") in listOf("admin","editor")
         return true
     }
     fun canEdit(item: JSONObject): Boolean {
@@ -482,7 +482,7 @@ class VaultRepository(
         mutex.withLock {
             val op = request.getString("op")
             check(mutable.value.unlocked) { "Locked" }
-            check(pendingDraft == null || op !in listOf("relay-peer-switch", "relay-peer-create", "relay-peer-rekey", "relay-init", "relay-receive", "recovery-export", "history-enable", "history-restore", "history-prune", "share-seal")) { "Save or discard the current draft first" }
+            check(pendingDraft == null || op !in listOf("relay-init", "relay-receive", "recovery-export", "history-enable", "history-restore", "history-prune", "share-seal")) { "Save or discard the current draft first" }
             val generation = epoch
             val result = withContext(Dispatchers.IO) { raw(request) }
             check(generation == epoch && mutable.value.unlocked) { "Locked" }

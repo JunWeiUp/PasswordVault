@@ -1,4 +1,5 @@
-//! UniFFI surface of the relay transport for Android and iOS (desktop uses the Rust types).
+//! UniFFI surface of the relay transport for Android and iOS (desktop calls `connection`,
+//! `files` and `Journal` directly).
 use super::{connection::Connection, files, http::Http, journal::Journal};
 use crate::relay_protocol::{groups::Groups, text, unhex, BoxPublicKey, BoxSecretKey, Identity};
 use serde_json::{json, Value};
@@ -247,4 +248,57 @@ pub fn relay_groups(request: String, store: Arc<dyn RelayGroupStore>) -> R<Strin
     };
     let config = std::mem::take(&mut groups.config);
     Ok(json!({"config": config, "result": result}).to_string())
+}
+
+/// The shared personal-sync session (see `relay_net::mesh_sync`). Blocking: run it on a
+/// background thread. Loop: `cycle` (every few seconds), `pump` events in between, and
+/// reconnect when `pump` returns a `reconnect` reason or any call fails.
+#[derive(uniffi::Object)]
+pub struct RelayMeshSync {
+    inner: super::mesh_sync::MeshSync,
+}
+
+#[uniffi::export]
+impl RelayMeshSync {
+    /// Same options as [`RelayConnection::connect`]; `journal` (a directory) is required.
+    #[uniffi::constructor]
+    pub fn connect(vault: Arc<crate::VaultSession>, options: String) -> R<Arc<Self>> {
+        let o = parse(&options)?;
+        let settings = super::mesh_sync::Settings {
+            url: text(&o, "url")?.into(),
+            token: text(&o, "token")?.into(),
+            password: o["password"]
+                .as_str()
+                .filter(|p| !p.is_empty())
+                .map(str::to_owned),
+            local: o["allowLocal"] == true,
+            identity: identity(&o["identity"])?,
+            journal: text(&o, "journal")?.into(),
+        };
+        let inner = super::mesh_sync::MeshSync::connect(vault, settings)?;
+        Ok(Arc::new(Self { inner }))
+    }
+
+    /// One round with the current group config (`relay_groups` config JSON):
+    /// `{changed, online, sent, received, peers}`. `force` resends unchanged packets.
+    pub fn cycle(&self, groups: String, force: bool) -> R<String> {
+        Ok(self.inner.cycle(&parse(&groups)?, force)?.to_string())
+    }
+
+    /// Handles events for up to `timeout_ms`: `{changed, reconnect: null|"roster"|"group"}`.
+    pub fn pump(&self, timeout_ms: u64) -> R<String> {
+        Ok(self
+            .inner
+            .pump(Duration::from_millis(timeout_ms))?
+            .to_string())
+    }
+
+    /// Closes the connection (named `disconnect`: `close` is taken by Kotlin's AutoCloseable).
+    pub fn disconnect(&self) {
+        self.inner.close()
+    }
+
+    pub fn is_closed(&self) -> bool {
+        self.inner.is_closed()
+    }
 }

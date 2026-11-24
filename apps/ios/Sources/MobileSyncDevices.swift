@@ -83,11 +83,6 @@ struct MobileSyncDevicesView: View {
       } footer: {
         Text(t("相机权限被拒绝时可改为粘贴链接。中继只转发密文。", "Without camera access, paste the link instead. The relay only forwards ciphertext."))
       }
-      Section {
-        NavigationLink(t("对等库与家庭库", "Peer & family libraries")) { peerLibraries }
-      } footer: {
-        Text(t("独立于个人设备组；成员与角色由各库单独管理。", "Separate from your device group; each library manages its own members and roles."))
-      }
       if let failure = relay.failure { Section { Text(localized(failure)).foregroundStyle(.red) } }
     }
   }
@@ -207,15 +202,6 @@ struct MobileSyncDevicesView: View {
           VStack(alignment: .leading, spacing: 2) {
             Text(t("连接设置", "Connection"))
             Text(t("中继地址来自创建或邀请；可更新本机保存的中继密码", "The relay address comes from creation or the invitation; you can update the saved relay password"))
-              .font(.caption).foregroundStyle(.secondary)
-          }
-        }
-        NavigationLink {
-          peerLibraries
-        } label: {
-          VStack(alignment: .leading, spacing: 2) {
-            Text(t("对等库与家庭库", "Peer & family libraries"))
-            Text(t("独立于个人设备组；成员与角色由各库单独管理", "Separate from your device group; each library manages its own members and roles"))
               .font(.caption).foregroundStyle(.secondary)
           }
         }
@@ -382,11 +368,6 @@ struct MobileSyncDevicesView: View {
     .contentShape(Rectangle())
   }
 
-  private var peerLibraries: some View {
-    ScrollView { RelayPeerLibraryView(relay: relay, t: t).padding() }
-      .navigationTitle(t("对等库与家庭库", "Peer & family libraries"))
-  }
-
   private func localized(_ text: String) -> String {
     let parts = text.components(separatedBy: " / ")
     return parts.count == 2 ? t(parts[0], parts[1]) : text
@@ -467,7 +448,7 @@ struct MobileRelayInviteSheet: View {
         ToolbarItem(placement: .confirmationAction) { Button(t("完成", "Done")) { dismiss() } }
       }
       .task {
-        if relay.groupInvite.isEmpty { await relay.inviteToGroup(automatic: relay.config.peerLibrary == nil) }
+        if relay.groupInvite.isEmpty { await relay.inviteToGroup(automatic: true) }
       }
     }
     .presentationDetents([.large])

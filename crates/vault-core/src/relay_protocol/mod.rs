@@ -9,6 +9,7 @@
 //! changed without a full re-admission (only renames are allowed), matching the strict
 //! desktop rule.
 mod command;
+#[cfg(feature = "native")]
 pub mod groups;
 pub mod policy;
 mod strict;
@@ -561,6 +562,7 @@ pub fn make_link_with(
 }
 
 /// Per-device envelope identity: seals messages for, and opens messages from, trusted peers.
+#[derive(Clone)]
 pub struct Identity {
     pub app: String,
     pub group: String,

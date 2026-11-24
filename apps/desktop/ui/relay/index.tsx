@@ -14,15 +14,13 @@ import { bumpNoteAssets } from "../api/noteAssets";
 type Summary = RelaySummary;
 const summary = signal<Summary>({});
 const roster = signal<any>({});
-const peerState = signal<any>({});
 const acting = signal(false);
 const refreshing = signal(false);
 const syncing = signal(false);
 const failure = signal("");
-const syncBlocked = signal(false);
 const connection = signal<any>({ transport: "disconnected", online: [] });
 /** Symmetric sync: every member of the group syncs both ways; no primary, grants or conflict list. */
-export const meshSync = () => !!roster().state && !roster().peerLibrary;
+export const meshSync = () => !!roster().state;
 export const isRelayOffline = () => phase() === "unlocked" && !!roster().state && connection().transport !== "connected";
 export const RELAY_UPGRADE_MESSAGE = "部分设备尚未验证格式兼容性，正在自动协商";
 export function relayErrorText(error: unknown) {
@@ -33,7 +31,7 @@ export function relayErrorText(error: unknown) {
     ApprovalConflict: "设备组已变化，此次审批未完成；请刷新后重新核对。",
     ManagerRequired: "此操作需要设备组管理员。", VerificationCodeMismatch: "配对码不一致，请重新核对。",
     AnotherJoinPending: "已有待处理的入组申请，请先完成当前申请。", LegacyRelayResetRequired: "旧手动接入需要重新建组：请清除本机接入后重新创建或加入设备组。",
-    GroupAccessRevoked: "本机设备组权限已被撤销。", PeerLibraryIdentityRequired: "对等库需要通过独立的身份回执授权。",
+    GroupAccessRevoked: "本机设备组权限已被撤销。",
     RelayConnection: "暂时无法连接中继，改动保留在本机。", RelayHttp409: "设备组已被其他设备修改，请刷新后重试。",
     RelayIdentityChanged: "本机接入已变更，旧操作已取消。",
     RelayHttp401: "中继拒绝接入：请更新中继密码后重试；设备组身份已保留，自动重试已停止。若仍失败，请检查接入凭据。", RelayPasswordInvalid: "中继密码格式不正确：需 8–128 位，不能包含空格。", RelayHttp403: "中继拒绝此操作。", RelayHttp410: "邀请已失效或已取消。",
@@ -46,7 +44,7 @@ export function exitNotice(exit: { disband?: boolean; remote?: string }): string
   return exit.disband ? "本机已退出，正在尝试通知服务器解散设备组" : "本机已退出，正在尝试通知服务器";
 }
 let generation = 0;
-export function relayOnLock() { if (!isMac) void Relay.disconnect(vaultInstance).catch(() => {}); connection.set({ transport: "disconnected", online: [] }); ++generation; summary.set({}); roster.set({}); peerState.set({}); syncBlocked.set(false); failure.set(""); closeSheet(); }
+export function relayOnLock() { if (!isMac) void Relay.disconnect(vaultInstance).catch(() => {}); connection.set({ transport: "disconnected", online: [] }); ++generation; summary.set({}); roster.set({}); failure.set(""); closeSheet(); }
 onLock(relayOnLock);
 effect(() => {
   if (phase() !== "unlocked") { relayOnLock(); return; }
@@ -77,16 +75,13 @@ export function syncStatus(): string {
       ? (remoteCount > 0 ? `已同步 · L1 优先（${remoteCount} 附件按需）` : "已同步 · L1 元数据优先双向同步")
       : "离线可用 · 本地完整读写";
   }
-  if (syncBlocked()) return RELAY_UPGRADE_MESSAGE;
-  const count = Object.keys(peerState().conflicts ?? {}).length;
-  if (count) return `${count} 项同步冲突`;
   return ({ connected: "设备组已连接", connecting: "正在连接设备组…", reconnecting: "等待重新连接…" } as Record<string,string>)[connection().transport] ?? "中继未连接";
 }
 /** Tone for the sidebar status dot, derived from the same state as `syncStatus`. */
 export function syncTone(): "ok" | "busy" | "warn" | "off" {
   if (phase() !== "unlocked") return "off";
   const noteConflictCount = Object.keys(meshConflicts()).length || Number(summary().conflictCount ?? 0);
-  if (syncBlocked() || noteConflictCount > 0 || Object.keys(peerState().conflicts ?? {}).length) return "warn";
+  if (noteConflictCount > 0) return "warn";
   const transport = connection().transport;
   if (transport === "connected") return "ok";
   if (transport === "connecting" || transport === "reconnecting") return "busy";
@@ -94,18 +89,14 @@ export function syncTone(): "ok" | "busy" | "warn" | "off" {
 }
 export async function refreshRelay() {
   const epoch = ++generation;
-  if (phase() !== "unlocked") { summary.set({}); roster.set({}); peerState.set({}); syncBlocked.set(false); return; }
+  if (phase() !== "unlocked") { summary.set({}); roster.set({}); return; }
   refreshing.set(true);
   try {
-    const [state, group, devices] = await Promise.all([coreApi.relayStatus(), Relay.summary(vaultInstance), coreApi.devicesStatus()]);
+    const [state, group] = await Promise.all([coreApi.relayStatus(), Relay.summary(vaultInstance)]);
     const parsed = JSON.parse(group);
-    const library = settings().activePeerLibrary || parsed.peerLibrary;
-    const peer = library ? await coreApi.relayPeerStatus(library) : {};
     await refreshMeshConflicts();
     if (epoch !== generation || phase() !== "unlocked") return;
-    peerState.set(peer); summary.set(state); roster.set(parsed);
-    // Peer libraries still cannot carry format-7 device records; personal groups can.
-    syncBlocked.set(!!library && Number(devices.formatVersion) >= 7);
+    summary.set(state); roster.set(parsed);
     failure.set("");
   } catch (e) { if (epoch === generation && phase() === "unlocked") failure.set(relayErrorText(e)); }
   finally { if (epoch === generation) refreshing.set(false); }
@@ -131,24 +122,8 @@ async function groupAction(request: Record<string, unknown>) {
   catch (e) { failure.set(relayErrorText(e)); await refreshRelay().catch(() => {}); failure.set(relayErrorText(e)); throw e; }
   finally { acting.set(false); }
 }
-function comparePeer(key: string, candidates: any[]) {
-  const library = peerState().library;
-  openSheet({ width: 640, render: (close) => <View style={{ gap: 12 }}>
-    <SheetTitle title="比较对等库修改" text={key} />
-    {candidates.map((candidate) => <Group style={{ gap: 8, paddingVertical: 10 }}>
-      <T weight="600">{candidate.device || candidate.author || candidate.id}</T><T size={12}>{JSON.stringify(candidate.value, null, 2)}</T>
-      <Btn label="使用此版本" disabled={acting() || syncBlocked() || peerState().frozen === true} onPress={() => {
-        close(); confirm({ title: "解决此项冲突", text: "此版本将作为新的已解决版本同步给授权设备。", ok: "确认使用", onConfirm: async () => {
-          acting.set(true); try { await coreApi.relayPeerResolve(library, key, candidate.value); await load(); await refreshRelay(); }
-          catch(e) { failure.set(relayErrorText(e)); } finally { acting.set(false); }
-        } });
-      }} />
-    </Group>)}
-    <SheetFooter><Btn label="关闭" onPress={close} /></SheetFooter>
-  </View> });
-}
 export function RelayPage() {
-  effect(() => { if (phase() === "unlocked") void refreshRelay(); else { ++generation; summary.set({}); roster.set({}); peerState.set({}); syncBlocked.set(false); failure.set(""); closeSheet(); } });
+  effect(() => { if (phase() === "unlocked") void refreshRelay(); else { ++generation; summary.set({}); roster.set({}); failure.set(""); closeSheet(); } });
   const conflictList = () => Object.values(meshConflicts());
   return <View style={{ gap: 14 }}>
     <T size={19} weight="600">同步与设备</T>
@@ -182,7 +157,6 @@ export function RelayPage() {
     </If>
     <If when={meshSync() && Number(summary().archivedConflicts ?? 0) > 0}><Banner tone="info" title={`升级时 ${summary().archivedConflicts} 个旧冲突版本已存入条目历史`}>无需再手动处理冲突；需要时可在对应条目的历史中恢复。</Banner></If>
     <If when={meshSync() && summary().skew === true}><Banner tone="warn" title="有设备的系统时间明显不准">同时修改时以时间较新的修改为准，请校准该设备时间。</Banner></If>
-    <If when={syncBlocked()}><Banner tone="warn" title="对等库暂不支持设备条目同步">个人设备组不受影响。</Banner></If>
     <If when={!roster().state}><Banner tone="info" title="扫码加入，L1 元数据优先自动同步">创建设备组，或在其他设备上扫描邀请二维码加入。优先同步密码与笔记索引，大附件按需拉取，离线时本机仍完整读写。</Banner></If>
     <Group>
       <View style={{ gap: 6, paddingVertical: 8 }}>
@@ -207,10 +181,6 @@ export function RelayPage() {
     <If when={failure()}><Banner tone="err" title={failure()} /></If>
     <If when={connection().error}><Banner tone="warn" title={relayErrorText(connection().error)} /></If>
     <If when={connection().exit}><Banner tone={connection().exit?.remote === "failed" ? "warn" : "info"} title={exitNotice(connection().exit ?? {})}>本地资料已保留；退出后不会自动恢复旧组连接。</Banner></If>
-    <If when={Object.keys(peerState().conflicts ?? {}).length > 0}>
-      <T weight="600">对等库冲突</T>
-      <Group>{Object.entries(peerState().conflicts ?? {}).map(([key, candidates]) => <Row style={{ paddingVertical: 10 }}><T style={{ flex: 1 }}>{key}</T><Btn label="比较修改" disabled={acting()} onPress={() => comparePeer(key, Array.isArray(candidates) ? candidates : [])} /></Row>)}</Group>
-    </If>
     <T weight="600">设备组</T>
     <GroupPanel group={roster()} busy={acting()} act={groupAction} online={connection().online ?? []} />
     <If when={!roster().state?.members?.length}><T color={c().muted}>本地没有设备组记录</T></If>

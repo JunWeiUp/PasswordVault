@@ -82,6 +82,46 @@ pub fn bootstrap_unlock(
     Ok(root.to_vec())
 }
 
+/// Ops that never change vault state: no checkpoint, no encrypted snapshot save. The
+/// extension asks this (`isReadOnlyOp`) instead of keeping its own list.
+const READ_ONLY_OPS: [&str; 30] = [
+    "list",
+    "totp",
+    "parse-totp",
+    "generate",
+    "audit",
+    "matches",
+    "fill",
+    "export",
+    "export-plain",
+    "wallet",
+    "share-options",
+    "share-seal",
+    "structured-list",
+    "structured-fill",
+    "history-status",
+    "draft-read",
+    "history-list",
+    "recovery-status",
+    "recovery-generate",
+    "recovery-export",
+    "attachment-read",
+    "passkey-index",
+    "passkey-matches",
+    "passkey-assert",
+    "import-preview",
+    "security-audit",
+    "breach-request",
+    "breach-response",
+    "otp-matches",
+    "otp-fill",
+];
+
+#[wasm_bindgen(js_name = isReadOnlyOp)]
+pub fn is_read_only_op(op: &str) -> bool {
+    READ_ONLY_OPS.contains(&op)
+}
+
 #[wasm_bindgen]
 pub struct BrowserVault {
     header: Header,
@@ -112,7 +152,7 @@ impl BrowserVault {
         let document = Document::parse(&data).map_err(js_error)?;
         let extras = extra::decode_extras(&root, bundle.extras.as_ref(), &bundle.header.vault_id)
             .map_err(js_error)?;
-        let engine = Self {
+        let mut engine = Self {
             header: bundle.header,
             root,
             document,
@@ -120,6 +160,7 @@ impl BrowserVault {
             recovery: bundle.recovery,
             files: Arc::new(bundle.files),
         };
+        engine.leave_peer_library().map_err(js_error)?;
         engine.validate_extras().map_err(js_error)?;
         Ok(engine)
     }
@@ -136,8 +177,6 @@ impl BrowserVault {
         .map_err(js_error)?;
         let extras = if self.extras.enabled
             || !self.extras.attachments.is_empty()
-            || !self.extras.peers.libraries.is_empty()
-            || self.extras.peers.transport.is_some()
             || self.extras.draft.is_some()
         {
             let bytes = Zeroizing::new(
@@ -185,45 +224,7 @@ impl BrowserVault {
         }
         let mut request: Value =
             serde_json::from_str(&input).map_err(|_| js_error(VaultError::InvalidData))?;
-        let read_only = [
-            "list",
-            "totp",
-            "parse-totp",
-            "generate",
-            "audit",
-            "matches",
-            "fill",
-            "export",
-            "export-plain",
-            "wallet",
-            "share-options",
-            "share-seal",
-            "structured-list",
-            "structured-fill",
-            "history-status",
-            "draft-read",
-            "relay-peer-status",
-            "relay-peer-list",
-            "relay-peer-export",
-            "peer-transport-status",
-            "peer-transport-open",
-            "peer-transport-seal",
-            "history-list",
-            "recovery-status",
-            "recovery-generate",
-            "recovery-export",
-            "attachment-read",
-            "passkey-index",
-            "passkey-matches",
-            "passkey-assert",
-            "import-preview",
-            "security-audit",
-            "breach-request",
-            "breach-response",
-            "otp-matches",
-            "otp-fill",
-        ]
-        .contains(&request["op"].as_str().unwrap_or(""));
+        let read_only = is_read_only_op(request["op"].as_str().unwrap_or(""));
         let checkpoint = (!read_only).then(|| {
             (
                 self.document.clone(),
@@ -236,10 +237,7 @@ impl BrowserVault {
         let mut result = self.execute(&request);
         if result.is_ok() && !read_only {
             if let Some((document, _, _, _, _)) = &checkpoint {
-                if let Err(error) = self
-                    .capture_peers(document)
-                    .and_then(|_| self.capture_history(document))
-                {
+                if let Err(error) = self.capture_history(document) {
                     result = Err(error);
                 }
             }
@@ -252,9 +250,6 @@ impl BrowserVault {
                 self.recovery = recovery;
                 self.files = files;
             }
-        }
-        if result.is_ok() && request["op"] == "save" {
-            result = Ok(self.peer_save_result(request["item"]["id"].as_str().unwrap_or("")));
         }
         wipe(&mut request);
         serde_json::to_string(&result.map_err(js_error)?)
@@ -275,28 +270,13 @@ impl BrowserVault {
                 "import-commit",
                 "remove",
                 "share-seal",
-                "relay-peer-switch",
-                "relay-peer-rekey",
             ]
             .contains(&op)
         {
             return Err(VaultError::Unsupported);
         }
-        if op.starts_with("relay-peer-") || op.starts_with("peer-transport-") {
-            return self.peer_command(request);
-        }
         if op.starts_with("draft-") {
             return self.draft_command(request);
-        }
-        if op.starts_with("history-")
-            && self.document.settings["activePeerLibrary"]
-                .as_str()
-                .is_some_and(|s| !s.is_empty())
-        {
-            let mut scoped = request.clone();
-            scoped["library"] = self.document.settings["activePeerLibrary"].clone();
-            scoped["op"] = json!(op.replacen("history-", "relay-peer-history-", 1));
-            return self.peer_command(&scoped);
         }
         if op.starts_with("passkey-") {
             return self.passkey_command(request);
@@ -313,7 +293,7 @@ impl BrowserVault {
             return Err(VaultError::Unsupported);
         }
         match text("op")? {
-            "list" => Ok(json!(self.peer_editable_document())),
+            "list" => Ok(json!(self.document)),
             "structured-list" => Ok(structured_items(&self.document.items)),
             "structured-fill" => fill_structured(
                 &self.document.items,
@@ -447,7 +427,7 @@ impl BrowserVault {
                 text("time")?
             )?})),
             "save" => {
-                let mut item = self.peer_prepare_save(&request["item"])?;
+                let mut item = request["item"].clone();
                 preserve_passkeys_for_edit(&self.document, &mut item)?;
                 if request["richNotes"] != true
                     && (request["item"]["noteFormat"] == "rich-v1"

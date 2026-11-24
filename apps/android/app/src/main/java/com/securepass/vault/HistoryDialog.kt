@@ -108,7 +108,7 @@ internal fun HistoryDialog(vault: VaultRepository, id: String, t: (String, Strin
     confirm?.let { operation ->
         AlertDialog(onDismissRequest = { if (!working) confirm = null },
             title = { Text(if (operation == "prune") t("清理旧版本？", "Clear older versions?") else t("恢复这个版本？", "Restore this version?")) },
-            text = { Text(if (operation == "prune") t("保留当前内容。个人库清理本机旧版本；对等资料库仅隐藏旧版本，旧内容仍在同步日志中。已有备份不受影响。", "Current contents remain. Personal vaults clear local older versions; peer libraries only hide them and retain their contents in the sync log. Existing backups are unchanged.") else t("当前内容会保留在历史中，并创建一个新的版本。", "Current contents remain in history and a new version is created.")) },
+            text = { Text(if (operation == "prune") t("保留当前内容，清理本机旧版本。已有备份不受影响。", "Current contents remain and older local versions are cleared. Existing backups are unchanged.") else t("当前内容会保留在历史中，并创建一个新的版本。", "Current contents remain in history and a new version is created.")) },
             confirmButton = { Button(enabled = !working, onClick = { run {
                 if (operation == "prune") vault.command(CoreRequest.historyPrune(id))
                 else vault.command(CoreRequest.historyRestore(id, selected!!.getString("id"), Instant.now().toString()))

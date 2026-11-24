@@ -51,7 +51,7 @@ enum CoreRequest {
   /// items · unlocked → `{ok:true}`
   static func restoreDrafts(payload: JSONValue, richNotes: Bool? = nil) -> [String: JSONValue] { request("restore-drafts", [("payload", payload), ("richNotes", richNotes.map { .bool($0) })]) }
 
-  /// items · unlocked → `{ok:true,peerBaseHeads?:string[],peerLibrary?:string}`
+  /// items · unlocked → `{ok:true}`
   static func save(item: JSONValue, richNotes: Bool? = nil, expectedUpdatedAt: String? = nil, historyMeta: JSONValue? = nil) -> [String: JSONValue] { request("save", [("item", item), ("richNotes", richNotes.map { .bool($0) }), ("expectedUpdatedAt", expectedUpdatedAt.map { .string($0) }), ("historyMeta", historyMeta)]) }
 
   /// items · unlocked → `{payload:Sealed}`
@@ -332,60 +332,6 @@ enum CoreRequest {
 
   /// relay-mesh · unlocked → `{ok:true,item:Item,conflictCount:number}`
   static func relayMeshResolveConflict(id: String, strategy: String? = nil, item: JSONValue? = nil) -> [String: JSONValue] { request("relay-mesh-resolve-conflict", [("id", .string(id)), ("strategy", strategy.map { .string($0) }), ("item", item)]) }
-
-  /// relay-peer · unlocked → `PeerResult`
-  static func relayPeerAuthorize(library: String, peer: String, member: JSONValue? = nil) -> [String: JSONValue] { request("relay-peer-authorize", [("library", .string(library)), ("peer", .string(peer)), ("member", member)]) }
-
-  /// relay-peer · unlocked → `{ok:true}`
-  static func relayPeerCancelJoin(library: String) -> [String: JSONValue] { request("relay-peer-cancel-join", [("library", .string(library))]) }
-
-  /// relay-peer · unlocked → `{library:string,device:string,publicKey:string}`
-  static func relayPeerCreate(device: String, personal: Bool? = nil, transportKey: String? = nil, name: String? = nil, migrateLegacy: Bool? = nil) -> [String: JSONValue] { request("relay-peer-create", [("device", .string(device)), ("personal", personal.map { .bool($0) }), ("transportKey", transportKey.map { .string($0) }), ("name", name.map { .string($0) }), ("migrateLegacy", migrateLegacy.map { .bool($0) })]) }
-
-  /// relay-peer · unlocked → `{protocol:'peer-v2',packet:PeerPacket,files:object[]}`
-  static func relayPeerExport(library: String, peer: String) -> [String: JSONValue] { request("relay-peer-export", [("library", .string(library)), ("peer", .string(peer))]) }
-
-  /// relay-peer · unlocked → `{enabled:true,ok:true}`
-  static func relayPeerHistoryEnable(library: String) -> [String: JSONValue] { request("relay-peer-history-enable", [("library", .string(library))]) }
-
-  /// relay-peer · unlocked → `{total:number,revisions:Revision[]}`
-  static func relayPeerHistoryList(library: String, id: String, offset: Double? = nil, limit: Double? = nil) -> [String: JSONValue] { request("relay-peer-history-list", [("library", .string(library)), ("id", .string(id)), ("offset", offset.map { .number($0) }), ("limit", limit.map { .number($0) })]) }
-
-  /// relay-peer · unlocked → `{ok:true,retainedForSync:true}`
-  static func relayPeerHistoryPrune(library: String, id: String) -> [String: JSONValue] { request("relay-peer-history-prune", [("library", .string(library)), ("id", .string(id))]) }
-
-  /// relay-peer · unlocked → `PeerResult`
-  static func relayPeerHistoryRestore(library: String, id: String, revisionId: String, time: String) -> [String: JSONValue] { request("relay-peer-history-restore", [("library", .string(library)), ("id", .string(id)), ("revisionId", .string(revisionId)), ("time", .string(time))]) }
-
-  /// relay-peer · unlocked → `{enabled:true,ok:true}`
-  static func relayPeerHistoryStatus(library: String) -> [String: JSONValue] { request("relay-peer-history-status", [("library", .string(library))]) }
-
-  /// relay-peer · unlocked → `{library:string,device:string,publicKey:string}`
-  static func relayPeerIdentity(device: String, personal: Bool? = nil, confirmPersonalSync: Bool? = nil) -> [String: JSONValue] { request("relay-peer-identity", [("device", .string(device)), ("personal", personal.map { .bool($0) }), ("confirmPersonalSync", confirmPersonalSync.map { .bool($0) })]) }
-
-  /// relay-peer · unlocked → `PeerResult|{ok:true,partial:true}`
-  static func relayPeerJoin(library: String, envelope: JSONValue, expectedLibrary: String, founderKey: String, sender: String? = nil) -> [String: JSONValue] { request("relay-peer-join", [("library", .string(library)), ("envelope", envelope), ("expectedLibrary", .string(expectedLibrary)), ("founderKey", .string(founderKey)), ("sender", sender.map { .string($0) })]) }
-
-  /// relay-peer · unlocked → `{libraries:{id,personal,name,role}[],active:string|null}`
-  static func relayPeerList() -> [String: JSONValue] { request("relay-peer-list") }
-
-  /// relay-peer · unlocked → `PeerResult|{ok:true,partial:true}`
-  static func relayPeerReceive(library: String, envelope: JSONValue, sender: String? = nil) -> [String: JSONValue] { request("relay-peer-receive", [("library", .string(library)), ("envelope", envelope), ("sender", sender.map { .string($0) })]) }
-
-  /// relay-peer · unlocked → `PeerResult`
-  static func relayPeerRekey(library: String, device: String, transportKey: String) -> [String: JSONValue] { request("relay-peer-rekey", [("library", .string(library)), ("device", .string(device)), ("transportKey", .string(transportKey))]) }
-
-  /// relay-peer · unlocked → `PeerResult`
-  static func relayPeerResolve(library: String, key: String, value: JSONValue) -> [String: JSONValue] { request("relay-peer-resolve", [("library", .string(library)), ("key", .string(key)), ("value", value)]) }
-
-  /// relay-peer · unlocked → `{library,device,publicKey,personal,generation,frozen,members,conflicts,records,history}`
-  static func relayPeerStatus(library: String) -> [String: JSONValue] { request("relay-peer-status", [("library", .string(library))]) }
-
-  /// relay-peer · unlocked → `{ok:true}`
-  static func relayPeerSwitch(library: String) -> [String: JSONValue] { request("relay-peer-switch", [("library", .string(library))]) }
-
-  /// relay-peer · unlocked → `PeerResult`
-  static func relayPeerWrite(library: String, key: String, value: JSONValue) -> [String: JSONValue] { request("relay-peer-write", [("library", .string(library)), ("key", .string(key)), ("value", value)]) }
 
   /// relay-protocol · none → `{publicKey:string,signingKey:string}`
   static func relayProtocolKeys(secret: String) -> [String: JSONValue] { request("relay-protocol-keys", [("secret", .string(secret))]) }

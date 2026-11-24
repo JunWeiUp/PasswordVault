@@ -1,8 +1,6 @@
 //! Personal-vault replication. The relay transports bytes; only the Mac commits revisions.
 //! Every journal update shares the SQLCipher transaction with the document write.
 use super::*;
-#[path = "relay_peer/mod.rs"]
-pub(super) mod peer;
 use base64::{engine::general_purpose::STANDARD, Engine};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
@@ -78,7 +76,7 @@ pub(super) fn enabled(conn: &Connection) -> Result<bool> {
 }
 // Archived sync state can reference attachments absent from the current document.
 pub(super) fn retains_attachments(conn: &Connection) -> Result<bool> {
-    Ok(enabled(conn)? || mesh::enabled(conn)? || !peer::list(conn)?.is_empty() || storage(conn.query_row(
+    Ok(enabled(conn)? || mesh::enabled(conn)? || storage(conn.query_row(
         "SELECT count(*) FROM sqlite_master WHERE type='table' AND name IN ('personal_relay_archive','personal_mesh_archive')",
         [], |r| r.get::<_, i64>(0),
     ))? != 0)
@@ -114,7 +112,7 @@ fn records(doc: &Document) -> Records {
     out.insert("categories".into(), json!(doc.note_categories()));
     out
 }
-fn install(doc: &mut Document, values: &Records) -> Result<()> {
+pub(super) fn install(doc: &mut Document, values: &Records) -> Result<()> {
     doc.items = values
         .iter()
         .filter(|(k, v)| k.starts_with("item:") && !v.is_null())
@@ -141,14 +139,7 @@ pub(super) fn capture_with_stripped(
     doc: &Document,
     stripped: &Document,
 ) -> Result<()> {
-    peer::capture(conn, root, vault, doc)?;
     if mesh::capture(conn, root, vault, stripped)? {
-        return Ok(());
-    }
-    if doc.settings["activePeerLibrary"]
-        .as_str()
-        .is_some_and(|s| !s.is_empty())
-    {
         return Ok(());
     }
     if !enabled(conn)? {
@@ -373,9 +364,6 @@ impl DiskVault {
         let op = string(request, "op")?;
         if !personal_operation(op) {
             guard_device_sync(self.open()?.document.format_version, op)?;
-        }
-        if op.starts_with("relay-peer-") {
-            return peer::command(self, request);
         }
         if mesh::operation(op) {
             return self.mesh_command(request);

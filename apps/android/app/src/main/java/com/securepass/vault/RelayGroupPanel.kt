@@ -96,7 +96,7 @@ internal fun RelayGroupPanel(vault: VaultRepository, state: RelayUi, t: (String,
         TextButton(onClick = { accessExpanded = !accessExpanded }) { Text(t("服务器访问设置", "Server access settings")) }
         if (accessExpanded || state.invalid) LegacySection {
         Text(t("服务器地址", "Server endpoint"), style = MaterialTheme.typography.titleMedium)
-        Text(t("支持切换到 wss://…/v2/ws 或 wss://…/relay/v1/ws，保留设备身份与访问密码。", "Switch between wss://…/v2/ws and wss://…/relay/v1/ws while keeping identity and password."))
+        Text(t("可切换到其他 wss://…/v2/ws 服务器，保留设备身份与访问密码。", "Switch to another wss://…/v2/ws relay while keeping identity and password."))
         OutlinedTextField(savedEndpoint, { savedEndpoint = it }, label = { Text(t("服务器地址", "Server endpoint")) }, placeholder = { Text("wss://host/v2/ws") }, enabled = ready, singleLine = true, modifier = Modifier.fillMaxWidth())
         OutlinedButton(onClick = { submit { validateRelayEndpoint(savedEndpoint); relay.updateServerEndpoint(savedEndpoint) } }, enabled = ready && savedEndpoint.isNotBlank()) {
             Text(t("保存服务器地址", "Save server endpoint"))

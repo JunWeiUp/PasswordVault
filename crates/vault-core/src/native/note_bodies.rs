@@ -95,13 +95,6 @@ pub(super) fn sync_and_strip(
     vault_id: &str,
     doc: &Document,
 ) -> Result<Document> {
-    // Peer libraries keep their transient projection inline so personal `note_bodies` stay untouched.
-    if doc.settings["activePeerLibrary"]
-        .as_str()
-        .is_some_and(|s| !s.is_empty())
-    {
-        return Ok(doc.clone());
-    }
     table(conn)?;
     let mut live_ids = HashSet::new();
     let mut stripped_items = Vec::with_capacity(doc.items.len());

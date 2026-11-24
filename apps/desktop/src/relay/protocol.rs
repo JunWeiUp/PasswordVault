@@ -2,7 +2,7 @@
 //! (shared with the mobile clients and pinned by the common-relay vectors); the desktop
 //! re-exports it so relay orchestration keeps a single import path.
 pub use vault_core::relay_protocol::{
-    ACCESS_HEADER, access_password, canonical, configured_password, digest, hex, parse_link,
+    access_password, canonical, configured_password, digest, hex, parse_link,
     payload, text, unhex, unpack,
 };
 #[cfg(test)]

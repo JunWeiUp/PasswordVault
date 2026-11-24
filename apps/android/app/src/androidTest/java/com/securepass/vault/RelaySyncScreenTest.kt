@@ -23,13 +23,13 @@ import org.junit.runner.RunWith
 /** Synthetic presentation states; this does not pretend to connect to a relay. */
 @RunWith(AndroidJUnit4::class)
 class RelaySyncScreenTest {
-    @Test fun pendingConfirmationAndTransferProgressRemainDistinct() {
+    @Test fun syncStatusAndTransferProgressRemainDistinct() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
         val id = UUID.randomUUID().toString()
         val device = UiDevice.getInstance(instrumentation)
-        val initial = RelayUi(paired = true, paused = false, pending = 2, status = "已连接 / Connected",
-            sync = RelaySyncProgress(phase = RelaySyncPhase.WAITING_FOR_PRIMARY))
+        val initial = RelayUi(paired = true, mesh = true, pending = 2, status = "已连接 / Connected",
+            sync = RelaySyncProgress(phase = RelaySyncPhase.CHECKED))
         val state = mutableStateOf(initial)
         val dark = mutableStateOf(false)
         var requests = 0
@@ -65,7 +65,7 @@ class RelaySyncScreenTest {
                     }
                 }
             } }
-            visible("等待其他设备确认"); visible("2 项本地更改等待其他设备确认"); shot("waiting")
+            visible("已同步"); shot("checked")
             device.findObject(By.text("立即同步")).click()
             visible("准备同步…"); visible("同步中…")
             assertEquals(1, requests)
@@ -78,8 +78,6 @@ class RelaySyncScreenTest {
             visible("同步未完成"); visible("重试同步"); visible("同步连接或传输超时，本地改动已保留"); shot("failed")
             instrumentation.runOnMainSync { state.value = initial.copy(sync = RelaySyncProgress(RelaySyncPhase.WAITING_FOR_CAPABILITY)); dark.value = true }
             visible("等待安全格式协商"); shot("negotiating-dark")
-            instrumentation.runOnMainSync { state.value = initial.copy(paused = true); dark.value = false }
-            visible("密码库同步已暂停"); shot("paused")
             assertEquals("Presentation must never clear the pending queue", 2, state.value.pending)
         } finally {
             scenario?.close()

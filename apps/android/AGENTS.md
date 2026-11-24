@@ -7,8 +7,9 @@ bindings generated into `app/src/main/generated` (ignored by Git) by
 ## Where things are
 - `VaultRepository.kt` — the vault session, state and every core call. Build requests with
   the generated `CoreRequest.xxx(...)` (`CoreRequest.generated.kt`, never edit by hand).
-- `PersonalRelay.kt` — personal device-group sync over vault-core's relay stack via
-  `RelayCore.kt` (`CoreGroups`, `RelayConnection`, `RelayFileClient`).
+- `PersonalRelay.kt` — personal device-group sync: credentials, group actions and a thin loop
+  around vault-core's shared sync session `RelayMeshSync` (sync rules live in the core's
+  `relay_net::mesh_sync`, not here); group state machine via `RelayCore.kt` (`CoreGroups`).
 - UI screens are Compose files in the same package (`VaultWorkspace.kt`, `SettingsScreen.kt`,
   `EntryEditor.kt`, ...).
 

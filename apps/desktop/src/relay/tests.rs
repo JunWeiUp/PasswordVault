@@ -1,4 +1,6 @@
-use super::{protocol::*, transport::*, *};
+use super::{protocol::*, *};
+use vault_core::relay_net::connection::Connection;
+use vault_core::relay_protocol::{BoxPublicKey, Identity, box_keypair, endpoint};
 fn vectors() -> Value {
     serde_json::from_str(include_str!(
         "../../../../crates/vault-core/tests/fixtures/relay-protocol/group-vectors.json"
@@ -124,64 +126,15 @@ fn envelope_context_and_transport_policy() {
     assert!(b.open("a", "stream.open", "id", &body).is_err());
     assert!(b.open("unknown", "message", "id", &body).is_err());
     for url in [
-        "ws://example.invalid/relay/v1/ws",
-        "wss://user@example.invalid/relay/v1/ws",
-        "wss://example.invalid/relay/v1/ws?token=x",
+        "ws://example.invalid/v2/ws",
+        "wss://user@example.invalid/v2/ws",
+        "wss://example.invalid/v2/ws?token=x",
         "wss://example.invalid/other",
     ] {
         assert!(endpoint(url, false).is_err());
     }
-    assert!(endpoint("ws://127.0.0.1:1234/relay/v1/ws", true).is_ok());
-    assert!(endpoint("ws://127.0.0.1:1234/relay/v1/ws", false).is_err());
-}
-#[test]
-fn local_websocket_welcome_and_identity_rejection() {
-    use std::net::TcpListener;
-    use tungstenite::{
-        Message, accept_hdr,
-        handshake::server::{Request, Response},
-    };
-    sodiumoxide::init().unwrap();
-    for mismatch in [false, true] {
-        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-        let address = listener.local_addr().unwrap();
-        let (_, secret) = box_keypair();
-        let public = hex(&secret.public_key().0);
-        let server = std::thread::spawn(move || {
-            let (socket, _) = listener.accept().unwrap();
-            socket
-                .set_read_timeout(Some(std::time::Duration::from_secs(3)))
-                .unwrap();
-            let mut socket = accept_hdr(socket, |req: &Request, mut response: Response| {
-                assert_eq!(req.headers()["authorization"], "Bearer synthetic-token");
-                assert_eq!(req.headers()["relay-access"], "synthetic-access");
-                response
-                    .headers_mut()
-                    .insert("Sec-WebSocket-Protocol", "common-relay.v1".parse().unwrap());
-                Ok(response)
-            })
-            .unwrap();
-            socket.send(Message::Text(json!({"version":1,"identity":{"app":"passwordvault","group":"qa","device":if mismatch {"impostor"} else {"mac"},"public_key":public}}).to_string().into())).unwrap();
-            let _ = socket.read();
-        });
-        let identity = Identity {
-            app: "passwordvault".into(),
-            group: "qa".into(),
-            device: "mac".into(),
-            secret,
-            trusted: Default::default(),
-        };
-        let connected = Connection::connect(
-            &format!("ws://{address}/relay/v1/ws"),
-            "synthetic-token",
-            Some("synthetic-access"),
-            identity,
-            true,
-        );
-        assert_eq!(connected.is_err(), mismatch);
-        drop(connected);
-        server.join().unwrap();
-    }
+    assert!(endpoint("ws://127.0.0.1:1234/v2/ws", true).is_ok());
+    assert!(endpoint("ws://127.0.0.1:1234/v2/ws", false).is_err());
 }
 #[test]
 fn credentials_stay_encrypted_and_summary_is_lock_gated() {
@@ -208,72 +161,75 @@ fn credentials_stay_encrypted_and_summary_is_lock_gated() {
     drop(session);
     std::fs::remove_dir_all(directory).unwrap();
 }
+/// The desktop runtime connects through vault-core's SDK connection: access headers,
+/// the relay's identity greeting and presence over the v2 frames.
 #[test]
-fn local_v2_websocket_hello_presence_and_message_translation() {
+fn local_v2_websocket_hello_identity_and_presence() {
     use std::net::TcpListener;
     use tungstenite::{
         Message, accept_hdr,
         handshake::server::{Request, Response},
     };
-    sodiumoxide::init().unwrap();
-    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-    let address = listener.local_addr().unwrap();
-    let (_, secret) = box_keypair();
-    let server = std::thread::spawn(move || {
-        let (socket, _) = listener.accept().unwrap();
-        socket
-            .set_read_timeout(Some(std::time::Duration::from_secs(3)))
+    for mismatch in [false, true] {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let (_, secret) = box_keypair();
+        let server = std::thread::spawn(move || {
+            let (socket, _) = listener.accept().unwrap();
+            socket
+                .set_read_timeout(Some(std::time::Duration::from_secs(3)))
+                .unwrap();
+            let mut socket = accept_hdr(socket, |req: &Request, response: Response| {
+                assert_eq!(req.headers()["authorization"], format!("Bearer {}", "t".repeat(48)).as_str());
+                assert_eq!(req.headers()["relay-access"], "synthetic-access");
+                assert!(req.headers().get("sec-websocket-protocol").is_none());
+                Ok(response)
+            })
             .unwrap();
-        let mut socket = accept_hdr(socket, |req: &Request, response: Response| {
-            assert_eq!(req.headers()["authorization"], "Bearer synthetic-token");
-            assert_eq!(req.headers()["relay-access"], "synthetic-access");
-            assert!(req.headers().get("sec-websocket-protocol").is_none());
-            Ok(response)
-        })
-        .unwrap();
-        // Exact v2 server hello frame (from = device ID, no spaces array)
-        socket
-            .send(Message::Text(
-                json!({"type":"hello","from":"mac"}).to_string().into(),
-            ))
-            .unwrap();
-        // Receive translated presence query and answer with v2 presence event
-        let raw = socket.read().unwrap();
-        let req: Value = serde_json::from_str(raw.to_text().unwrap()).unwrap();
-        assert_eq!(req["type"], "presence");
-        assert_eq!(req["space"], "qa");
-        let rid = req["id"].as_str().unwrap().to_owned();
-        socket
-            .send(Message::Text(
-                json!({"type":"presence","space":"qa","id":rid,"peers":["mac","phone"]})
-                    .to_string()
-                    .into(),
-            ))
-            .unwrap();
-        let _ = socket.read();
-    });
-    let identity = Identity {
-        app: "passwordvault".into(),
-        group: "qa".into(),
-        device: "mac".into(),
-        secret,
-        trusted: Default::default(),
-    };
-    let mut conn = Connection::connect(
-        &format!("ws://{address}/v2/ws"),
-        "synthetic-token",
-        Some("synthetic-access"),
-        identity,
-        true,
-    )
-    .unwrap();
-    conn.send(json!({"type":"peers","id":"p1"})).unwrap();
-    let ev = conn.read_wire().unwrap();
-    assert_eq!(ev["type"], "peers");
-    assert_eq!(ev["id"], "p1");
-    assert_eq!(ev["devices"].as_array().unwrap().len(), 2);
-    drop(conn);
-    server.join().unwrap();
+            let device = if mismatch { "impostor" } else { "mac" };
+            socket
+                .send(Message::Text(json!({"type":"hello","from":device}).to_string().into()))
+                .unwrap();
+            if mismatch {
+                let _ = socket.read();
+                return;
+            }
+            let raw = socket.read().unwrap();
+            let req: Value = serde_json::from_str(raw.to_text().unwrap()).unwrap();
+            assert_eq!(req["type"], "presence");
+            assert_eq!(req["space"], "qa");
+            socket
+                .send(Message::Text(
+                    json!({"type":"presence","space":"qa","id":req["id"],"peers":["mac","phone"]})
+                        .to_string()
+                        .into(),
+                ))
+                .unwrap();
+            let _ = socket.read();
+        });
+        let identity = Identity {
+            app: "passwordvault".into(),
+            group: "qa".into(),
+            device: "mac".into(),
+            secret,
+            trusted: Default::default(),
+        };
+        let connected = Connection::connect(
+            &format!("ws://{address}/v2/ws"),
+            &"t".repeat(48),
+            Some("synthetic-access"),
+            identity,
+            true,
+            None,
+        );
+        if mismatch {
+            assert!(connected.is_err());
+        } else {
+            let peers = connected.unwrap().peers().unwrap();
+            assert_eq!(peers["devices"].as_array().unwrap().len(), 2);
+        }
+        server.join().unwrap();
+    }
 }
 /// The core RustCrypto port must interoperate with libsodium clients in both directions.
 #[test]
@@ -322,7 +278,7 @@ fn core_protocol_interoperates_with_libsodium() {
     // Invitation secretbox: both directions.
     let key = secretbox::gen_key();
     let nonce = secretbox::gen_nonce();
-    let invitation = json!({"id":"00".repeat(16),"url":"wss://relay.example/relay/v1/ws"});
+    let invitation = json!({"id":"00".repeat(16),"url":"wss://relay.example/v2/ws"});
     let packet = STANDARD
         .decode(seal_invitation(&invitation, &key.0, &nonce.0).unwrap())
         .unwrap();

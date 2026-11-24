@@ -12,7 +12,7 @@
     <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-1e7e52?style=flat-square" alt="MIT License"></a>
     <a href="#architecture"><img src="https://img.shields.io/badge/Rust_Core-1.98.0-1f2937?style=flat-square&logo=rust&logoColor=white" alt="Rust Core 1.98.0"></a>
     <a href="#download"><img src="https://img.shields.io/badge/macOS_%7C_Windows_%7C_iOS_%7C_Android_%7C_Chromium-2a57c2?style=flat-square" alt="Platforms"></a>
-    <a href="#local-ai-mcp"><img src="https://img.shields.io/badge/Local_MCP-11_Tools-0f766e?style=flat-square" alt="Local MCP"></a>
+    <a href="#local-ai-mcp"><img src="https://img.shields.io/badge/Local_MCP-5_Tools-0f766e?style=flat-square" alt="Local MCP"></a>
   </p>
 
   <p><strong>English</strong> · <a href="README.zh-CN.md">简体中文</a></p>
@@ -87,12 +87,12 @@ Category-level access for local AI agents (Claude Code, Codex, Cursor) with clie
 | Tier | Policy |
 | --- | --- |
 | **Ordinary fields** | Direct read across enabled scopes (`accounts`, `profiles`, `devices`, `notes`) |
-| **Whitelisted note folders** | Auto-save (`note_update`) & ≤ 100 MB encrypted archive (`note_attach`) with immutable history |
-| **Passwords, keys, card numbers & secret commands** | Per-request native approval (`get_secret`) · **clipboard-only 30 s default** |
-| **Wallets, seed phrases, TOTP, deletion & login edits** | **Permanently blocked** |
+| **Writes** | `create` / `update` / `delete` without approval, ≤ 10 per minute per client; every write is an encrypted history revision and `delete` only moves to the Trash |
+| **Passwords, keys, card numbers & secret commands** | Per-request native approval (`read` with `field`) · **clipboard-only 30 s default** |
+| **Wallets, seed phrases & TOTP** | **Never exposed** |
 
 <details>
-<summary><strong>One-click MCP config & 11 built-in tools</strong></summary>
+<summary><strong>One-click MCP config & 5 built-in tools</strong></summary>
 
 ```json
 {
@@ -108,7 +108,7 @@ Category-level access for local AI agents (Claude Code, Codex, Cursor) with clie
 }
 ```
 
-`search` · `get` · `get_secret` · `add` · `ask_user` · `note_list` · `note_read` · `note_update` · `note_attach` · `note_read_asset` · `note_history` — see [apps/desktop/src/ai/README.md](apps/desktop/src/ai/README.md).
+`find` · `read` · `create` · `update` · `delete` (defined in `apps/desktop/src/ai/tools.schema.json`) — see [apps/desktop/src/ai/README.md](apps/desktop/src/ai/README.md).
 
 </details>
 

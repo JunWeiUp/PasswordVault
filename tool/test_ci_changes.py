@@ -36,9 +36,9 @@ class CIChangesTests(unittest.TestCase):
             self.assertEqual(classify([path]), set(SCOPES))
 
     def test_editor_bundle_changes_cover_all_embedding_clients(self):
-        self.assertEqual(classify(['apps/shared/note-editor/editor.js']), {'macos', 'ios', 'android', 'browser'})
+        self.assertEqual(classify(['apps/shared/note-editor/editor.js']), {'ios', 'android', 'browser'})
         self.assertEqual(classify(['apps/shared/Relay/VaultRelay.swift']), {'ios'})
-        self.assertEqual(classify(['apps/shared/note-editor/package-lock.json']), {'macos', 'ios', 'android', 'browser'})
+        self.assertEqual(classify(['apps/shared/note-editor/package-lock.json']), {'ios', 'android', 'browser'})
 
     def test_native_runs_are_requested_and_tests_are_opt_in(self):
         self.assertEqual(requested('release'), {'macos', 'windows', 'ios', 'browser'})
@@ -61,6 +61,9 @@ class CIChangesTests(unittest.TestCase):
         self.assertEqual(classify(['.github/workflows/native.yml']), NATIVE)
         self.assertEqual(classify(['.github/workflows/ci.yml']), NATIVE)
         self.assertEqual(classify(['tool/ci_changes.py']), set(SCOPES))
+        self.assertEqual(classify(['tool/nsh_mac.sh', 'tool/macos-nsh/deploy.sh']), {'macos'})
+        self.assertEqual(classify(['tool/windows-desktop/package.ps1']), {'windows'})
+        self.assertEqual(classify(['tool/test_relay_live.sh']), {'core'})
 
     def test_pull_request_uses_merge_base_not_target_branch_only_changes(self):
         diff = mock.Mock(return_value=['apps/browser/package.json'])

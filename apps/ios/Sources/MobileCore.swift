@@ -3,6 +3,11 @@ import Foundation
 actor MobileCore {
   private var session: VaultSession?
   init(directory: URL) throws { session = try VaultSession(directory: directory.path) }
+  /// The open core session (for the relay's shared sync session).
+  func coreSession() throws -> VaultSession {
+    guard let session else { throw VaultError.Locked }
+    return session
+  }
   func call(_ request: [String: JSONValue]) throws -> JSONValue {
     guard let session else { throw VaultError.Locked }
     var request = request

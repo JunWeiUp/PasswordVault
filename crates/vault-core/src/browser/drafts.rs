@@ -26,7 +26,6 @@ impl BrowserVault {
                 {
                     return Err(VaultError::InvalidData);
                 }
-                item["_draftLibrary"] = self.document.settings["activePeerLibrary"].clone();
                 self.extras.draft = Some(item);
                 self.validate_extras()?;
                 Ok(json!({"ok":true}))

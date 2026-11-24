@@ -1,6 +1,6 @@
 import { cleanup, signal, Scroll, View } from "nsh";
 import { Banner, Btn, openSheet, SheetTitle, SheetFooter, T, Toggle } from "../kit";
-import { call, errorText, flush, items, load, now, onLock, phase, type Item } from "../store";
+import { call, coreApi, errorText, flush, items, load, now, onLock, phase, type Item } from "../store";
 import { askEnableHistory, historyWarning } from "../recovery";
 import { NoteHistorySheet } from "./NoteHistorySheet";
 
@@ -30,7 +30,7 @@ function History(props: { item: Item; close: () => void }) {
   const refresh = async (append = false) => {
     await flush();
     const status = await call({ op: "history-status" });
-    const page = status.enabled ? await call<{ revisions: Revision[]; total: number }>({ op: "history-list", id: props.item.id, offset: append ? revisions().length : 0, limit: 30 }) : { revisions: [], total: 0 };
+    const page = status.enabled ? await coreApi.historyList<Revision>(props.item.id, append ? revisions().length : 0, 30) : { revisions: [], total: 0 };
     if (!alive) return;
     enabled.set(status.enabled); total.set(page.total);
     revisions.set(append ? [...revisions(), ...page.revisions.filter((r: Revision) => !revisions().some(old => old.id === r.id))] : page.revisions);
@@ -64,7 +64,7 @@ function History(props: { item: Item; close: () => void }) {
       </If>
       <Btn label="清理旧版本…" kind="danger" disabled={busy() || !!props.item.isDeleted} onPress={() => confirm.set("prune")} />
       <If when={confirm()}><Banner tone="warn" title={confirm() === "restore" ? "恢复所选版本？" : "清理此条目的旧版本？"}>
-        {confirm() === "restore" ? "当前内容保留在历史中，恢复内容成为新版本。" : "保留当前内容。个人库删除本机旧版本；对等库仅隐藏，内容仍在同步日志中。已有备份不受影响。"}
+        {confirm() === "restore" ? "当前内容保留在历史中，恢复内容成为新版本。" : "保留当前内容，删除本机旧版本。已有备份不受影响。"}
       </Banner><Btn label="取消操作" disabled={busy()} onPress={() => confirm.set(null)} /><Btn label={confirm() === "restore" ? "确认恢复版本" : "确认清理旧版本"} disabled={busy()} onPress={act} /></If>
     </If><SheetFooter><Btn label="关闭" disabled={busy()} onPress={props.close} /></SheetFooter></View>;
 }

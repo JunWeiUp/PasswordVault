@@ -100,5 +100,5 @@ internal object DevicePayload {
 
     /** New devices need a vault already upgraded to format 7; the upgrade itself stays on desktop. */
     fun canCreate(settings: JSONObject, canWriteLibrary: Boolean): Boolean =
-        canWriteLibrary && settings.optBoolean("devicesEnabled") && settings.optString("activePeerLibrary").isEmpty()
+        canWriteLibrary && settings.optBoolean("devicesEnabled")
 }

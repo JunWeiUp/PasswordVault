@@ -70,7 +70,7 @@ export const ERROR_TEXT: Record<string, string> = {
   StaleEdit: "此条目已在其他设备上修改，请检查后再保存。",
   Unsupported: "此操作不受支持。",
   DevicesUpgradeRequired: "请先启用设备与服务。",
-  DevicesSyncBlocked: "对端尚未验证格式兼容性，请升级并解锁对端后重试。对等库暂不支持设备条目同步。",
+  DevicesSyncBlocked: "对端尚未验证格式兼容性，请升级并解锁对端后重试。",
   UpdateRequired: "请更新客户端以打开此密码库。",
 };
 

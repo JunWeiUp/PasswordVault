@@ -14,9 +14,9 @@ import org.junit.runner.RunWith
 class RelayCoreTest {
     @Test fun invitationPreviewAndOwnerPolicyComeFromCore() {
         val encode = { b: ByteArray -> java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(b) }
-        val link = "common-relay://relay.example.test/i/${encode(ByteArray(16) { 2 })}#${encode(ByteArray(32) { 1 })}"
+        val link = "common-relay://relay.example.test/v2/i/${encode(ByteArray(16) { 2 })}#${encode(ByteArray(32) { 1 })}"
         val preview = RelayInvitationPreview.read("$link.${encode("fixture-access-123".toByteArray())}")
-        assertEquals("wss://relay.example.test/relay/v1/ws", preview.endpoint)
+        assertEquals("wss://relay.example.test/v2/ws", preview.endpoint)
         assertEquals("fixture-access-123", preview.password)
         assertEquals("", RelayInvitationPreview.read(link).password)
         for (input in listOf("$link.", "$link.%%%")) assertThrows(Exception::class.java) { RelayInvitationPreview.read(input) }

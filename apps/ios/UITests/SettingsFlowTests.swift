@@ -104,7 +104,6 @@ final class SettingsFlowTests: XCTestCase {
     XCTAssertTrue(app.staticTexts["同步你的设备"].waitForExistence(timeout: 10))
     XCTAssertTrue(app.buttons["relay.join.scan"].exists)
     XCTAssertTrue(app.buttons["relay.create"].exists)
-    XCTAssertTrue(app.buttons["对等库与家庭库"].exists)
     let shot = XCTAttachment(screenshot: app.screenshot())
     shot.name = "sync-join-landing"
     shot.lifetime = .keepAlways

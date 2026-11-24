@@ -79,16 +79,7 @@ impl DiskVault {
                 if verified.as_ref() != open.root.as_ref() {
                     return Err(VaultError::Authentication);
                 }
-                let personal = relay::peer::readable_documents(
-                    &open.connection,
-                    &open.root,
-                    &open.header.vault_id,
-                    &open.document,
-                )?
-                .into_iter()
-                .find(|(id, _)| id.is_empty())
-                .map(|(_, doc)| doc)
-                .ok_or(VaultError::InvalidData)?;
+                let personal = open.document.clone();
                 let hydrated = note_bodies::hydrate(
                     &open.connection,
                     &open.root,

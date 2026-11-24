@@ -110,24 +110,6 @@ export const CORE_OPS = [
   "relay-mesh-peers",
   "relay-mesh-receive",
   "relay-mesh-resolve-conflict",
-  "relay-peer-authorize",
-  "relay-peer-cancel-join",
-  "relay-peer-create",
-  "relay-peer-export",
-  "relay-peer-history-enable",
-  "relay-peer-history-list",
-  "relay-peer-history-prune",
-  "relay-peer-history-restore",
-  "relay-peer-history-status",
-  "relay-peer-identity",
-  "relay-peer-join",
-  "relay-peer-list",
-  "relay-peer-receive",
-  "relay-peer-rekey",
-  "relay-peer-resolve",
-  "relay-peer-status",
-  "relay-peer-switch",
-  "relay-peer-write",
   "relay-protocol-keys",
   "relay-protocol-unpack",
   "relay-protocol-verify",
@@ -176,7 +158,7 @@ export interface CoreParams {
   "remove": { id: string; richNotes?: boolean };
   /** items · unlocked → {ok:true} */
   "restore-drafts": { payload: object; richNotes?: boolean };
-  /** items · unlocked → {ok:true,peerBaseHeads?:string[],peerLibrary?:string} */
+  /** items · unlocked → {ok:true} */
   "save": { item: object; richNotes?: boolean; expectedUpdatedAt?: string; historyMeta?: object };
   /** items · unlocked → {payload:Sealed} */
   "seal-drafts": { items: readonly unknown[] };
@@ -364,42 +346,6 @@ export interface CoreParams {
   "relay-mesh-receive": { peer: string; packet: object };
   /** relay-mesh · unlocked → {ok:true,item:Item,conflictCount:number} */
   "relay-mesh-resolve-conflict": { id: string; strategy?: string; item?: object };
-  /** relay-peer · unlocked → PeerResult */
-  "relay-peer-authorize": { library: string; peer: string; member?: object };
-  /** relay-peer · unlocked → {ok:true} */
-  "relay-peer-cancel-join": { library: string };
-  /** relay-peer · unlocked → {library:string,device:string,publicKey:string} */
-  "relay-peer-create": { device: string; personal?: boolean; transportKey?: string; name?: string; migrateLegacy?: boolean };
-  /** relay-peer · unlocked → {protocol:'peer-v2',packet:PeerPacket,files:object[]} */
-  "relay-peer-export": { library: string; peer: string };
-  /** relay-peer · unlocked → {enabled:true,ok:true} */
-  "relay-peer-history-enable": { library: string };
-  /** relay-peer · unlocked → {total:number,revisions:Revision[]} */
-  "relay-peer-history-list": { library: string; id: string; offset?: number; limit?: number };
-  /** relay-peer · unlocked → {ok:true,retainedForSync:true} */
-  "relay-peer-history-prune": { library: string; id: string };
-  /** relay-peer · unlocked → PeerResult */
-  "relay-peer-history-restore": { library: string; id: string; revisionId: string; time: string };
-  /** relay-peer · unlocked → {enabled:true,ok:true} */
-  "relay-peer-history-status": { library: string };
-  /** relay-peer · unlocked → {library:string,device:string,publicKey:string} */
-  "relay-peer-identity": { device: string; personal?: boolean; confirmPersonalSync?: boolean };
-  /** relay-peer · unlocked → PeerResult|{ok:true,partial:true} */
-  "relay-peer-join": { library: string; envelope: object; expectedLibrary: string; founderKey: string; sender?: string };
-  /** relay-peer · unlocked → {libraries:{id,personal,name,role}[],active:string|null} */
-  "relay-peer-list": {};
-  /** relay-peer · unlocked → PeerResult|{ok:true,partial:true} */
-  "relay-peer-receive": { library: string; envelope: object; sender?: string };
-  /** relay-peer · unlocked → PeerResult */
-  "relay-peer-rekey": { library: string; device: string; transportKey: string };
-  /** relay-peer · unlocked → PeerResult */
-  "relay-peer-resolve": { library: string; key: string; value: unknown };
-  /** relay-peer · unlocked → {library,device,publicKey,personal,generation,frozen,members,conflicts,records,history} */
-  "relay-peer-status": { library: string };
-  /** relay-peer · unlocked → {ok:true} */
-  "relay-peer-switch": { library: string };
-  /** relay-peer · unlocked → PeerResult */
-  "relay-peer-write": { library: string; key: string; value: unknown };
   /** relay-protocol · none → {publicKey:string,signingKey:string} */
   "relay-protocol-keys": { secret: string };
   /** relay-protocol · none → {state:object} */
@@ -440,8 +386,6 @@ export type CoreSealed = Record<string, unknown>;
 export type CoreAttachmentMeta = Record<string, unknown>;
 export type CoreMeshPacket = Record<string, unknown>;
 export type CoreMeshStatus = Record<string, unknown>;
-export type CorePeerPacket = Record<string, unknown>;
-export type CorePeerResult = Record<string, unknown>;
 export type CoreRelayPacket = Record<string, unknown>;
 export type CoreSystemAssertionResponse = Record<string, unknown>;
 export type CoreSystemRegistrationResponse = Record<string, unknown>;
@@ -464,7 +408,7 @@ export interface CoreResults {
   "open-drafts": { items: Array<CoreItem> };
   "remove": { ok: true };
   "restore-drafts": { ok: true };
-  "save": { ok: true; peerBaseHeads?: Array<string>; peerLibrary?: string };
+  "save": { ok: true };
   "seal-drafts": { payload: CoreSealed };
   "update-login": { saved: true; updated: true };
   "collect-note-attachments": { ok: true };
@@ -558,24 +502,6 @@ export interface CoreResults {
   "relay-mesh-peers": { ok: true; peers: Array<string> };
   "relay-mesh-receive": { ok: true; changed: boolean; applied: number; rejected: Array<string>; conflictCount: number };
   "relay-mesh-resolve-conflict": { ok: true; item: CoreItem; conflictCount: number };
-  "relay-peer-authorize": CorePeerResult;
-  "relay-peer-cancel-join": { ok: true };
-  "relay-peer-create": { library: string; device: string; publicKey: string };
-  "relay-peer-export": { protocol: "peer-v2"; packet: CorePeerPacket; files: Array<Record<string, unknown>> };
-  "relay-peer-history-enable": { enabled: true; ok: true };
-  "relay-peer-history-list": { total: number; revisions: Array<CoreRevision> };
-  "relay-peer-history-prune": { ok: true; retainedForSync: true };
-  "relay-peer-history-restore": CorePeerResult;
-  "relay-peer-history-status": { enabled: true; ok: true };
-  "relay-peer-identity": { library: string; device: string; publicKey: string };
-  "relay-peer-join": CorePeerResult | { ok: true; partial: true };
-  "relay-peer-list": { libraries: Array<{ id: unknown; personal: unknown; name: unknown; role: unknown }>; active: string | null };
-  "relay-peer-receive": CorePeerResult | { ok: true; partial: true };
-  "relay-peer-rekey": CorePeerResult;
-  "relay-peer-resolve": CorePeerResult;
-  "relay-peer-status": { library: unknown; device: unknown; publicKey: unknown; personal: unknown; generation: unknown; frozen: unknown; members: unknown; conflicts: unknown; records: unknown; history: unknown };
-  "relay-peer-switch": { ok: true };
-  "relay-peer-write": CorePeerResult;
   "relay-protocol-keys": { publicKey: string; signingKey: string };
   "relay-protocol-unpack": { state: Record<string, unknown> };
   "relay-protocol-verify": { ok: true };

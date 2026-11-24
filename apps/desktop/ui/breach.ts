@@ -18,9 +18,9 @@ function passwordsOf(item: Item): string[] {
 export const checkable = () => items().filter((i) => i.type === "password" && !i.isDeleted && passwordsOf(i).length > 0);
 
 async function exposures(password: string): Promise<number> {
-  const { prefix, suffix } = await call<{ prefix: string; suffix: string }>({ op: "breach-request", password });
+  const { prefix, suffix } = await call({ op: "breach-request", password });
   const response = await Breach.range(prefix);
-  const { count } = await call<{ count: number }>({ op: "breach-response", suffix, response });
+  const { count } = await call({ op: "breach-response", suffix, response });
   return count;
 }
 

@@ -5,7 +5,8 @@ The app has device-group orchestration, presence and symmetric bidirectional syn
 records with every other member; joining is the only admission step. The newest
 hybrid-logical stamp wins and older versions stay in entry history. Vault grants,
 primary identification, pause and conflict resolution were removed; sections below
-that mention grants/ACK describe history or peer libraries. Protocol primitives follow the upstream Common Relay protocol, implemented once in vault-core (`relay_protocol`, `relay_net`) and adapted from the original CommonRelay
+that mention grants/ACK describe history. Peer (family) libraries were removed;
+a vault left switched into one returns to its personal records on unlock. Protocol primitives follow the upstream Common Relay protocol, implemented once in vault-core (`relay_protocol`, `relay_net`) and adapted from the original CommonRelay
 Swift SDK, copyright JunWeiUp, under its [MIT license](../../../../crates/vault-core/tests/fixtures/relay-protocol/LICENSE-common-relay).
 Automated local tests use loopback services and synthetic vaults. A separate, explicitly
 authorized production run verified admission and WSS with disposable vaults and a
@@ -31,12 +32,11 @@ test group that was disbanded afterward; no real user vault was accessed.
   increasing revisions, pending confirmation and local-first revocation. Membership
   alone never permits export. A mobile-role configuration pins its unique verified
   manager as authority; messages cannot replace that pin.
-- Core `relay-*` and existing `relay-peer-*` routing. Small offline messages have
-  deterministic IDs and an encrypted durable delivery journal. Business changes
+- Core `relay-*` routing. Small offline messages have
+  deterministic IDs and the SDK's durable delivery journal. Business changes
   commit before ACK. Replay, expiry, stale grants and identity mismatches cannot
-  restore access. Peer packets above 128 KiB use the existing 64 KiB chunk protocol,
-  bounded to 48 MiB per assembled packet.
-- Large legacy packets use CommonRelay secretstream file framing and encrypted
+  restore access.
+- Packets above 128 KiB use CommonRelay secretstream file framing and encrypted
   metadata, with the same inner AES-GCM combined format as CryptoKit. Uploads
   validate resumable offsets/descriptors; downloads use bounded ranges and verify
   hashes/final tags before decrypting. The ciphertext limit is 768 MiB. The current
@@ -44,7 +44,7 @@ test group that was disbanded afterward; no real user vault was accessed.
   memory; near-limit transfers still need memory/performance acceptance.
 - Settings status, group management, invitation QR drawn from a Rust matrix,
   authorization toggles, pending ACK display, legacy conflict compare/atomic batch
-  choice, and per-key peer-library conflict resolution. Format 7 explicitly shows
+  choice. Format 7 explicitly shows
   `DevicesSyncBlocked`; export/receive/trust/init remain blocked. Revocation and
   archival detach use the core's explicit safe exceptions.
 
@@ -68,13 +68,12 @@ or screen scanner; the current NSH runtime has no built-in camera scanning compo
 
 Identity secrets, tokens and group drafts remain in core
 `relay-private/credentials.v1.enc`; the Swift Codable base64 `groupState` is
-preserved. Replay records live in `relay-private/nsh-journal/*.enc`, separately
-secretbox-encrypted with a domain-separated key derived only while the credential
-store is unlocked. Filenames and encrypted envelopes bind group/device/sender/id.
-Writes use mode 0600, atomic replacement and fsync; the directory is mode 0700.
-Symlinks and corrupt records are rejected. Records retain seven-day receipt
-history; pending transport bodies expire after one day. No vault plaintext is
-written to staging files, logs or the journal. Outgoing plaintext queues are
+preserved. The WSS connection and offline delivery journal are vault-core's wrappers
+over the common-relay Rust SDK (`relay_net::connection`, `Journal`), the same code
+Android and iOS use; the journal lives in `vault/relay-private/sdk-journal/` and holds
+only sealed envelopes and message IDs (mode 0700 directory). Earlier builds' encrypted
+`relay-private/nsh-journal/` is no longer read. No vault plaintext is written to
+staging files, logs or the journal. Outgoing plaintext queues are
 zeroized when dropped on lock/reconnect.
 
 Only display state crosses to TSX. The issued invitation link is deliberately
@@ -119,12 +118,8 @@ Native APIs from `passwordvault/native`:
   the confirmed local-only reset before fresh enrollment. That reset does not claim
   server-side credential revocation.
   This port never silently bootstraps trust from a server or replaces that identity.
-- Existing explicitly enrolled peer libraries replicate and resolve conflicts.
-  Creating/authorizing a **new** peer-library identity still needs its separate
-  identity-receipt workflow; the device-group switch cannot grant that authority
-  (`PeerLibraryIdentityRequired`). Its enabling control remains disabled.
 - No generic CommonRelay interactive binary-stream API is exposed. PasswordVault's
-  shipping adapter uses offline messages, peer chunks and secretstream HTTP files;
+  shipping adapter uses offline messages and secretstream HTTP files;
   those paths are implemented. Unrequested binary frames fail closed.
 - Format 7 remains blocked for data sync until signed capability negotiation is
   implemented. Merely upgrading both clients does not bypass that gate.

@@ -84,9 +84,7 @@ function App() {
   const [state, setState] = useState<any>();
   const [doc, setDoc] = useState<any>();
   const [section, setSection] = useState("secureNote");
-  const readOnlyLibrary = doc?.settings?._peerLibraryReadOnly === true || (!!doc?.settings?.activePeerLibrary && (doc.settings._peerLibraryReadOnly !== false || !["admin", "editor"].includes(doc.settings._peerLibraryRole)));
   function canEditItem(value:Item) {
-    if(readOnlyLibrary)return false;
     if(!value.sharedVaultId)return true;
     const own=doc?.settings?.sharingIdentity?.publicKey;
     return !!own && !!doc?.sharedMembers?.some((member:any)=>member.vaultId===value.sharedVaultId&&member.userPublicKey===own&&["owner","editor"].includes(member.role));
@@ -114,10 +112,10 @@ function App() {
       .then(() => command({ op: "draft-save", item: value }));
     try { await draftWrite.current; } catch (e) { setDraftStatus("failed"); throw e; }
     if (pendingDraft.current === value) setDraftStatus("saved");
-    if (pendingDraft.current?.id === value.id && pendingDraft.current?._draftLibrary === value._draftLibrary) setRecoveredDraft(value);
+    if (pendingDraft.current?.id === value.id) setRecoveredDraft(value);
   }
   function changedDraft(value: Item) {
-    pendingDraft.current = { ...value, _draftLibrary: doc?.settings.activePeerLibrary ?? "" };
+    pendingDraft.current = value;
     setDraftStatus("saving");
     clearTimeout(draftTimer.current);
     draftTimer.current = setTimeout(() => {
@@ -323,7 +321,6 @@ function App() {
     });
   }
   function newItem() {
-    if(readOnlyLibrary){setError(t("当前资料库为只读，无法修改条目。"));return;}
     if (pendingDraft.current || recoveredDraft) {
       setError(t("请先保存或丢弃现有草稿"));
       return;
@@ -535,15 +532,7 @@ function App() {
             <p>{t("有未保存的加密草稿")}</p>
             <button
               onClick={() => {
-                if (
-                  (recoveredDraft._draftLibrary ?? "") !==
-                  (doc.settings.activePeerLibrary ?? "")
-                ) {
-                  setError(t("请切换回草稿所属资料库"));
-                  return;
-                }
                 const draft = { ...recoveredDraft };
-                delete draft._draftLibrary;
                 navigate(draft.type);
                 setEditing(draft);
                 pendingDraft.current = draft;
@@ -569,7 +558,7 @@ function App() {
         )}
 
         {brand}
-        <div class="sidebar-caption" role="status">{doc.settings.activePeerLibrary ? t("家庭库：") + (doc.settings._peerLibraryName ?? "") : t("个人资料库")}</div>
+        <div class="sidebar-caption" role="status">{t("个人资料库")}</div>
         <div class="sidebar-caption">{t("资料库")}</div>
         <nav>
           {sections.map(([key, label, icon]) => (
@@ -642,7 +631,6 @@ function App() {
         <section class="tools-panel">
           <Tools
             section={section}
-            readOnly={readOnlyLibrary}
             openItem={(id: string) => {
               const found = doc.items.find((i: Item) => i.id === id);
               if (found) {
@@ -669,7 +657,7 @@ function App() {
               <button
                 class="icon-button"
                 title={t("新建")}
-                disabled={section === "trash" || readOnlyLibrary}
+                disabled={section === "trash"}
                 onClick={newItem}
               >
                 ＋
@@ -778,8 +766,7 @@ function App() {
                         }
                         const current = pendingDraft.current ?? recoveredDraft;
                         const resume = current?.id === item.id ? current : undefined;
-                        if (resume && (resume._draftLibrary ?? "") !== (doc.settings.activePeerLibrary ?? "")) { setError(t("请切换回草稿所属资料库")); return; }
-                        const next = { ...(resume ?? item) }; delete next._draftLibrary;
+                        const next = { ...(resume ?? item) };
                         setEditing(next);
                       }}
                     >
@@ -873,7 +860,7 @@ function App() {
                       ))}
                     </>
                   )}
-                  <PasskeyDetails key={`${doc.settings.activePeerLibrary??""}:${item.id}`} item={item} refresh={refresh} editable={canEditItem(item)} />
+                  <PasskeyDetails key={item.id} item={item} refresh={refresh} editable={canEditItem(item)} />
                   {(item.type === "creditCard" || item.type === "identity") &&
                     Object.entries(
                       item[item.type === "creditCard" ? "card" : "identity"] ??
@@ -922,7 +909,7 @@ function App() {
                 <h2>{t("为重要信息留一个位置")}</h2>
                 <p>{t("新建笔记，或从备份导入已有资料。")}</p>
                 {section !== "trash" && (
-                  <button class="primary" disabled={readOnlyLibrary} onClick={newItem}>
+                  <button class="primary" onClick={newItem}>
                     {t("新建")}
                     {t(sections.find((s) => s[0] === section)?.[1] || "")}
                   </button>
@@ -941,7 +928,6 @@ function App() {
       {doc && state?.unlocked && history && (
         <HistoryDialog
           id={history}
-          readOnly={readOnlyLibrary}
           close={() => setHistory(undefined)}
           refresh={refresh}
         />
@@ -1226,7 +1212,7 @@ function Editor({
     </form>
   );
 }
-function Tools({ section, doc, refresh, run, setToast, copy, openItem, readOnly }: any) {
+function Tools({ section, doc, refresh, run, setToast, copy, openItem }: any) {
   useLocale();
   const [backupPassword, setBackupPassword] = useState("");
   const [file, setFile] = useState<File>();
@@ -1267,7 +1253,7 @@ function Tools({ section, doc, refresh, run, setToast, copy, openItem, readOnly 
       {section === "backup" ? (
         <>
           <section class="panel"><WebDAVPanel settings={doc.settings} onComplete={refresh} /></section>
-          <section class="panel">{readOnly ? <p>{t("当前资料库为只读，无法修改条目。")}</p> : <ImportReviewPanel onComplete={refresh} />}</section>
+          <section class="panel"><ImportReviewPanel onComplete={refresh} /></section>
           <RecoveryPanel onComplete={refresh} copy={copy} />
           <section class="panel">
           <h2>{t("加密备份")}</h2>
@@ -1310,7 +1296,7 @@ function Tools({ section, doc, refresh, run, setToast, copy, openItem, readOnly 
             onChange={(e) => setFile(e.currentTarget.files?.[0])}
           />
           <button
-            disabled={!file || readOnly}
+            disabled={!file}
             onClick={() =>
               run(async () => {
                 if (!file || file.size > 64 * 1024 * 1024)

@@ -41,7 +41,7 @@ struct SecurityCenterView: View {
             if let source = object["source"]?.string, let url = URL(string: source) { Link(t("查看依据", "View source"), destination: url) }
             if let incident = object["incident"]?.object, let source = incident["source"]?.string, let url = URL(string: source) { Link(incident["title"]?.string ?? t("事件依据", "Incident source"), destination: url) }
             Button(object["ignored"]?.bool == true ? t("恢复提醒", "Restore finding") : t("忽略此项", "Ignore finding")) {
-              Task { do { _ = try await perform(["op": .string("security-ignore"), "key": object["key"] ?? .string(""), "ignored": .bool(!(object["ignored"]?.bool ?? false))]); await refresh() } catch { message = t("无法保存设置", "Could not save setting") } }
+              Task { do { _ = try await perform(CoreRequest.securityIgnore(key: object["key"]?.string ?? "", ignored: !(object["ignored"]?.bool ?? false))); await refresh() } catch { message = t("无法保存设置", "Could not save setting") } }
             }
           }.opacity(object["ignored"]?.bool == true ? 0.5 : 1)
         }
@@ -113,7 +113,7 @@ struct SecurityCenterView: View {
           request.setValue("true", forHTTPHeaderField: "Add-Padding"); request.timeoutInterval = 20
           let (data, response) = try await session.data(for: request)
           guard (response as? HTTPURLResponse)?.statusCode == 200, data.count <= 4 * 1024 * 1024, let text = String(data: data, encoding: .utf8) else { throw URLError(.badServerResponse) }
-          let result = try await perform(["op": .string("breach-response"), "suffix": suffix, "response": .string(text)])
+          let result = try await perform(CoreRequest.breachResponse(suffix: suffix.string ?? "", response: text))
           occurrences += Int(result.object["count"]?.number ?? 0)
         }
         try Task.checkCancellation()

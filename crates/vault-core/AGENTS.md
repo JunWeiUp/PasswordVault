@@ -1,7 +1,7 @@
 # vault-core — agent notes
 
 Shared Rust core for every client: crypto, SQLCipher storage, notes/attachments, history,
-sync (mesh, peer, relay), backup/import and the common-relay protocol. Rust 1.98.0 (pinned).
+sync (mesh, relay), backup/import and the common-relay protocol. Rust 1.98.0 (pinned).
 
 ## Where things are
 - `contract/commands.json` — the JSON command API registry. Every `op` must be registered;
@@ -11,12 +11,14 @@ sync (mesh, peer, relay), backup/import and the common-relay protocol. Rust 1.98
   `group`: simple groups live in `src/native/ops/<group>.rs`; stateful ones next to their state
   (`native/relay*.rs`, `history.rs`, `passkeys.rs`, `recovery.rs`, `devices.rs`, `capabilities.rs`).
 - `src/relay_protocol/` — relay protocol: signing chain, strict payloads, invitation links,
-  envelopes, the group state machine (`groups`) and the
+  envelopes, the group-state-machine adapter (`groups`: the state machine itself is
+  `common_relay::Groups`, shared upstream; the adapter keeps vault-core error codes) and the
   owner retry/exit `policy`. Mobile reaches the pure parts through `relay-protocol-*` ops.
 - `src/relay_net/` (native) — the relay transport for every client: thin wrappers over the
   `common-relay` Rust SDK (git dependency; `Pipe` for `connection`, `Journal`, `RelayFiles` for
-  `files`) plus HTTPS (`http`) and the UniFFI surface (`ffi`: `RelayConnection`,
-  `RelayFileClient`, `relay_groups`). Keep `default-features = false` on `common-relay`
+  `files`), the shared personal-sync session every client drives (`mesh_sync`: roster, delivery,
+  dedup, undecryptable and group-change rules), HTTPS (`http`) and the UniFFI surface (`ffi`:
+  `RelayMeshSync`, `RelayConnection`, `RelayFileClient`, `relay_groups`). Keep `default-features = false` on `common-relay`
   (its `preserve_order` would change JSON key order and mesh digests). Generic relay rules
   belong upstream in common-relay; product choices stay here.
 - `src/browser.rs` — the wasm dispatcher used by the browser extension. It is NOT gated by the
@@ -33,7 +35,7 @@ sync (mesh, peer, relay), backup/import and the common-relay protocol. Rust 1.98
 ## Checks
 - `bash tool/check_native.sh core` — contract check, fmt, release tests, clippy `-D warnings`.
 - Single test: `cargo test -p vault-core --release <filter>`.
-- Relay end to end against real Common Relay servers (v2 + v1, loopback):
+- Relay end to end against real Common Relay servers (protocol v2, loopback):
   `bash tool/test_relay_live.sh` (needs Go and a local common-relay source tree).
 - Changing UniFFI exports or ops used by mobile: `bash tool/build_mobile_core.sh android|ios`
   (generated bindings are ignored by Git) — `python3 tool/check_changed.py` does this for you.

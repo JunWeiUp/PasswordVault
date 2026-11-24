@@ -25,7 +25,6 @@ class RealGroupProbe {
         if (args.getString("probeClean") == "true") { base.deleteRecursively(); return@runBlocking }
         val invite = args.getString("probeInvite"); val password = args.getString("probePassword")
         assumeTrue("probe arguments not provided", (invite != null && password != null) || args.getString("probeLeave") == "true")
-        RelayLocalTest.capturePackets = true
         val vault = VaultRepository(context, base)
         try {
             withTimeoutOrNull(20_000) { while (!vault.state.value.ready) delay(100) }
@@ -51,7 +50,6 @@ class RealGroupProbe {
                 }
             }
         } finally {
-            RelayLocalTest.capturePackets = false
             vault.close()
         }
     }

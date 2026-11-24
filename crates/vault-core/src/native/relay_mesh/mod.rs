@@ -107,6 +107,10 @@ pub(super) struct Mesh {
     archived_conflicts: usize,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     note_conflicts: BTreeMap<String, NoteConflict>,
+    /// Set once every peer was sent a complete resend after the causal-merge fix (builds
+    /// 7c396b6..fix could drop migrated records a peer did not have yet).
+    #[serde(default)]
+    resent_after_causal_fix: bool,
 }
 
 pub(super) fn operation(op: &str) -> bool {
@@ -282,12 +286,6 @@ pub(super) fn capture(
     if !enabled(conn)? {
         return Ok(false);
     }
-    if doc.settings["activePeerLibrary"]
-        .as_str()
-        .is_some_and(|s| !s.is_empty())
-    {
-        return Ok(true);
-    }
     let mut mesh = load(conn, root, vault)?;
     let migrated_legacy = !mesh.baseline.is_empty();
     mesh.ensure_digests();
@@ -410,6 +408,14 @@ impl DiskVault {
             return Err(VaultError::Unsupported);
         }
         let mut mesh = load(&open.connection, &open.root, &open.header.vault_id)?;
+        if !mesh.resent_after_causal_fix {
+            // One complete resend to every peer restores records an affected build dropped;
+            // records the peer already holds are recognised and change nothing.
+            mesh.acked.clear();
+            mesh.ack_sent.clear();
+            mesh.resent_after_causal_fix = true;
+            store(&open.connection, &open.root, &open.header.vault_id, &mesh)?;
+        }
         match op {
             "relay-mesh-peers" => {
                 let peers: BTreeSet<String> = serde_json::from_value(request["peers"].clone())
@@ -619,8 +625,12 @@ impl DiskVault {
                     let incoming_vv = versions(&stamp, &incoming_vv);
                     // Causality first: an edit made on top of our value replaces it, and one we
                     // already include is stale. Only edits neither side has seen are concurrent.
-                    let newer = includes(&incoming_vv, &local_vv) && incoming_vv != local_vv;
-                    let stale = !newer && includes(&local_vv, &incoming_vv);
+                    // Records without causal history (migrated legacy hub records carry no
+                    // device) fall back to the stamp comparison below.
+                    let causal = !incoming_vv.is_empty();
+                    let newer =
+                        causal && includes(&incoming_vv, &local_vv) && incoming_vv != local_vv;
+                    let stale = causal && !newer && includes(&local_vv, &incoming_vv);
                     let merged_vv = join(&local_vv, &incoming_vv);
                     mesh.observe(&stamp);
                     let wins = newer
@@ -1193,6 +1203,7 @@ impl DiskVault {
             skew: false,
             migrated_from: legacy.as_ref().map(|s| s.role.clone()),
             archived_conflicts: 0,
+            resent_after_causal_fix: true,
             note_conflicts: BTreeMap::new(),
         };
         for (key, stamp) in stamps {

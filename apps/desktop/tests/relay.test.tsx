@@ -13,13 +13,6 @@ test("relay local status never claims connection and clears on lock", async () =
   await app.waitFor("text:已锁定 · 同步已断开");
   expect(app.texts()).not.toContain("同步与设备");
 });
-test("peer libraries keep manual code approval for group membership", async () => {
-  const app = await open("../ui/relay/GroupHarness.tsx", { width: 1000, height: 1200, platform: "macos" });
-  await app.press("text:显示对等库申请");
-  await app.type("label:输入对方显示的配对码", "ABCD-1234-EF56");
-  await app.press("text:批准加入设备组");
-  await app.waitFor("text:ACTION:approve:ABCD-1234-EF56");
-});
 test("group exit confirms without a master password and local write failures remain visible", async () => {
   const app = await open("../ui/relay/GroupHarness.tsx", { width: 1000, height: 1600, platform: "macos" });
   await app.press("text:退出设备组");
@@ -44,7 +37,7 @@ test("group exit confirms without a master password and local write failures rem
 test("relay group creation requires the relay password; joining accepts a typed or link password", async () => {
   const app = await open("../ui/relay/GroupHarness.tsx", { width: 1000, height: 1200, platform: "macos" });
   await app.press("text:显示未入组");
-  await app.type("id:relay-endpoint", "wss://relay.example.test/relay/v1/ws");
+  await app.type("id:relay-endpoint", "wss://relay.example.test/v2/ws");
   await app.type("id:relay-password", "relay-access-1");
   await app.press("text:创建设备组");
   await app.waitFor("text:ACTION:create:with-password");

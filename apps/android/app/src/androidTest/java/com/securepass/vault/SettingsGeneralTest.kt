@@ -78,13 +78,19 @@ class SettingsGeneralTest {
             fixture.authenticate("1", true)
             withTimeout(15_000) { while (fixture.relay.state.value.device.isEmpty() || fixture.relay.state.value.busy) delay(25) }
             assertTrue(fixture.save(VaultRepository.blank("password").put("title", "Prefs fixture").put("username", "qa@example.test").put("password", "Fictional-only-" + "value-42")))
-            // A relay pointed at a closed loopback port: configured, but the transport always fails.
+            // A personal group whose relay is a closed loopback port: joined, but unreachable.
             val config = JSONObject(fixture.command(CoreRequest.relayCredentialsRead()).getString("data"))
-            fixture.command(CoreRequest.relayInit("mobile", "fixture-group", config.getString("device"), "fixture-hub"))
-            fixture.command(CoreRequest.relayTrust("fixture-hub"))
-            val peerKey = RelayCore.publicKey("01".repeat(32))
-            config.put("group", "fixture-group").put("hub", "fixture-hub").put("paused", false)
-                .put("peers", JSONObject().put("fixture-hub", peerKey)).put("token", "q".repeat(48)).put("endpoint", "wss://127.0.0.1:1/relay/v1/ws")
+            val device = config.getString("device"); val secret = config.getString("secret")
+            val keys = RelayCore.protocol(CoreRequest.relayProtocolKeys(secret))
+            val own = JSONObject().put("device", device).put("name", "Phone").put("public_key", keys.getString("publicKey"))
+                .put("signing_key", keys.getString("signingKey")).put("manager", true)
+            val state = JSONObject().put("version", 1).put("app", "passwordvault").put("group", "fixture-group").put("name", "Fixture")
+                .put("revision", 1).put("previous", "").put("members", org.json.JSONArray().put(own)).put("invitation", "").put("request_hash", "")
+            val entry = RelayCore.protocol(CoreRequest.relayProtocolSign(state, secret, device)).getJSONObject("entry")
+            val endpoint = "wss://127.0.0.1:1/v2/ws"; val token = "q".repeat(48)
+            config.put("group", "fixture-group").put("endpoint", endpoint).put("token", token)
+                .put("groups", JSONObject().put("app", "passwordvault").put("device", device).put("secret_key", secret).put("url", endpoint)
+                    .put("group", "fixture-group").put("token", token).put("group_entry", entry).put("trusted_peers", JSONObject()))
             fixture.command(CoreRequest.relayCredentialsWrite(config.toString()))
         } finally { fixture.close() }
 

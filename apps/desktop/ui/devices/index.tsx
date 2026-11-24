@@ -5,7 +5,7 @@ import { Attachments, Files } from "passwordvault/native";
 import { Banner, Btn, Card, Field, Group, IconTile, openSheet, Row, Segmented, SheetFooter, SheetTitle, T, TextBox, Toggle, confirm, copySecret } from "../kit";
 import { Icon } from "../icons";
 import { desktopCapabilities } from "../native";
-import { call, createItem, dest, edit, errorText, editing, flush, items, load, now, onLock, phase, toast, vaultInstance, type Item, type ItemType } from "../store";
+import { call, coreApi, createItem, dest, edit, errorText, editing, flush, items, load, now, onLock, phase, toast, vaultInstance, type Item, type ItemType } from "../store";
 import { cfg as aiCfg, change as aiChange } from "../ai";
 import { c } from "../theme";
 import { blankDevice, connectionCommand, deviceSubtitle, deviceTitle, importedDevice, planDeviceImport, type DeviceDocument, type DeviceImportGroup, type DeviceData, type DeviceFile, type DeviceService } from "./model";
@@ -70,7 +70,7 @@ export function DeviceImport(props: { close: () => void; pick: () => Promise<Dev
       const documents = await props.pick();
       if (!active() || !documents.length) return;
       if (!(await flush()) || !active()) throw new Error("请先保存当前修改");
-      const current = await call<{ items: Item[] }>({ op: "list", summaries: true });
+      const current = await coreApi.list(true);
       if (!active()) return;
       const plan = planDeviceImport(documents, current.items);
       groups.set(plan.groups); skipped.set(plan.skipped); chosen.set(true); saved.set(0);
@@ -82,7 +82,7 @@ export function DeviceImport(props: { close: () => void; pick: () => Promise<Dev
     busy.set(true); error.set("");
     try {
       if (!(await flush()) || !active()) throw new Error("请先保存当前修改");
-      const current = await call<{ items: Item[] }>({ op: "list", summaries: true });
+      const current = await coreApi.list(true);
       if (!active()) return;
       const fresh = planDeviceImport(groups().flatMap(g => g.documents), current.items);
       if (fresh.skipped.length) {

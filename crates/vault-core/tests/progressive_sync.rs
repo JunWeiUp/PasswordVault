@@ -515,3 +515,79 @@ fn sequential_edits_and_resolutions_do_not_reopen_parallel_branches() {
     assert_eq!(conflict_count(&a) + conflict_count(&b), 0);
     assert_eq!(note(&a), json!("## Alpha\nafter resolution"));
 }
+
+/// Regression: a legacy hub/mobile pair migrating to mesh exchanges both sides' records.
+#[test]
+fn legacy_pair_migrates_and_exchanges_both_ways() {
+    let (dm, dp) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+    let (mac, phone) = (new_vault(&dm), new_vault(&dp));
+    let peer = "phone-device";
+    call(
+        &mac,
+        json!({"op":"relay-init","role":"hub","group":"fixture","device":"mac","hub":"mac"}),
+    )
+    .unwrap();
+    call(&mac, json!({"op":"relay-trust","peer":peer})).unwrap();
+    call(
+        &phone,
+        json!({"op":"relay-init","role":"mobile","group":"fixture","device":peer,"hub":"mac"}),
+    )
+    .unwrap();
+    call(&phone, json!({"op":"relay-trust","peer":"mac"})).unwrap();
+    call(
+        &mac,
+        json!({"op":"save","item":{"id":"from-mac","type":"secureNote","title":"Mac note"}}),
+    )
+    .unwrap();
+    call(&phone, json!({"op":"save","item":{"id":"from-phone","type":"secureNote","title":"Phone offline note"}})).unwrap();
+    call(
+        &mac,
+        json!({"op":"relay-mesh-init","group":"fixture","device":"mac"}),
+    )
+    .unwrap();
+    call(&mac, json!({"op":"relay-mesh-peers","peers":[peer]})).unwrap();
+    call(
+        &phone,
+        json!({"op":"relay-mesh-init","group":"fixture","device":peer}),
+    )
+    .unwrap();
+    call(&phone, json!({"op":"relay-mesh-peers","peers":["mac"]})).unwrap();
+    for _ in 0..3 {
+        let p =
+            call(&mac, json!({"op":"relay-mesh-export","peer":peer})).unwrap()["packet"].clone();
+        if !p.is_null() {
+            call(
+                &phone,
+                json!({"op":"relay-mesh-receive","peer":"mac","packet":p}),
+            )
+            .unwrap();
+        }
+        let p =
+            call(&phone, json!({"op":"relay-mesh-export","peer":"mac"})).unwrap()["packet"].clone();
+        if !p.is_null() {
+            call(
+                &mac,
+                json!({"op":"relay-mesh-receive","peer":peer,"packet":p}),
+            )
+            .unwrap();
+        }
+    }
+    let ids = |s: &VaultSession| -> Vec<String> {
+        call(s, json!({"op":"list"})).unwrap()["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|i| i["id"].as_str().unwrap().to_owned())
+            .collect()
+    };
+    assert!(
+        ids(&phone).contains(&"from-mac".to_owned()),
+        "phone {:?}",
+        ids(&phone)
+    );
+    assert!(
+        ids(&mac).contains(&"from-phone".to_owned()),
+        "mac {:?}",
+        ids(&mac)
+    );
+}

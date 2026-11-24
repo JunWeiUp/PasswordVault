@@ -77,3 +77,17 @@ runpy.run_path({str(ROOT / 'tool/new_op.py')!r}, run_name="__main__")
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class BrowserScanTests(unittest.TestCase):
+    def test_extension_ops_must_be_registered_or_declared(self):
+        commands = contract.load_spec()["commands"]
+        self.assertEqual(contract.browser_scan(commands), [])
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "apps/browser/src").mkdir(parents=True)
+            (root / "apps/browser/src/x.ts").write_text('send({ op: "made-up-op" }); send({ op: "pair" });')
+            with mock.patch.object(contract, "ROOT", root):
+                problems = contract.browser_scan(commands)
+        self.assertEqual(len(problems), 1)
+        self.assertIn("made-up-op", problems[0])

@@ -57,7 +57,7 @@ internal object CoreRequest {
     /** items · unlocked → `{ok:true}` */
     fun restoreDrafts(payload: JSONObject, richNotes: Boolean? = null): JSONObject = request("restore-drafts", "payload" to payload, "richNotes" to richNotes)
 
-    /** items · unlocked → `{ok:true,peerBaseHeads?:string[],peerLibrary?:string}` */
+    /** items · unlocked → `{ok:true}` */
     fun save(item: JSONObject, richNotes: Boolean? = null, expectedUpdatedAt: String? = null, historyMeta: JSONObject? = null): JSONObject = request("save", "item" to item, "richNotes" to richNotes, "expectedUpdatedAt" to expectedUpdatedAt, "historyMeta" to historyMeta)
 
     /** items · unlocked → `{payload:Sealed}` */
@@ -338,60 +338,6 @@ internal object CoreRequest {
 
     /** relay-mesh · unlocked → `{ok:true,item:Item,conflictCount:number}` */
     fun relayMeshResolveConflict(id: String, strategy: String? = null, item: JSONObject? = null): JSONObject = request("relay-mesh-resolve-conflict", "id" to id, "strategy" to strategy, "item" to item)
-
-    /** relay-peer · unlocked → `PeerResult` */
-    fun relayPeerAuthorize(library: String, peer: String, member: JSONObject? = null): JSONObject = request("relay-peer-authorize", "library" to library, "peer" to peer, "member" to member)
-
-    /** relay-peer · unlocked → `{ok:true}` */
-    fun relayPeerCancelJoin(library: String): JSONObject = request("relay-peer-cancel-join", "library" to library)
-
-    /** relay-peer · unlocked → `{library:string,device:string,publicKey:string}` */
-    fun relayPeerCreate(device: String, personal: Boolean? = null, transportKey: String? = null, name: String? = null, migrateLegacy: Boolean? = null): JSONObject = request("relay-peer-create", "device" to device, "personal" to personal, "transportKey" to transportKey, "name" to name, "migrateLegacy" to migrateLegacy)
-
-    /** relay-peer · unlocked → `{protocol:'peer-v2',packet:PeerPacket,files:object[]}` */
-    fun relayPeerExport(library: String, peer: String): JSONObject = request("relay-peer-export", "library" to library, "peer" to peer)
-
-    /** relay-peer · unlocked → `{enabled:true,ok:true}` */
-    fun relayPeerHistoryEnable(library: String): JSONObject = request("relay-peer-history-enable", "library" to library)
-
-    /** relay-peer · unlocked → `{total:number,revisions:Revision[]}` */
-    fun relayPeerHistoryList(library: String, id: String, offset: Number? = null, limit: Number? = null): JSONObject = request("relay-peer-history-list", "library" to library, "id" to id, "offset" to offset, "limit" to limit)
-
-    /** relay-peer · unlocked → `{ok:true,retainedForSync:true}` */
-    fun relayPeerHistoryPrune(library: String, id: String): JSONObject = request("relay-peer-history-prune", "library" to library, "id" to id)
-
-    /** relay-peer · unlocked → `PeerResult` */
-    fun relayPeerHistoryRestore(library: String, id: String, revisionId: String, time: String): JSONObject = request("relay-peer-history-restore", "library" to library, "id" to id, "revisionId" to revisionId, "time" to time)
-
-    /** relay-peer · unlocked → `{enabled:true,ok:true}` */
-    fun relayPeerHistoryStatus(library: String): JSONObject = request("relay-peer-history-status", "library" to library)
-
-    /** relay-peer · unlocked → `{library:string,device:string,publicKey:string}` */
-    fun relayPeerIdentity(device: String, personal: Boolean? = null, confirmPersonalSync: Boolean? = null): JSONObject = request("relay-peer-identity", "device" to device, "personal" to personal, "confirmPersonalSync" to confirmPersonalSync)
-
-    /** relay-peer · unlocked → `PeerResult|{ok:true,partial:true}` */
-    fun relayPeerJoin(library: String, envelope: JSONObject, expectedLibrary: String, founderKey: String, sender: String? = null): JSONObject = request("relay-peer-join", "library" to library, "envelope" to envelope, "expectedLibrary" to expectedLibrary, "founderKey" to founderKey, "sender" to sender)
-
-    /** relay-peer · unlocked → `{libraries:{id,personal,name,role}[],active:string|null}` */
-    fun relayPeerList(): JSONObject = request("relay-peer-list")
-
-    /** relay-peer · unlocked → `PeerResult|{ok:true,partial:true}` */
-    fun relayPeerReceive(library: String, envelope: JSONObject, sender: String? = null): JSONObject = request("relay-peer-receive", "library" to library, "envelope" to envelope, "sender" to sender)
-
-    /** relay-peer · unlocked → `PeerResult` */
-    fun relayPeerRekey(library: String, device: String, transportKey: String): JSONObject = request("relay-peer-rekey", "library" to library, "device" to device, "transportKey" to transportKey)
-
-    /** relay-peer · unlocked → `PeerResult` */
-    fun relayPeerResolve(library: String, key: String, value: Any): JSONObject = request("relay-peer-resolve", "library" to library, "key" to key, "value" to value)
-
-    /** relay-peer · unlocked → `{library,device,publicKey,personal,generation,frozen,members,conflicts,records,history}` */
-    fun relayPeerStatus(library: String): JSONObject = request("relay-peer-status", "library" to library)
-
-    /** relay-peer · unlocked → `{ok:true}` */
-    fun relayPeerSwitch(library: String): JSONObject = request("relay-peer-switch", "library" to library)
-
-    /** relay-peer · unlocked → `PeerResult` */
-    fun relayPeerWrite(library: String, key: String, value: Any): JSONObject = request("relay-peer-write", "library" to library, "key" to key, "value" to value)
 
     /** relay-protocol · none → `{publicKey:string,signingKey:string}` */
     fun relayProtocolKeys(secret: String): JSONObject = request("relay-protocol-keys", "secret" to secret)

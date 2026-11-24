@@ -24,8 +24,6 @@ internal data class RelayInvitationPreview(val input: String, val endpoint: Stri
 /** Debug builds only: instrumented tests may point the relay at ws://127.0.0.1 (via adb reverse). */
 internal object RelayLocalTest {
     @Volatile var enabled = false
-    /** Debug-only probe: store packets the core rejects in app-private cache for local reproduction. */
-    @Volatile var capturePackets = false
     val active: Boolean get() = enabled && BuildConfig.DEBUG
 }
 
@@ -33,8 +31,8 @@ internal fun validateRelayEndpoint(text: String): String {
     val value = text.trim()
     val uri = URI(value)
     val local = RelayLocalTest.active && uri.scheme == "ws" && uri.host == "127.0.0.1"
-    require((uri.scheme == "wss" || local) && !uri.host.isNullOrBlank() && uri.rawUserInfo == null && uri.rawQuery == null && uri.rawFragment == null && (uri.path == "/relay/v1/ws" || uri.path == "/v2/ws")) {
-        "请输入 wss://服务器/v2/ws 或 wss://服务器/relay/v1/ws / Enter a WSS relay endpoint"
+    require((uri.scheme == "wss" || local) && !uri.host.isNullOrBlank() && uri.rawUserInfo == null && uri.rawQuery == null && uri.rawFragment == null && uri.path == "/v2/ws") {
+        "请输入 wss://服务器/v2/ws / Enter a wss://host/v2/ws relay endpoint"
     }
     return value
 }

@@ -29,8 +29,7 @@ joins the group and starts syncing with every member. There is no primary
 confirmation, vault grant, pause or conflict list; the newer edit wins and older
 versions stay in entry history. Existing legacy journals migrate on first sync
 with an encrypted `before-mesh-sync/` snapshot. Sync now wakes polling/reconnect
-waits immediately; known transfer units show measured progress. Peer libraries
-keep their own protocol.
+waits immediately; known transfer units show measured progress.
 
 Isolated test screenshots and evidence live in ignored
 `native-test-output/android-sync-progress/`. Production windows retain

@@ -37,7 +37,10 @@ final class MobileVaultStore: ObservableObject {
   lazy var relay = VaultRelay(directory: directory, role: "mobile", call: { [weak self] request in
     guard let self else { throw VaultError.Locked }
     return try await self.perform(request)
-  }, refresh: { [weak self] in try? await self?.refresh() })
+  }, refresh: { [weak self] in try? await self?.refresh() }, session: { [weak self] in
+    guard let core = await self?.core else { throw VaultError.Locked }
+    return try await core.coreSession()
+  })
   let directory: URL
   private(set) var core: MobileCore?
   private var epoch = 0
@@ -80,9 +83,7 @@ final class MobileVaultStore: ObservableObject {
     await closing?.value
   }
   var canWriteLibrary: Bool {
-    if settings["_peerLibraryReadOnly"]?.bool == true { return false }
-    if !(settings["activePeerLibrary"]?.string ?? "").isEmpty { return ["admin", "editor"].contains(settings["_peerLibraryRole"]?.string ?? "") }
-    return true
+    true
   }
   func canEdit(_ item: VaultItem) -> Bool {
     guard canWriteLibrary else { return false }
@@ -384,7 +385,7 @@ final class MobileVaultStore: ObservableObject {
   }
   func perform(_ request: [String: JSONValue]) async throws -> JSONValue {
     guard unlocked, let core else { throw VaultError.Locked }
-    if pendingDraft != nil, ["relay-peer-switch", "relay-peer-create", "relay-peer-rekey", "relay-init", "relay-receive", "recovery-export", "history-enable", "history-restore", "history-prune", "share-seal"].contains(request["op"]?.string ?? "") { throw VaultError.InUse }
+    if pendingDraft != nil, ["relay-init", "relay-receive", "recovery-export", "history-enable", "history-restore", "history-prune", "share-seal"].contains(request["op"]?.string ?? "") { throw VaultError.InUse }
     let generation = epoch
     let value = try await core.call(request)
     guard generation == epoch, unlocked else { throw VaultError.Locked }

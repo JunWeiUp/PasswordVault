@@ -390,7 +390,7 @@ checksum = "1c133bc6a41be0d194c306b5506d15e6feeea7b1d6604bd3f8310dfb2ca96486"
 [[package]]
 name = "common-relay"
 version = "0.1.7"
-source = "git+https://github.com/JunWeiUp/common-relay?rev=e5f76930b5e7efa55a878e319bf86a6846d05d3a#e5f76930b5e7efa55a878e319bf86a6846d05d3a"
+source = "git+https://github.com/JunWeiUp/common-relay?rev=ce34b9419e7be777e2ec415624b7aa8a19f3e1b0#ce34b9419e7be777e2ec415624b7aa8a19f3e1b0"
 dependencies = [
  "base64 0.22.1",
  "chacha20 0.9.1",
@@ -2326,7 +2326,6 @@ dependencies = [
  "sha1",
  "thiserror",
  "utf-8",
- "webpki-roots 0.26.11",
 ]
 
 [[package]]
@@ -2551,7 +2550,6 @@ dependencies = [
  "tempfile",
  "thiserror",
  "tokio",
- "tungstenite",
  "uniffi",
  "url",
  "wasm-bindgen",

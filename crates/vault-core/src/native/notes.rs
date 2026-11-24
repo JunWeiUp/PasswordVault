@@ -793,13 +793,6 @@ impl DiskVault {
         let mut next = open.document.clone();
         next.format_version = next.format_version.max(3);
         let tx = storage(open.connection.transaction())?;
-        relay::peer::register_local_attachment(
-            &tx,
-            &open.root,
-            &open.header.vault_id,
-            &next,
-            &meta.id,
-        )?;
         let created_blob = write_from_reader(
             &vault_dir,
             &tx,
@@ -975,25 +968,12 @@ impl DiskVault {
             &open.header.vault_id,
             open.document.clone(),
         )?;
-        let retained = relay::peer::with_library_records(
-            &open.connection,
-            &open.root,
-            &open.header.vault_id,
-            &hydrated,
-        )?;
-        for item in retained.items {
+        for item in hydrated.items {
             crate::archive::item_attachment_refs(&item, &mut used)?;
         }
         if used.contains(id) {
             return Err(VaultError::InvalidData);
         }
-        relay::peer::forget_local_attachment(
-            &open.connection,
-            &open.root,
-            &open.header.vault_id,
-            &open.document,
-            id,
-        )?;
         note_blobs::delete_ref(&open.connection, id)?;
         storage(open.connection.execute(
             "DELETE FROM note_attachment_state WHERE attachment_id=?1",
@@ -1017,12 +997,10 @@ impl DiskVault {
             &open.header.vault_id,
             open.document.clone(),
         )?;
-        let document = relay::peer::backup_document(
-            &open.connection,
-            &open.root,
-            &open.header.vault_id,
-            &hydrated,
-        )?;
+        let mut document = hydrated;
+        if let Some(settings) = document.settings.as_object_mut() {
+            settings.remove("activePeerLibrary");
+        }
         crate::archive::encode_archive(
             &document,
             attachments,
@@ -1058,12 +1036,6 @@ impl DiskVault {
         let result = (|| {
             self.prepare_rich()?;
             let open = self.open()?;
-            if open.document.settings["activePeerLibrary"]
-                .as_str()
-                .is_some_and(|s| !s.is_empty())
-            {
-                return Err(VaultError::Unsupported);
-            }
             let mut next = note_bodies::hydrate(
                 &open.connection,
                 &open.root,
@@ -1114,12 +1086,9 @@ impl DiskVault {
             let mut combined_history =
                 history::read(&open.connection, &open.root, &open.header.vault_id)?;
             combined_history.extend(manifest.history.clone());
-            let mut validation = relay::peer::with_library_records(
-                &open.connection,
-                &open.root,
-                &open.header.vault_id,
-                &history::with_history(&next, &combined_history),
-            )?;
+            let mut validation = history::with_history(&next, &combined_history);
+            // Backups from builds with peer libraries may still carry their snapshots; their
+            // attachments stay valid references even though the libraries are not restored.
             if !snapshots.is_null() {
                 validation.settings["peerLibrarySnapshots"] = snapshots.clone();
             }
@@ -1139,13 +1108,6 @@ impl DiskVault {
                     &archive.files[&meta.id],
                     &aad(&archive.header.vault_id, meta)?,
                 )?;
-                relay::peer::register_local_attachment(
-                    &tx,
-                    &open.root,
-                    &open.header.vault_id,
-                    &next,
-                    &meta.id,
-                )?;
                 if let Some(bid) = write(
                     &vault_dir,
                     &tx,
@@ -1157,7 +1119,6 @@ impl DiskVault {
                     created_blobs.push(bid);
                 }
             }
-            relay::peer::restore_snapshots(&tx, &open.root, &open.header.vault_id, &snapshots)?;
             let saved = save_document_row_with_prev(
                 &tx,
                 &open.root,

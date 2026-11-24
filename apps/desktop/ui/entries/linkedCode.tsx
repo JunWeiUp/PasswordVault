@@ -46,7 +46,7 @@ export async function copyAccountCode(item: Item) {
   const code = codeFor(item);
   if (!code) return;
   try {
-    const result = await call<{ code: string }>({ op: "totp", secret: code.secret, period: code.period, time: Math.floor(Date.now() / 1000) });
+    const result = await call({ op: "totp", secret: code.secret, period: code.period, time: Math.floor(Date.now() / 1000) });
     await copySecret(result.code, `${item.title || "账号"}的验证码`);
   } catch (e) { toast(errorText(e)); }
 }
