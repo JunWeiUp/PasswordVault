@@ -1,9 +1,5 @@
 """Classify Git diffs for local tooling and select explicit CI build components."""
-import json
 import os
-from pathlib import Path
-import re
-import subprocess
 import sys
 
 SCOPES = ('core', 'macos', 'windows', 'browser', 'android', 'ios')
@@ -16,7 +12,7 @@ def classify(paths):
         if not path:
             continue
         if path.startswith('docs/') or path.endswith('.md') or path in {
-            'LICENSE', '.gitignore', '.gitleaks.toml', '.gitattributes',
+            'LICENSE', '.gitignore', '.gitleaks.toml', '.gitattributes', 'Makefile',
         }:
             continue
         if path.startswith(('crates/', '.cargo/')) or path in {'Cargo.toml', 'Cargo.lock', 'rust-toolchain.toml'}:
@@ -25,8 +21,6 @@ def classify(paths):
             selected |= NATIVE
         elif path == 'tool/build_mobile_core.sh':
             selected |= {'android', 'ios'}
-        elif path.startswith(('apps/shared/Relay/', 'apps/shared/RelayTests/', 'apps/shared/Capabilities/')):
-            selected |= {'ios'}  # Swift sources compiled only by apps/ios/project.yml.
         elif path.startswith('apps/shared/note-editor/'):
             selected |= {'ios', 'android', 'browser'}  # Desktop uses NSH's own editor.
         elif path.startswith('apps/desktop/'):
@@ -51,25 +45,6 @@ def classify(paths):
     return selected
 
 
-def select(event_name, event, git_diff):
-    if event_name == 'pull_request':
-        base = event['pull_request']['base']['sha']
-        head = event['pull_request']['head']['sha']
-        comparison = '...'
-    elif event_name == 'push' and not event.get('ref', '').startswith('refs/tags/'):
-        base, head = event.get('before', ''), event.get('after', '')
-        comparison = '..'
-    else:
-        return set(SCOPES)  # Manual runs and release workflow_call are always complete.
-    if not all(re.fullmatch(r'[0-9a-f]{40}', sha) and set(sha) != {'0'} for sha in (base, head)):
-        return set(SCOPES)
-    try:
-        paths = git_diff(base + comparison + head)
-    except subprocess.CalledProcessError:
-        return set(SCOPES)
-    return classify(paths)
-
-
 def requested(component):
     allowed = set(SCOPES)
     if component == 'release':
@@ -82,20 +57,13 @@ def requested(component):
 
 
 def main():
-    if '--requested' in sys.argv:
-        selected = requested(os.environ['CI_COMPONENT'])
-        with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
-            for scope in SCOPES:
-                output.write(f'{scope}={str(scope in selected).lower()}\n')
-        print('Requested components: ' + ', '.join(sorted(selected)))
-        return
-    event = json.loads(Path(os.environ['GITHUB_EVENT_PATH']).read_text())
-    selected = select(os.environ['GITHUB_EVENT_NAME'], event, lambda revision: subprocess.check_output(
-        ['git', 'diff', '--name-only', '--no-renames', '-z', revision, '--'], text=True).split('\0'))
+    if '--requested' not in sys.argv:
+        raise SystemExit('Usage: python3 tool/ci_changes.py --requested')
+    selected = requested(os.environ['CI_COMPONENT'])
     with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
         for scope in SCOPES:
             output.write(f'{scope}={str(scope in selected).lower()}\n')
-    print('Selected components: ' + (', '.join(sorted(selected)) or 'repository checks only'))
+    print('Requested components: ' + ', '.join(sorted(selected)))
 
 
 if __name__ == '__main__':

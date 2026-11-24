@@ -51,7 +51,12 @@ fn consent_with(
     {
         let mut pending = PENDING.lock().map_err(|_| "unavailable")?;
         if pending.is_some() {
-            return Err(if kind == "pair" { "pairing-busy" } else { "request-busy" }.into());
+            return Err(if kind == "pair" {
+                "pairing-busy"
+            } else {
+                "request-busy"
+            }
+            .into());
         }
         *pending = Some(Pending {
             id: id.into(),
@@ -97,14 +102,22 @@ fn owned_by(
     account_id: &Value,
 ) -> Result<(), String> {
     let id = bounded(id, false)?;
-    let account = if account_id.is_null() { "" } else { bounded(account_id, true)? };
+    let account = if account_id.is_null() {
+        ""
+    } else {
+        bounded(account_id, true)?
+    };
     let matches = command(session, json!({"op":"matches","origin":origin}))?;
     let found = matches.as_array().is_some_and(|accounts| {
-        accounts.iter().any(|a| {
-            a["id"] == id && a["accountId"].as_str().unwrap_or("") == account
-        })
+        accounts
+            .iter()
+            .any(|a| a["id"] == id && a["accountId"].as_str().unwrap_or("") == account)
     });
-    if found { Ok(()) } else { Err("invalid-entry".into()) }
+    if found {
+        Ok(())
+    } else {
+        Err("invalid-entry".into())
+    }
 }
 static STARTUP: Mutex<Option<String>> = Mutex::new(None);
 static PENDING: Mutex<Option<Pending>> = Mutex::new(None);
@@ -610,7 +623,10 @@ pub(crate) fn pending_native() -> String {
 /// Pending pairing challenge plus the extension-save revision, in one IPC round trip.
 pub(crate) fn poll_native() -> String {
     let open = NAVIGATE.lock().ok().and_then(|mut slot| {
-        if slot.as_ref().is_some_and(|n| n.expires <= std::time::Instant::now()) {
+        if slot
+            .as_ref()
+            .is_some_and(|n| n.expires <= std::time::Instant::now())
+        {
             slot.take();
         }
         slot.as_ref()
@@ -646,7 +662,10 @@ fn string_list(value: &Value, limit: usize) -> Result<Vec<String>, String> {
     if value.is_null() {
         return Ok(vec![]);
     }
-    let list = value.as_array().filter(|v| v.len() <= limit).ok_or("invalid-request")?;
+    let list = value
+        .as_array()
+        .filter(|v| v.len() <= limit)
+        .ok_or("invalid-request")?;
     list.iter()
         .map(|v| bounded(v, false).map(str::to_owned))
         .collect()
@@ -656,7 +675,11 @@ fn prf_inputs(value: &Value) -> Result<Value, String> {
     let mut out = json!({});
     for name in ["first", "second"] {
         if let Some(v) = object.get(name).filter(|v| !v.is_null()) {
-            out[name] = v.as_str().filter(|s| s.len() <= 8192).ok_or("invalid-request")?.into();
+            out[name] = v
+                .as_str()
+                .filter(|s| s.len() <= 8192)
+                .ok_or("invalid-request")?
+                .into();
         }
     }
     Ok(out)
@@ -673,7 +696,11 @@ fn passkey(
     if url.scheme() != "https" {
         return Err("invalid-request".into());
     }
-    let origin = request["origin"].as_str().unwrap_or("").trim_end_matches('/').to_owned();
+    let origin = request["origin"]
+        .as_str()
+        .unwrap_or("")
+        .trim_end_matches('/')
+        .to_owned();
     let rp = bounded(&request["rpId"], false)?;
     if !vault_core::passkey_rp_matches(url.host_str().unwrap_or(""), rp) {
         return Err("unsupported-rp".into());
@@ -690,7 +717,10 @@ fn passkey(
             .as_str()
             .filter(|s| s.len() <= 1024)
             .ok_or("invalid-request")?;
-        (name.to_owned(), bounded(&request["userHandle"], false)?.to_owned())
+        (
+            name.to_owned(),
+            bounded(&request["userHandle"], false)?.to_owned(),
+        )
     } else {
         (String::new(), String::new())
     };
@@ -700,11 +730,18 @@ fn passkey(
         .unwrap_or_default()
         .into_iter()
         .filter(|m| {
-            allowed.is_empty() || m["id"].as_str().is_some_and(|i| allowed.iter().any(|a| a == i))
+            allowed.is_empty()
+                || m["id"]
+                    .as_str()
+                    .is_some_and(|i| allowed.iter().any(|a| a == i))
         })
         .collect();
     if create {
-        if matches.iter().any(|m| m["id"].as_str().is_some_and(|i| excluded.iter().any(|e| e == i))) {
+        if matches.iter().any(|m| {
+            m["id"]
+                .as_str()
+                .is_some_and(|i| excluded.iter().any(|e| e == i))
+        }) {
             // Already registered here: let the browser report InvalidStateError itself.
             return Err("already-registered".into());
         }
@@ -717,7 +754,11 @@ fn passkey(
         .map(|m| json!({"library":m["library"],"itemId":m["itemId"],"id":m["id"],"userName":m["userName"]}))
         .collect();
     let extra = json!({"operation":if create {"create"} else {"get"},"origin":origin,"rpId":rp,"userName":user_name,"matches":public});
-    let kind = if create { "passkey-create" } else { "passkey-assert" };
+    let kind = if create {
+        "passkey-create"
+    } else {
+        "passkey-assert"
+    };
     let selection = consent_with(id, kind, format!("{origin}\n{rp}"), extra, PASSKEY_TIMEOUT)?;
     if selection["fallback"] == true {
         // "Use another device": the page hands the ceremony to the browser's own authenticator.
@@ -734,7 +775,10 @@ fn passkey(
     // PRF inputs are public salts; the core validates and evaluates them for the chosen credential.
     if request["prf"].is_object() {
         query["prf"] = prf_inputs(&request["prf"])?;
-        if let Some(by) = request["prfByCredential"].as_object().filter(|m| m.len() <= 64) {
+        if let Some(by) = request["prfByCredential"]
+            .as_object()
+            .filter(|m| m.len() <= 64)
+        {
             let mut map = serde_json::Map::new();
             for (key, value) in by {
                 bounded(&Value::from(key.as_str()), false)?;
@@ -752,7 +796,11 @@ fn passkey(
         // The window may only pick one of the credentials it was shown.
         let chosen = public
             .iter()
-            .find(|m| m["id"] == selection["credentialId"] && m["itemId"] == selection["itemId"] && m["library"] == selection["library"])
+            .find(|m| {
+                m["id"] == selection["credentialId"]
+                    && m["itemId"] == selection["itemId"]
+                    && m["library"] == selection["library"]
+            })
             .ok_or("invalid-entry")?;
         query["credentialId"] = chosen["id"].clone();
         query["itemId"] = chosen["itemId"].clone();
@@ -762,7 +810,13 @@ fn passkey(
     }
     query["currentPassword"] = json!(password.as_str());
     let result = command(session, query);
-    let data = result.map_err(|e| if e == "Authentication" { "authentication".to_string() } else { e })?;
+    let data = result.map_err(|e| {
+        if e == "Authentication" {
+            "authentication".to_string()
+        } else {
+            e
+        }
+    })?;
     if create {
         saved();
     }

@@ -1,7 +1,5 @@
 name: Native clients
 on:
-  pull_request:
-    branches: [main, master]
   workflow_dispatch:
     inputs:
       component:
@@ -24,12 +22,11 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: native-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: native-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 jobs:
   changes:
     name: Select requested components
-    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
@@ -293,7 +290,6 @@ jobs:
       - name: Require successful applicable native checks
         env:
           RESULTS: ${{ toJSON(needs) }}
-          EVENT_NAME: ${{ github.event_name }}
         run: |
           python3 - <<'PYCODE'
           import json, os
@@ -301,10 +297,7 @@ jobs:
           failed = {name: job['result'] for name, job in results.items() if job['result'] not in ('success', 'skipped')}
           if failed:
               raise SystemExit(f'Native validation failed: {failed}')
-          if os.environ['EVENT_NAME'] == 'pull_request':
-              print('Cost policy: native builds/tests are manual or release-only; no platform validation claimed for this PR.')
-          elif results['changes']['result'] != 'success':
+          if results['changes']['result'] != 'success':
               raise SystemExit('Component selection did not succeed')
-          else:
-              print('All requested native jobs passed')
+          print('All requested native jobs passed')
           PYCODE

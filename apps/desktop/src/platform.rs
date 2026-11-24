@@ -10,15 +10,33 @@ pub use macos::*;
 mod unsupported {
     use std::path::Path;
     use zeroize::Zeroizing;
-    pub fn available() -> bool { false }
-    pub fn enabled(_: &Path) -> Result<bool, String> { Ok(false) }
-    pub fn verify_enrollment(_: &crate::session::VaultSession, _: &Path, _: String) -> Result<Zeroizing<Vec<u8>>, String> { Err("Unsupported".into()) }
-    pub fn enroll(_: &Path, _: &[u8]) -> Result<(), String> { Err("Unsupported".into()) }
-    pub fn remove(_: &Path) -> Result<(), String> { Err("Unsupported".into()) }
-    pub fn retrieve(_: &Path) -> Result<Zeroizing<Vec<u8>>, String> { Err("Unsupported".into()) }
+    pub fn available() -> bool {
+        false
+    }
+    pub fn enabled(_: &Path) -> Result<bool, String> {
+        Ok(false)
+    }
+    pub fn verify_enrollment(
+        _: &crate::session::VaultSession,
+        _: &Path,
+        _: String,
+    ) -> Result<Zeroizing<Vec<u8>>, String> {
+        Err("Unsupported".into())
+    }
+    pub fn enroll(_: &Path, _: &[u8]) -> Result<(), String> {
+        Err("Unsupported".into())
+    }
+    pub fn remove(_: &Path) -> Result<(), String> {
+        Err("Unsupported".into())
+    }
+    pub fn retrieve(_: &Path) -> Result<Zeroizing<Vec<u8>>, String> {
+        Err("Unsupported".into())
+    }
     // System events require a native implementation before Windows distribution.
     #[cfg(not(target_os = "windows"))]
-    pub fn poll() -> String { r#"{"events":0,"idleSeconds":null}"#.into() }
+    pub fn poll() -> String {
+        r#"{"events":0,"idleSeconds":null}"#.into()
+    }
 }
 #[cfg(not(target_os = "macos"))]
 pub use unsupported::*;
@@ -26,20 +44,47 @@ pub use unsupported::*;
 /// Reveal a selected file using the platform shell, without a command interpreter.
 pub fn reveal(path: &str) -> bool {
     #[cfg(target_os = "macos")]
-    { std::process::Command::new("/usr/bin/open").arg("-R").arg(path).status().is_ok_and(|s| s.success()) }
+    {
+        std::process::Command::new("/usr/bin/open")
+            .arg("-R")
+            .arg(path)
+            .status()
+            .is_ok_and(|s| s.success())
+    }
     #[cfg(target_os = "windows")]
-    { std::process::Command::new("explorer.exe").arg(format!("/select,{path}")).spawn().is_ok() }
+    {
+        std::process::Command::new("explorer.exe")
+            .arg(format!("/select,{path}"))
+            .spawn()
+            .is_ok()
+    }
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-    { let _ = path; false }
+    {
+        let _ = path;
+        false
+    }
 }
 
 pub fn open_folder(path: &std::path::Path) -> bool {
     #[cfg(target_os = "macos")]
-    { std::process::Command::new("/usr/bin/open").arg(path).status().is_ok_and(|s| s.success()) }
+    {
+        std::process::Command::new("/usr/bin/open")
+            .arg(path)
+            .status()
+            .is_ok_and(|s| s.success())
+    }
     #[cfg(target_os = "windows")]
-    { std::process::Command::new("explorer.exe").arg(path).spawn().is_ok() }
+    {
+        std::process::Command::new("explorer.exe")
+            .arg(path)
+            .spawn()
+            .is_ok()
+    }
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-    { let _ = path; false }
+    {
+        let _ = path;
+        false
+    }
 }
 
 #[cfg(target_os = "macos")]
@@ -49,7 +94,11 @@ mod file_dialogs;
 pub(crate) use file_dialogs::{panel, pick_device_paths};
 
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-pub(crate) fn panel(_: String, _: Option<String>, _: Vec<String>) -> Result<Option<String>, String> {
+pub(crate) fn panel(
+    _: String,
+    _: Option<String>,
+    _: Vec<String>,
+) -> Result<Option<String>, String> {
     Err("Unsupported".into())
 }
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]

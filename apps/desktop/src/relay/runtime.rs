@@ -1,7 +1,6 @@
 //! One cancellable relay owner per vault. Stop never waits for the network/control mutex.
 use super::{Result, protocol::*, service};
-use vault_core::relay_net::mesh_sync::{MeshSync, MeshVault, Settings};
-use vault_core::relay_protocol::{BoxPublicKey, BoxSecretKey, Identity};
+use crate::session::VaultSession;
 use base64::{Engine, engine::general_purpose::STANDARD};
 use serde_json::{Value, json};
 use std::{
@@ -12,7 +11,8 @@ use std::{
     },
     time::{Duration, Instant},
 };
-use crate::session::VaultSession;
+use vault_core::relay_net::mesh_sync::{MeshSync, MeshVault, Settings};
+use vault_core::relay_protocol::{BoxPublicKey, BoxSecretKey, Identity};
 pub struct Run {
     directory: std::path::PathBuf,
     stop: AtomicBool,
@@ -132,21 +132,37 @@ pub fn request_blob(
     Ok(json!({"queued": true, "peer": peer, "online": online.iter().any(|p| p == &peer)}))
 }
 use vault_core::relay_protocol::policy;
-pub fn exit_local(s: &Arc<VaultSession>, directory: std::path::PathBuf, disband: bool, local: bool) -> Result<String> {
+pub fn exit_local(
+    s: &Arc<VaultSession>,
+    directory: std::path::PathBuf,
+    disband: bool,
+    local: bool,
+) -> Result<String> {
     stop(s);
     let (display, remote) = service::exit_local(s, disband)?;
     let notice = Arc::new(Run {
-        directory, stop: AtomicBool::new(true), connection: Mutex::new(None),
-        view: Mutex::new(json!({"transport":"disconnected","online":[],"exit":{"disband":disband,"remote":"pending"}})),
+        directory,
+        stop: AtomicBool::new(true),
+        connection: Mutex::new(None),
+        view: Mutex::new(
+            json!({"transport":"disconnected","online":[],"exit":{"disband":disband,"remote":"pending"}}),
+        ),
         blob_outbox: Mutex::new(std::collections::VecDeque::new()),
     });
-    runs().lock().map_err(|_| "Storage")?.insert(Arc::as_ptr(s) as usize, notice.clone());
+    runs()
+        .lock()
+        .map_err(|_| "Storage")?
+        .insert(Arc::as_ptr(s) as usize, notice.clone());
     // The worker owns only the old in-memory snapshot, never a vault/session or
     // persistence callback. It cannot restore membership, even after a late reply.
     std::thread::spawn(move || {
         let result = service::notify_exit(remote, disband, local);
         if let Ok(mut view) = notice.view.lock() {
-            view["exit"]["remote"] = json!(if result.is_ok() { "confirmed" } else { "failed" });
+            view["exit"]["remote"] = json!(if result.is_ok() {
+                "confirmed"
+            } else {
+                "failed"
+            });
         }
     });
     Ok(display)
@@ -158,13 +174,20 @@ pub fn authentication_failure(error: &str) -> bool {
 }
 pub fn block_authentication(s: &Arc<VaultSession>, directory: std::path::PathBuf, error: &str) {
     let run = Arc::new(Run {
-        directory, stop: AtomicBool::new(true), connection: Mutex::new(None),
+        directory,
+        stop: AtomicBool::new(true),
+        connection: Mutex::new(None),
         view: Mutex::new(json!({"transport":"disconnected","online":[],"error":error})),
         blob_outbox: Mutex::new(std::collections::VecDeque::new()),
     });
     if let Ok(mut map) = runs().lock() {
         let key = Arc::as_ptr(s) as usize;
-        if map.get(&key).is_some_and(|r| r.view.lock().is_ok_and(|v| v["exit"].is_object())) { return; }
+        if map
+            .get(&key)
+            .is_some_and(|r| r.view.lock().is_ok_and(|v| v["exit"].is_object()))
+        {
+            return;
+        }
         map.insert(key, run);
     }
 }
@@ -176,7 +199,12 @@ pub fn start(s: Arc<VaultSession>, directory: std::path::PathBuf, local: bool) -
     let key = Arc::as_ptr(&s) as usize;
     // An automatic connect must not restart rejected credentials. Explicit actions
     // remove this entry through stop() before starting a new attempt.
-    if map.get(&key).is_some_and(|r| !r.stopped() || r.view.lock().is_ok_and(|v| v["exit"].is_object() || authentication_failure(v["error"].as_str().unwrap_or("")))) {
+    if map.get(&key).is_some_and(|r| {
+        !r.stopped()
+            || r.view.lock().is_ok_and(|v| {
+                v["exit"].is_object() || authentication_failure(v["error"].as_str().unwrap_or(""))
+            })
+    }) {
         return Ok(());
     }
     let run = Arc::new(Run {
@@ -196,7 +224,12 @@ pub fn start(s: Arc<VaultSession>, directory: std::path::PathBuf, local: bool) -
                 break;
             }
             match result {
-                Err(ref e) if e == "Locked" || e == "NotEnrolled" || e == "GroupAccessRevoked" || authentication_failure(e) => {
+                Err(ref e)
+                    if e == "Locked"
+                        || e == "NotEnrolled"
+                        || e == "GroupAccessRevoked"
+                        || authentication_failure(e) =>
+                {
                     run.set(
                         "disconnected",
                         json!([]),
@@ -240,10 +273,8 @@ pub fn identity(c: &Value) -> Result<Identity> {
     for (id, key) in g["trusted_peers"].as_object().ok_or("InvalidData")? {
         trusted.insert(
             id.clone(),
-            BoxPublicKey::from_slice(&unhex(
-                key.as_str().ok_or("InvalidData")?,
-            )?)
-            .ok_or("InvalidData")?,
+            BoxPublicKey::from_slice(&unhex(key.as_str().ok_or("InvalidData")?)?)
+                .ok_or("InvalidData")?,
         );
     }
     Ok(Identity {
@@ -258,7 +289,10 @@ pub fn identity(c: &Value) -> Result<Identity> {
 struct Vault(Arc<VaultSession>);
 impl MeshVault for Vault {
     fn command(&self, request: Value) -> Result<Value> {
-        let _control = if request["op"].as_str().is_some_and(|op| op.starts_with("relay-mesh-")) {
+        let _control = if request["op"]
+            .as_str()
+            .is_some_and(|op| op.starts_with("relay-mesh-"))
+        {
             Some(service::CONTROL.lock().map_err(|_| "Storage")?)
         } else {
             None
@@ -304,8 +338,11 @@ fn connected(s: &Arc<VaultSession>, run: &Run, local: bool) -> Result<()> {
         if groups["group_entry"] != old_group["group_entry"] {
             return Ok(());
         }
-        let drained: Vec<(String, Vec<u8>)> =
-            run.blob_outbox.lock().map(|mut q| q.drain(..).collect()).unwrap_or_default();
+        let drained: Vec<(String, Vec<u8>)> = run
+            .blob_outbox
+            .lock()
+            .map(|mut q| q.drain(..).collect())
+            .unwrap_or_default();
         for (peer, payload) in drained {
             sync.queue(&peer, payload)?;
         }

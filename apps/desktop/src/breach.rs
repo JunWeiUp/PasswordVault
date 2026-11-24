@@ -27,7 +27,10 @@ impl Breach {
 }
 
 fn valid_prefix(prefix: &str) -> bool {
-    prefix.len() == 5 && prefix.bytes().all(|b| b.is_ascii_digit() || (b'A'..=b'F').contains(&b))
+    prefix.len() == 5
+        && prefix
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'A'..=b'F').contains(&b))
 }
 
 fn fetch(prefix: &str) -> Result<String, String> {

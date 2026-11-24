@@ -7,12 +7,12 @@
 mod data_dir;
 #[cfg(target_os = "macos")]
 #[allow(dead_code)]
-#[path = "../../../src/browser/security.rs"]
-mod security;
-#[cfg(target_os = "macos")]
-#[allow(dead_code)]
 #[path = "../../../src/browser/grants.rs"]
 mod grants;
+#[cfg(target_os = "macos")]
+#[allow(dead_code)]
+#[path = "../../../src/browser/security.rs"]
+mod security;
 #[cfg(target_os = "macos")]
 #[allow(dead_code)]
 #[path = "../../../src/service_ipc.rs"]
@@ -167,8 +167,8 @@ mod implementation {
             let mut input = std::io::stdin().lock();
             let mut output = std::io::stdout().lock();
             while let Ok(request) = wire::read(&mut input, 65536) {
-                let reply = run(&contents, &id, &directory, request)
-                    .unwrap_or_else(|e| wire::failure(&e));
+                let reply =
+                    run(&contents, &id, &directory, request).unwrap_or_else(|e| wire::failure(&e));
                 wire::write(&mut output, &reply)?;
             }
             Ok(())

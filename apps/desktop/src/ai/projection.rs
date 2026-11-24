@@ -15,9 +15,12 @@ pub(super) fn prune(v: Value) -> Value {
                 .filter(|(_, v)| !is_empty(v))
                 .collect(),
         ),
-        Value::Array(list) => {
-            Value::Array(list.into_iter().map(prune).filter(|v| !is_empty(v)).collect())
-        }
+        Value::Array(list) => Value::Array(
+            list.into_iter()
+                .map(prune)
+                .filter(|v| !is_empty(v))
+                .collect(),
+        ),
         v => v,
     }
 }
@@ -256,8 +259,9 @@ pub(super) fn secret<'a>(i: &'a Value, field: &str) -> Result<&'a Value> {
 }
 
 pub(super) fn bounded(v: &Value, max: usize) -> Value {
-    v.as_str()
-        .map_or(Value::Null, |t| json!(t.trim().chars().take(max).collect::<String>()))
+    v.as_str().map_or(Value::Null, |t| {
+        json!(t.trim().chars().take(max).collect::<String>())
+    })
 }
 
 const REDACTED_PREFIXES: &[&str] = &[
@@ -294,10 +298,14 @@ fn generic_redaction(inner: &str) -> bool {
         return false;
     };
     category.len() >= 2
-        && category.bytes().all(|b| b.is_ascii_uppercase() || b.is_ascii_digit() || b == b'_')
+        && category
+            .bytes()
+            .all(|b| b.is_ascii_uppercase() || b.is_ascii_digit() || b == b'_')
         && category.as_bytes()[0].is_ascii_uppercase()
         && (6..=12).contains(&suffix.len())
-        && suffix.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit())
+        && suffix
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit())
         && suffix.bytes().any(|b| b.is_ascii_digit())
 }
 
@@ -410,8 +418,12 @@ pub(super) fn new_item(r: &Value) -> Result<Value> {
             }
             item["secret"] = secret;
             item["issuer"] = text(&r["issuer"], 200);
-            item["period"] =
-                json!(r["period"].as_u64().filter(|p| (10..=300).contains(p)).unwrap_or(30));
+            item["period"] = json!(
+                r["period"]
+                    .as_u64()
+                    .filter(|p| (10..=300).contains(p))
+                    .unwrap_or(30)
+            );
         }
         "identity" => {
             item["identity"] = pick(
@@ -448,8 +460,12 @@ pub(super) fn new_item(r: &Value) -> Result<Value> {
             let d = &r["device"];
             let mut device = pick(d, &["host", "username", "password", "privateKey", "notes"]);
             device["version"] = json!(1);
-            device["port"] =
-                json!(d["port"].as_u64().filter(|p| (1..=65535).contains(p)).unwrap_or(22));
+            device["port"] = json!(
+                d["port"]
+                    .as_u64()
+                    .filter(|p| (1..=65535).contains(p))
+                    .unwrap_or(22)
+            );
             device["authMethod"] = json!(match d["authMethod"].as_str() {
                 Some(m @ ("key" | "agent")) => m,
                 _ if device["privateKey"].is_string() => "key",
@@ -563,7 +579,11 @@ pub(super) fn split_fields(incoming: Vec<Value>, existing: usize) -> (Vec<Value>
         let label = f["label"].as_str().unwrap_or("").trim().to_string();
         let value = f["value"].as_str().unwrap_or("").to_string();
         if f["kind"] != "concealed" && (crowded || label.is_empty()) {
-            lines.push(if label.is_empty() { value } else { format!("{label}: {value}") });
+            lines.push(if label.is_empty() {
+                value
+            } else {
+                format!("{label}: {value}")
+            });
         } else {
             if label.is_empty() {
                 f["label"] = json!("隐藏字段");

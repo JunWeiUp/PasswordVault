@@ -55,9 +55,6 @@ internal object CoreRequest {
     fun remove(id: String, richNotes: Boolean? = null): JSONObject = request("remove", "id" to id, "richNotes" to richNotes)
 
     /** items · unlocked → `{ok:true}` */
-    fun restoreDrafts(payload: JSONObject, richNotes: Boolean? = null): JSONObject = request("restore-drafts", "payload" to payload, "richNotes" to richNotes)
-
-    /** items · unlocked → `{ok:true}` */
     fun save(item: JSONObject, richNotes: Boolean? = null, expectedUpdatedAt: String? = null, historyMeta: JSONObject? = null): JSONObject = request("save", "item" to item, "richNotes" to richNotes, "expectedUpdatedAt" to expectedUpdatedAt, "historyMeta" to historyMeta)
 
     /** items · unlocked → `{payload:Sealed}` */
@@ -65,9 +62,6 @@ internal object CoreRequest {
 
     /** items · unlocked → `{saved:true,updated:true}` */
     fun updateLogin(origin: String, id: String, username: String, password: String, time: String, accountId: String? = null): JSONObject = request("update-login", "origin" to origin, "id" to id, "username" to username, "password" to password, "time" to time, "accountId" to accountId)
-
-    /** notes · unlocked → `{ok:true}` */
-    fun collectNoteAttachments(richNotes: Boolean): JSONObject = request("collect-note-attachments", "richNotes" to richNotes)
 
     /** notes · unlocked → `{excerpt:any|null,thumb:any|null}` */
     fun noteAttachmentCacheGet(noteId: String, id: String): JSONObject = request("note-attachment-cache-get", "noteId" to noteId, "id" to id)
@@ -198,15 +192,6 @@ internal object CoreRequest {
     /** capabilities · unlocked → `{count:number}` */
     fun breachResponse(suffix: String, response: String): JSONObject = request("breach-response", "suffix" to suffix, "response" to response)
 
-    /** capabilities · unlocked → `{ok:true}` */
-    fun relayCapabilitiesAccept(peer: String, proof: JSONObject): JSONObject = request("relay-capabilities-accept", "peer" to peer, "proof" to proof)
-
-    /** capabilities · unlocked → `{challenge:string}` */
-    fun relayCapabilitiesChallenge(peer: String): JSONObject = request("relay-capabilities-challenge", "peer" to peer)
-
-    /** capabilities · unlocked → `{proof:{nonce:string,ciphertext:string}}` */
-    fun relayCapabilitiesProve(peer: String, challenge: String): JSONObject = request("relay-capabilities-prove", "peer" to peer, "challenge" to challenge)
-
     /** capabilities · unlocked → `{findings:object[],catalogUpdatedAt,catalogCoverage,catalogSources,catalogLicense,catalogLicenseText:string,networkBreachStatus:'notChecked',siteCoverageStatus:string}` */
     fun securityAudit(): JSONObject = request("security-audit")
 
@@ -264,12 +249,6 @@ internal object CoreRequest {
     /** sharing · unlocked → `{publicKey:string}` */
     fun identity(): JSONObject = request("identity")
 
-    /** sharing · unlocked → `{ok:true}` */
-    fun removeMember(vaultId: String, publicKey: String): JSONObject = request("remove-member", "vaultId" to vaultId, "publicKey" to publicKey)
-
-    /** sharing · unlocked → `{fields:string[],attachments:AttachmentMeta[]}` */
-    fun shareOptions(id: String): JSONObject = request("share-options", "id" to id)
-
     /** sharing · unlocked → `{version:1,id:string,nonce:string,ciphertext:string,key:string}` */
     fun shareSeal(id: String, fields: JSONArray, attachmentIds: JSONArray? = null): JSONObject = request("share-seal", "id" to id, "fields" to fields, "attachmentIds" to attachmentIds)
 
@@ -301,25 +280,13 @@ internal object CoreRequest {
     fun relayReceive(peer: String, packet: JSONObject): JSONObject = request("relay-receive", "peer" to peer, "packet" to packet)
 
     /** relay · unlocked → `{ok:true}` */
-    fun relayResolve(conflict: String, choice: String): JSONObject = request("relay-resolve", "conflict" to conflict, "choice" to choice)
-
-    /** relay · unlocked → `{ok:true}` */
     fun relayResolveBatch(conflicts: JSONArray, choice: String): JSONObject = request("relay-resolve-batch", "conflicts" to conflicts, "choice" to choice)
-
-    /** relay · unlocked → `{ok:true}` */
-    fun relayRevoke(peer: String): JSONObject = request("relay-revoke", "peer" to peer)
 
     /** relay · unlocked → `{enabled:false}|{enabled:true,role,group,device,hub,peers,revision,cursor,pending,conflictCount,conflicts,capabilities}|MeshStatus` */
     fun relayStatus(): JSONObject = request("relay-status")
 
     /** relay · unlocked → `{ok:true}` */
     fun relayTrust(peer: String): JSONObject = request("relay-trust", "peer" to peer)
-
-    /** relay-mesh · unlocked → `{meta:AttachmentMeta,data:string}` */
-    fun relayMeshBlobExport(peer: String, attachmentId: String): JSONObject = request("relay-mesh-blob-export", "peer" to peer, "attachmentId" to attachmentId)
-
-    /** relay-mesh · unlocked → `{ok:true,id:string,state:'ready'}` */
-    fun relayMeshBlobReceive(peer: String, meta: JSONObject, data: String): JSONObject = request("relay-mesh-blob-receive", "peer" to peer, "meta" to meta, "data" to data)
 
     /** relay-mesh · unlocked → `{conflicts:{noteId,title,localDevice,remoteDevice,revisionId,capturedAt,section,autoMerged,assetGuard,retentionDays,localItem,remoteItem}[]}` */
     fun relayMeshConflicts(): JSONObject = request("relay-mesh-conflicts")
@@ -345,35 +312,17 @@ internal object CoreRequest {
     /** relay-protocol · none → `{state:object}` */
     fun relayProtocolUnpack(entry: JSONObject): JSONObject = request("relay-protocol-unpack", "entry" to entry)
 
-    /** relay-protocol · none → `{ok:true}` */
-    fun relayProtocolVerify(entry: JSONObject, key: String): JSONObject = request("relay-protocol-verify", "entry" to entry, "key" to key)
-
     /** relay-protocol · none → `{entry:object}` */
     fun relayProtocolAdvance(current: JSONObject, entry: JSONObject): JSONObject = request("relay-protocol-advance", "current" to current, "entry" to entry)
 
     /** relay-protocol · none → `{entry:{payload,signature,signer}}` */
     fun relayProtocolSign(value: JSONObject, secret: String, device: String): JSONObject = request("relay-protocol-sign", "value" to value, "secret" to secret, "device" to device)
 
-    /** relay-protocol · none → `{packet:string}` */
-    fun relayProtocolSealInvitation(invitation: JSONObject, key: String, nonce: String): JSONObject = request("relay-protocol-seal-invitation", "invitation" to invitation, "key" to key, "nonce" to nonce)
-
-    /** relay-protocol · none → `{invitation:object}` */
-    fun relayProtocolOpenInvitation(packet: String, key: String): JSONObject = request("relay-protocol-open-invitation", "packet" to packet, "key" to key)
-
-    /** relay-protocol · none → `{token:string}` */
-    fun relayProtocolReadToken(key: String): JSONObject = request("relay-protocol-read-token", "key" to key)
-
     /** relay-protocol · none → `{link:string}` */
     fun relayProtocolMakeLink(invitation: JSONObject, key: String, password: String? = null, allowLocal: Boolean? = null): JSONObject = request("relay-protocol-make-link", "invitation" to invitation, "key" to key, "password" to password, "allowLocal" to allowLocal)
 
     /** relay-protocol · none → `{url:string,id:string,key:string,password:string|null}` */
     fun relayProtocolParseLink(link: String, allowLocal: Boolean? = null): JSONObject = request("relay-protocol-parse-link", "link" to link, "allowLocal" to allowLocal)
-
-    /** relay-protocol · none → `{body:string}` */
-    fun relayProtocolEnvelopeSeal(app: String, group: String, device: String, secret: String, to: String, peerKey: String, kind: String, id: String, value: JSONObject): JSONObject = request("relay-protocol-envelope-seal", "app" to app, "group" to group, "device" to device, "secret" to secret, "to" to to, "peerKey" to peerKey, "kind" to kind, "id" to id, "value" to value)
-
-    /** relay-protocol · none → `{value:object}` */
-    fun relayProtocolEnvelopeOpen(app: String, group: String, device: String, secret: String, from: String, peerKey: String, kind: String, id: String, body: String): JSONObject = request("relay-protocol-envelope-open", "app" to app, "group" to group, "device" to device, "secret" to secret, "from" to from, "peerKey" to peerKey, "kind" to kind, "id" to id, "body" to body)
 
     /** relay-protocol · none → `{stop:bool,delay?:number}` */
     fun relayProtocolRetry(error: String, previousDelay: Number? = null, connectedSeconds: Number? = null): JSONObject = request("relay-protocol-retry", "error" to error, "previousDelay" to previousDelay, "connectedSeconds" to connectedSeconds)

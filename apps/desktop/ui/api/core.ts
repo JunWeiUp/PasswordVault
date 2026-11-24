@@ -3,28 +3,20 @@
 // stay checked by TypeScript and easy for both humans and AI tools to navigate.
 import type { Vault } from "passwordvault/native";
 import type { Item } from "./vaultMeta";
-import type { CoreRequest } from "./coreContract.generated";
+import type { CoreRequest, CoreResults } from "./coreContract.generated";
 
 export type { CoreOp, CoreParams, CoreRequest, CoreResults } from "./coreContract.generated";
 
-export type VaultStatus = { exists: boolean; unlocked: boolean };
+export type VaultStatus = CoreResults["status"];
 export type VaultListResult = { items: Item[]; settings: Record<string, any> };
 export type HistoryMeta = { actorType?: string; actor?: string; coalesce?: boolean; summary?: string };
 export type SaveResult = { ok?: boolean };
 export type AuditEntry = { id: string; weak?: boolean; reused?: boolean; expired?: boolean };
 export type AuditResult = { results?: AuditEntry[] } | AuditEntry[];
 export type RecoveryStatus = { enabled: boolean };
-export type HistoryStatus = { enabled: boolean };
+export type HistoryStatus = CoreResults["history-status"];
 export type NoteBodiesStatus = { count: number; split?: boolean };
-export type NoteAttachmentsStatus = {
-  count?: number;
-  uniqueBlobs?: number;
-  diskFiles?: number;
-  totalBytes?: number;
-  blobCount?: number;
-  totalPlainBytes?: number;
-  totalDiskBytes?: number;
-};
+export type NoteAttachmentsStatus = Partial<CoreResults["note-attachments-status"]>;
 export type RelaySummary = {
   enabled?: boolean;
   mode?: string;

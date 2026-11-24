@@ -648,7 +648,13 @@ pub(super) fn note_attach(s: &VaultSession, r: &Value, digest: &str) -> Result<V
     let final_name = r["name"]
         .as_str()
         .map(str::trim)
-        .filter(|n| !n.is_empty() && n.len() <= 240 && !n.contains('/') && !n.contains('\\') && !n.chars().any(char::is_control))
+        .filter(|n| {
+            !n.is_empty()
+                && n.len() <= 240
+                && !n.contains('/')
+                && !n.contains('\\')
+                && !n.chars().any(char::is_control)
+        })
         .unwrap_or(&detected_name)
         .to_owned();
     let insert_link = r["insertLink"].as_bool().unwrap_or(true);

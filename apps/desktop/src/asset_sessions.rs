@@ -423,7 +423,9 @@ fn stage_external_internal(
     })?;
     let initial_sha256 = exported["sha256"].as_str().unwrap_or("").to_owned();
     let initial_size = exported["size"].as_u64().unwrap_or(0);
-    let initial_mtime = fs::metadata(&file_path).ok().and_then(|m| m.modified().ok());
+    let initial_mtime = fs::metadata(&file_path)
+        .ok()
+        .and_then(|m| m.modified().ok());
 
     if launch {
         if let Err(err) = launch_external_app(&file_path, app_name) {
@@ -643,30 +645,49 @@ mod tests {
 
     #[test]
     fn external_stage_watch_writeback_and_cleanup_lifecycle() {
-        let root = std::env::temp_dir().join(format!("pv-asset-sess-test-{}", uuid::Uuid::new_v4()));
+        let root =
+            std::env::temp_dir().join(format!("pv-asset-sess-test-{}", uuid::Uuid::new_v4()));
         fs::create_dir_all(&root).unwrap();
         let session = VaultSession::new(root.join("vault").to_string_lossy().into()).unwrap();
         let run = |v: Value| session.command(v.to_string()).unwrap();
         run(json!({"op":"create","password":"synthetic-session-password"}));
-        run(json!({"op":"save","richNotes":true,"item":{"id":"n1","type":"secureNote","title":"N","note":"","noteFormat":"plain"}}));
+        run(
+            json!({"op":"save","richNotes":true,"item":{"id":"n1","type":"secureNote","title":"N","note":"","noteFormat":"plain"}}),
+        );
 
         // Blocked executable cannot be opened externally.
         let bad_meta: Value = serde_json::from_str(
             &session
-                .import_note_attachment("n1".into(), "evil.command".into(), "text/plain".into(), b"echo hi".to_vec())
+                .import_note_attachment(
+                    "n1".into(),
+                    "evil.command".into(),
+                    "text/plain".into(),
+                    b"echo hi".to_vec(),
+                )
                 .unwrap(),
         )
         .unwrap();
         assert_eq!(
-            stage_external_internal(&session, "n1", bad_meta["id"].as_str().unwrap(), None, false)
-                .unwrap_err(),
+            stage_external_internal(
+                &session,
+                "n1",
+                bad_meta["id"].as_str().unwrap(),
+                None,
+                false
+            )
+            .unwrap_err(),
             "BlockedExecutable"
         );
 
         // Stage a real PDF, verify isolated dir + .metadata_never_index, simulate external edit, write back!
         let pdf_meta: Value = serde_json::from_str(
             &session
-                .import_note_attachment("n1".into(), "statement.pdf".into(), "application/pdf".into(), b"%PDF-1.7 original".to_vec())
+                .import_note_attachment(
+                    "n1".into(),
+                    "statement.pdf".into(),
+                    "application/pdf".into(),
+                    b"%PDF-1.7 original".to_vec(),
+                )
                 .unwrap(),
         )
         .unwrap();

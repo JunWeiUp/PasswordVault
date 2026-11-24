@@ -43,6 +43,18 @@ class GeneratorTests(unittest.TestCase):
         self.assertIn("static func `import`(content: String, kind: String? = nil)", swift)
         self.assertIn('("kind", kind.map { .string($0) })', swift)
 
+    def test_internal_ops_are_omitted_from_generated_client_builders(self):
+        spec = {
+            "types": {},
+            "commands": {
+                "status": {"group": "vault", "lock": "none", "params": {}, "result": "{ok:true}"},
+                "restore-drafts": {"group": "items", "lock": "unlocked", "internal": True, "params": {}, "result": "{ok:true}"},
+            },
+        }
+        self.assertNotIn("restore-drafts", contract.render_ts(spec))
+        self.assertNotIn("restoreDrafts", contract.render_kotlin(spec["commands"]))
+        self.assertNotIn("restoreDrafts", contract.render_swift(spec["commands"]))
+
     def test_generated_files_are_current(self):
         self.assertEqual(contract.main(["core_contract.py", "check"]), 0)
 
@@ -91,3 +103,20 @@ class BrowserScanTests(unittest.TestCase):
                 problems = contract.browser_scan(commands)
         self.assertEqual(len(problems), 1)
         self.assertIn("made-up-op", problems[0])
+
+    def test_browser_core_dispatcher_and_read_only_list_stay_aligned(self):
+        commands = contract.load_spec()["commands"]
+        self.assertEqual(contract.browser_core_scan(commands), [])
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            src = root / "crates/vault-core/src"
+            (src / "browser").mkdir(parents=True)
+            (src / "browser.rs").write_text(
+                'const READ_ONLY_OPS: [&str; 2] = ["list", "ghost-op"];\n'
+                'match op { "list" => Ok(json!({})), "unregistered-op" => Ok(json!({})) }\n'
+            )
+            with mock.patch.object(contract, "ROOT", root):
+                problems = contract.browser_core_scan(commands)
+        joined = "\n".join(problems)
+        self.assertIn("unregistered-op", joined)
+        self.assertIn("ghost-op", joined)

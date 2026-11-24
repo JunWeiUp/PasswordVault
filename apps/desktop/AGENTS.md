@@ -30,9 +30,8 @@ OS services and IPC policy.
 - Or from the repo root: `python3 tool/check_changed.py`.
 
 ## Rules
-- Do NOT run `cargo fmt` in `apps/desktop`: the crate is not rustfmt-clean and ~50 files would
-  be rewritten. Format only what you touch (TS/TSX: `prettier --write <file>` with the local
-  `.prettierrc.json`).
+- Formatting: Rust uses `RUSTUP_TOOLCHAIN=1.98.0 cargo fmt --all`; TS/TSX uses
+  `prettier --write <file>` with the local `.prettierrc.json`.
 - Tests: wait for positive conditions with `app.waitUntil(...)`/`waitFor`, not fixed
   `app.wait(ms)` (debounced saves make sleeps flaky). Fixed waits are fine before asserting
   that something did NOT appear.

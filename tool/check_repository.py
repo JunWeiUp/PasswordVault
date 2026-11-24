@@ -32,13 +32,6 @@ def validate_tag(tag):
 
 
 def main():
-    if '--pr-title' in sys.argv:
-        title = os.environ.get('PR_TITLE', '')
-        require(re.fullmatch(r'(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\([a-z0-9_/-]+\))?!?: [A-Za-z].+', title), 'Use an English Conventional Commit PR title.')
-        require(not re.search(r'[\u3400-\u9fff]', title), 'PR titles default to English.')
-        print('PR title is valid.')
-        return
-
     package = load('apps/browser/package.json')
     lock = load('apps/browser/package-lock.json')
     require(package['version'] == lock['version'] == lock['packages']['']['version'],

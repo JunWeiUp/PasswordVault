@@ -18,7 +18,11 @@ pub(super) fn strip_ref(raw: &str) -> Option<String> {
                 // `passwordvault://item/<id>` and `passwordvault://note/<id|slug>` links.
                 ["item/", "note/"]
                     .iter()
-                    .find_map(|k| rest.get(..k.len()).filter(|h| h.eq_ignore_ascii_case(k)).map(|_| &rest[k.len()..]))
+                    .find_map(|k| {
+                        rest.get(..k.len())
+                            .filter(|h| h.eq_ignore_ascii_case(k))
+                            .map(|_| &rest[k.len()..])
+                    })
                     .unwrap_or(rest)
                     .to_string()
             })
@@ -48,9 +52,11 @@ pub(super) fn resolve_ref(d: &Value, c: &Value, reference: &str) -> Result<Strin
         return Ok(id_of(i));
     }
     let title = reference.to_lowercase();
-    let mut hits = visible
-        .iter()
-        .filter(|i| i["title"].as_str().is_some_and(|t| t.trim().to_lowercase() == title));
+    let mut hits = visible.iter().filter(|i| {
+        i["title"]
+            .as_str()
+            .is_some_and(|t| t.trim().to_lowercase() == title)
+    });
     match (hits.next(), hits.next()) {
         (Some(i), None) => Ok(id_of(i)),
         (Some(_), Some(_)) => Err("AmbiguousReference".into()),
@@ -69,7 +75,8 @@ pub(super) fn route(d: &Value, c: &Value, mut r: Value) -> Result<Value> {
         r["id"] = json!(resolve_ref(d, c, &reference)?);
     }
     let is_rich_note = |r: &Value| {
-        notes::find_note(d, r).is_some_and(|n| n["noteFormat"].as_str().is_some_and(|f| f != "plain"))
+        notes::find_note(d, r)
+            .is_some_and(|n| n["noteFormat"].as_str().is_some_and(|f| f != "plain"))
     };
     let op = r["op"].as_str().unwrap_or("").to_string();
     let internal = match op.as_str() {
@@ -79,9 +86,15 @@ pub(super) fn route(d: &Value, c: &Value, mut r: Value) -> Result<Value> {
                 r["query"] = json!("");
                 "search"
             } else if r["kind"] == "note"
-                || ["category", "categoryPrefix", "tag", "propertyKey", "propertyValue"]
-                    .iter()
-                    .any(|k| has(&r, k))
+                || [
+                    "category",
+                    "categoryPrefix",
+                    "tag",
+                    "propertyKey",
+                    "propertyValue",
+                ]
+                .iter()
+                .any(|k| has(&r, k))
             {
                 "note_list"
             } else {
@@ -121,7 +134,10 @@ pub(super) fn route(d: &Value, c: &Value, mut r: Value) -> Result<Value> {
         "update" => {
             if let Some(attach) = r["attach"].as_object().cloned() {
                 for (k, v) in attach {
-                    if matches!(k.as_str(), "path" | "name" | "insertLink" | "aiTextAllowed" | "section") {
+                    if matches!(
+                        k.as_str(),
+                        "path" | "name" | "insertLink" | "aiTextAllowed" | "section"
+                    ) {
                         r[k.as_str()] = v;
                     }
                 }
@@ -164,7 +180,9 @@ fn external_type(kind: &str) -> Result<&'static str> {
 
 /// Knowledge-base notes (those filed in a category) follow the AI-writable category whitelist.
 fn check_note_write(d: &Value, item: &Value) -> Result<()> {
-    let filed = item["category"].as_str().is_some_and(|c| !c.trim().is_empty());
+    let filed = item["category"]
+        .as_str()
+        .is_some_and(|c| !c.trim().is_empty());
     if item["type"] == "secureNote" && filed && !notes::note_writable(d, item) {
         return Err("NoteWriteDenied".into());
     }
@@ -241,47 +259,78 @@ pub(super) fn entry_update(s: &VaultSession, r: &Value, digest: &str) -> Result<
         }
     }
     if r["tags"].is_array() {
-        put(&mut changed, "tags".into(), &mut next["tags"], fresh["tags"].clone());
+        put(
+            &mut changed,
+            "tags".into(),
+            &mut next["tags"],
+            fresh["tags"].clone(),
+        );
     }
     for sub in ["identity", "card", "device"] {
-        let Some(keys) = r[sub].as_object().map(|o| o.keys().cloned().collect::<Vec<_>>()) else {
+        let Some(keys) = r[sub]
+            .as_object()
+            .map(|o| o.keys().cloned().collect::<Vec<_>>())
+        else {
             continue;
         };
-        let Some(clean) = fresh[sub].as_object() else { continue };
+        let Some(clean) = fresh[sub].as_object() else {
+            continue;
+        };
         if !next[sub].is_object() {
             next[sub] = json!({});
         }
         for key in keys {
             if let Some(v) = clean.get(&key) {
-                put(&mut changed, format!("{sub}.{key}"), &mut next[sub][&key], v.clone());
+                put(
+                    &mut changed,
+                    format!("{sub}.{key}"),
+                    &mut next[sub][&key],
+                    v.clone(),
+                );
             }
         }
     }
     let mut list = next["customFields"].as_array().cloned().unwrap_or_default();
     if let Some(remove) = r["removeFields"].as_array() {
-        for name in remove.iter().filter_map(Value::as_str).map(|n| n.trim().to_lowercase()) {
+        for name in remove
+            .iter()
+            .filter_map(Value::as_str)
+            .map(|n| n.trim().to_lowercase())
+        {
             let before = list.len();
-            list.retain(|e| e["label"].as_str().is_none_or(|l| l.trim().to_lowercase() != name));
+            list.retain(|e| {
+                e["label"]
+                    .as_str()
+                    .is_none_or(|l| l.trim().to_lowercase() != name)
+            });
             if list.len() != before {
                 changed.push(format!("custom:-{name}"));
             }
         }
     }
     let mut note_lines = Vec::new();
-    if let Some(fields) = fresh["customFields"].as_array().filter(|_| r["customFields"].is_array()) {
+    if let Some(fields) = fresh["customFields"]
+        .as_array()
+        .filter(|_| r["customFields"].is_array())
+    {
         // Matching labels update in place; only genuinely new fields count towards the limit.
         let (existing, new): (Vec<Value>, Vec<Value>) = fields.iter().cloned().partition(|f| {
             let label = f["label"].as_str().unwrap_or("").to_lowercase();
-            list.iter().any(|e| e["label"].as_str().is_some_and(|l| l.to_lowercase() == label))
+            list.iter().any(|e| {
+                e["label"]
+                    .as_str()
+                    .is_some_and(|l| l.to_lowercase() == label)
+            })
         });
         let (new, lines) = split_fields(new, list.len());
         note_lines = lines;
         for f in existing.iter().chain(new.iter()) {
             let label = f["label"].as_str().unwrap_or("").to_lowercase();
-            match list
-                .iter_mut()
-                .find(|e| e["label"].as_str().is_some_and(|l| l.to_lowercase() == label))
-            {
+            match list.iter_mut().find(|e| {
+                e["label"]
+                    .as_str()
+                    .is_some_and(|l| l.to_lowercase() == label)
+            }) {
                 Some(e) if e["value"] != f["value"] || e["kind"] != f["kind"] => {
                     e["value"] = f["value"].clone();
                     e["kind"] = f["kind"].clone();
@@ -317,7 +366,10 @@ pub(super) fn entry_update(s: &VaultSession, r: &Value, digest: &str) -> Result<
     if changed.iter().any(|f| f == "password")
         && let Some(previous) = old["password"].as_str().filter(|p| !p.is_empty())
     {
-        let mut hist = old["passwordHistory"].as_array().cloned().unwrap_or_default();
+        let mut hist = old["passwordHistory"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default();
         hist.insert(0, json!({"password": previous, "changedAt": now}));
         hist.truncate(50);
         next["passwordHistory"] = json!(hist);

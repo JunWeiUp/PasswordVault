@@ -11,7 +11,9 @@ pub fn place_for_qa() {
     use std::sync::Once;
 
     static ONCE: Once = Once::new();
-    let Ok(name) = std::env::var("PV_QA_SCREEN") else { return };
+    let Ok(name) = std::env::var("PV_QA_SCREEN") else {
+        return;
+    };
     if name.is_empty() {
         return;
     }
@@ -22,7 +24,9 @@ pub fn place_for_qa() {
                 let (tx, rx) = std::sync::mpsc::channel();
                 let name = name.clone();
                 let block = block2::RcBlock::new(move || {
-                    let Some(mtm) = MainThreadMarker::new() else { return };
+                    let Some(mtm) = MainThreadMarker::new() else {
+                        return;
+                    };
                     let app = NSApplication::sharedApplication(mtm);
                     let windows = app.windows();
                     let Some(window) = windows.iter().find(|w| w.isVisible()) else {
@@ -30,7 +34,10 @@ pub fn place_for_qa() {
                         return;
                     };
                     let screens = NSScreen::screens(mtm);
-                    let Some(screen) = screens.iter().find(|s| s.localizedName().to_string().contains(&name)) else {
+                    let Some(screen) = screens
+                        .iter()
+                        .find(|s| s.localizedName().to_string().contains(&name))
+                    else {
                         log::warn!("PV_QA_SCREEN: no screen named {name}; window left in place");
                         let _ = tx.send(true);
                         return;
@@ -44,7 +51,10 @@ pub fn place_for_qa() {
                 });
                 // SAFETY: the block only touches AppKit after checking it runs on the main thread.
                 unsafe { NSOperationQueue::mainQueue().addOperationWithBlock(&block) };
-                if rx.recv_timeout(std::time::Duration::from_secs(2)).unwrap_or(false) {
+                if rx
+                    .recv_timeout(std::time::Duration::from_secs(2))
+                    .unwrap_or(false)
+                {
                     return;
                 }
             }

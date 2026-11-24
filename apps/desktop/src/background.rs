@@ -163,7 +163,10 @@ mod server {
                 Ok(Value::Null)
             }
             "browser-approve-passkey" => {
-                browser::approve_passkey_native(string(args, "challenge")?, args["selection"].clone());
+                browser::approve_passkey_native(
+                    string(args, "challenge")?,
+                    args["selection"].clone(),
+                );
                 Ok(Value::Null)
             }
             "hotkey-configure" => {

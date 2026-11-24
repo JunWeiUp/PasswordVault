@@ -48,8 +48,15 @@ pub(crate) fn pick_device_paths() -> Result<Vec<std::path::PathBuf>, String> {
         panel.setResolvesAliases(false);
         panel.setTitle(Some(&NSString::from_str("导入设备资料（只读取，不执行）")));
         let paths = if panel.runModal() == 1 {
-            panel.URLs().iter().filter_map(|url| url.path()).map(|p| std::path::PathBuf::from(p.to_string())).collect()
-        } else { Vec::new() };
+            panel
+                .URLs()
+                .iter()
+                .filter_map(|url| url.path())
+                .map(|p| std::path::PathBuf::from(p.to_string()))
+                .collect()
+        } else {
+            Vec::new()
+        };
         let _ = send.send(paths);
     });
     recv.recv().map_err(|_| "Storage".into())

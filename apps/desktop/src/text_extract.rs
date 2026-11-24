@@ -66,7 +66,21 @@ pub(crate) fn can_extract_text(name: &str, mime: &str) -> bool {
         .map(|s| s.to_ascii_lowercase());
     matches!(
         ext.as_deref(),
-        Some("pdf" | "docx" | "xlsx" | "pptx" | "txt" | "md" | "markdown" | "csv" | "json" | "yaml" | "yml" | "xml" | "log")
+        Some(
+            "pdf"
+                | "docx"
+                | "xlsx"
+                | "pptx"
+                | "txt"
+                | "md"
+                | "markdown"
+                | "csv"
+                | "json"
+                | "yaml"
+                | "yml"
+                | "xml"
+                | "log"
+        )
     ) || mime.starts_with("text/")
         || matches!(
             mime,
@@ -380,8 +394,11 @@ mod tests {
         let mut docx_buf = Cursor::new(Vec::new());
         {
             let mut zw = zip::ZipWriter::new(&mut docx_buf);
-            zw.start_file("word/document.xml", zip::write::SimpleFileOptions::default())
-                .unwrap();
+            zw.start_file(
+                "word/document.xml",
+                zip::write::SimpleFileOptions::default(),
+            )
+            .unwrap();
             zw.write_all(
                 r#"<?xml version="1.0" encoding="UTF-8"?>
                 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
@@ -403,12 +420,18 @@ mod tests {
         let mut xlsx_buf = Cursor::new(Vec::new());
         {
             let mut zw = zip::ZipWriter::new(&mut xlsx_buf);
-            zw.start_file("xl/sharedStrings.xml", zip::write::SimpleFileOptions::default())
-                .unwrap();
+            zw.start_file(
+                "xl/sharedStrings.xml",
+                zip::write::SimpleFileOptions::default(),
+            )
+            .unwrap();
             zw.write_all(br#"<sst><si><t>VOO</t></si><si><t>QQQM</t></si></sst>"#)
                 .unwrap();
-            zw.start_file("xl/worksheets/sheet1.xml", zip::write::SimpleFileOptions::default())
-                .unwrap();
+            zw.start_file(
+                "xl/worksheets/sheet1.xml",
+                zip::write::SimpleFileOptions::default(),
+            )
+            .unwrap();
             zw.write_all(
                 br#"<worksheet><sheetData>
                     <row><c t="s"><v>0</v></c><c><v>85</v></c></row>

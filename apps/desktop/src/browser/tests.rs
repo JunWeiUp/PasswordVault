@@ -137,7 +137,11 @@ fn revoked_background_grant_cannot_save_or_read() {
     request["request"]["_backgroundGrant"] = base64::engine::general_purpose::STANDARD
         .encode(&grant)
         .into();
-    let revision = || serde_json::from_str::<Value>(&poll_native()).unwrap()["revision"].as_u64().unwrap();
+    let revision = || {
+        serde_json::from_str::<Value>(&poll_native()).unwrap()["revision"]
+            .as_u64()
+            .unwrap()
+    };
     let start = revision();
     assert_eq!(
         dispatch(&f.session, "test", request.clone()).unwrap()["ok"],
@@ -209,9 +213,16 @@ fn extension_save_advances_poll_revision_only_on_write() {
         json!({"op":"settings","settings":{"browserPairings":{"test":"paired"}}}),
     )
     .unwrap();
-    let revision = || serde_json::from_str::<Value>(&poll_native()).unwrap()["revision"].as_u64().unwrap();
+    let revision = || {
+        serde_json::from_str::<Value>(&poll_native()).unwrap()["revision"]
+            .as_u64()
+            .unwrap()
+    };
     let start = revision();
-    assert_eq!(serde_json::from_str::<Value>(&poll_native()).unwrap()["pending"], "");
+    assert_eq!(
+        serde_json::from_str::<Value>(&poll_native()).unwrap()["pending"],
+        ""
+    );
     dispatch(&f.session, "test", message("matches", "paired")).unwrap();
     assert_eq!(revision(), start);
     let mut request = message("save", "paired");
@@ -268,16 +279,38 @@ fn approval_is_bound_to_its_request() {
 fn startup_challenge_is_consumed_once_and_manual_lock_cancels_it() {
     let _serial = TEST_SERIAL.lock().unwrap();
     use base64::Engine;
-    let f=Fixture::new();let grant=vault_core::create_background_grant(f.dir.to_string_lossy().into(),"synthetic-browser-test".into()).unwrap();
-    command(&f.session,json!({"op":"lock"})).unwrap();
-    let mut request=message("desktop-auto-unlock","");request["request"]["nonce"]="one-use".into();request["request"]["_backgroundGrant"]=base64::engine::general_purpose::STANDARD.encode(grant).into();
-    *STARTUP.lock().unwrap()=Some("one-use".into());
-    assert_eq!(dispatch(&f.session,"test",request.clone()).unwrap()["ok"],true);
-    command(&f.session,json!({"op":"lock"})).unwrap();
-    assert_eq!(dispatch(&f.session,"test",request.clone()).unwrap_err(),"sync-authorization");
-    *STARTUP.lock().unwrap()=Some("one-use".into());cancel_startup_native();
-    assert_eq!(dispatch(&f.session,"test",request).unwrap_err(),"sync-authorization");
-    assert_eq!(dispatch(&f.session,"test",message("status","")).unwrap()["unlocked"],false);
+    let f = Fixture::new();
+    let grant = vault_core::create_background_grant(
+        f.dir.to_string_lossy().into(),
+        "synthetic-browser-test".into(),
+    )
+    .unwrap();
+    command(&f.session, json!({"op":"lock"})).unwrap();
+    let mut request = message("desktop-auto-unlock", "");
+    request["request"]["nonce"] = "one-use".into();
+    request["request"]["_backgroundGrant"] = base64::engine::general_purpose::STANDARD
+        .encode(grant)
+        .into();
+    *STARTUP.lock().unwrap() = Some("one-use".into());
+    assert_eq!(
+        dispatch(&f.session, "test", request.clone()).unwrap()["ok"],
+        true
+    );
+    command(&f.session, json!({"op":"lock"})).unwrap();
+    assert_eq!(
+        dispatch(&f.session, "test", request.clone()).unwrap_err(),
+        "sync-authorization"
+    );
+    *STARTUP.lock().unwrap() = Some("one-use".into());
+    cancel_startup_native();
+    assert_eq!(
+        dispatch(&f.session, "test", request).unwrap_err(),
+        "sync-authorization"
+    );
+    assert_eq!(
+        dispatch(&f.session, "test", message("status", "")).unwrap()["unlocked"],
+        false
+    );
 }
 
 #[test]
@@ -295,9 +328,11 @@ fn ego_registration_uses_the_actual_profile_not_a_stale_manifest_directory() {
     // An actual old profile may still be used, until the canonical profile
     // exists. Merely retaining an old registration must never win priority.
     std::fs::write(legacy.join("Local State"), b"{}").unwrap();
-    assert!(wire::manifest_path(home, "ego lite")
-        .unwrap()
-        .starts_with(&legacy));
+    assert!(
+        wire::manifest_path(home, "ego lite")
+            .unwrap()
+            .starts_with(&legacy)
+    );
     std::fs::create_dir_all(canonical.join("Default")).unwrap();
     assert_eq!(wire::manifest_path(home, "ego lite").unwrap(), expected);
 }
@@ -345,28 +380,44 @@ fn update_login_requires_window_consent_and_ownership() {
     update["request"]["username"] = "example-user".into();
     update["request"]["password"] = "new-example-password".into();
     let prompt = answer(false);
-    assert_eq!(dispatch(&f.session, "test", update.clone()).unwrap_err(), "cancelled");
+    assert_eq!(
+        dispatch(&f.session, "test", update.clone()).unwrap_err(),
+        "cancelled"
+    );
     let prompt = prompt.join().unwrap();
     assert_eq!(prompt["kind"], "update-login");
     assert_eq!(prompt["detail"], "https://example.com\nexample-user");
     assert!(!prompt.to_string().contains("new-example-password"));
     assert_eq!(stored_password(&f, &account), "old-example-password");
-    let start = serde_json::from_str::<Value>(&poll_native()).unwrap()["revision"].as_u64().unwrap();
+    let start = serde_json::from_str::<Value>(&poll_native()).unwrap()["revision"]
+        .as_u64()
+        .unwrap();
     let prompt = answer(true);
-    assert_eq!(dispatch(&f.session, "test", update.clone()).unwrap()["ok"], true);
+    assert_eq!(
+        dispatch(&f.session, "test", update.clone()).unwrap()["ok"],
+        true
+    );
     prompt.join().unwrap();
     assert_eq!(stored_password(&f, &account), "new-example-password");
     assert_eq!(
-        serde_json::from_str::<Value>(&poll_native()).unwrap()["revision"].as_u64().unwrap(),
+        serde_json::from_str::<Value>(&poll_native()).unwrap()["revision"]
+            .as_u64()
+            .unwrap(),
         start + 1
     );
     // Another website's record is rejected before any prompt is shown.
     update["request"]["origin"] = "https://unrelated.example.org".into();
-    assert_eq!(dispatch(&f.session, "test", update.clone()).unwrap_err(), "invalid-entry");
+    assert_eq!(
+        dispatch(&f.session, "test", update.clone()).unwrap_err(),
+        "invalid-entry"
+    );
     assert_eq!(pending_native(), "");
     update["request"]["origin"] = "https://example.com".into();
     update["request"]["token"] = "unpaired".into();
-    assert_eq!(dispatch(&f.session, "test", update).unwrap_err(), "unpaired");
+    assert_eq!(
+        dispatch(&f.session, "test", update).unwrap_err(),
+        "unpaired"
+    );
 }
 #[test]
 fn open_entry_queues_one_navigation_for_owned_records_only() {
@@ -375,9 +426,15 @@ fn open_entry_queues_one_navigation_for_owned_records_only() {
     let account = paired_with_account(&f);
     let mut open = message("open-entry", "paired");
     open["request"]["id"] = "missing-record".into();
-    assert_eq!(dispatch(&f.session, "test", open.clone()).unwrap_err(), "invalid-entry");
+    assert_eq!(
+        dispatch(&f.session, "test", open.clone()).unwrap_err(),
+        "invalid-entry"
+    );
     open["request"]["id"] = account["id"].clone();
-    assert_eq!(dispatch(&f.session, "test", open).unwrap()["data"]["opened"], true);
+    assert_eq!(
+        dispatch(&f.session, "test", open).unwrap()["data"]["opened"],
+        true
+    );
     let state: Value = serde_json::from_str(&poll_native()).unwrap();
     assert_eq!(state["open"]["id"], account["id"]);
     assert!(state["open"]["nonce"].is_string());
@@ -388,7 +445,9 @@ fn otp_and_structured_secrets_need_consent() {
     let _serial = TEST_SERIAL.lock().unwrap();
     let f = Fixture::new();
     paired_with_account(&f);
-    assert!(dispatch(&f.session, "test", message("otp-matches", "paired")).unwrap()["data"].is_array());
+    assert!(
+        dispatch(&f.session, "test", message("otp-matches", "paired")).unwrap()["data"].is_array()
+    );
     assert_eq!(pending_native(), "");
     let mut otp = message("otp-fill", "paired");
     otp["request"]["id"] = "any".into();
@@ -396,16 +455,23 @@ fn otp_and_structured_secrets_need_consent() {
     assert_eq!(dispatch(&f.session, "test", otp).unwrap_err(), "cancelled");
     assert_eq!(prompt.join().unwrap()["kind"], "otp-fill");
     let prompt = answer(true);
-    assert!(dispatch(&f.session, "test", message("structured-list", "paired")).unwrap()["data"].is_array());
+    assert!(
+        dispatch(&f.session, "test", message("structured-list", "paired")).unwrap()["data"]
+            .is_array()
+    );
     assert_eq!(prompt.join().unwrap()["kind"], "structured-list");
     let mut fill = message("structured-fill", "paired");
     fill["request"]["id"] = "any".into();
     fill["request"]["origin"] = "http://example.com".into();
-    assert_eq!(dispatch(&f.session, "test", fill).unwrap_err(), "invalid-request");
+    assert_eq!(
+        dispatch(&f.session, "test", fill).unwrap_err(),
+        "invalid-request"
+    );
     assert_eq!(pending_native(), "");
 }
 #[test]
-fn startup_owner_key_isolates_adhoc_spoofing_and_tampered_binaries_while_preserving_signed_identity() {
+fn startup_owner_key_isolates_adhoc_spoofing_and_tampered_binaries_while_preserving_signed_identity()
+ {
     let _serial = TEST_SERIAL.lock().unwrap();
     let f = Fixture::new();
     let compile = |name: &str, marker: &str| {
@@ -449,7 +515,10 @@ fn startup_owner_key_isolates_adhoc_spoofing_and_tampered_binaries_while_preserv
     // Certificate-signed macOS system binaries carry a certificate chain, so their
     // signing_identity uses the designated requirement rather than raw CDHash.
     let sys_req = security::signing_identity(Path::new("/bin/ls")).unwrap();
-    assert_ne!(Some(sys_req.clone()), security::code_hash(Path::new("/bin/ls")));
+    assert_ne!(
+        Some(sys_req.clone()),
+        security::code_hash(Path::new("/bin/ls"))
+    );
     assert_eq!(
         grants::desktop_key(&f.dir, &sys_req),
         grants::desktop_key(&f.dir, &sys_req)
@@ -473,8 +542,16 @@ fn startup_owner_key_isolates_adhoc_spoofing_and_tampered_binaries_while_preserv
             })
         });
     if let Some(cert) = found {
-        assert!(sign(&b1, &cert, &["--options", "runtime", "--timestamp=none"]));
-        assert!(sign(&b2, &cert, &["--options", "runtime", "--timestamp=none"]));
+        assert!(sign(
+            &b1,
+            &cert,
+            &["--options", "runtime", "--timestamp=none"]
+        ));
+        assert!(sign(
+            &b2,
+            &cert,
+            &["--options", "runtime", "--timestamp=none"]
+        ));
         assert_ne!(security::code_hash(&b1), security::code_hash(&b2));
         let cert1 = security::signing_identity(&b1).unwrap();
         let cert2 = security::signing_identity(&b2).unwrap();
@@ -497,7 +574,9 @@ fn startup_owner_key_isolates_adhoc_spoofing_and_tampered_binaries_while_preserv
 }
 
 /// Answer the next passkey prompt with a selection, as the window would.
-fn answer_passkey(pick: impl Fn(&Value) -> Value + Send + 'static) -> std::thread::JoinHandle<Value> {
+fn answer_passkey(
+    pick: impl Fn(&Value) -> Value + Send + 'static,
+) -> std::thread::JoinHandle<Value> {
     std::thread::spawn(move || {
         for _ in 0..500 {
             let shown = pending_native();
@@ -528,41 +607,82 @@ fn passkeys_need_window_selection_and_master_password() {
     let _serial = TEST_SERIAL.lock().unwrap();
     let b64 = base64::engine::general_purpose::URL_SAFE_NO_PAD;
     let f = Fixture::new();
-    command(&f.session, json!({"op":"settings","settings":{"browserPairings":{"test":"paired"}}})).unwrap();
+    command(
+        &f.session,
+        json!({"op":"settings","settings":{"browserPairings":{"test":"paired"}}}),
+    )
+    .unwrap();
     // No credential yet: assertion falls back to the browser without prompting.
-    assert_eq!(dispatch(&f.session, "test", ceremony("passkey-assert", "webauthn.get")).unwrap_err(), "no-credentials");
+    assert_eq!(
+        dispatch(
+            &f.session,
+            "test",
+            ceremony("passkey-assert", "webauthn.get")
+        )
+        .unwrap_err(),
+        "no-credentials"
+    );
     assert_eq!(pending_native(), "");
     // RP outside the origin's registrable domain never reaches the window.
     let mut bad = ceremony("passkey-create", "webauthn.create");
     bad["request"]["rpId"] = "evil.com".into();
-    assert_eq!(dispatch(&f.session, "test", bad).unwrap_err(), "unsupported-rp");
+    assert_eq!(
+        dispatch(&f.session, "test", bad).unwrap_err(),
+        "unsupported-rp"
+    );
     let mut create = ceremony("passkey-create", "webauthn.create");
     create["request"]["userName"] = "alice".into();
     create["request"]["userHandle"] = b64.encode(b"user-1").into();
     // Rejecting or a wrong master password creates nothing.
     let prompt = answer(false);
-    assert_eq!(dispatch(&f.session, "test", create.clone()).unwrap_err(), "cancelled");
+    assert_eq!(
+        dispatch(&f.session, "test", create.clone()).unwrap_err(),
+        "cancelled"
+    );
     assert_eq!(prompt.join().unwrap()["kind"], "passkey-create");
     let prompt = answer_passkey(|_| json!({"currentPassword":"wrong"}));
-    assert_eq!(dispatch(&f.session, "test", create.clone()).unwrap_err(), "authentication");
+    assert_eq!(
+        dispatch(&f.session, "test", create.clone()).unwrap_err(),
+        "authentication"
+    );
     prompt.join().unwrap();
-    assert!(command(&f.session, json!({"op":"passkey-matches","rpId":"example.com"})).unwrap().as_array().unwrap().is_empty());
+    assert!(
+        command(
+            &f.session,
+            json!({"op":"passkey-matches","rpId":"example.com"})
+        )
+        .unwrap()
+        .as_array()
+        .unwrap()
+        .is_empty()
+    );
     let prompt = answer_passkey(|_| json!({"currentPassword":"synthetic-browser-test"}));
     let created = dispatch(&f.session, "test", create.clone()).unwrap()["data"].clone();
     let shown = prompt.join().unwrap();
     assert_eq!(shown["passkey"]["rpId"], "example.com");
     assert_eq!(shown["passkey"]["userName"], "alice");
     assert!(!created.to_string().contains("privateKey"));
-    let public = VerifyingKey::from_public_key_der(&b64.decode(created["publicKey"].as_str().unwrap()).unwrap()).unwrap();
+    let public = VerifyingKey::from_public_key_der(
+        &b64.decode(created["publicKey"].as_str().unwrap()).unwrap(),
+    )
+    .unwrap();
     let id = created["id"].as_str().unwrap().to_owned();
     // A repeat registration listed in excludeCredentials is refused before prompting.
     let mut again = create.clone();
     again["request"]["excluded"] = json!([id]);
-    assert_eq!(dispatch(&f.session, "test", again).unwrap_err(), "already-registered");
+    assert_eq!(
+        dispatch(&f.session, "test", again).unwrap_err(),
+        "already-registered"
+    );
     // The window cannot substitute a credential it was not shown.
     let assert = ceremony("passkey-assert", "webauthn.get");
-    let prompt = answer_passkey(|_| json!({"currentPassword":"synthetic-browser-test","credentialId":"forged","itemId":"forged","library":""}));
-    assert_eq!(dispatch(&f.session, "test", assert.clone()).unwrap_err(), "invalid-entry");
+    let prompt = answer_passkey(
+        |_| json!({"currentPassword":"synthetic-browser-test","credentialId":"forged","itemId":"forged","library":""}),
+    );
+    assert_eq!(
+        dispatch(&f.session, "test", assert.clone()).unwrap_err(),
+        "invalid-entry"
+    );
     prompt.join().unwrap();
     let prompt = answer_passkey(|p| {
         let m = &p["passkey"]["matches"][0];
@@ -572,14 +692,29 @@ fn passkeys_need_window_selection_and_master_password() {
     let shown = prompt.join().unwrap();
     assert_eq!(shown["passkey"]["matches"].as_array().unwrap().len(), 1);
     assert_eq!(signed["id"], id);
-    let mut message = b64.decode(signed["authenticatorData"].as_str().unwrap()).unwrap();
-    assert_eq!(message[32] & 4, 4, "master password reauthentication sets UV");
+    let mut message = b64
+        .decode(signed["authenticatorData"].as_str().unwrap())
+        .unwrap();
+    assert_eq!(
+        message[32] & 4,
+        4,
+        "master password reauthentication sets UV"
+    );
     use sha2::Digest;
-    message.extend_from_slice(&sha2::Sha256::digest(assert["request"]["clientDataJSON"].as_str().unwrap().as_bytes()));
-    let signature = Signature::from_der(&b64.decode(signed["signature"].as_str().unwrap()).unwrap()).unwrap();
+    message.extend_from_slice(&sha2::Sha256::digest(
+        assert["request"]["clientDataJSON"]
+            .as_str()
+            .unwrap()
+            .as_bytes(),
+    ));
+    let signature =
+        Signature::from_der(&b64.decode(signed["signature"].as_str().unwrap()).unwrap()).unwrap();
     public.verify(&message, &signature).unwrap();
     // allowCredentials that exclude every stored key also fall back without a prompt.
     let mut other = assert;
     other["request"]["allowed"] = json!(["b3RoZXItY3JlZGVudGlhbA"]);
-    assert_eq!(dispatch(&f.session, "test", other).unwrap_err(), "no-credentials");
+    assert_eq!(
+        dispatch(&f.session, "test", other).unwrap_err(),
+        "no-credentials"
+    );
 }
