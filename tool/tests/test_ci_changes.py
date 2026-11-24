@@ -40,7 +40,7 @@ class CIChangesTests(unittest.TestCase):
         for retired in ('services', 'typo'):
             with self.assertRaises(ValueError):
                 requested(retired)
-        workflow = (Path(__file__).resolve().parent.parent / '.github/workflows/native.yml').read_text()
+        workflow = (Path(__file__).resolve().parents[2] / '.github/workflows/native.yml').read_text()
         self.assertNotIn('capability-services', workflow)
         section = re.split(r'(?m)^  [a-z][a-z0-9-]*:', workflow.split('  macos-nsh:', 1)[1])[0]
         self.assertIn('if: inputs.run_tests', section)
@@ -59,7 +59,7 @@ class CIChangesTests(unittest.TestCase):
         self.assertEqual(classify(['tool/test_relay_live.sh']), {'core'})
 
     def test_native_workflow_does_not_trigger_on_pull_request(self):
-        workflow = (Path(__file__).resolve().parent.parent / '.github/workflows/native.yml').read_text()
+        workflow = (Path(__file__).resolve().parents[2] / '.github/workflows/native.yml').read_text()
         self.assertNotIn('pull_request:', workflow)
 
 

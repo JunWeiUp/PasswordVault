@@ -29,7 +29,7 @@ TOOL_ONLY = ("tool/core_contract.py", "tool/check_changed.py", "tool/select_ios_
              "tool/bump_version.py")
 
 STEPS = {
-    "tools": ["python3", "-m", "unittest", "discover", "-s", "tool", "-p", "test_*.py", "-q"],
+    "tools": ["env", "PYTHONPATH=tool", "python3", "-m", "unittest", "discover", "-s", "tool/tests", "-p", "test_*.py", "-q"],
     "core": ["bash", "tool/check_native.sh", "core"],
     "desktop": ["bash", "tool/check_quick.sh", "desktop"],
     "browser": ["bash", "tool/check_native.sh", "browser"],
@@ -58,7 +58,7 @@ def plan(paths: list[str]) -> list[str]:
     steps: set[str] = set()
     native = []
     for path in paths:
-        if path in TOOL_ONLY or (path.startswith("tool/test_") and path.endswith(".py")):
+        if path in TOOL_ONLY or (path.startswith("tool/tests/test_") and path.endswith(".py")):
             steps.add("tools")
         else:
             native.append(path)

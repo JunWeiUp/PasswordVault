@@ -5,7 +5,7 @@ cd "$(dirname "$0")/.."
 case "${1:-repo}" in
   repo)
     python3 tool/check_repository.py
-    python3 -m unittest discover -s tool -p 'test_*.py'
+    PYTHONPATH=tool python3 -m unittest discover -s tool/tests -p 'test_*.py'
     ;;
   *)
     printf 'Usage: bash tool/check.sh repo (platform checks: bash tool/check_native.sh core|macos|browser)\n' >&2

@@ -9,7 +9,7 @@ sync (mesh, relay), backup/import and the common-relay protocol. Rust 1.98.0 (pi
 - `src/native.rs` — `VaultSession` / `DiskVault`, UniFFI exports and `DiskVault::command`,
   which runs the shared checks (registry, lock, format guards) and routes by the op's registry
   `group`: simple groups live in `src/native/ops/<group>.rs`; stateful ones next to their state
-  (`native/relay*.rs`, `history.rs`, `passkeys.rs`, `recovery.rs`, `devices.rs`, `capabilities.rs`).
+  (`native/relay/`, `native/relay_mesh/`, `native/notes/`, `history.rs`, `passkeys.rs`, `recovery.rs`, `devices.rs`, `capabilities.rs`).
 - `src/relay_protocol/` — relay protocol: signing chain, strict payloads, invitation links,
   envelopes, the group-state-machine adapter (`groups`: the state machine itself is
   `common_relay::Groups`, shared upstream; the adapter keeps vault-core error codes) and the

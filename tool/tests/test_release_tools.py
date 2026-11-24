@@ -62,7 +62,7 @@ class ReleaseToolsTest(unittest.TestCase):
             root = Path(directory)
             script = root / 'tool/configure_signing.py'
             script.parent.mkdir()
-            script.write_bytes(Path(__file__).with_name('configure_signing.py').read_bytes())
+            script.write_bytes((Path(__file__).resolve().parent.parent / 'configure_signing.py').read_bytes())
             runner = root / 'runner'
             runner.mkdir()
             env = {**os.environ, 'RUNNER_TEMP': str(runner),
