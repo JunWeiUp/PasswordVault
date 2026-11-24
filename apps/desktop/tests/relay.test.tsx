@@ -37,7 +37,7 @@ test("group exit confirms without a master password and local write failures rem
 test("relay group creation requires the relay password; joining accepts a typed or link password", async () => {
   const app = await open("../ui/relay/GroupHarness.tsx", { width: 1000, height: 1200, platform: "macos" });
   await app.press("text:显示未入组");
-  await app.type("id:relay-endpoint", "wss://relay.example.test/relay/v1/ws");
+  await app.type("id:relay-endpoint", "wss://relay.example.test/v2/ws");
   await app.type("id:relay-password", "relay-access-1");
   await app.press("text:创建设备组");
   await app.waitFor("text:ACTION:create:with-password");

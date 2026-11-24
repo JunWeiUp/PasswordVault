@@ -303,7 +303,7 @@ internal class PersonalRelay(private val directory: File, private val vault: Vau
         check(c.has("groups") || c.optString("token").isEmpty()) { "Legacy access requires explicit reset" }
         val g = c.optJSONObject("groups") ?: JSONObject().put("app", "passwordvault")
             .put("device", c.getString("device")).put("secret_key", c.getString("secret"))
-            .put("url", "wss://relay.example.test/relay/v1/ws")
+            .put("url", "wss://relay.example.test/v2/ws")
         return CoreGroups(g, { draft -> c.put("groups", draft); runBlocking { save(c) } }, RelayLocalTest.active)
     }
     private suspend fun saveGroup(c: JSONObject, g: CoreGroups) { c.put("groups", g.config); save(c) }

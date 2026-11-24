@@ -278,7 +278,7 @@ fn core_protocol_interoperates_with_libsodium() {
     // Invitation secretbox: both directions.
     let key = secretbox::gen_key();
     let nonce = secretbox::gen_nonce();
-    let invitation = json!({"id":"00".repeat(16),"url":"wss://relay.example/relay/v1/ws"});
+    let invitation = json!({"id":"00".repeat(16),"url":"wss://relay.example/v2/ws"});
     let packet = STANDARD
         .decode(seal_invitation(&invitation, &key.0, &nonce.0).unwrap())
         .unwrap();

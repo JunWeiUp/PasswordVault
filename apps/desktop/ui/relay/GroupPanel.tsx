@@ -267,7 +267,7 @@ export function GroupPanel(props: { group: any; busy: boolean; online?: string[]
         <If when={connectionSettings()}>
           <View style={{ borderTopWidth: 1, borderTopColor: c().line2, paddingTop: 10, gap: 8 }}>
             <T size={12.5} weight="600">中继地址</T>
-            <T size={11.5} color={c().muted}>支持切换到 wss://…/v2/ws 或保留 wss://…/relay/v1/ws，修改后保留原有设备组与访问密码。</T>
+            <T size={11.5} color={c().muted}>可切换到其他 wss://…/v2/ws 服务器，修改后保留原有设备组与访问密码。</T>
             <TextBox value={endpoint() || props.group.endpoint || ""} onChange={v => endpoint.set(v)} label="中继地址" placeholder="wss://…/v2/ws" testID="update-relay-endpoint" />
             <Row><Btn label="保存中继地址并重连" disabled={props.busy || !(endpoint() || props.group.endpoint || "").trim()} onPress={() => { const next = (endpoint() || props.group.endpoint || "").trim(); act({ op: "update-endpoint", endpoint: next }); }} /></Row>
             <T size={12.5} weight="600" style={{ marginTop: 6 }}>更新中继密码</T>

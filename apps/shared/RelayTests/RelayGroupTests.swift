@@ -192,7 +192,7 @@ final class RelayGroupTests: XCTestCase {
   func testJoinDraftIsSavedBeforeNetworkFailureAndSurvivesRestart() async throws {
     let (core, phone, path) = try await fixture("mobile")
     defer { phone.setUnlocked(false); try? FileManager.default.removeItem(at: path) }
-    let inv: [String: Any] = ["version": 1, "app": "passwordvault", "group": "fixture", "url": "ws://127.0.0.1:1/relay/v1/ws",
+    let inv: [String: Any] = ["version": 1, "app": "passwordvault", "group": "fixture", "url": "ws://127.0.0.1:1/v2/ws",
                               "expires": Date().timeIntervalSince1970 + 600, "id": "fixture", "secret": "fixture", "manager": [:]]
     try await eventually { !phone.groupBusy }; await phone.joinGroup(String(decoding: try JSONSerialization.data(withJSONObject: inv), as: UTF8.self), deviceName: "Phone")
     XCTAssertNotNil(phone.failure); XCTAssertTrue(phone.joiningGroup); XCTAssertFalse(phone.groupCode.isEmpty)

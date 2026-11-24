@@ -12,7 +12,7 @@ class RelayAccessFormTest {
     }
 
     @Test fun rejectsWrongEndpointsAndMalformedInvitations() {
-        for (endpoint in listOf("", "https://relay.example.test/relay/v1/ws", "wss://user@relay.example.test/relay/v1/ws", "wss://relay.example.test/relay/v1/ws?secret=x", "wss:///relay/v1/ws", "wss://relay.example.test/other")) {
+        for (endpoint in listOf("", "https://relay.example.test/v2/ws", "wss://user@relay.example.test/v2/ws", "wss://relay.example.test/v2/ws?secret=x", "wss:///v2/ws", "wss://relay.example.test/other", "wss://relay.example.test/relay/v1/ws")) {
             assertThrows(Exception::class.java) { validateRelayEndpoint(endpoint) }
         }
         assertThrows(Exception::class.java) { RelayInvitationPreview.read("https://relay.example.test/i/demo#demo") }
@@ -21,7 +21,7 @@ class RelayAccessFormTest {
     @Test fun legacyInvitationChecksAppExpiryAndPreservesInput() {
         val value = JSONObject().put("version", 1).put("app", "passwordvault")
             .put("expires", System.currentTimeMillis()/1000 + 600)
-            .put("url", "wss://relay.example.test/relay/v1/ws")
+            .put("url", "wss://relay.example.test/v2/ws")
         val input = value.toString()
         assertEquals(input, RelayInvitationPreview.read(input).input)
         assertEquals("", RelayInvitationPreview.read(input).password)
