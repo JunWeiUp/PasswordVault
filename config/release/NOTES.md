@@ -1,7 +1,7 @@
 ## Changes
 
 - Unified personal relay sync across macOS, Windows, iOS and Android on top of the `common-relay` Rust SDK in `vault-core`, removing legacy peer libraries and aligning device-group state, retry/exit policy and transport behavior.
-- Tightened the `vault-core` JSON command contract across all clients (including browser WASM dispatcher validation) and synchronized all four client stacks to `2.5.11`.
+- Tightened the `vault-core` JSON command contract across all clients (including browser WASM dispatcher validation) and synchronized all four client stacks to `2.5.12`.
 - Streamlined local build, device installation and release workflows, and modularized large browser extension and `vault-core` native modules.
 
 ## Downloads
