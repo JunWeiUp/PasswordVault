@@ -536,7 +536,7 @@ checksum = "3d7b894f5411737b7867f4827955924d7c254fc9f4d91a6aad6b097804b1018b"
 [[package]]
 name = "common-relay"
 version = "0.1.7"
-source = "git+https://github.com/JunWeiUp/common-relay?rev=e5f76930b5e7efa55a878e319bf86a6846d05d3a#e5f76930b5e7efa55a878e319bf86a6846d05d3a"
+source = "git+https://github.com/JunWeiUp/common-relay?rev=ce34b9419e7be777e2ec415624b7aa8a19f3e1b0#ce34b9419e7be777e2ec415624b7aa8a19f3e1b0"
 dependencies = [
  "base64 0.22.1",
  "chacha20 0.9.1",

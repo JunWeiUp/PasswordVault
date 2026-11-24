@@ -11,7 +11,8 @@ sync (mesh, relay), backup/import and the common-relay protocol. Rust 1.98.0 (pi
   `group`: simple groups live in `src/native/ops/<group>.rs`; stateful ones next to their state
   (`native/relay*.rs`, `history.rs`, `passkeys.rs`, `recovery.rs`, `devices.rs`, `capabilities.rs`).
 - `src/relay_protocol/` — relay protocol: signing chain, strict payloads, invitation links,
-  envelopes, the group state machine (`groups`) and the
+  envelopes, the group-state-machine adapter (`groups`: the state machine itself is
+  `common_relay::Groups`, shared upstream; the adapter keeps vault-core error codes) and the
   owner retry/exit `policy`. Mobile reaches the pure parts through `relay-protocol-*` ops.
 - `src/relay_net/` (native) — the relay transport for every client: thin wrappers over the
   `common-relay` Rust SDK (git dependency; `Pipe` for `connection`, `Journal`, `RelayFiles` for

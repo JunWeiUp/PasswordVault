@@ -53,7 +53,7 @@ fs2 = { version = "0.4", optional = true }
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls"], optional = true }
 # Official Common Relay SDK (WSS message client, journal, files, policy). default-features off:
 # its `serde_json/preserve_order` default would change JSON key order across vault-core.
-common-relay = { git = "https://github.com/JunWeiUp/common-relay", rev = "e5f76930b5e7efa55a878e319bf86a6846d05d3a", default-features = false, optional = true }
+common-relay = { git = "https://github.com/JunWeiUp/common-relay", rev = "ce34b9419e7be777e2ec415624b7aa8a19f3e1b0", default-features = false, optional = true }
 tokio = { version = "1", features = ["rt-multi-thread"], optional = true }
 wasm-bindgen = { version = "0.2", optional = true }
 
