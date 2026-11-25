@@ -44,10 +44,9 @@ final class VaultRelay: ObservableObject {
   /// The open core session for the shared sync session (vault-core `RelayMeshSync`).
   private let session: (() async throws -> VaultSession)?
   private var loop: Task<Void, Never>?
-  private var client: CoreMeshSync?
+  private var runner: RelaySyncRunner?
   private var active = false
   private var generation = UUID()
-  private var retryRequested = false
   private var transportFailure: String?
   private var credentialLoadTask: Task<Void, Never>?
   private var credentialLoadGeneration = UUID()
@@ -159,12 +158,13 @@ final class VaultRelay: ObservableObject {
       config = Config(role: config.role, secret: Data(repeating: 0, count: 32))
     }
   }
-  func syncNow() { forceSend = true; retryRequested = true; if loop == nil { restart() } }
-  private var forceSend = false
+  func syncNow() {
+    if let runner, runner.isRunning() { runner.syncNow() } else { restart() }
+  }
   private func stop() {
     generation = UUID(); loop?.cancel(); loop = nil
-    let old = client; client = nil
-    old?.close()
+    let old = runner; runner = nil
+    old?.stop()
     setGroupOnline([]); connected = false; connecting = false
     status = active ? "未连接 / Disconnected" : "已锁定 / Locked"
   }
@@ -173,7 +173,7 @@ final class VaultRelay: ObservableObject {
     stop(); guard active, credentialsReady, !credentialAccessBlocked, !groupInvalid, !config.token.isEmpty,
       hasManagedGroup else { return }
     let epoch = generation
-    loop = Task { [weak self] in await self?.run(epoch) }
+    loop = Task { [weak self] in await self?.startRunner(epoch) }
   }
   private func updateSummary() async throws {
     summary = try await call(CoreRequest.relayStatus()).object
@@ -184,65 +184,75 @@ final class VaultRelay: ObservableObject {
     failure = nil
     do { try await body() } catch { failure = "中继操作失败，请检查配对、凭据或网络 / Relay operation failed; check pairing, credentials or network" }
   }
-  private func run(_ epoch: UUID) async {
-    // Delays follow the shared owner policy in vault-core (relay_protocol::policy).
-    var backoff: UInt64 = 0
-    while active && generation == epoch && !Task.isCancelled {
-      var owned: CoreMeshSync?
-      var connectedAt: Date?
-      var failedError: String?
-      do {
-        try await refreshGroupForConnection(epoch)
-        guard active, generation == epoch, !Task.isCancelled else { return }
-        guard let session else { throw RelayFault.invalid("no vault session") }
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
-        status = "正在连接 / Connecting"; connecting = true
-        // The shared sync session in vault-core owns the sync rules (roster, delivery, dedup,
-        // undecryptable and group-change handling); this loop only drives it.
-        let sync = try await CoreMeshSync.connect(vault: try await session(), options: try relayOptions(journal: true))
-        client = sync; owned = sync
-        guard generation == epoch, active else { sync.close(); return }
-        status = connectedStatus; connected = true; connecting = false
-        if failure == transportFailure { failure = nil }; transportFailure = nil
-        connectedAt = Date()
-        let groups = try RelayCodec.text(groupDictionary)
-        retryRequested = false
-        while active && generation == epoch && !Task.isCancelled {
-          let force = forceSend; forceSend = false
-          let round = try await sync.cycle(groups: groups, force: force)
-          guard active, generation == epoch, !Task.isCancelled else { return }
-          setGroupOnline(Set(round["online"] as? [String] ?? []).union([config.device]))
-          if round["changed"] as? Bool == true { await refresh() }
-          lastSuccess = Date()
-          // Handle relay events for ~5 s; a manual sync request ends the wait early.
-          for _ in 0..<5 where !retryRequested {
-            let pumped = try await sync.pump(timeoutMs: 1000)
-            guard active, generation == epoch else { return }
-            if pumped["changed"] as? Bool == true { await refresh() }
-            if let reason = pumped["reconnect"] as? String { throw RelayFault.invalid("reconnect: " + reason) }
-          }
-          retryRequested = false
+  private final class SyncObserver: RelaySyncObserver, @unchecked Sendable {
+    private let handler: (String) -> Void
+    init(_ handler: @escaping (String) -> Void) { self.handler = handler }
+    func onState(stateJson: String) { handler(stateJson) }
+  }
+  private func startRunner(_ epoch: UUID) async {
+    do {
+      try? await refreshGroupForConnection(epoch)
+      guard active, generation == epoch, !Task.isCancelled else { return }
+      guard let session else { throw RelayFault.invalid("no vault session") }
+      try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+      let vaultSession = try await session()
+      let options = try relayOptions(journal: true)
+      let groups = try RelayCodec.text(groupDictionary)
+      let observer = SyncObserver { [weak self] stateJson in
+        Task { @MainActor [weak self] in
+          await self?.handleRunnerState(stateJson, epoch: epoch)
         }
-        if generation == epoch { setGroupOnline([]); connected = false }
-        sync.close()
-      } catch {
-        failedError = RelayCodec.code(error)
-        if generation == epoch && active {
-          setGroupOnline([]); connected = false; connecting = false; status = "等待重连 / Waiting to reconnect"
-          transportFailure = "同步尚未完成，改动保留在本机 / Sync incomplete; local changes retained"
-          if failure == nil { failure = transportFailure }
-        }
-        owned?.close()
       }
-      if Task.isCancelled || generation != epoch { return }
-      let connectedSeconds = connectedAt.map { UInt64(max(0, Date().timeIntervalSince($0))) } ?? 0
-      guard let delay = Self.retryDelay(failedError ?? "closed", previous: backoff, connected: connectedSeconds) else {
+      let started = try await Task.detached(priority: .userInitiated) {
+        try RelaySyncRunner.start(vault: vaultSession, options: options, groups: groups, observer: observer)
+      }.value
+      guard active, generation == epoch, !Task.isCancelled else { started.stop(); return }
+      runner = started
+    } catch {
+      if generation == epoch && active {
+        setGroupOnline([]); connected = false; connecting = false; status = "等待重连 / Waiting to reconnect"
+        transportFailure = "同步尚未完成，改动保留在本机 / Sync incomplete; local changes retained"
+        if failure == nil { failure = transportFailure }
+      }
+    }
+  }
+  private func handleRunnerState(_ stateJson: String, epoch: UUID) async {
+    guard active, generation == epoch,
+          let data = stateJson.data(using: .utf8),
+          let s = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return }
+    let transport = s["transport"] as? String ?? "disconnected"
+    let stoppedByAuth = s["stoppedByAuth"] as? Bool == true
+    let online = Set(s["online"] as? [String] ?? [])
+    switch transport {
+    case "connecting":
+      connecting = true; connected = false; status = "正在连接 / Connecting"
+    case "connected":
+      connecting = false; connected = true; status = connectedStatus
+      if failure == transportFailure { failure = nil }; transportFailure = nil
+      setGroupOnline(online.union([config.device]))
+      if s["phase"] as? String == "checked" { lastSuccess = Date() }
+    case "reconnecting":
+      connecting = false; connected = false; setGroupOnline([])
+      status = "等待重连 / Waiting to reconnect"
+      if let err = s["error"] as? String, !err.isEmpty {
+        transportFailure = "同步尚未完成，改动保留在本机 / Sync incomplete; local changes retained"
+        if failure == nil { failure = transportFailure }
+      }
+    default:
+      connecting = false; connected = false; setGroupOnline([])
+      if stoppedByAuth {
         status = "同步服务拒绝凭据，已停止重连 / Sync access rejected; reconnecting stopped"
         failure = "服务器密码错误或接入令牌被拒绝，请修改服务器密码后重试；组身份已保留。 / Server access denied; update the server password and retry."
-        return
+      } else {
+        status = active ? "未连接 / Disconnected" : "已锁定 / Locked"
       }
-      backoff = delay
-      try? await Task.sleep(nanoseconds: backoff * 1_000_000_000)
+    }
+    if s["changed"] as? Bool == true { await refresh() }
+    if s["reconnectReason"] as? String == "group" {
+      if (try? await refreshGroupForConnection(epoch)) != nil,
+         let updated = try? RelayCodec.text(groupDictionary) {
+        try? runner?.updateGroups(groups: updated)
+      }
     }
   }
 
@@ -262,55 +272,37 @@ extension VaultRelay {
     let manager: Bool
     let online: Bool
   }
-  var hasManagedGroup: Bool { groupDictionary["group_entry"] != nil }
+  private var groupSummary: [String: Any] {
+    let raw = config.groupState.flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
+    let json = relayGroupSummary(groupsJson: raw, deviceId: config.device, nowSecs: UInt64(max(0, Date().timeIntervalSince1970)))
+    return (try? JSONSerialization.jsonObject(with: Data(json.utf8)) as? [String: Any]) ?? [:]
+  }
+  var hasManagedGroup: Bool { groupSummary["managed"] as? Bool == true }
   /// A personal device group is set up on this device but the relay is not reachable right
   /// now, so changes stay encrypted on this device until it reconnects.
   var offline: Bool { credentialsReady && hasManagedGroup && !connected && !connecting }
   /// Signed-roster members with pinned keys, excluding this device. Joining the group is
   /// the only admission step for symmetric sync; nil outside a personal group.
   var meshPeers: [String]? {
-    guard let entry = groupDictionary["group_entry"] as? [String: Any],
-          groupDictionary["access_invalid"] as? Bool != true,
-          let state = try? RelayCodec.unpack(entry), state["closed"] as? Bool != true,
-          let members = state["members"] as? [[String: Any]] else { return nil }
-    let trusted = groupDictionary["trusted_peers"] as? [String: String] ?? [:]
-    return members.compactMap { $0["device"] as? String }
-      .filter { $0 != config.device && !(trusted[$0] ?? "").isEmpty }.sorted()
+    let s = groupSummary
+    guard s["mesh"] as? Bool == true else { return nil }
+    return s["meshPeers"] as? [String] ?? []
   }
   var isLegacyGroup: Bool { !config.token.isEmpty && config.groupState == nil }
-  var joiningGroup: Bool { groupDictionary["pending_join"] != nil }
-  var creatingGroup: Bool { groupDictionary["pending_create"] != nil }
+  var joiningGroup: Bool { groupSummary["joining"] as? Bool == true }
+  var creatingGroup: Bool { groupSummary["creating"] as? Bool == true }
   var pendingCreationNames: (group: String, device: String)? {
-    guard let entry = groupDictionary["pending_create"] as? [String: Any],
-          let payload = try? RelayCodec.unpack(entry), let name = payload["name"] as? String,
-          let members = payload["members"] as? [[String: Any]],
-          let own = members.first(where: { $0["device"] as? String == config.device }),
-          let deviceName = own["name"] as? String else { return nil }
-    return (name, deviceName)
+    let s = groupSummary
+    guard s["creating"] as? Bool == true,
+          let group = s["draftGroupName"] as? String, !group.isEmpty,
+          let device = s["draftDeviceName"] as? String, !device.isEmpty else { return nil }
+    return (group, device)
   }
   var groupManager: Bool { groupFresh && groupMembers.contains { $0.id == config.device && $0.manager } }
-  var groupInvite: String {
-    guard groupFresh, let inv = groupDictionary["issued_invitation"] as? [String: Any],
-          (inv["expires"] as? Double ?? 0) > Date().timeIntervalSince1970 else { return "" }
-    return inv["short_link"] as? String ?? (try? encode(inv)) ?? ""
-  }
-  var automaticGroupJoin: Bool {
-    let inv = (groupDictionary["pending_join"] as? [String: Any])?["invitation"] as? [String: Any]
-      ?? groupDictionary["issued_invitation"] as? [String: Any]
-    return inv?["mode"] as? String == "auto"
-  }
-  var groupCode: String {
-    let d = groupDictionary
-    let request = (d["pending_join"] as? [String: Any])?["request"] as? [String: Any] ?? d["join_request"] as? [String: Any]
-    guard let request, let raw = try? RelayCodec.payload(request) else { return "" }
-    let code = Array(RelayCodec.digest(raw).prefix(12).uppercased())
-    return stride(from: 0, to: 12, by: 4).map { String(code[$0..<$0+4]) }.joined(separator: "-")
-  }
-  var applicantName: String {
-    guard groupFresh, let entry = groupDictionary["join_request"] as? [String: Any],
-          let body = try? RelayCodec.unpack(entry), let member = body["member"] as? [String: Any] else { return "" }
-    return member["name"] as? String ?? ""
-  }
+  var groupInvite: String { groupFresh ? (groupSummary["invite"] as? String ?? "") : "" }
+  var automaticGroupJoin: Bool { groupSummary["automaticJoin"] as? Bool == true }
+  var groupCode: String { groupSummary["groupCode"] as? String ?? "" }
+  var applicantName: String { groupFresh ? (groupSummary["applicant"] as? String ?? "") : "" }
   private var groupDictionary: [String: Any] {
     guard let bytes = config.groupState else { return [:] }
     return (try? JSONSerialization.jsonObject(with: bytes) as? [String: Any]) ?? [:]
