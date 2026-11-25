@@ -9,7 +9,7 @@ $installer = Join-Path $env:RUNNER_TEMP 'cargo-install.ps1'
 Invoke-WebRequest 'https://huacnlee.github.io/cargo/install.ps1' -OutFile $installer
 & $installer -Version '0.102.0-9'
 if ((& "$env:USERPROFILE\.cargo\bin\cargo.exe" --version) -notmatch 'huacnlee/cargo') { throw 'Cargo fork missing' }
-$base = 'https://github.com/longbridge/nsh/releases/download/v0.6.0/nsh-windows-x86_64.zip'
+$base = 'https://github.com/longbridge/nsh/releases/download/v0.7.0/nsh-windows-x86_64.zip'
 $archive = Join-Path $env:RUNNER_TEMP 'nsh.zip'
 Invoke-WebRequest $base -OutFile $archive
 $checksum = (Invoke-WebRequest "$base.sha256").Content
@@ -19,7 +19,7 @@ if ((Get-FileHash $archive -Algorithm SHA256).Hash -ne $expected) { throw 'NSH c
 $tools = Join-Path $env:RUNNER_TEMP 'passwordvault-tools'
 Expand-Archive $archive $tools
 $nsh = Join-Path $tools 'nsh\bin\nsh.exe'
-if ((& $nsh --version) -notmatch '^nsh 0\.6\.0 ') { throw 'Wrong NSH version' }
+if ((& $nsh --version) -notmatch '^nsh 0\.7\.0 ') { throw 'Wrong NSH version' }
 if (!$env:VCPKG_INSTALLATION_ROOT) { throw 'Windows runner must provide vcpkg' }
 & "$env:VCPKG_INSTALLATION_ROOT\vcpkg.exe" install openssl:x64-windows-static-md --disable-metrics
 if ($LASTEXITCODE -ne 0) { throw 'OpenSSL build failed' }

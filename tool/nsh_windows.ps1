@@ -12,7 +12,7 @@ $rustup = Join-Path $env:USERPROFILE '.cargo\bin\rustup.exe'
 $cargo = Join-Path $env:USERPROFILE '.cargo\bin\cargo.exe'
 $nsh = $env:NSH_BIN
 if (!$nsh) { $nsh = Join-Path $env:LOCALAPPDATA 'nsh\bin\nsh.exe' }
-if (!(Test-Path $nsh) -or ((& $nsh --version) -notmatch '^nsh 0\.6\.0 ')) { throw 'Set NSH_BIN to the NSH 0.6.0 x64 executable' }
+if (!(Test-Path $nsh) -or ((& $nsh --version) -notmatch '^nsh 0\.7\.0 ')) { throw 'Set NSH_BIN to the NSH 0.7.0 x64 executable' }
 $previousToolchain = $env:RUSTUP_TOOLCHAIN
 $previousUpdate = $env:CARGO_FORK_AUTO_UPDATE
 try {

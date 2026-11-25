@@ -110,7 +110,11 @@ export function Group(props: { children?: any; style?: any }) {
 export async function copySecret(value: string, label: string) {
   if (!value) return;
   try {
-    await Clipboard.writeText(value);
+    const written = await Clipboard.writeText(value);
+    if (written === "failed") {
+      toast("无法写入剪贴板");
+      return;
+    }
     const seconds = clipboardSeconds();
     if (seconds <= 0) {
       toast(`已复制${label}`);

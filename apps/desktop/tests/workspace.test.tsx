@@ -67,6 +67,7 @@ test("unlocks and browses every destination", async () => {
   await app.press("text:Apple ID");
   await app.waitFor("label:复制 GitHub 的验证码");
   await app.press("label:复制 GitHub 的验证码");
+  await app.waitUntil(() => /^\d{6}$/.test(app.clipboard() ?? ""));
   expect(/^\d{6}$/.test(app.clipboard() ?? "")).toBe(true);
   expect(app.texts()).toContain("appleid.apple.com");
 

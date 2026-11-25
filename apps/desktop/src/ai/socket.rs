@@ -235,7 +235,13 @@ mod tests {
     }
     #[test]
     fn ai_socket_preserves_live_listener_and_recovers_stale_socket() {
-        let dir = std::env::temp_dir().join(format!("ai-{}", id()));
+        // Keep the Unix socket path short so long TMPDIR values cannot exceed sun_path limits.
+        let base = if cfg!(unix) {
+            std::path::PathBuf::from("/tmp")
+        } else {
+            std::env::temp_dir()
+        };
+        let dir = base.join(format!("pv-ai-{}", &id()[..8]));
         let path = dir.join("mcp.sock");
         let first = bind_socket(&path).unwrap();
         assert_eq!(

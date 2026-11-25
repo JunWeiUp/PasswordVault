@@ -81,13 +81,13 @@ test("AI 访问 stays pinned above 全部项目 and supports full paired-client 
   await app.waitFor("text:测试终端");
 
   await app.press("text:暂停访问");
-  await app.waitFor("text:已暂停");
+  await app.waitFor("text:恢复访问");
   await app.press("text:恢复访问");
-  await app.wait(250);
+  await app.waitFor("text:暂停访问");
 
   // 7. Filter tabs: switch to 未使用 -> hides active 主开发终端; switch back to 全部.
   await app.press("id:ai-filter-unused");
-  await app.wait(200);
+  await app.waitUntil(() => !app.texts().includes("主开发终端"));
   expect(app.texts()).not.toContain("主开发终端");
   expect(app.texts()).toContain("测试终端");
   await app.press("id:ai-filter-all");
@@ -103,6 +103,7 @@ test("AI 访问 stays pinned above 全部项目 and supports full paired-client 
   await app.press("id:ai-cleanup-unused-btn");
   await app.waitFor("id:ai-cleanup-unused-sheet");
   await app.press("id:ai-cleanup-unused-confirm");
+  await app.waitFor("id:ai-cleanup-unused-sheet", { state: "gone" });
   await app.waitFor("text:1 个已配对客户端");
   expect(app.texts()).toContain("主开发终端");
   expect(app.texts()).not.toContain("测试终端");
