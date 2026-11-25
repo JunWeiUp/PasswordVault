@@ -9,7 +9,6 @@ use std::{
     process::Command,
 };
 /// Terminal preferences and explicit script launches (never exposed to AI).
-#[module]
 pub struct Scripts;
 const TERMINALS: [(&str, &str, &str); 4] = [
     ("system", "系统终端", "com.apple.Terminal"),
@@ -269,7 +268,6 @@ fn unlocked(session: &crate::session::VaultSession) -> bool {
         .and_then(|s| serde_json::from_str::<Value>(&s).ok())
         .is_some_and(|s| s["unlocked"] == true)
 }
-#[module]
 impl Scripts {
     /// Returns installed terminal choices and the persistent preference.
     pub async fn terminals(vault: Instance<crate::Vault>) -> Result<String, String> {

@@ -1,7 +1,7 @@
 // PasswordVault for Mac — Native Shell preview. The UI follows
 // docs/design/macos-app; Mac vault commands run in the headless Rust owner.
-import { effect, keymap, mount, platform, signal, View } from "nsh";
-import { Menu, Tray, Window } from "nsh/desktop";
+import { effect, keymap, mount, platform, View } from "nsh";
+import { Application, Menu, Tray, Window, type WindowRef } from "nsh/desktop";
 import { Detail } from "./ui/Detail";
 import { ItemList, newInCurrent, searchFocus } from "./ui/ItemList";
 import { closeSheet, IconBtn, SheetHost, sheetOpen, T, copySecret } from "./ui/kit";
@@ -28,10 +28,20 @@ import { AiApprovalHost, AiWorkspacePage } from "./ui/ai";
 import { codeFor, copyAccountCode } from "./ui/entries/linkedCode";
 import { hideFromCapture, loadPreferences, noteLineNumbers, setNoteLineNumbers, sidebarCollapsed, toggleSidebar, trayIcon } from "./ui/preferences";
 
-// NSH 0.5 replaced the static window API with WindowRef; `Window.get` is reactive,
-// so this applies once the main window exists.
+// Configure the main window and intercept close presses through NSH 0.7's native
+// lifecycle API so drafts always flush before the UI process exits.
+let wiredMainWindow: WindowRef | null = null;
 effect(() => {
-  Window.get("main")?.set({ title: "PasswordVault", titleBar: { style: isMac ? "hidden" : "default", height: 40 } });
+  const win = Window.get("main");
+  win?.set({
+    title: "PasswordVault",
+    titleBar: { style: isMac ? "hidden" : "default", height: 40 },
+    closeOnPress: false,
+  });
+  if (win && win !== wiredMainWindow) {
+    wiredMainWindow = win;
+    win.on("closePress", () => void closeMainWindow());
+  }
 });
 
 const unlocked = () => phase() === "unlocked";
@@ -103,7 +113,7 @@ effect(() => {
         { label: "锁定", shortcut: "mod+l", disabled: !on, onSelect: () => void lock() },
       ],
     },
-    { label: "窗口", submenu: [{ role: "minimize" }, { role: "zoom" }, { type: "separator" }, { label: isMac ? "关闭窗口" : "最小化窗口", shortcut: "mod+w", onSelect: () => isMac ? WindowCtl.hide() : Window.get("main")?.minimize() }] },
+    { label: "窗口", submenu: [{ role: "minimize" }, { role: "zoom" }, { type: "separator" }, { label: isMac ? "关闭窗口" : "最小化窗口", shortcut: "mod+w", onSelect: () => isMac ? void closeMainWindow() : Window.get("main")?.minimize() }] },
   ]);
 });
 
@@ -170,10 +180,49 @@ onLockSignals(({ events, idleSeconds }) => {
   if (idle >= limit) void lock();
 });
 }
-async function quitApplication() {
-  if (!(await flush())) return;
-  try { await WindowCtl.quit(); } catch { toast("退出未完成，请重试。"); }
+let closingWindow = false;
+function showMainWindow() {
+  Window.get("main")?.show();
+  Window.get("main")?.focus();
+  if (desktopCapabilities.captureProtection) setCaptureProtection(hideFromCapture());
 }
+async function closeMainWindow() {
+  if (closingWindow) return;
+  closingWindow = true;
+  try {
+    if (!(await flush())) {
+      closingWindow = false;
+      toast("保存失败，窗口已保留，请重试。");
+      return;
+    }
+    WindowCtl.prepareExit();
+    Application.quit();
+  } catch {
+    closingWindow = false;
+    toast("关闭未完成，请重试。");
+  }
+}
+async function quitApplication() {
+  if (closingWindow) return;
+  closingWindow = true;
+  try {
+    if (!(await flush())) {
+      closingWindow = false;
+      if (isMac) Application.cancelQuitRequest();
+      toast("保存失败，已取消退出，请重试。");
+      return;
+    }
+    await WindowCtl.shutdownService();
+    Application.quit();
+  } catch {
+    closingWindow = false;
+    if (isMac) Application.cancelQuitRequest();
+    toast("退出未完成，请重试。");
+  }
+}
+Application.on("quitRequest", () => void quitApplication());
+Application.on("reopen", () => showMainWindow());
+if (isMac) Application.setQuitRequestOptions({ system: true });
 onLock(() => closeSheet());
 void loadPreferences();
 effect(() => {
@@ -184,7 +233,7 @@ effect(() => {
 effect(() => {
   if (!trayIcon()) { Tray.set(null); return; }
   const on = unlocked();
-  const show = () => { if (!windowShown()) WindowCtl.show(); Window.get("main")?.focus(); };
+  const show = () => showMainWindow();
   Tray.set({
     tooltip: "PasswordVault",
     menu: [
@@ -201,7 +250,7 @@ void Storage.getItem("textScale").then((v) => {
   if (TEXT_SCALES.some(([s]) => s === n)) textScale.set(n);
 });
 void startShortcut(() => {
-  if (!windowShown()) WindowCtl.show();
+  showMainWindow();
   if (unlocked() && !quickAccessOpen()) openQuickAccess();
 });
 
@@ -258,30 +307,6 @@ function Toast() {
 // pick that up so the interface follows the core.
 let browserStarted = false;
 
-// Save while the component tree is still mounted, then exit this UI process.
-// Dock reopening reconnects to the background owner.
-const windowShown = signal(true);
-let closingWindow = false;
-{
-  WindowCtl.install();
-  setInterval(() => {
-    if (isMac && WindowCtl.quitRequested() && !closingWindow) { void quitApplication(); return; }
-    const shown = WindowCtl.visible();
-    if (shown === windowShown()) return;
-    if (!shown && isMac && !closingWindow) {
-      closingWindow = true;
-      void (async () => {
-        if (!(await flush())) {
-          closingWindow = false;
-          WindowCtl.show();
-          toast("保存失败，窗口已保留，请重试。");
-          return;
-        }
-        WindowCtl.finishClose();
-      })().catch(() => { closingWindow = false; WindowCtl.show(); toast("关闭未完成，请重试。"); });
-    }
-  }, 500);
-}
 pollEvery(1000, async (isActive) => {
   const requestedPhase = phase();
   if (requestedPhase !== "locked" && requestedPhase !== "unlocked") return;
@@ -300,7 +325,6 @@ function App() {
   });
   return (
     <View style={{ flex: 1, backgroundColor: c().surface }}>
-      <If when={windowShown()}>
       <If when={phase() === "unlocked"} else={
         <If when={phase() === "onboard"} else={<If when={phase() === "locked"} else={<View style={{ flex: 1, backgroundColor: c().soft2 }} />}><LockScreen /></If>}>
           <OnboardingScreen />
@@ -313,7 +337,6 @@ function App() {
       <SheetHost />
       <AiApprovalHost />
       <Toast />
-      </If>
     </View>
   );
 }

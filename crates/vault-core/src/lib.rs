@@ -20,6 +20,9 @@ mod sharing;
 mod structured;
 mod utilities;
 
+#[cfg(feature = "native")]
+pub mod webdav;
+
 pub use crypto::*;
 pub use cxf::{cxf_export, redact_import_preview};
 pub use devices::*;
@@ -35,6 +38,8 @@ pub use share_link::*;
 pub use sharing::*;
 pub use structured::*;
 pub use utilities::*;
+#[cfg(feature = "native")]
+pub use webdav::{webdav_download, webdav_list, webdav_parse_listing, webdav_upload, WebDavError};
 
 #[derive(Debug, thiserror::Error)]
 #[cfg_attr(feature = "native", derive(uniffi::Error))]

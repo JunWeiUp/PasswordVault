@@ -333,7 +333,7 @@ function About() {
           <Btn label="查看" onPress={() => openLink(`${REPO}#readme`)} />
         </OptionRow>
         <OptionRow last title="复制诊断信息" note="仅包含版本与系统信息，不含资料、路径或账号">
-          <Btn testID="copy-diagnostics" label="复制" onPress={() => void Clipboard.writeText(diagnostics()).then(() => toast("已复制诊断信息"), () => toast("无法写入剪贴板"))} />
+          <Btn testID="copy-diagnostics" label="复制" onPress={() => void Clipboard.writeText(diagnostics()).then(r => toast(r === "failed" ? "无法写入剪贴板" : "已复制诊断信息"), () => toast("无法写入剪贴板"))} />
         </OptionRow>
       </Group>
       <View style={{ height: 12 }} />
@@ -346,7 +346,7 @@ const REPO = "https://github.com/JunWeiUp/PasswordVault";
 const openLink = (url: string) => void openUrl(url).catch(() => toast("无法打开链接"));
 /** Version and platform only: never vault content, paths, accounts or device names. */
 export function diagnostics(): string {
-  return [`PasswordVault ${appVersion}`, `Platform: ${isMac ? "macOS" : "Windows"}`, "UI: Native Shell 0.6.0"].join("\n");
+  return [`PasswordVault ${appVersion}`, `Platform: ${isMac ? "macOS" : "Windows"}`, "UI: Native Shell 0.7.0"].join("\n");
 }
 
 const PAGES: Record<Tab, () => any> = {

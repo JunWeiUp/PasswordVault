@@ -1,6 +1,9 @@
 package com.securepass.vault
 
-import android.util.Xml
+import com.securepass.vault.core.webdavDownload
+import com.securepass.vault.core.webdavList
+import com.securepass.vault.core.webdavParseListing
+import com.securepass.vault.core.webdavUpload
 import java.text.SimpleDateFormat
 import java.util.Locale
 import java.util.concurrent.TimeUnit
@@ -11,28 +14,33 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
-import org.xmlpull.v1.XmlPullParser
+import org.json.JSONArray
+import org.json.JSONObject
 
 data class RemoteBackup(val url: HttpUrl, val name: String, val modified: Long?, val size: Long?)
 
+/**
+ * WebDAV backup client backed by `vault-core`'s shared HTTPS client and RFC 4918 XML parser.
+ * An optional custom [transport] is retained only for self-signed MockWebServer tests.
+ */
 class WebDav(
     url: String,
     username: String,
     password: String,
     folder: String,
-    transport: OkHttpClient? = null,
+    private val transport: OkHttpClient? = null,
 ) : AutoCloseable {
-    private val client =
-        (transport ?: OkHttpClient())
-            .newBuilder()
-            .followRedirects(false)
-            .followSslRedirects(false)
-            .connectTimeout(30, TimeUnit.SECONDS)
-            .readTimeout(60, TimeUnit.SECONDS)
-            .callTimeout(90, TimeUnit.SECONDS)
-            .build()
+    private val client: OkHttpClient? =
+        transport?.newBuilder()
+            ?.followRedirects(false)
+            ?.followSslRedirects(false)
+            ?.connectTimeout(30, TimeUnit.SECONDS)
+            ?.readTimeout(60, TimeUnit.SECONDS)
+            ?.callTimeout(90, TimeUnit.SECONDS)
+            ?.build()
     private val auth = Credentials.basic(username, password)
     private val base: HttpUrl
+    private val configJson: String
 
     init {
         val root = url.toHttpUrl()
@@ -46,6 +54,14 @@ class WebDav(
                 .query(null)
                 .fragment(null)
                 .build()
+        configJson =
+            JSONObject()
+                .put("url", url)
+                .put("username", username)
+                .put("password", password)
+                .put("folder", folder)
+                .put("strictHrefs", false)
+                .toString()
     }
 
     private fun allowed(url: HttpUrl) =
@@ -56,7 +72,8 @@ class WebDav(
             url.query == null &&
             url.fragment == null
 
-    private fun request(method: String, url: HttpUrl, body: ByteArray? = null): ByteArray {
+    private fun requestWithTransport(method: String, url: HttpUrl, body: ByteArray? = null): ByteArray {
+        val http = requireNotNull(client)
         var target = url
         repeat(5) {
             require(allowed(target))
@@ -79,7 +96,7 @@ class WebDav(
                             ),
                     )
                     .build()
-            client.newCall(request).execute().use { response ->
+            http.newCall(request).execute().use { response ->
                 if (response.code in 300..399) {
                     target =
                         target.resolve(response.header("Location") ?: error("Invalid redirect"))
@@ -105,142 +122,71 @@ class WebDav(
         error("Too many redirects")
     }
 
-    fun list(): List<RemoteBackup> {
-        val body =
-            """<d:propfind xmlns:d="DAV:"><d:prop><d:getlastmodified/><d:creationdate/><d:getcontentlength/><d:resourcetype/></d:prop></d:propfind>"""
-                .toByteArray()
-        val data = request("PROPFIND", base, body)
-        require(data.size <= 8 * 1024 * 1024)
-        val xml = data.toString(Charsets.UTF_8)
-        require(!xml.contains("<!DOCTYPE", true) && !xml.contains("<!ENTITY", true))
-        val parser = Xml.newPullParser()
-        parser.setFeature(XmlPullParser.FEATURE_PROCESS_NAMESPACES, true)
-        parser.setInput(xml.reader())
-        var href = ""
-        var modified: Long? = null
-        var size: Long? = null
-        var collection = false
-        var propDate: Long? = null
-        var propCreated: Long? = null
-        var hasModification = false
-        var propSize: Long? = null
-        var propCollection = false
-        var status = ""
-        var responseStatus = ""
-        var inProp = false
-        var goodProp = false
+    private fun parseDateMillis(value: String?): Long? {
+        if (value.isNullOrBlank()) return null
+        return runCatching {
+                SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss zzz", Locale.US).parse(value)?.time
+            }
+            .getOrNull()
+            ?: runCatching { java.time.Instant.parse(value).toEpochMilli() }.getOrNull()
+    }
+
+    private fun decodeListingJson(json: String): List<RemoteBackup> {
+        val rows = JSONArray(json)
         val result = mutableListOf<RemoteBackup>()
-        while (parser.eventType != XmlPullParser.END_DOCUMENT) {
-            val tag = parser.name.orEmpty()
-            if (parser.eventType == XmlPullParser.START_TAG)
-                when (tag) {
-                    "response" -> {
-                        href = ""
-                        modified = null
-                        size = null
-                        collection = false
-                        responseStatus = ""
-                        hasModification = false
-                        goodProp = false
-                    }
-                    "propstat" -> {
-                        propDate = null
-                        propCreated = null
-                        propSize = null
-                        propCollection = false
-                        status = ""
-                        inProp = true
-                    }
-                    "href" -> href = parser.nextText()
-                    "status" -> {
-                        val text = parser.nextText()
-                        if (inProp) status = text else responseStatus = text
-                    }
-                    "getlastmodified" ->
-                        propDate =
-                            runCatching {
-                                    SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss zzz", Locale.US)
-                                        .parse(parser.nextText())
-                                        ?.time
-                                }
-                                .getOrNull()
-                    "creationdate" -> {
-                        val value = parser.nextText()
-                        propCreated =
-                            runCatching { java.time.Instant.parse(value).toEpochMilli() }
-                                .getOrNull()
-                    }
-                    "getcontentlength" ->
-                        propSize = parser.nextText().toLongOrNull()?.takeIf { it >= 0 }
-                    "collection" -> propCollection = true
-                }
-            if (parser.eventType == XmlPullParser.END_TAG)
-                when (tag) {
-                    "propstat" -> {
-                        inProp = false
-                        if (Regex("HTTP/\\S+ 2\\d\\d.*").matches(status.trim())) {
-                            goodProp = true
-                            if (propDate != null) {
-                                modified = propDate
-                                hasModification = true
-                            } else if (!hasModification) modified = propCreated ?: modified
-                            size = propSize ?: size
-                            collection = collection || propCollection
-                        }
-                    }
-                    "response" -> {
-                        val url = base.resolve(href)
-                        if (
-                            url != null &&
-                                allowed(url) &&
-                                goodProp &&
-                                (responseStatus.isBlank() ||
-                                    Regex("HTTP/\\S+ 2\\d\\d.*").matches(responseStatus.trim())) &&
-                                !collection &&
-                                url != base
-                        ) {
-                            val name = url.pathSegments.last()
-                            if (name.endsWith(".json", true) || name.endsWith(".pvbackup", true)) {
-                                val inferred =
-                                    Regex(
-                                            "(?:backup_enc_|backup_|PasswordVault-)(\\d{10}|\\d{13})(?:-[0-9a-fA-F]{8})?\\..*"
-                                        )
-                                        .matchEntire(name)
-                                        ?.groupValues
-                                        ?.get(1)
-                                        ?.let {
-                                            it.toLongOrNull()
-                                                ?.times(if (it.length == 10) 1000 else 1)
-                                        }
-                                result.add(RemoteBackup(url, name, modified ?: inferred, size))
-                            }
-                        }
-                    }
-                }
-            parser.next()
+        for (i in 0 until rows.length()) {
+            val row = rows.getJSONObject(i)
+            val url = row.getString("url").toHttpUrl()
+            val name = row.getString("name")
+            val modified =
+                parseDateMillis(row.optString("modified").ifEmpty { null })
+                    ?: parseDateMillis(row.optString("created").ifEmpty { null })
+                    ?: Regex(
+                            "(?:backup_enc_|backup_|PasswordVault-)(\\d{10}|\\d{13})(?:-[0-9a-fA-F]{8})?\\..*"
+                        )
+                        .matchEntire(name)
+                        ?.groupValues
+                        ?.get(1)
+                        ?.let { it.toLongOrNull()?.times(if (it.length == 10) 1000 else 1) }
+            val size = if (row.isNull("size")) null else row.optLong("size").takeIf { it >= 0 }
+            result.add(RemoteBackup(url, name, modified, size))
         }
         return result.distinctBy { it.url }.sortedByDescending { it.modified ?: 0 }
     }
 
-    fun download(file: RemoteBackup) = request("GET", file.url)
+    fun list(): List<RemoteBackup> {
+        val json =
+            if (transport == null) {
+                webdavList(configJson)
+            } else {
+                val body =
+                    """<d:propfind xmlns:d="DAV:"><d:prop><d:getlastmodified/><d:creationdate/><d:getcontentlength/><d:resourcetype/></d:prop></d:propfind>"""
+                        .toByteArray()
+                val data = requestWithTransport("PROPFIND", base, body)
+                require(data.size <= 8 * 1024 * 1024)
+                webdavParseListing(base.toString(), data.toString(Charsets.UTF_8), false)
+            }
+        return decodeListingJson(json)
+    }
+
+    fun download(file: RemoteBackup): ByteArray =
+        if (transport == null) webdavDownload(configJson, file.url.toString())
+        else requestWithTransport("GET", file.url)
 
     fun upload(bytes: ByteArray) {
-        request("MKCOL", base)
-        request(
-            "PUT",
-            base
-                .newBuilder()
-                .addPathSegment(
-                    "PasswordVault-${System.currentTimeMillis()}-${java.util.UUID.randomUUID().toString().take(8)}.pvbackup"
-                )
-                .build(),
-            bytes,
-        )
+        val name =
+            "PasswordVault-${System.currentTimeMillis()}-${java.util.UUID.randomUUID().toString().take(8)}.pvbackup"
+        if (transport == null) {
+            webdavUpload(configJson, name, bytes)
+        } else {
+            requestWithTransport("MKCOL", base)
+            requestWithTransport("PUT", base.newBuilder().addPathSegment(name).build(), bytes)
+        }
     }
 
     override fun close() {
-        client.dispatcher.cancelAll()
-        client.connectionPool.evictAll()
-        client.dispatcher.executorService.shutdown()
+        client?.dispatcher?.cancelAll()
+        client?.connectionPool?.evictAll()
+        client?.dispatcher?.executorService?.shutdown()
     }
 }

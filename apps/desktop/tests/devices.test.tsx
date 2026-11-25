@@ -114,6 +114,7 @@ test("document editor opens full Python text and preserves full filenames", asyn
     await app.press("text:系统终端 ▾");
     await app.waitFor("text:首选终端");
     await app.press("text:系统终端 · 当前首选");
+    await app.waitFor("text:首选终端", { state: "gone" });
     await app.press("text:点击运行");
     expect(app.texts()).toContain("已请求终端运行");
   } else {

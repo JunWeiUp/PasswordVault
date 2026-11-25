@@ -145,11 +145,14 @@ test("notes support hierarchical folders, properties/slug, MD wikilinks/backlink
   // 4. Open dedicated note version history modal, save milestone, inspect diff & preview
   await app.press("id:note-history-btn");
   await app.waitFor("id:note-history-sheet");
+  await app.waitUntil(() => app.accessibility("id:history-inline-milestone-btn")?.disabled === false);
   await app.press("id:history-inline-milestone-btn");
   await app.waitFor("id:history-milestone-input");
   await app.type("id:history-milestone-input", "首次里程碑归档");
   await app.press("id:history-milestone-submit");
+  await app.waitFor("id:history-milestone-input", { state: "gone" });
   await app.waitFor("text:首次里程碑归档");
+  await app.waitFor("id:history-mode-preview");
   await app.press("id:history-mode-preview");
   await app.waitFor("text:复制此版本 Markdown");
   await app.press("id:history-mode-props");

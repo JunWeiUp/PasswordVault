@@ -193,7 +193,7 @@ jobs:
         run: |
           rustup toolchain install 1.98.0 --profile minimal
           curl --fail --show-error --silent --location https://nsh.dev/install.sh -o "$RUNNER_TEMP/nsh-install.sh"
-          NSH_VERSION=v0.6.0 NSH_INSTALL_DIR="$HOME/.nsh-0.6.0" sh "$RUNNER_TEMP/nsh-install.sh"
+          NSH_VERSION=v0.7.0 NSH_INSTALL_DIR="$HOME/.nsh-0.7.0" sh "$RUNNER_TEMP/nsh-install.sh"
       - if: inputs.run_tests
         run: bash tool/nsh_mac.sh check
       - name: Synthetic-vault native and interface tests

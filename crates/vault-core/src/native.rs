@@ -462,6 +462,8 @@ impl DiskVault {
 
 /// Stateless common-relay protocol ops (`relay-protocol-*`) for the mobile relay clients.
 /// Needs no vault or session; requests are wiped after use.
+pub use capabilities::breach_range;
+
 #[uniffi::export]
 pub fn relay_protocol(request: String) -> Result<String> {
     let input = Zeroizing::new(request);

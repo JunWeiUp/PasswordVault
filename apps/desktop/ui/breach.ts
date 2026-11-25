@@ -1,5 +1,5 @@
 // User-started Have I Been Pwned check. Only a 5-character SHA-1 prefix leaves the
-// device (core `breach-request`); the core matches the padded range response locally.
+// device (`breach-request` + `vault_core::breach_range`); the padded response is matched locally.
 // Results live in memory for this session and are cleared on lock.
 import { signal } from "nsh";
 import { Breach } from "passwordvault/native";

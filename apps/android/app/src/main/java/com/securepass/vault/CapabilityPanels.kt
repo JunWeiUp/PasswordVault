@@ -16,8 +16,6 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.*
 import org.json.JSONArray
 import org.json.JSONObject
-import java.net.URL
-import javax.net.ssl.HttpsURLConnection
 
 @Composable
 internal fun StructuredFieldsEditor(item: JSONObject, update: (JSONObject) -> Unit, t: (String, String) -> String) {
@@ -154,11 +152,9 @@ internal fun SecurityCenterPanel(vault: VaultRepository, items: List<JSONObject>
                     val passwords = mutableSetOf(item.optString("password")); val accounts = item.optJSONArray("accounts") ?: JSONArray(); for (i in 0 until accounts.length()) passwords.add(accounts.getJSONObject(i).optString("password")); passwords.remove("")
                     var count = 0L
                     for (password in passwords) {
-                        ensureActive(); val parts = vault.command(CoreRequest.breachRequest(password)); val prefix = parts.getString("prefix"); require(prefix.matches(Regex("[A-F0-9]{5}")))
-                        val response = withContext(Dispatchers.IO) {
-                            val connection = URL("https://api.pwnedpasswords.com/range/$prefix").openConnection() as HttpsURLConnection
-                            try { connection.instanceFollowRedirects = false; connection.useCaches = false; connection.connectTimeout = 15000; connection.readTimeout = 15000; connection.setRequestProperty("Add-Padding", "true"); require(connection.responseCode == 200); connection.inputStream.use { String(it.readBytesLimited(4 * 1024 * 1024), Charsets.UTF_8) } } finally { connection.disconnect() }
-                        }
+                        ensureActive()
+                        val parts = vault.command(CoreRequest.breachRequest(password))
+                        val response = withContext(Dispatchers.IO) { com.securepass.vault.core.breachRange(parts.getString("prefix")) }
                         count += vault.command(CoreRequest.breachResponse(parts.getString("suffix"), response)).getLong("count")
                     }
                     if (passwords.isNotEmpty()) result = if (count > 0) t("发现泄露记录，请更换密码", "Exposed password found; change it") else t("本次查询未发现记录", "Not found in this query")

@@ -1,15 +1,10 @@
 import Foundation
 
-final class WebDAVClient: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
+/// Thin Swift facade over `vault-core`'s shared HTTPS WebDAV client (`webdavList`, `webdavUpload`,
+/// `webdavDownload`). All network calls run off the main actor without holding the vault lock.
+final class WebDAVClient: @unchecked Sendable {
   let base: URL
-  private let authorization: String
-  private lazy var session: URLSession = {
-    let config = URLSessionConfiguration.ephemeral
-    config.httpShouldSetCookies = false
-    config.timeoutIntervalForRequest = 30
-    config.timeoutIntervalForResource = 90
-    return URLSession(configuration: config, delegate: self, delegateQueue: nil)
-  }()
+  private let configJSON: String
 
   init(url: String, username: String, password: String, folder: String) throws {
     guard let root = URL(string: url), root.host != nil, root.user == nil, root.password == nil,
@@ -18,79 +13,62 @@ final class WebDAVClient: NSObject, URLSessionTaskDelegate, @unchecked Sendable 
       !folder.contains(".."), !folder.hasPrefix("/")
     else { throw VaultError.InvalidData }
     base = root.appendingPathComponent(folder, isDirectory: true)
-    authorization = "Basic " + Data("\(username):\(password)".utf8).base64EncodedString()
+    let payload: [String: Any] = [
+      "url": url,
+      "username": username,
+      "password": password,
+      "folder": folder,
+      "allowLoopbackHttp": root.scheme == "http",
+      "strictHrefs": false,
+    ]
+    let encoded = try JSONSerialization.data(withJSONObject: payload)
+    guard let json = String(data: encoded, encoding: .utf8) else { throw VaultError.InvalidData }
+    configJSON = json
   }
 
-  func urlSession(
-    _ session: URLSession, task: URLSessionTask,
-    willPerformHTTPRedirection response: HTTPURLResponse, newRequest request: URLRequest,
-    completionHandler: @escaping (URLRequest?) -> Void
-  ) {
-    guard let url = request.url, sameOrigin(url), withinFolder(url) else {
-      completionHandler(nil)
-      return
-    }
-    var redirected = request
-    redirected.setValue(authorization, forHTTPHeaderField: "Authorization")
-    completionHandler(redirected)
-  }
-
-  private func sameOrigin(_ url: URL) -> Bool {
-    url.scheme == base.scheme && url.host == base.host && url.port == base.port
-  }
-  private func withinFolder(_ url: URL) -> Bool {
-    let root = base.standardized.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-    let path = url.standardized.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-    return path == root || path.hasPrefix(root + "/")
-  }
-  private func request(_ method: String, url: URL, body: Data? = nil) async throws -> Data {
-    guard sameOrigin(url), withinFolder(url) else { throw VaultError.InvalidData }
-    var request = URLRequest(url: url)
-    request.httpMethod = method
-    request.httpBody = body
-    request.setValue(authorization, forHTTPHeaderField: "Authorization")
-    if method == "PROPFIND" {
-      request.setValue("1", forHTTPHeaderField: "Depth")
-      request.setValue("application/xml", forHTTPHeaderField: "Content-Type")
-    }
-    if method == "PUT" {
-      request.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
-      request.setValue("*", forHTTPHeaderField: "If-None-Match")
-    }
-    let (stream, response) = try await session.bytes(for: request)
-    guard let response = response as? HTTPURLResponse else { throw WebDAVFailure.server }
-    if !(200..<300).contains(response.statusCode)
-      && !(method == "MKCOL" && response.statusCode == 405)
-    {
-      switch response.statusCode {
-      case 401: throw WebDAVFailure.authentication
-      case 403: throw WebDAVFailure.permission
-      case 404: throw WebDAVFailure.notFound
-      default: throw WebDAVFailure.server
+  private static func mapError(_ error: Error) -> Error {
+    guard let davError = error as? WebDavError else { return error }
+    switch davError {
+    case .Failed(let code):
+      switch code {
+      case "WebDAVAuthentication": return WebDAVFailure.authentication
+      case "WebDAVPermission": return WebDAVFailure.permission
+      case "WebDAVNotFound": return WebDAVFailure.notFound
+      case "InvalidData": return WebDAVFailure.invalidListing
+      default: return WebDAVFailure.server
       }
     }
-    var data = Data()
-    for try await byte in stream {
-      guard data.count < 64 * 1024 * 1024 else { throw VaultError.InvalidData }
-      data.append(byte)
-    }
-    return data
   }
-  func close() { session.invalidateAndCancel() }
+
+  func close() {}
+
   func list() async throws -> [RemoteBackup] {
-    let data = try await request("PROPFIND", url: base, body: WebDAVListing.requestBody)
-    do { return try WebDAVListing.parse(data, base: base) } catch {
-      throw WebDAVFailure.invalidListing
-    }
+    let config = configJSON
+    let json = try await Task.detached(priority: .userInitiated) {
+      do { return try webdavList(configJson: config) }
+      catch { throw Self.mapError(error) }
+    }.value
+    do { return try WebDAVListing.decodeCoreJSON(json) }
+    catch { throw WebDAVFailure.invalidListing }
   }
+
   func upload(_ data: Data) async throws {
-    _ = try await request("MKCOL", url: base)
+    let config = configJSON
     let name =
       "PasswordVault-\(Int(Date().timeIntervalSince1970 * 1000))-\(UUID().uuidString.prefix(8)).pvbackup"
-    _ = try await request("PUT", url: base.appendingPathComponent(name), body: data)
+    try await Task.detached(priority: .userInitiated) {
+      do { try webdavUpload(configJson: config, filename: name, data: data) }
+      catch { throw Self.mapError(error) }
+    }.value
   }
+
   func download(_ backup: RemoteBackup) async throws -> Data {
-    try await request("GET", url: backup.url)
+    let config = configJSON
+    let target = backup.url.absoluteString
+    return try await Task.detached(priority: .userInitiated) {
+      do { return try webdavDownload(configJson: config, targetUrl: target) }
+      catch { throw Self.mapError(error) }
+    }.value
   }
 }
 

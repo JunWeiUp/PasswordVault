@@ -142,6 +142,21 @@ echo "[deploy] mode=full (building signed package + helpers, backing up vault, i
 bash "$root/tool/macos-nsh/package.sh"
 
 # Stop UI, background service, and browser host cleanly (leave external Codex pv-mcp shims alone).
+# Mark service-user-stopped first so pv-browser-host cannot revive pv-background mid-install.
+vault_dir="$HOME/Library/Application Support/PasswordVaultNative/vault"
+user_stopped_marker="$vault_dir/service-user-stopped"
+created_user_stopped=0
+cleanup_user_stopped() {
+  if [[ "$created_user_stopped" -eq 1 ]]; then
+    rm -f "$user_stopped_marker"
+    created_user_stopped=0
+  fi
+}
+trap cleanup_user_stopped EXIT
+if [[ -d "$vault_dir" && ! -f "$user_stopped_marker" ]]; then
+  touch "$user_stopped_marker"
+  created_user_stopped=1
+fi
 osascript -e 'tell application "PasswordVault" to quit' 2>/dev/null || true
 sleep 0.6
 pkill -TERM -f "/Applications/PasswordVault.*\.app/Contents/MacOS/PasswordVault" 2>/dev/null || true
@@ -180,6 +195,7 @@ done
 bash "$root/tool/macos-nsh/install.sh" "$bk"
 (cd "$HOME/Library/Application Support/PasswordVaultNative" && find . -type f | sort | xargs shasum -a 256) > "$root/$bk/after.sha256"
 diff -u "$root/$bk/before.sha256" "$root/$bk/after.sha256" >/dev/null
+cleanup_user_stopped
 
 codesign --verify --deep --strict "$app_dst"
 printf '%s\n' "$current_fp" > "$fp_file"

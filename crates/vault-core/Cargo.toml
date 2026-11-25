@@ -10,7 +10,7 @@ crate-type = ["lib", "cdylib", "staticlib"]
 
 [features]
 default = ["native"]
-native = ["dep:rusqlite", "dep:uniffi", "dep:tempfile", "dep:fs2", "dep:reqwest", "dep:common-relay", "dep:tokio"]
+native = ["dep:rusqlite", "dep:uniffi", "dep:tempfile", "dep:fs2", "dep:reqwest", "dep:common-relay", "dep:tokio", "dep:roxmltree", "dep:percent-encoding"]
 bindgen = ["native", "uniffi/cli"]
 browser = ["dep:wasm-bindgen", "getrandom/js"]
 
@@ -55,6 +55,8 @@ reqwest = { version = "0.12", default-features = false, features = ["blocking", 
 # its `serde_json/preserve_order` default would change JSON key order across vault-core.
 common-relay = { git = "https://github.com/JunWeiUp/common-relay", rev = "ce34b9419e7be777e2ec415624b7aa8a19f3e1b0", default-features = false, optional = true }
 tokio = { version = "1", features = ["rt-multi-thread"], optional = true }
+roxmltree = { version = "0.20", optional = true }
+percent-encoding = { version = "2", optional = true }
 wasm-bindgen = { version = "0.2", optional = true }
 
 [[bin]]

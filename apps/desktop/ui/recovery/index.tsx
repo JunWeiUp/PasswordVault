@@ -129,7 +129,7 @@ function RecoverySetup(props: { close: () => void; done: () => void }) {
     <If when={generated()} else={<><T>{enabled() ? "已启用" : "尚未启用"}</T><Btn label={enabled() ? "更换密钥…" : "生成密钥…"} disabled={busy()} onPress={generate} />
       <If when={enabled()}><TextBox masked value={key()} onChange={v => key.set(v)} label="恢复密钥" placeholder="导出时输入单独保存的恢复密钥" /></If></>}>
       <Banner tone="warn" title="密钥只显示这一次">请保存在这个密码库之外。</Banner>
-      <T mono selectable>{key()}</T><Btn label="复制恢复密钥" disabled={busy()} onPress={() => { copied = true; void Clipboard.writeText(key()); }} />
+      <T mono selectable>{key()}</T><Btn label="复制恢复密钥" disabled={busy()} onPress={() => { void Clipboard.writeText(key()).then(r => { if (r !== "failed") copied = true; }); }} />
       <If when={desktopCapabilities.recoveryPrinting}><Btn label="打印恢复密钥…" disabled={busy()} onPress={() => run(async () => { await RecoveryIO.printKey(key()); })} /></If>
       <TextBox value={check()} onChange={v => check.set(v)} label="第 3 组字符" placeholder="为确认已保存，请输入第 3 组字符" />
       <Toggle last title="我已把密钥保存在这个密码库之外" checked={saved()} onChange={v => saved.set(v)} />

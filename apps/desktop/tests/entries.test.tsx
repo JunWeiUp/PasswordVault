@@ -48,6 +48,7 @@ test("accounts show a linked code only after confirming a suggestion, and list s
  expect(app.texts().some(t=>/^复制验证码 \d{3} \d{3}$/.test(t))).toBe(true);
  const copyCode=app.texts().find(t=>t.startsWith("复制验证码 "))!;
  await app.press(`text:${copyCode}`);
+ await app.waitUntil(()=>/^\d{6}$/.test(app.clipboard()??""));
  expect(/^\d{6}$/.test(app.clipboard()??"")).toBe(true);
  // Unlinking keeps the code entry and brings the suggestion back; ignoring hides it.
  await app.press("text:切换编辑");await app.press("text:取消关联");
