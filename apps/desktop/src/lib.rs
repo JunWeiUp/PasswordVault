@@ -12,6 +12,7 @@ mod ai;
 mod browser;
 mod browser_api;
 mod data_dir;
+mod events;
 mod platform;
 mod qa_window;
 mod relay;
@@ -53,6 +54,7 @@ fn native(registry: &mut Registry) {
     registry.module::<relay::Relay>();
     registry.module::<recovery_io::RecoveryIO>();
     registry.module::<hotkey::Hotkey>();
+    registry.module::<events::Events>();
     registry.module::<window_ctl::WindowCtl>();
     registry.module::<login_item::LoginItem>();
     registry.module::<breach::Breach>();

@@ -812,7 +812,8 @@
         "name?": "string"
       },
       "result": "{id,vaultId,userPublicKey,encryptedVaultKey,role,name}",
-      "notes": "role default viewer"
+      "notes": "role default viewer; legacy LAN sharing (retained for migration tests)",
+      "legacy": true
     },
     "create-shared": {
       "group": "sharing",
@@ -821,14 +822,17 @@
         "name": "string",
         "time": "string"
       },
-      "result": "{id,name,encryptedVaultKey,createdAt,updatedAt,isDiscoverable:false}"
+      "result": "{id,name,encryptedVaultKey,createdAt,updatedAt,isDiscoverable:false}",
+      "notes": "Legacy LAN sharing (retained for migration tests)",
+      "legacy": true
     },
     "identity": {
       "group": "sharing",
       "lock": "unlocked",
       "params": {},
       "result": "{publicKey:string}",
-      "notes": "Creates and persists sharing identity on first call"
+      "notes": "Creates and persists sharing identity on first call; legacy LAN sharing",
+      "legacy": true
     },
     "remove-member": {
       "group": "sharing",
@@ -838,7 +842,8 @@
         "publicKey": "string"
       },
       "result": "{ok:true}",
-      "internal": true
+      "internal": true,
+      "legacy": true
     },
     "share-options": {
       "group": "sharing",
@@ -870,7 +875,8 @@
         "vaultId": "string"
       },
       "result": "{imported:number}",
-      "notes": "Blocked when formatVersion>=7"
+      "notes": "Blocked when formatVersion>=7; legacy LAN sharing",
+      "legacy": true
     },
     "sync-request": {
       "group": "sharing",
@@ -880,7 +886,8 @@
         "vaultId": "string"
       },
       "result": "{context:object,payload:Sealed}",
-      "notes": "Blocked (DevicesSyncBlocked) when formatVersion>=7"
+      "notes": "Blocked (DevicesSyncBlocked) when formatVersion>=7; legacy LAN sharing",
+      "legacy": true
     },
     "sync-respond": {
       "group": "sharing",
@@ -889,7 +896,8 @@
         "packet": "object"
       },
       "result": "{context:object,payload:Sealed}",
-      "notes": "Blocked when formatVersion>=7"
+      "notes": "Blocked when formatVersion>=7; legacy LAN sharing",
+      "legacy": true
     },
     "relay-credentials-read": {
       "group": "relay",
@@ -924,7 +932,8 @@
         "peer": "string"
       },
       "result": "RelayPacket",
-      "notes": "snapshot (hub) or changes (mobile) packet with files; at format>=7 requires proven capabilities"
+      "notes": "snapshot (hub) or changes (mobile) packet with files; at format>=7 requires proven capabilities; legacy hub relay",
+      "legacy": true
     },
     "relay-init": {
       "group": "relay",
@@ -936,7 +945,8 @@
         "hub": "string"
       },
       "result": "{ok:true}",
-      "notes": "role hub|mobile; hub must equal device for hub role; snapshots before-personal-relay"
+      "notes": "role hub|mobile; hub must equal device for hub role; snapshots before-personal-relay; legacy hub relay",
+      "legacy": true
     },
     "relay-receive": {
       "group": "relay",
@@ -945,7 +955,9 @@
         "peer": "string",
         "packet": "object"
       },
-      "result": "{ok:true,stale?:true}"
+      "result": "{ok:true,stale?:true}",
+      "notes": "Legacy hub relay",
+      "legacy": true
     },
     "relay-resolve": {
       "group": "relay",
@@ -955,8 +967,9 @@
         "choice": "string"
       },
       "result": "{ok:true}",
-      "notes": "Hub only; choice local|remote|both",
-      "internal": true
+      "notes": "Hub only; choice local|remote|both; legacy hub relay",
+      "internal": true,
+      "legacy": true
     },
     "relay-resolve-batch": {
       "group": "relay",
@@ -966,7 +979,8 @@
         "choice": "string"
       },
       "result": "{ok:true}",
-      "notes": "Hub only; conflicts string[] 1..4096 unique; choice local|remote"
+      "notes": "Hub only; conflicts string[] 1..4096 unique; choice local|remote; legacy hub relay",
+      "legacy": true
     },
     "relay-revoke": {
       "group": "relay",
@@ -975,7 +989,8 @@
         "peer": "string"
       },
       "result": "{ok:true}",
-      "internal": true
+      "internal": true,
+      "legacy": true
     },
     "relay-status": {
       "group": "relay",
@@ -990,7 +1005,9 @@
       "params": {
         "peer": "string"
       },
-      "result": "{ok:true}"
+      "result": "{ok:true}",
+      "notes": "Legacy hub relay",
+      "legacy": true
     },
     "relay-mesh-blob-export": {
       "group": "relay-mesh",

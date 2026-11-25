@@ -1,4 +1,4 @@
-import { pollEvery } from "../polling";
+import { onDesktopEvent } from "../events";
 import { desktopCapabilities } from "../native";
 import { cleanup, effect, signal, View } from "nsh";
 export { AiWorkspacePage } from "./Workspace";
@@ -51,7 +51,7 @@ export function AiApprovalHost() {
       // the AI settings page reports the service as not running.
       if (!String(e).includes("SocketInUse")) toast("AI 访问服务未能启动，可在设置 → AI 访问中重试。");
     });
-    cleanup(pollEvery(500, refresh));
+    cleanup(onDesktopEvent("ai", refresh));
   });
   // Entries an AI client adds go straight to the core; reload the list when the count moves.
   let seenChanges: number | undefined;

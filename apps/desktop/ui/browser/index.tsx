@@ -1,4 +1,4 @@
-import { pollEvery } from "../polling";
+import { onDesktopEvent } from "../events";
 import { desktopCapabilities } from "../native";
 // Browser controls reuse the settings kit; capabilities remain native-only.
 import { signal, View } from "nsh";
@@ -26,7 +26,7 @@ export function connectBrowser(): () => void {
   if (!desktopCapabilities.browser) return () => {};
   void Browser.start(vaultInstance).catch(() => {});
   let revision: number | undefined;
-  const stop = pollEvery(500, async (isActive) => {
+  const stop = onDesktopEvent("browser", async (isActive) => {
     let state: { pending?: string; revision?: number; open?: { nonce: string; id: string } | null } = {};
     try { state = JSON.parse((await Browser.poll()) || "{}"); } catch { state = {}; }
     const pending = state.pending ?? "";
@@ -55,7 +55,7 @@ export function connectBrowser(): () => void {
     }
     const prompt = consentText(request!);
     confirm({ ...prompt, onCancel: () => void Browser.approve(id, false), onConfirm: async () => { await Browser.approve(id, true); if (request!.kind === "pair" || !request!.kind) await load(); } });
-  });
+  }, { immediate: true });
   return () => { stop(); void Browser.cancelStartup().catch(() => {}); };
 }
 export function BrowserPage() {

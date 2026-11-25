@@ -7,7 +7,7 @@
 
 use super::{
     ffi::RelayError,
-    mesh_sync::{MeshSync, Settings},
+    mesh_sync::{MeshSync, MeshVault, Settings},
     Result,
 };
 use crate::relay_protocol::{policy, text, unpack, BoxPublicKey, BoxSecretKey, Identity};
@@ -198,6 +198,43 @@ pub trait RelaySyncObserver: Send + Sync {
     fn on_state(&self, state_json: String);
 }
 
+/// Rust-only per-cycle lifecycle hooks allowing Desktop to refresh group state and
+/// trigger a clean reconnect when `group_entry` changes, while sharing the same runner loop.
+pub enum CyclePrep {
+    Continue(Value),
+    Reconnect,
+}
+
+pub trait RunnerHooks: Send + Sync {
+    fn before_connect(&self) -> Result<(Settings, Value)>;
+    fn before_cycle(&self, current_groups: &Value) -> Result<CyclePrep>;
+}
+
+struct StaticHooks {
+    settings: Settings,
+    groups: Arc<Mutex<Value>>,
+}
+
+impl RunnerHooks for StaticHooks {
+    fn before_connect(&self) -> Result<(Settings, Value)> {
+        let groups = self
+            .groups
+            .lock()
+            .map(|g| g.clone())
+            .unwrap_or_else(|_| json!({}));
+        Ok((self.settings.clone(), groups))
+    }
+
+    fn before_cycle(&self, _current_groups: &Value) -> Result<CyclePrep> {
+        let groups = self
+            .groups
+            .lock()
+            .map(|g| g.clone())
+            .unwrap_or_else(|_| json!({}));
+        Ok(CyclePrep::Continue(groups))
+    }
+}
+
 #[derive(Default)]
 struct WakeState {
     stop: bool,
@@ -209,7 +246,7 @@ struct WakeState {
 struct RunnerShared {
     wake_lock: Mutex<WakeState>,
     wake_cv: Condvar,
-    groups: Mutex<Value>,
+    groups: Arc<Mutex<Value>>,
     connection: Mutex<Option<Arc<MeshSync>>>,
     snapshot: Mutex<Value>,
     running: AtomicBool,
@@ -317,38 +354,12 @@ impl RelaySyncRunner {
         let settings = parse_settings(&opt_val)?;
         let groups_val: Value = serde_json::from_str(&groups)
             .map_err(|_| RelayError::from("InvalidData".to_owned()))?;
-        let self_device = settings.identity.device.clone();
-
-        let shared = Arc::new(RunnerShared {
-            wake_lock: Mutex::new(WakeState::default()),
-            wake_cv: Condvar::new(),
-            groups: Mutex::new(groups_val),
-            connection: Mutex::new(None),
-            snapshot: Mutex::new(json!({
-                "transport": "disconnected",
-                "phase": "idle",
-                "online": [],
-                "error": "",
-                "stoppedByAuth": false,
-                "changed": false,
-                "sent": 0,
-                "updates": 0,
-                "lastSentAt": null,
-                "lastReceivedAt": null,
-                "lastCheckedAt": null,
-                "reconnectReason": null,
-            })),
-            running: AtomicBool::new(true),
-            observer,
+        let groups_slot = Arc::new(Mutex::new(groups_val));
+        let hooks: Arc<dyn RunnerHooks> = Arc::new(StaticHooks {
+            settings,
+            groups: groups_slot.clone(),
         });
-
-        let thread_shared = shared.clone();
-        std::thread::Builder::new()
-            .name("pv-relay-sync".into())
-            .spawn(move || run_loop(vault, settings, self_device, thread_shared))
-            .map_err(|_| RelayError::from("Storage".to_owned()))?;
-
-        Ok(Arc::new(Self { shared }))
+        Self::spawn(vault, hooks, groups_slot, observer, true)
     }
 
     /// Wakes the sync loop immediately and forces a resend of unchanged packets.
@@ -411,26 +422,91 @@ impl RelaySyncRunner {
     }
 }
 
+impl RelaySyncRunner {
+    /// Rust-only constructor for Desktop: accepts a custom [`MeshVault`] (e.g. one that
+    /// serializes `relay-mesh-*` writes with group actions) and [`RunnerHooks`].
+    pub fn start_with_hooks(
+        vault: Arc<dyn MeshVault>,
+        hooks: Arc<dyn RunnerHooks>,
+        observer: Option<Arc<dyn RelaySyncObserver>>,
+    ) -> std::result::Result<Arc<Self>, RelayError> {
+        Self::spawn(
+            vault,
+            hooks,
+            Arc::new(Mutex::new(json!({}))),
+            observer,
+            false,
+        )
+    }
+
+    fn spawn(
+        vault: Arc<dyn MeshVault>,
+        hooks: Arc<dyn RunnerHooks>,
+        groups: Arc<Mutex<Value>>,
+        observer: Option<Arc<dyn RelaySyncObserver>>,
+        include_self_in_online: bool,
+    ) -> std::result::Result<Arc<Self>, RelayError> {
+        let shared = Arc::new(RunnerShared {
+            wake_lock: Mutex::new(WakeState::default()),
+            wake_cv: Condvar::new(),
+            groups,
+            connection: Mutex::new(None),
+            snapshot: Mutex::new(json!({
+                "transport": "disconnected",
+                "phase": "idle",
+                "online": [],
+                "error": "",
+                "stoppedByAuth": false,
+                "changed": false,
+                "sent": 0,
+                "updates": 0,
+                "lastSentAt": null,
+                "lastReceivedAt": null,
+                "lastCheckedAt": null,
+                "reconnectReason": null,
+            })),
+            running: AtomicBool::new(true),
+            observer,
+        });
+
+        let thread_shared = shared.clone();
+        std::thread::Builder::new()
+            .name("pv-relay-sync".into())
+            .spawn(move || run_loop(vault, hooks, thread_shared, include_self_in_online))
+            .map_err(|_| RelayError::from("Storage".to_owned()))?;
+
+        Ok(Arc::new(Self { shared }))
+    }
+}
+
 fn run_loop(
-    vault: Arc<crate::VaultSession>,
-    settings: Settings,
-    self_device: String,
+    vault: Arc<dyn MeshVault>,
+    hooks: Arc<dyn RunnerHooks>,
     shared: Arc<RunnerShared>,
+    include_self_in_online: bool,
 ) {
     let mut backoff = 0u64;
     while !shared.is_stopped() {
         let mut connected_at: Option<Instant> = None;
         let mut reconnect_reason: Option<String> = None;
 
-        shared.emit(|s| {
-            s["transport"] = json!("connecting");
-            s["phase"] = json!("connecting");
-            s["changed"] = json!(false);
-            s["reconnectReason"] = Value::Null;
-        });
-
         let attempt_result: Result<()> = (|| {
-            let sync = Arc::new(MeshSync::connect(vault.clone(), settings.clone())?);
+            let (settings, mut current_groups) = hooks.before_connect()?;
+            if shared.is_stopped() {
+                return Err("Locked".into());
+            }
+            let self_device = settings.identity.device.clone();
+            if let Ok(mut slot) = shared.groups.lock() {
+                *slot = current_groups.clone();
+            }
+            shared.emit(|s| {
+                s["transport"] = json!("connecting");
+                s["phase"] = json!("connecting");
+                s["changed"] = json!(false);
+                s["reconnectReason"] = Value::Null;
+            });
+
+            let sync = Arc::new(MeshSync::connect(vault.clone(), settings)?);
             if let Ok(mut slot) = shared.connection.lock() {
                 *slot = Some(sync.clone());
             }
@@ -458,6 +534,15 @@ fn run_loop(
                     let drained: Vec<(String, Vec<u8>)> = wake.blob_outbox.drain(..).collect();
                     (force, drained)
                 };
+                match hooks.before_cycle(&current_groups)? {
+                    CyclePrep::Continue(next_groups) => {
+                        current_groups = next_groups;
+                        if let Ok(mut slot) = shared.groups.lock() {
+                            *slot = current_groups.clone();
+                        }
+                    }
+                    CyclePrep::Reconnect => return Ok(()),
+                }
                 for (peer, payload) in drained {
                     sync.queue(&peer, payload)?;
                 }
@@ -465,12 +550,7 @@ fn run_loop(
                     s["phase"] = json!("checking");
                     s["changed"] = json!(false);
                 });
-                let groups = shared
-                    .groups
-                    .lock()
-                    .map(|g| g.clone())
-                    .unwrap_or_else(|_| json!({}));
-                let round = sync.cycle(&groups, force)?;
+                let round = sync.cycle(&current_groups, force)?;
                 if shared.is_stopped() {
                     break;
                 }
@@ -481,7 +561,7 @@ fn run_loop(
                     .filter_map(Value::as_str)
                     .map(str::to_owned)
                     .collect();
-                if !online.iter().any(|d| d == &self_device) {
+                if include_self_in_online && !online.iter().any(|d| d == &self_device) {
                     online.push(self_device.clone());
                 }
                 let changed = round["changed"].as_bool().unwrap_or(false);

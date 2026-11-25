@@ -6,5 +6,5 @@ mod categories;
 mod items;
 mod notes;
 mod sharing;
-mod tools;
+pub(in crate::native) mod tools;
 mod vault;

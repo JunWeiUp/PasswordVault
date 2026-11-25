@@ -139,6 +139,7 @@ mod imp {
             return -9874; // eventNotHandledErr
         }
         PRESSED.store(true, Ordering::SeqCst);
+        crate::events::notify("hotkey");
         #[cfg(not(feature = "ui"))]
         crate::background::show_interface();
         if let Some(mtm) = objc2::MainThreadMarker::new() {

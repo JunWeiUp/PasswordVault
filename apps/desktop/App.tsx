@@ -22,7 +22,7 @@ import { desktopCapabilities, isMac, onLockSignals, setCaptureProtection } from 
 import { startShortcut } from "./ui/hotkey";
 import { quickAccessOpen } from "./ui/QuickAccess";
 import { connectBrowser } from "./ui/browser";
-import { pollEvery } from "./ui/polling";
+import { onDesktopEvent } from "./ui/events";
 import { WindowCtl } from "passwordvault/native";
 import { AiApprovalHost, AiWorkspacePage } from "./ui/ai";
 import { codeFor, copyAccountCode } from "./ui/entries/linkedCode";
@@ -307,7 +307,7 @@ function Toast() {
 // pick that up so the interface follows the core.
 let browserStarted = false;
 
-pollEvery(1000, async (isActive) => {
+onDesktopEvent("status", async (isActive) => {
   const requestedPhase = phase();
   if (requestedPhase !== "locked" && requestedPhase !== "unlocked") return;
   const status = await coreApi.status();

@@ -555,6 +555,7 @@ pub(super) fn note_update(s: &VaultSession, r: &Value, digest: &str) -> Result<V
             "unixSeconds": unix,
         }));
     }
+    crate::events::notify("ai");
     Ok(prune(json!({
         "id": saved_item["id"],
         "slug": saved_item["slug"],
@@ -764,6 +765,7 @@ pub(super) fn note_attach(s: &VaultSession, r: &Value, digest: &str) -> Result<V
             "unixSeconds": unix,
         }));
     }
+    crate::events::notify("ai");
     Ok(prune(json!({
         "id": saved_item["id"],
         "slug": saved_item["slug"],
