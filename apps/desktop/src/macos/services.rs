@@ -191,6 +191,7 @@ static EVENTS: AtomicU8 = AtomicU8::new(0);
 fn observe(center: &NSNotificationCenter, name: &str, bit: u8) {
     let block = block2::RcBlock::new(move |_: std::ptr::NonNull<NSNotification>| {
         EVENTS.fetch_or(bit, Ordering::SeqCst);
+        crate::events::notify("signal");
     });
     let token = unsafe {
         center.addObserverForName_object_queue_usingBlock(
