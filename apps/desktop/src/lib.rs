@@ -10,9 +10,7 @@ mod ai;
 #[cfg(target_os = "macos")]
 #[allow(dead_code)] // Shared with pv-background and pv-browser-host helpers.
 mod browser;
-#[cfg(not(target_os = "macos"))]
-#[path = "windows/browser.rs"]
-mod browser;
+mod browser_api;
 mod data_dir;
 mod platform;
 mod qa_window;
@@ -35,9 +33,7 @@ mod recovery_io;
 mod rich_notes;
 #[cfg(target_os = "macos")]
 mod script_runner;
-#[cfg(not(target_os = "macos"))]
-#[path = "windows/scripts.rs"]
-mod script_runner;
+mod scripts_api;
 mod text_extract;
 
 use crate::session::VaultSession;
@@ -49,10 +45,10 @@ use zeroize::Zeroizing;
 #[native_module("passwordvault/native")]
 fn native(registry: &mut Registry) {
     rich_notes::register(registry);
-    registry.module::<script_runner::Scripts>();
+    registry.module::<scripts_api::Scripts>();
     registry.module::<qr_import::QrImport>();
     registry.module::<markdown::NoteMarkdown>();
-    registry.module::<browser::Browser>();
+    registry.module::<browser_api::Browser>();
     registry.module::<ai::Ai>();
     registry.module::<relay::Relay>();
     registry.module::<recovery_io::RecoveryIO>();

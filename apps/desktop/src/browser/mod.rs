@@ -426,9 +426,7 @@ pub(crate) fn request_startup(directory: &Path) -> Result<(), String> {
     Ok(())
 }
 /// Browser registration, pairing confirmation and background-grant revocation.
-#[cfg_attr(feature = "ui", module)]
 pub struct Browser;
-#[cfg_attr(feature = "ui", module)]
 impl Browser {
     /// Attach once after Vault has opened its session. No registrations are changed.
     #[cfg(feature = "ui")]

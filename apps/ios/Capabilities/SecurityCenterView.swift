@@ -2,10 +2,6 @@ import SwiftUI
 import Foundation
 import UniformTypeIdentifiers
 
-private final class RangeRedirectGuard: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
-  func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse, newRequest request: URLRequest, completionHandler: @escaping (URLRequest?) -> Void) { completionHandler(nil) }
-}
-
 struct SecurityCenterView: View {
   let items: [VaultItem]
   let perform: ([String: JSONValue]) async throws -> JSONValue
@@ -95,10 +91,6 @@ struct SecurityCenterView: View {
   }
   @MainActor private func check() async {
     working = true; breach = [:]; defer { working = false }
-    let config = URLSessionConfiguration.ephemeral
-    config.httpCookieStorage = nil; config.urlCache = nil; config.requestCachePolicy = .reloadIgnoringLocalCacheData
-    let session = URLSession(configuration: config, delegate: RangeRedirectGuard(), delegateQueue: nil)
-    defer { session.invalidateAndCancel() }
     for item in items.filter({ $0.type == "password" && !$0.isDeleted }) {
       if Task.isCancelled || !enabled { return }
       do {
@@ -108,12 +100,9 @@ struct SecurityCenterView: View {
         for value in Set(values).filter({ !$0.isEmpty }) {
           try Task.checkCancellation()
           let parts = try await perform(CoreRequest.breachRequest(password: value)).object
-          guard let prefix = parts["prefix"]?.string, prefix.count == 5, prefix.allSatisfy({ $0.isHexDigit }), let suffix = parts["suffix"] else { throw URLError(.badServerResponse) }
-          var request = URLRequest(url: URL(string: "https://api.pwnedpasswords.com/range/\(prefix)")!)
-          request.setValue("true", forHTTPHeaderField: "Add-Padding"); request.timeoutInterval = 20
-          let (data, response) = try await session.data(for: request)
-          guard (response as? HTTPURLResponse)?.statusCode == 200, data.count <= 4 * 1024 * 1024, let text = String(data: data, encoding: .utf8) else { throw URLError(.badServerResponse) }
-          let result = try await perform(CoreRequest.breachResponse(suffix: suffix.string ?? "", response: text))
+          guard let prefix = parts["prefix"]?.string, let suffix = parts["suffix"]?.string else { throw URLError(.badServerResponse) }
+          let text = try await Task.detached(priority: .userInitiated) { try breachRange(prefix: prefix) }.value
+          let result = try await perform(CoreRequest.breachResponse(suffix: suffix, response: text))
           occurrences += Int(result.object["count"]?.number ?? 0)
         }
         try Task.checkCancellation()
