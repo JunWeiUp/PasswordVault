@@ -54,6 +54,28 @@ pub fn notify(topic: &'static str) {
     }
 }
 
+/// Blocks until the bus revision advances past `since` or `timeout` elapses, returning
+/// the latest revision. Used by the `pv-background` supervisor to sleep without polling.
+#[allow(dead_code)]
+pub fn wait_any(since: u32, timeout: Duration) -> u32 {
+    let b = bus();
+    let Ok(mut st) = b.state.lock() else {
+        return since;
+    };
+    let deadline = Instant::now() + timeout;
+    while st.rev == since {
+        let now = Instant::now();
+        if now >= deadline {
+            return st.rev;
+        }
+        let Ok((guard, _)) = b.cv.wait_timeout(st, deadline - now) else {
+            return since;
+        };
+        st = guard;
+    }
+    st.rev
+}
+
 /// Blocks until the bus revision advances past `since` or `timeout_ms` elapses.
 /// Returns `{"rev": u32, "topics": string[]}`.
 pub fn wait_since(since: u32, timeout_ms: u32) -> Value {

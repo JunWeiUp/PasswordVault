@@ -174,6 +174,7 @@ fn dispatch(
         session
             .unlock_desktop_grant(grant.to_vec())
             .map_err(|_| "sync-authorization")?;
+        crate::events::notify("status");
         return Ok(json!({"ok":true}));
     }
     let current = settings(session);
@@ -243,6 +244,7 @@ fn dispatch(
         }
         "lock" => {
             cancel_startup_native();
+            crate::events::notify("status");
             json!({"op":"lock"})
         }
         // Preserve existing entries; an identical retry is acknowledged without another write.

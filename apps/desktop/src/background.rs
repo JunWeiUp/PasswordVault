@@ -75,15 +75,23 @@ mod server {
                 let request = zeroize::Zeroizing::new(string(args, "request")?);
                 let mut parsed: Value =
                     serde_json::from_str(&request).map_err(|_| "InvalidData")?;
+                let wakes_supervisor = matches!(
+                    parsed["op"].as_str(),
+                    Some("create" | "create-migrated" | "unlock" | "lock" | "settings")
+                );
                 if parsed["op"] == "lock" {
                     browser::cancel_startup_native();
                     relay::stop_background(session);
                 }
                 ipc::wipe(&mut parsed);
-                session
+                let out = session
                     .command(request.to_string())
                     .map(Value::String)
-                    .map_err(error)
+                    .map_err(error);
+                if wakes_supervisor && out.is_ok() {
+                    crate::events::notify("supervisor");
+                }
+                out
             }
             "authorized-browser" => session
                 .authorized_browser_command(bytes(args, "grant")?, string(args, "request")?)
@@ -93,14 +101,26 @@ mod server {
                 .background_save(bytes(args, "grant")?, string(args, "request")?)
                 .map(Value::String)
                 .map_err(error),
-            "unlock-grant" => session
-                .unlock_desktop_grant(bytes(args, "grant")?)
-                .map(|_| Value::Null)
-                .map_err(error),
-            "unlock-biometric" => session
-                .unlock_biometric(bytes(args, "key")?)
-                .map(|_| Value::Null)
-                .map_err(error),
+            "unlock-grant" => {
+                let out = session
+                    .unlock_desktop_grant(bytes(args, "grant")?)
+                    .map(|_| Value::Null)
+                    .map_err(error);
+                if out.is_ok() {
+                    crate::events::notify("supervisor");
+                }
+                out
+            }
+            "unlock-biometric" => {
+                let out = session
+                    .unlock_biometric(bytes(args, "key")?)
+                    .map(|_| Value::Null)
+                    .map_err(error);
+                if out.is_ok() {
+                    crate::events::notify("supervisor");
+                }
+                out
+            }
             "biometric-key" => session
                 .biometric_key()
                 .map(|mut key| {
@@ -188,6 +208,32 @@ mod server {
             _ => Err("Unsupported".into()),
         }
     }
+    /// Computes how long the headless supervisor can sleep on the event bus Condvar.
+    /// Sleep/screen-lock notifications, unlock/lock, and settings changes wake it immediately.
+    fn supervisor_wait(
+        unlocked: bool,
+        ui_active: bool,
+        never_idle_lock: bool,
+        idle_secs: f64,
+        limit_secs: f64,
+    ) -> Duration {
+        const MAX_IDLE_WAIT: Duration = Duration::from_secs(60);
+        if !unlocked {
+            return MAX_IDLE_WAIT;
+        }
+        let idle_wait = if never_idle_lock {
+            MAX_IDLE_WAIT
+        } else {
+            let remaining = (limit_secs - idle_secs).clamp(1.0, 60.0);
+            Duration::from_secs_f64(remaining)
+        };
+        if ui_active {
+            idle_wait.min(Duration::from_secs(5))
+        } else {
+            idle_wait
+        }
+    }
+
     #[cfg(test)]
     mod lease_tests {
         use super::*;
@@ -201,6 +247,30 @@ mod server {
             assert!(lease.active_at(now, |pid| pid == 123));
             assert!(!lease.active_at(now, |_| false));
             assert!(!lease.active_at(now + Duration::from_secs(5), |_| true));
+        }
+
+        #[test]
+        fn supervisor_wait_backs_off_when_idle_and_clamps_to_auto_lock() {
+            assert_eq!(
+                supervisor_wait(false, false, false, 0.0, 3600.0),
+                Duration::from_secs(60)
+            );
+            assert_eq!(
+                supervisor_wait(true, false, true, 0.0, 3600.0),
+                Duration::from_secs(60)
+            );
+            assert_eq!(
+                supervisor_wait(true, true, true, 0.0, 3600.0),
+                Duration::from_secs(5)
+            );
+            assert_eq!(
+                supervisor_wait(true, false, false, 3592.0, 3600.0),
+                Duration::from_secs(8)
+            );
+            assert_eq!(
+                supervisor_wait(true, false, false, 3605.0, 3600.0),
+                Duration::from_secs(1)
+            );
         }
     }
 
@@ -310,14 +380,14 @@ mod server {
         std::thread::spawn(move || {
             let mut unlocked_since = Instant::now();
             let mut was_unlocked = false;
+            let mut rev = 0u32;
             loop {
-                std::thread::sleep(Duration::from_millis(250));
                 let signals: Value = serde_json::from_str(&platform::poll()).unwrap_or(Value::Null);
                 let settings = session
                     .command(r#"{"op":"read-settings"}"#.into())
                     .ok()
                     .and_then(|s| serde_json::from_str::<Value>(&s).ok());
-                let unlocked = settings.is_some();
+                let mut unlocked = settings.is_some();
                 if unlocked && !was_unlocked {
                     unlocked_since = Instant::now();
                     let _ = relay::connect_background(session.clone(), directory.clone());
@@ -328,28 +398,37 @@ mod server {
                     relay::stop_background(&session);
                     crate::events::notify("status");
                 }
-                was_unlocked = unlocked;
+                let mut never_idle_lock = true;
+                let mut idle = 0.0;
+                let mut limit = 3600.0;
                 if let Some(mut settings) = settings {
                     let events = signals["events"].as_u64().unwrap_or(0);
                     let sleep = events & 1 != 0 && settings["macLockOnSleep"] != false;
                     let screen = events & 14 != 0 && settings["macLockOnScreenLock"] != false;
-                    let idle = signals["idleSeconds"]
+                    never_idle_lock = settings["macNeverIdleLock"] == true;
+                    idle = signals["idleSeconds"]
                         .as_f64()
                         .unwrap_or(0.)
                         .min(unlocked_since.elapsed().as_secs_f64());
-                    let limit = settings["autoLockMinutes"]
+                    limit = settings["autoLockMinutes"]
                         .as_f64()
                         .unwrap_or(60.)
                         .clamp(1., 120.)
                         * 60.;
-                    if sleep || screen || (settings["macNeverIdleLock"] != true && idle >= limit) {
+                    if sleep || screen || (!never_idle_lock && idle >= limit) {
                         browser::cancel_startup_native();
                         relay::stop_background(&session);
                         let _ = session.command(r#"{"op":"lock"}"#.into());
+                        crate::events::notify("status");
+                        unlocked = false;
                     }
                     ipc::wipe(&mut settings);
                 }
+                was_unlocked = unlocked;
                 release(&session, &activity);
+                let wait =
+                    supervisor_wait(unlocked, activity.active(), never_idle_lock, idle, limit);
+                rev = crate::events::wait_any(rev, wait);
             }
         });
         app.run();
