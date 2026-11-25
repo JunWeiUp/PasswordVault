@@ -562,7 +562,7 @@ def print_matrix(commands: dict, args: list[str]) -> int:
     used = usage(commands)
     rows = []
     for op, entry in commands.items():
-        if not include_internal and entry.get("internal"):
+        if not include_internal and (entry.get("internal") or entry.get("legacy")):
             continue
         if group and entry["group"] != group:
             continue
@@ -577,8 +577,12 @@ def print_matrix(commands: dict, args: list[str]) -> int:
     print(f"{'op':<{width}}  {'group':<15} " + " ".join(f"{c:<9}" for c in clients))
     for op, grp, who in rows:
         print(f"{op:<{width}}  {grp:<15} " + " ".join(f"{('●' if c in who else '·'):<9}" for c in clients))
-    hidden = sum(1 for e in commands.values() if e.get("internal")) if not include_internal else 0
-    suffix = f" ({hidden} internal op(s) hidden; pass --all to show)" if hidden else ""
+    hidden = (
+        sum(1 for e in commands.values() if e.get("internal") or e.get("legacy"))
+        if not include_internal
+        else 0
+    )
+    suffix = f" ({hidden} internal/legacy op(s) hidden; pass --all to show)" if hidden else ""
     print(f"\n{len(rows)} op(s){suffix}. ● = a request for it is built in that client's sources (heuristic scan).")
     print("browser* talks to its own wasm dispatcher; ops with no ● may still be reached internally (core-to-core) or be dead.")
     return 0

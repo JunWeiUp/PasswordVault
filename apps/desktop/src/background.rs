@@ -179,6 +179,11 @@ mod server {
                 Ok(json!(ok))
             }
             "hotkey-poll" => Ok(json!(hotkey::poll_background())),
+            "events-wait" => {
+                let since = args["since"].as_u64().unwrap_or(0) as u32;
+                let timeout_ms = args["timeoutMs"].as_u64().unwrap_or(15_000) as u32;
+                Ok(crate::events::wait_since(since, timeout_ms))
+            }
             "relay" => relay::background_dispatch(session.clone(), directory.to_path_buf(), args),
             _ => Err("Unsupported".into()),
         }
@@ -245,7 +250,7 @@ mod server {
                     }
                     continue;
                 }
-                if active.fetch_add(1, Ordering::SeqCst) >= 8 {
+                if active.fetch_add(1, Ordering::SeqCst) >= 16 {
                     active.fetch_sub(1, Ordering::SeqCst);
                     continue;
                 }
@@ -264,7 +269,7 @@ mod server {
                         let id = request["id"].as_str().unwrap_or("").to_owned();
                         let valid = request["version"] == 1 && !id.is_empty() && id.len() <= 64;
                         let method = request["method"].as_str().unwrap_or("");
-                        if valid && method != "shutdown" {
+                        if valid && method != "shutdown" && method != "events-wait" {
                             activity.touch(peer_pid);
                         }
                         let result = if !valid {
@@ -316,10 +321,12 @@ mod server {
                 if unlocked && !was_unlocked {
                     unlocked_since = Instant::now();
                     let _ = relay::connect_background(session.clone(), directory.clone());
+                    crate::events::notify("status");
                 }
                 if !unlocked && was_unlocked {
                     // Lock can also originate from the browser while the UI is absent.
                     relay::stop_background(&session);
+                    crate::events::notify("status");
                 }
                 was_unlocked = unlocked;
                 if let Some(mut settings) = settings {

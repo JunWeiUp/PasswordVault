@@ -67,9 +67,11 @@ fn consent_with(
             reply: tx,
         });
     }
+    crate::events::notify("browser");
     crate::background::show_interface();
     let answer = rx.recv_timeout(timeout).ok().flatten();
     PENDING.lock().map_err(|_| "unavailable")?.take();
+    crate::events::notify("browser");
     answer.ok_or_else(|| "cancelled".into())
 }
 /// Plain http(s) origin without credentials, path, query or fragment.
@@ -127,6 +129,7 @@ static STARTED: OnceLock<Mutex<Vec<PathBuf>>> = OnceLock::new();
 static REVISION: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 fn saved() {
     REVISION.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    crate::events::notify("browser");
 }
 fn command(session: &crate::session::VaultSession, request: Value) -> Result<Value, String> {
     serde_json::from_str(
@@ -298,6 +301,7 @@ fn dispatch(
                 account_id: request["accountId"].as_str().map(str::to_owned),
                 expires: std::time::Instant::now() + Duration::from_secs(30),
             });
+            crate::events::notify("browser");
             crate::background::show_interface();
             return Ok(json!({"ok":true,"data":{"opened":true}}));
         }

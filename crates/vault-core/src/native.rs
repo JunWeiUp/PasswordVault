@@ -3,6 +3,7 @@ mod capabilities;
 mod contract;
 mod devices;
 mod history;
+mod item_store;
 mod legacy_peer;
 mod note_blobs;
 mod note_bodies;
@@ -21,7 +22,10 @@ use std::{
     fs::{self, File, OpenOptions},
     io::Write,
     path::{Path, PathBuf},
-    sync::Mutex,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Mutex,
+    },
 };
 use zeroize::{Zeroize, Zeroizing};
 
@@ -77,6 +81,7 @@ pub struct DiskVault {
 #[derive(uniffi::Object)]
 pub struct VaultSession {
     inner: Mutex<DiskVault>,
+    unlocked: AtomicBool,
 }
 
 fn storage<T>(r: std::result::Result<T, impl std::fmt::Debug>) -> Result<T> {
@@ -176,6 +181,7 @@ fn save_document_row_with_prev(
     let sealed = seal(&subkey(root, b"document"), &bytes, vault_id.as_bytes())?;
     let encrypted = serde_json::to_vec(&sealed).map_err(|_| VaultError::InvalidData)?;
     storage(conn.execute("INSERT INTO vault_state(id,payload) VALUES(1,?1) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload",[encrypted]))?;
+    item_store::sync_items(conn, root, vault_id, previous, &persisted)?;
     queries::update_incremental(conn, root, vault_id, previous, &persisted)?;
     Ok(persisted)
 }
@@ -692,6 +698,7 @@ impl VaultSession {
     pub fn new(directory: String) -> Result<Self> {
         Ok(Self {
             inner: Mutex::new(DiskVault::new(Path::new(&directory))?),
+            unlocked: AtomicBool::new(false),
         })
     }
     pub fn command(&self, request: String) -> Result<String> {
@@ -701,21 +708,37 @@ impl VaultSession {
         }
         let mut parsed: Value =
             serde_json::from_str(&input).map_err(|_| VaultError::InvalidData)?;
+        let op = parsed["op"].as_str();
         // Stateless relay protocol ops never wait for, or touch, the vault.
-        let result = if parsed["op"]
-            .as_str()
-            .is_some_and(|op| op.starts_with(crate::relay_protocol::OP_PREFIX))
-        {
-            if parsed["op"].as_str().is_some_and(contract::is_registered) {
+        let result = if op.is_some_and(|op| op.starts_with(crate::relay_protocol::OP_PREFIX)) {
+            if op.is_some_and(contract::is_registered) {
                 relay_protocol_command(&parsed)
             } else {
                 Err(VaultError::Unsupported)
             }
+        } else if let Some(op) = op.filter(|op| {
+            matches!(
+                *op,
+                "totp"
+                    | "parse-totp"
+                    | "wallet"
+                    | "generate"
+                    | "breach-request"
+                    | "breach-response"
+            )
+        }) {
+            if !self.unlocked.load(Ordering::Acquire) {
+                Err(VaultError::Locked)
+            } else {
+                ops::tools::stateless_unlocked_op(op, &parsed)
+                    .unwrap_or(Err(VaultError::Unsupported))
+            }
         } else {
-            self.inner
-                .lock()
-                .map_err(|_| VaultError::Storage)?
-                .command(&parsed)
+            let mut inner = self.inner.lock().map_err(|_| VaultError::Storage)?;
+            let res = inner.command(&parsed);
+            self.unlocked
+                .store(inner.unlocked.is_some(), Ordering::Release);
+            res
         };
         wipe_value(&mut parsed);
         serde_json::to_string(&result?).map_err(|_| VaultError::InvalidData)
@@ -767,7 +790,10 @@ impl VaultSession {
                 .map_err(|_| VaultError::Authentication)?,
         );
         let header = inner.header()?;
-        inner.unlock_key(root, header)
+        let res = inner.unlock_key(root, header);
+        self.unlocked
+            .store(inner.unlocked.is_some(), Ordering::Release);
+        res
     }
 
     /// Native-only append API. Grant bytes must stay in the native Keychain/IPC boundary.
@@ -808,7 +834,10 @@ impl VaultSession {
         );
         let mut inner = self.inner.lock().map_err(|_| VaultError::Storage)?;
         let header = inner.header()?;
-        inner.unlock_key(root, header)
+        let res = inner.unlock_key(root, header);
+        self.unlocked
+            .store(inner.unlocked.is_some(), Ordering::Release);
+        res
     }
 }
 
@@ -1038,6 +1067,39 @@ mod background_transaction_tests {
             .unwrap();
         vault.background_save(&grant, &request).unwrap();
         assert_eq!(vault.open().unwrap().document.items.len(), 1);
+    }
+
+    #[test]
+    fn stateless_ops_bypass_vault_mutex_when_unlocked() {
+        let dir = tempfile::tempdir().unwrap();
+        let session = VaultSession::new(dir.path().join("vault").to_string_lossy().into()).unwrap();
+        // While locked, stateless unlocked ops still fail closed without touching the mutex.
+        let locked_err = session
+            .command(r#"{"op":"totp","secret":"JBSWY3DPEHPK3PXP","time":59}"#.into())
+            .unwrap_err();
+        assert!(matches!(locked_err, VaultError::Locked));
+
+        session
+            .command(r#"{"op":"create","password":"fixture-password"}"#.into())
+            .unwrap();
+        // Hold the inner Mutex across a stateless op call — if command() tried to lock `inner`,
+        // this would deadlock immediately.
+        let _guard = session.inner.lock().unwrap();
+        let totp_out = session
+            .command(r#"{"op":"totp","secret":"JBSWY3DPEHPK3PXP","time":59}"#.into())
+            .unwrap();
+        assert!(totp_out.contains("\"code\":"));
+        let gen_out = session
+            .command(r#"{"op":"generate","length":16}"#.into())
+            .unwrap();
+        assert!(gen_out.contains("\"password\":"));
+        drop(_guard);
+
+        session.command(r#"{"op":"lock"}"#.into()).unwrap();
+        let after_lock = session
+            .command(r#"{"op":"generate","length":16}"#.into())
+            .unwrap_err();
+        assert!(matches!(after_lock, VaultError::Locked));
     }
 }
 

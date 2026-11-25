@@ -16,6 +16,9 @@ mod platform {
 #[path = "../background.rs"]
 mod background;
 #[cfg(target_os = "macos")]
+#[path = "../events.rs"]
+mod events;
+#[cfg(target_os = "macos")]
 #[path = "../hotkey.rs"]
 mod hotkey;
 #[cfg(target_os = "macos")]

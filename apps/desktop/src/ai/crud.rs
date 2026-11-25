@@ -213,6 +213,7 @@ fn commit(s: &VaultSession, c: &Value, r: &Value, next: Value, fallback: &str) -
         return Err(e);
     }
     state().changes += 1;
+    crate::events::notify("ai");
     Ok(())
 }
 

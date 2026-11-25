@@ -1,6 +1,6 @@
 // Relay lifecycle, device groups and symmetric bidirectional sync.
 import { Canvas, View, signal, effect } from "nsh";
-import { pollEvery } from "../polling";
+import { onDesktopEvent } from "../events";
 import { isMac } from "../native";
 import { Relay } from "passwordvault/native";
 import { Banner, Btn, Group, Pill, Row, T, confirm, closeSheet, openSheet, SheetTitle, SheetFooter } from "../kit";
@@ -50,7 +50,7 @@ effect(() => {
   if (phase() !== "unlocked") { relayOnLock(); return; }
   if (!isMac) void Relay.connect(vaultInstance).catch((e) => { if (phase() === "unlocked") failure.set(relayErrorText(e)); });
   let updates = 0;
-  const stop = pollEvery(1000, async (isActive) => {
+  const stop = onDesktopEvent("relay", async (isActive) => {
     if (phase() !== "unlocked") return;
     const state = JSON.parse(await Relay.connectionStatus(vaultInstance));
     if (!isActive() || phase() !== "unlocked") return;
@@ -60,7 +60,7 @@ effect(() => {
       bumpNoteAssets();
       void refreshItems().then(refreshRelay).catch(() => {});
     }
-  });
+  }, { immediate: true });
   return () => { stop(); if (!isMac) void Relay.disconnect(vaultInstance).catch(() => {}); };
 });
 /** Safe sidebar accessor: membership never implies a live connection. */

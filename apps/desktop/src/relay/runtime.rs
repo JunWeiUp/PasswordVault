@@ -1,65 +1,61 @@
 //! One cancellable relay owner per vault. Stop never waits for the network/control mutex.
+//! Delegates the connect/cycle/pump/retry/backoff loop to `vault_core::relay_net::runner::RelaySyncRunner`.
 use super::{Result, protocol::*, service};
 use crate::session::VaultSession;
 use base64::{Engine, engine::general_purpose::STANDARD};
 use serde_json::{Value, json};
 use std::{
     collections::{BTreeMap, HashMap},
+    path::PathBuf,
     sync::{
         Arc, Mutex, OnceLock,
         atomic::{AtomicBool, Ordering},
     },
-    time::{Duration, Instant},
 };
-use vault_core::relay_net::mesh_sync::{MeshSync, MeshVault, Settings};
+use vault_core::relay_net::{
+    mesh_sync::{MeshVault, Settings},
+    runner::{CyclePrep, RelaySyncObserver, RelaySyncRunner, RunnerHooks},
+};
 use vault_core::relay_protocol::{BoxPublicKey, BoxSecretKey, Identity};
+
 pub struct Run {
-    directory: std::path::PathBuf,
     stop: AtomicBool,
-    /// The open sync session, so `disconnect` can close it without the control lock.
-    connection: Mutex<Option<Arc<MeshSync>>>,
+    runner: Mutex<Option<Arc<RelaySyncRunner>>>,
     view: Mutex<Value>,
-    blob_outbox: Mutex<std::collections::VecDeque<(String, Vec<u8>)>>,
 }
+
 impl Run {
     pub fn stopped(&self) -> bool {
-        self.stop.load(Ordering::SeqCst)
-    }
-    fn changed(&self) {
-        if let Ok(mut v) = self.view.lock() {
-            let n = v["updates"].as_u64().unwrap_or(0) + 1;
-            v["updates"] = json!(n);
+        if self.stop.load(Ordering::SeqCst) {
+            return true;
         }
+        self.runner
+            .lock()
+            .ok()
+            .and_then(|slot| slot.as_ref().map(|r| !r.is_running()))
+            .unwrap_or(false)
     }
-    fn set(&self, status: &str, online: Value, error: &str) {
-        if let Ok(mut v) = self.view.lock() {
-            let updates = v["updates"].clone();
-            *v = json!({"transport":status,"online":online,"error":error,"updates":updates});
-        }
-    }
+
     pub fn disconnect(&self) {
         self.stop.store(true, Ordering::SeqCst);
-        self.close_connection();
-        self.set("disconnected", json!([]), "");
-    }
-    fn close_connection(&self) {
-        if let Ok(mut slot) = self.connection.lock() {
-            if let Some(connection) = slot.take() {
-                connection.close();
+        if let Ok(mut slot) = self.runner.lock() {
+            if let Some(runner) = slot.take() {
+                runner.stop();
             }
         }
-    }
-    fn wait(&self, duration: Duration) {
-        let until = Instant::now() + duration;
-        while !self.stopped() && Instant::now() < until {
-            std::thread::sleep(Duration::from_millis(50));
+        if let Ok(mut v) = self.view.lock() {
+            let updates = v["updates"].clone();
+            *v = json!({"transport":"disconnected","online":[],"error":"","updates":updates});
         }
+        crate::events::notify("relay");
     }
 }
+
 fn runs() -> &'static Mutex<HashMap<usize, Arc<Run>>> {
     static RUNS: OnceLock<Mutex<HashMap<usize, Arc<Run>>>> = OnceLock::new();
     RUNS.get_or_init(Default::default)
 }
+
 pub fn stop(s: &Arc<VaultSession>) {
     if let Ok(mut map) = runs().lock() {
         if let Some(run) = map.remove(&(Arc::as_ptr(s) as usize)) {
@@ -67,6 +63,7 @@ pub fn stop(s: &Arc<VaultSession>) {
         }
     }
 }
+
 pub fn view(s: &Arc<VaultSession>) -> Value {
     runs()
         .lock()
@@ -125,29 +122,28 @@ pub fn request_blob(
         s,
         json!({"op":"note-attachment-state","noteId":note_id,"id":attachment_id,"state":"downloading"}),
     )?;
-    let req = vault_core::relay_net::mesh_sync::blob_request(attachment_id);
-    if let Ok(mut outbox) = run.blob_outbox.lock() {
-        outbox.push_back((peer.clone(), req));
+    if let Ok(slot) = run.runner.lock() {
+        if let Some(runner) = slot.as_ref() {
+            runner.queue_blob_request(peer.clone(), attachment_id.to_owned());
+        }
     }
     Ok(json!({"queued": true, "peer": peer, "online": online.iter().any(|p| p == &peer)}))
 }
-use vault_core::relay_protocol::policy;
+
 pub fn exit_local(
     s: &Arc<VaultSession>,
-    directory: std::path::PathBuf,
+    _directory: PathBuf,
     disband: bool,
     local: bool,
 ) -> Result<String> {
     stop(s);
     let (display, remote) = service::exit_local(s, disband)?;
     let notice = Arc::new(Run {
-        directory,
         stop: AtomicBool::new(true),
-        connection: Mutex::new(None),
+        runner: Mutex::new(None),
         view: Mutex::new(
             json!({"transport":"disconnected","online":[],"exit":{"disband":disband,"remote":"pending"}}),
         ),
-        blob_outbox: Mutex::new(std::collections::VecDeque::new()),
     });
     runs()
         .lock()
@@ -164,7 +160,9 @@ pub fn exit_local(
                 "failed"
             });
         }
+        crate::events::notify("relay");
     });
+    crate::events::notify("relay");
     Ok(display)
 }
 
@@ -172,13 +170,12 @@ pub fn exit_local(
 pub fn authentication_failure(error: &str) -> bool {
     vault_core::relay_protocol::policy::authentication_failure(error)
 }
-pub fn block_authentication(s: &Arc<VaultSession>, directory: std::path::PathBuf, error: &str) {
+
+pub fn block_authentication(s: &Arc<VaultSession>, _directory: PathBuf, error: &str) {
     let run = Arc::new(Run {
-        directory,
         stop: AtomicBool::new(true),
-        connection: Mutex::new(None),
+        runner: Mutex::new(None),
         view: Mutex::new(json!({"transport":"disconnected","online":[],"error":error})),
-        blob_outbox: Mutex::new(std::collections::VecDeque::new()),
     });
     if let Ok(mut map) = runs().lock() {
         let key = Arc::as_ptr(s) as usize;
@@ -190,8 +187,73 @@ pub fn block_authentication(s: &Arc<VaultSession>, directory: std::path::PathBuf
         }
         map.insert(key, run);
     }
+    crate::events::notify("relay");
 }
-pub fn start(s: Arc<VaultSession>, directory: std::path::PathBuf, local: bool) -> Result<()> {
+
+struct DesktopHooks {
+    session: Arc<VaultSession>,
+    directory: PathBuf,
+    local: bool,
+}
+
+impl RunnerHooks for DesktopHooks {
+    fn before_connect(&self) -> Result<(Settings, Value)> {
+        let c = service::read(&self.session)?;
+        if service::group(&c)?["group_entry"].is_null() {
+            return Err("NotEnrolled".into());
+        }
+        service::execute(&self.session, json!({"op":"refresh"}), self.local)?;
+        let c = service::read(&self.session)?;
+        let groups = service::group(&c)?;
+        let settings = Settings {
+            url: text(&c, "endpoint")?.into(),
+            token: text(&c, "token")?.into(),
+            password: super::protocol::configured_password(&c)?.map(str::to_owned),
+            local: self.local,
+            identity: identity(&c)?,
+            journal: self.directory.join("vault/relay-private/sdk-journal"),
+        };
+        Ok((settings, groups))
+    }
+
+    fn before_cycle(&self, current_groups: &Value) -> Result<CyclePrep> {
+        if service::core(&self.session, json!({"op":"status"}))?["unlocked"] != true {
+            return Err("Locked".into());
+        }
+        service::execute(&self.session, json!({"op":"refresh"}), self.local)?;
+        let c = service::read(&self.session)?;
+        let groups = service::group(&c)?;
+        if groups["group_entry"] != current_groups["group_entry"] {
+            return Ok(CyclePrep::Reconnect);
+        }
+        Ok(CyclePrep::Continue(groups))
+    }
+}
+
+struct DesktopObserver {
+    run: Arc<Run>,
+}
+
+impl RelaySyncObserver for DesktopObserver {
+    fn on_state(&self, state_json: String) {
+        if self.run.stop.load(Ordering::SeqCst) {
+            return;
+        }
+        if let Ok(parsed) = serde_json::from_str::<Value>(&state_json) {
+            if let Ok(mut view) = self.run.view.lock() {
+                *view = json!({
+                    "transport": parsed["transport"],
+                    "online": parsed["online"],
+                    "error": parsed["error"],
+                    "updates": parsed["updates"],
+                });
+            }
+            crate::events::notify("relay");
+        }
+    }
+}
+
+pub fn start(s: Arc<VaultSession>, directory: PathBuf, local: bool) -> Result<()> {
     if service::core(&s, json!({"op":"status"}))?["unlocked"] != true {
         return Err("Locked".into());
     }
@@ -208,59 +270,25 @@ pub fn start(s: Arc<VaultSession>, directory: std::path::PathBuf, local: bool) -
         return Ok(());
     }
     let run = Arc::new(Run {
-        directory,
         stop: AtomicBool::new(false),
-        connection: Mutex::new(None),
+        runner: Mutex::new(None),
         view: Mutex::new(json!({"transport":"disconnected","online":[]})),
-        blob_outbox: Mutex::new(std::collections::VecDeque::new()),
     });
-    map.insert(key, run.clone());
-    std::thread::spawn(move || {
-        let mut backoff = 0;
-        while !run.stopped() {
-            let attempt = Instant::now();
-            let result = connected(&s, &run, local);
-            if run.stopped() {
-                break;
-            }
-            match result {
-                Err(ref e)
-                    if e == "Locked"
-                        || e == "NotEnrolled"
-                        || e == "GroupAccessRevoked"
-                        || authentication_failure(e) =>
-                {
-                    run.set(
-                        "disconnected",
-                        json!([]),
-                        if e == "NotEnrolled" { "" } else { e },
-                    );
-                    break;
-                }
-                Err(e) => {
-                    run.set("reconnecting", json!([]), &e);
-                    // Shared policy: double up to 30 s; a connection that stayed up for
-                    // 120 s is a fresh failure, not part of a tight retry storm.
-                    backoff = match policy::retry(&e, backoff, attempt.elapsed().as_secs()) {
-                        policy::Retry::After(delay) => delay,
-                        policy::Retry::Stop => break,
-                    };
-                }
-                Ok(()) => {
-                    backoff = match policy::retry("", backoff, attempt.elapsed().as_secs()) {
-                        policy::Retry::After(delay) => delay,
-                        policy::Retry::Stop => break,
-                    };
-                }
-            }
-            run.close_connection();
-            run.wait(Duration::from_secs(backoff));
-        }
-        run.close_connection();
-        run.stop.store(true, Ordering::SeqCst);
+    let hooks: Arc<dyn RunnerHooks> = Arc::new(DesktopHooks {
+        session: s.clone(),
+        directory,
+        local,
     });
+    let observer: Arc<dyn RelaySyncObserver> = Arc::new(DesktopObserver { run: run.clone() });
+    let runner = RelaySyncRunner::start_with_hooks(Arc::new(Vault(s)), hooks, Some(observer))
+        .map_err(|e| e.to_string())?;
+    if let Ok(mut slot) = run.runner.lock() {
+        *slot = Some(runner);
+    }
+    map.insert(key, run);
     Ok(())
 }
+
 pub fn identity(c: &Value) -> Result<Identity> {
     let g = service::group(c)?;
     let raw = zeroize::Zeroizing::new(
@@ -285,6 +313,7 @@ pub fn identity(c: &Value) -> Result<Identity> {
         trusted,
     })
 }
+
 /// The vault as seen by the shared sync session; mesh writes serialize with group actions.
 struct Vault(Arc<VaultSession>);
 impl MeshVault for Vault {
@@ -300,67 +329,6 @@ impl MeshVault for Vault {
         service::core(&self.0, request)
     }
 }
-fn connected(s: &Arc<VaultSession>, run: &Run, local: bool) -> Result<()> {
-    let c = service::read(s)?;
-    if service::group(&c)?["group_entry"].is_null() {
-        return Err("NotEnrolled".into());
-    }
-    service::execute(s, json!({"op":"refresh"}), local)?;
-    let mut c = service::read(s)?;
-    if run.stopped() {
-        return Err("Locked".into());
-    }
-    run.set("connecting", json!([]), "");
-    let sync = Arc::new(MeshSync::connect(
-        Arc::new(Vault(s.clone())),
-        Settings {
-            url: text(&c, "endpoint")?.into(),
-            token: text(&c, "token")?.into(),
-            password: super::protocol::configured_password(&c)?.map(str::to_owned),
-            local,
-            identity: identity(&c)?,
-            journal: run.directory.join("vault/relay-private/sdk-journal"),
-        },
-    )?);
-    *run.connection.lock().map_err(|_| "Storage")? = Some(sync.clone());
-    if run.stopped() {
-        return Err("Locked".into());
-    }
-    run.set("connected", json!([]), "");
-    while !run.stopped() {
-        if service::core(s, json!({"op":"status"}))?["unlocked"] != true {
-            return Err("Locked".into());
-        }
-        let old_group = service::group(&c)?;
-        service::execute(s, json!({"op":"refresh"}), local)?;
-        c = service::read(s)?;
-        let groups = service::group(&c)?;
-        if groups["group_entry"] != old_group["group_entry"] {
-            return Ok(());
-        }
-        let drained: Vec<(String, Vec<u8>)> = run
-            .blob_outbox
-            .lock()
-            .map(|mut q| q.drain(..).collect())
-            .unwrap_or_default();
-        for (peer, payload) in drained {
-            sync.queue(&peer, payload)?;
-        }
-        let round = sync.cycle(&groups, false)?;
-        run.set("connected", round["online"].clone(), "");
-        if round["changed"] == true {
-            run.changed();
-        }
-        let pumped = sync.pump(Duration::from_secs(5))?;
-        if pumped["changed"] == true {
-            run.changed();
-        }
-        if !pumped["reconnect"].is_null() {
-            return Ok(());
-        }
-    }
-    Ok(())
-}
 
 #[cfg(test)]
 mod tests {
@@ -368,11 +336,9 @@ mod tests {
     #[test]
     fn relay_stop_without_a_connection_never_needs_the_control_lock() {
         let r = Run {
-            directory: "/tmp".into(),
             stop: AtomicBool::new(false),
-            connection: Mutex::new(None),
+            runner: Mutex::new(None),
             view: Mutex::new(json!({})),
-            blob_outbox: Mutex::new(std::collections::VecDeque::new()),
         };
         let _control = service::CONTROL.lock().unwrap();
         r.disconnect();

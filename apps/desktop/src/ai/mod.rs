@@ -485,6 +485,8 @@ fn request_inner(s: &VaultSession, r: Value, request_id: &str, digest: &str) -> 
                 answer: None,
                 lease: None,
             });
+            drop(st);
+            crate::events::notify("ai");
             (true, hash(&i.to_string()), false)
         } else {
             (
@@ -513,6 +515,7 @@ fn request_inner(s: &VaultSession, r: Value, request_id: &str, digest: &str) -> 
             std::thread::sleep(Duration::from_millis(100));
         }
         state().pending.remove(&rid);
+        crate::events::notify("ai");
     }
     let _guard = SERIAL.lock().unwrap();
     let result: Result<Value> = (|| {
@@ -697,6 +700,7 @@ fn add(s: &VaultSession, r: &Value, digest: &str) -> Result<Value> {
     }
     grant_entry(s, digest, item["id"].as_str().unwrap_or(""))?;
     state().changes += 1;
+    crate::events::notify("ai");
     let mut out = json!({"id":item["id"],"type":item["type"],"title":item["title"],"added":true});
     if folded > 0 {
         out["fieldsMovedToNote"] = json!(folded);
