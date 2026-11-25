@@ -135,16 +135,38 @@ mod imp {
 
     static MAIN_WINDOW: std::sync::atomic::AtomicPtr<NSWindow> =
         std::sync::atomic::AtomicPtr::new(std::ptr::null_mut());
+    static CLOSE_WIRED: AtomicBool = AtomicBool::new(false);
+    fn wire_close_button(window: &NSWindow) {
+        if CLOSE_WIRED
+            .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+            .is_err()
+        {
+            return;
+        }
+        if let Some(button) = window.standardWindowButton(NSWindowButton::CloseButton) {
+            // SAFETY: NSWindow responds to orderOut:; the button keeps a weak target.
+            unsafe {
+                button.setTarget(Some(window));
+                button.setAction(Some(sel!(orderOut:)));
+            }
+        }
+    }
     fn main_window(mtm: MainThreadMarker) -> Option<Retained<NSWindow>> {
         // A hidden window may no longer be eligible to become the main window.
-        // Keep this application's original window alive for visibility polling.
+        // Keep this application's original window alive for visibility polling,
+        // but only latch onto it once it has actually been shown on screen so
+        // pre-display/hidden windows during NSH startup never trigger close.
         let stored = MAIN_WINDOW.load(Ordering::SeqCst);
         if !stored.is_null() {
             return unsafe { Retained::retain(stored) };
         }
         let app = NSApplication::sharedApplication(mtm);
-        let window = app.windows().iter().find(|w| w.canBecomeMainWindow())?;
+        let window = app
+            .windows()
+            .iter()
+            .find(|w| w.canBecomeMainWindow() && (w.isVisible() || w.isMiniaturized()))?;
         MAIN_WINDOW.store(Retained::into_raw(window.clone()), Ordering::SeqCst);
+        wire_close_button(&window);
         Some(window)
     }
 
@@ -209,16 +231,8 @@ mod imp {
                 }
             }
 
-            // Route the red close button to `orderOut:` on the window itself.
-            on_main(|window| {
-                if let Some(button) = window.standardWindowButton(NSWindowButton::CloseButton) {
-                    // SAFETY: NSWindow responds to orderOut:; the button keeps a weak target.
-                    unsafe {
-                        button.setTarget(Some(window));
-                        button.setAction(Some(sel!(orderOut:)));
-                    }
-                }
-            });
+            // Route the red close button to `orderOut:` once the main window is shown.
+            on_main(|window| wire_close_button(window));
             // Track visibility for the interface (Dock reopen shows the window again).
             std::thread::spawn(|| {
                 loop {
