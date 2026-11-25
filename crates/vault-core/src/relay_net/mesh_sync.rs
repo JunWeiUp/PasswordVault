@@ -68,6 +68,7 @@ pub fn roster(groups: &Value, device: &str) -> Result<Option<Vec<String>>> {
 }
 
 /// Connection settings: the relay endpoint plus this device's identity.
+#[derive(Clone)]
 pub struct Settings {
     pub url: String,
     pub token: String,

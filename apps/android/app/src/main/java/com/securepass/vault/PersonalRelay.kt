@@ -1,6 +1,8 @@
 package com.securepass.vault
 
-import com.securepass.vault.core.RelayMeshSync
+import com.securepass.vault.core.RelaySyncObserver
+import com.securepass.vault.core.RelaySyncRunner
+import com.securepass.vault.core.relayGroupSummary
 import java.io.File
 import java.net.URI
 import java.security.KeyStore
@@ -45,15 +47,9 @@ internal class PersonalRelay(private val directory: File, private val vault: Vau
     private val alias = "pv-relay-" + hex(hash(directory.absolutePath.toByteArray())).take(32)
     private var config: JSONObject? = null
     private var loop: Job? = null
-    @Volatile private var client: RelayMeshSync? = null
+    @Volatile private var runner: RelaySyncRunner? = null
     @Volatile private var unlocked = false
     @Volatile private var epoch = 0
-    @Volatile private var wake = false
-    private val syncRequests = Channel<Unit>(Channel.CONFLATED)
-    private fun progress(generation: Int, phase: RelaySyncPhase, completed: Int = 0, total: Int = 0) {
-        if (unlocked && generation == epoch) mutable.value = mutable.value.copy(
-            sync = mutable.value.sync.copy(phase = phase, completed = completed, total = total))
-    }
     @Volatile private var transportFailure: String? = null
 
     private fun legacyKey(): SecretKey {
@@ -115,21 +111,29 @@ internal class PersonalRelay(private val directory: File, private val vault: Vau
     private fun publish() {
         val c = config ?: return
         val g = c.optJSONObject("groups")
-        val request = g?.optJSONObject("pending_join")?.optJSONObject("request") ?: g?.optJSONObject("join_request")
-        val code = request?.let { RelayCore.digest(java.util.Base64.getDecoder().decode(it.getString("payload"))).take(12).uppercase().chunked(4).joinToString("-") }.orEmpty()
-        val inv = g?.optJSONObject("issued_invitation")
-        val creation = g?.optJSONObject("pending_create")?.let { RelayCore.unpack(it) }
-        mutable.value = mutable.value.copy(managed = g?.has("group_entry") == true, legacy = g == null && c.optString("token").isNotEmpty(),
-            automaticJoin = (g?.optJSONObject("pending_join")?.optJSONObject("invitation") ?: inv)?.optString("mode") == "auto",
-            draftGroupName = creation?.optString("name").orEmpty(), draftDeviceName = creation?.optJSONArray("members")?.optJSONObject(0)?.optString("name").orEmpty(),
-            joining = g?.has("pending_join") == true, creating = g?.has("pending_create") == true, invalid = g?.optBoolean("access_invalid") == true,
-            groupInvite = if (mutable.value.groupFresh && inv != null && inv.optLong("expires") > System.currentTimeMillis()/1000) inv.optString("short_link").ifEmpty { inv.toString() } else "",
-            groupInviteExpires = if (mutable.value.groupFresh && inv != null && inv.optLong("expires") > System.currentTimeMillis()/1000) inv.optLong("expires") else 0L,
-            groupCode = code, applicant = if (mutable.value.groupFresh) g?.optJSONObject("join_request")?.let { RelayCore.unpack(it).getJSONObject("member").getString("name") }.orEmpty() else "")
-        mutable.value = mutable.value.copy(publicKey = publicKey(c), device = c.getString("device"),
-            group = c.getString("group"), endpoint = if (creation != null) g.getString("url") else c.getString("endpoint"))
-        val mesh = runCatching { meshRoster(c) != null }.getOrDefault(false)
-        mutable.value = mutable.value.copy(mesh = mesh, paired = mesh)
+        val summary = JSONObject(relayGroupSummary(g?.toString() ?: "{}", c.getString("device"), (System.currentTimeMillis() / 1000L).toULong()))
+        val mesh = summary.optBoolean("mesh")
+        val creating = summary.optBoolean("creating")
+        mutable.value = mutable.value.copy(
+            managed = summary.optBoolean("managed"),
+            legacy = g == null && c.optString("token").isNotEmpty(),
+            automaticJoin = summary.optBoolean("automaticJoin"),
+            draftGroupName = summary.optString("draftGroupName"),
+            draftDeviceName = summary.optString("draftDeviceName"),
+            joining = summary.optBoolean("joining"),
+            creating = creating,
+            invalid = summary.optBoolean("accessInvalid"),
+            groupInvite = if (mutable.value.groupFresh) summary.optString("invite") else "",
+            groupInviteExpires = if (mutable.value.groupFresh) summary.optLong("inviteExpires") else 0L,
+            groupCode = summary.optString("groupCode"),
+            applicant = if (mutable.value.groupFresh) summary.optString("applicant") else "",
+            publicKey = publicKey(c),
+            device = c.getString("device"),
+            group = c.getString("group"),
+            endpoint = if (creating) summary.optString("draftEndpoint").ifEmpty { c.getString("endpoint") } else c.getString("endpoint"),
+            mesh = mesh,
+            paired = mesh,
+        )
     }
     private fun action(block: suspend (JSONObject) -> Unit) { scope.launch {
         actions.withLock {
@@ -143,7 +147,7 @@ internal class PersonalRelay(private val directory: File, private val vault: Vau
         if (value == unlocked) return
         unlocked = value
         if (!value) {
-            epoch++; runCatching { client?.disconnect() }; loop?.cancel()
+            epoch++; runCatching { runner?.stop() }; runner = null; loop?.cancel()
             config = null
             mutable.value = RelayUi(status = "已锁定 / Locked")
         } else scope.launch { actions.withLock { stop(); loadCredentials(); start() } }
@@ -156,12 +160,14 @@ internal class PersonalRelay(private val directory: File, private val vault: Vau
      */
     fun resume() {
         if (!unlocked) return
-        val connection = client
-        if (connection != null && !connection.isClosed() && loop?.isActive == true) return
+        val current = runner
+        if (current != null && current.isRunning()) {
+            current.reconnectNow()
+            return
+        }
         scope.launch { actions.withLock {
             if (!unlocked) return@withLock
-            val current = client
-            if (current != null && !current.isClosed() && loop?.isActive == true) return@withLock
+            if (runner?.isRunning() == true) { runner?.reconnectNow(); return@withLock }
             stop(); start()
         } }
     }
@@ -177,15 +183,20 @@ internal class PersonalRelay(private val directory: File, private val vault: Vau
         }
         if (current.busy || current.sync.running) return
         mutable.value = current.copy(error = null, sync = current.sync.copy(phase = RelaySyncPhase.REQUESTED, completed = 0, total = 0))
-        wake = true
-        syncRequests.trySend(Unit)
-        scope.launch { actions.withLock {
-            if (loop?.isActive != true) start()
-            if (unlocked && loop?.isActive != true) mutable.value = mutable.value.copy(sync = mutable.value.sync.copy(phase = RelaySyncPhase.BLOCKED))
-        } }
+        val active = runner
+        if (active != null && active.isRunning()) {
+            active.syncNow()
+        } else {
+            scope.launch { actions.withLock {
+                if (runner?.isRunning() != true) start()
+                if (unlocked && runner?.isRunning() != true && loop?.isActive != true) {
+                    mutable.value = mutable.value.copy(sync = mutable.value.sync.copy(phase = RelaySyncPhase.BLOCKED))
+                }
+            } }
+        }
     }
     private suspend fun stop() {
-        epoch++; runCatching { client?.disconnect() }; loop?.cancelAndJoin(); loop = null
+        epoch++; runCatching { runner?.stop() }; runner = null; loop?.cancelAndJoin(); loop = null
         mutable.value = mutable.value.copy(members = mutable.value.members.map { it.copy(online = false) },
             status = if (unlocked) "未连接 / Disconnected" else "已锁定 / Locked",
             sync = mutable.value.sync.copy(phase = RelaySyncPhase.IDLE, completed = 0, total = 0))
@@ -196,101 +207,90 @@ internal class PersonalRelay(private val directory: File, private val vault: Vau
         // Only members of a personal device group sync (symmetric mesh).
         if (!unlocked || !managed || c.optJSONObject("groups")?.optBoolean("access_invalid") == true || c.optString("token").isEmpty()) return
         val snapshot = JSONObject(c.toString()); val generation = epoch
-        loop = scope.launch { run(snapshot, generation) }
+        loop = scope.launch { startRunner(snapshot, generation) }
     }
-    private suspend fun run(c: JSONObject, generation: Int) {
-        // Delays follow the shared owner policy in vault-core (relay_protocol::policy).
-        var backoff = 0L
-        var connectedAt = 0L
-        var rejected = false
-        while (currentCoroutineContext().isActive && unlocked && generation == epoch) {
-            var connection: RelayMeshSync? = null
-            var failed = false
-            connectedAt = 0L
-            try {
-                refreshGroupForConnection(c, generation)
-                currentCoroutineContext().ensureActive()
-                mutable.value = mutable.value.copy(status = "正在连接 / Connecting")
-                progress(generation, RelaySyncPhase.CONNECTING)
-                val options = relayOptions(c, journal = true)
-                // The shared sync session in vault-core owns the sync rules (roster, delivery,
-                // dedup, undecryptable and group-change handling); this loop only drives it.
-                connection = runInterruptible(Dispatchers.IO) { RelayMeshSync.connect(vault.coreSession(), options) }
-                client = connection
-                val connected = if (meshRoster(c).isNullOrEmpty()) "中继已连接，等待组内其他设备 / Relay connected; waiting for other devices"
-                    else "已连接 / Connected"
-                mutable.value = mutable.value.copy(status = connected,
-                    error = mutable.value.error.takeUnless { it == transportFailure })
-                transportFailure = null; connectedAt = System.currentTimeMillis()
-                val groups = c.optJSONObject("groups")?.toString() ?: "{}"
-                while (currentCoroutineContext().isActive && unlocked && generation == epoch) {
-                    val force = wake
-                    wake = false
-                    progress(generation, RelaySyncPhase.CHECKING)
-                    val round = JSONObject(runInterruptible(Dispatchers.IO) { connection.cycle(groups, force) })
-                    currentCoroutineContext().ensureActive(); check(unlocked && generation == epoch)
-                    val online = round.getJSONArray("online").let { a -> (0 until a.length()).map { a.getString(it) } }.toSet() + c.getString("device")
-                    if (round.optBoolean("changed")) applied(generation)
-                    val now = System.currentTimeMillis()
-                    mutable.value = mutable.value.copy(members = mutable.value.members.map { it.copy(online = it.id in online) }, pending = 0, conflicts = 0,
-                        sync = mutable.value.sync.copy(phase = RelaySyncPhase.CHECKED, completed = 0, total = 0, lastCheckedAt = now,
-                            lastSentAt = if (round.optInt("sent") > 0) now else mutable.value.sync.lastSentAt))
-                    // Handle relay events for ~5 s; a manual sync request ends the wait early.
-                    for (slice in 0 until 5) {
-                        val pumped = JSONObject(runInterruptible(Dispatchers.IO) { connection.pump(1000u) })
-                        if (pumped.optBoolean("changed")) applied(generation)
-                        if (!pumped.isNull("reconnect")) throw IllegalStateException("Relay asked to reconnect: ${pumped.getString("reconnect")}")
-                        if (syncRequests.tryReceive().isSuccess) break
+    private suspend fun startRunner(c: JSONObject, generation: Int) {
+        try {
+            runCatching { refreshGroupForConnection(c, generation) }
+            currentCoroutineContext().ensureActive()
+            if (!unlocked || generation != epoch) return
+            val options = relayOptions(c, journal = true)
+            val groups = c.optJSONObject("groups")?.toString() ?: "{}"
+            val selfDevice = c.getString("device")
+            val observer = object : RelaySyncObserver {
+                override fun onState(stateJson: String) {
+                    if (!unlocked || generation != epoch) return
+                    val s = runCatching { JSONObject(stateJson) }.getOrNull() ?: return
+                    val transport = s.optString("transport")
+                    val phase = when (s.optString("phase")) {
+                        "connecting" -> RelaySyncPhase.CONNECTING
+                        "checking" -> RelaySyncPhase.CHECKING
+                        "checked" -> RelaySyncPhase.CHECKED
+                        "failed" -> RelaySyncPhase.FAILED
+                        else -> RelaySyncPhase.IDLE
+                    }
+                    val online = s.optJSONArray("online")?.let { a -> (0 until a.length()).map { a.getString(it) }.toSet() }.orEmpty()
+                    val errCode = s.optString("error")
+                    val stoppedByAuth = s.optBoolean("stoppedByAuth")
+                    val statusText = when {
+                        stoppedByAuth -> "同步服务拒绝凭据，已停止重连 / Sync access rejected; reconnecting stopped"
+                        transport == "connecting" -> "正在连接 / Connecting"
+                        transport == "connected" -> if (meshRoster(c).isNullOrEmpty()) "中继已连接，等待组内其他设备 / Relay connected; waiting for other devices" else "已连接 / Connected"
+                        transport == "reconnecting" -> "等待重连 / Waiting to reconnect"
+                        else -> if (unlocked) "未连接 / Disconnected" else "已锁定 / Locked"
+                    }
+                    if (transport == "connected") {
+                        if (mutable.value.error == transportFailure) mutable.value = mutable.value.copy(error = null)
+                        transportFailure = null
+                    } else if (errCode.isNotEmpty()) {
+                        transportFailure = if (stoppedByAuth) {
+                            "同步服务拒绝凭据，已停止重连；请检查服务器密码后重试 / Sync access rejected; reconnecting stopped. Check the server password and retry"
+                        } else {
+                            "同步未完成，本地改动已保留，请检查网络及其他设备状态 / Sync incomplete; local changes retained. Check the network and your other devices ($errCode)"
+                        }
+                    }
+                    val lastChecked = if (s.isNull("lastCheckedAt")) mutable.value.sync.lastCheckedAt else s.optLong("lastCheckedAt")
+                    val lastSent = if (s.isNull("lastSentAt")) mutable.value.sync.lastSentAt else s.optLong("lastSentAt")
+                    mutable.value = mutable.value.copy(
+                        status = statusText,
+                        error = if (errCode.isNotEmpty()) (mutable.value.error ?: transportFailure) else mutable.value.error,
+                        members = mutable.value.members.map { it.copy(online = it.id in online || (transport == "connected" && it.id == selfDevice)) },
+                        pending = if (transport == "connected") 0 else mutable.value.pending,
+                        conflicts = if (transport == "connected") 0 else mutable.value.conflicts,
+                        sync = mutable.value.sync.copy(phase = phase, completed = 0, total = 0, lastCheckedAt = lastChecked, lastSentAt = lastSent),
+                    )
+                    if (s.optBoolean("changed")) scope.launch { runCatching { applied(generation) } }
+                    if (s.optString("reconnectReason") == "group") {
+                        scope.launch {
+                            runCatching {
+                                refreshGroupForConnection(c, generation)
+                                runner?.updateGroups(c.optJSONObject("groups")?.toString() ?: "{}")
+                            }
+                        }
                     }
                 }
-            } catch (error: Exception) {
-                currentCoroutineContext().ensureActive()
-                if (error is CancellationException && error !is TimeoutCancellationException) throw error
-                failed = true
-                android.util.Log.w("PersonalRelay", "sync loop failed: ${RelayCore.code(error)}", error)
-                val decision = retryDecision(error, backoff, connectedAt)
-                rejected = decision.optBoolean("stop")
-                backoff = decision.optLong("delay", 30)
-                if (unlocked && generation == epoch) {
-                    transportFailure = when {
-                        rejected -> "同步服务拒绝凭据，已停止重连；请检查服务器密码后重试 / Sync access rejected; reconnecting stopped. Check the server password and retry"
-                        error is java.net.UnknownHostException -> "无法解析同步服务器，请检查网络 / Cannot resolve sync server; check network"
-                        error is java.net.SocketTimeoutException || error is TimeoutCancellationException || error is java.util.concurrent.TimeoutException -> "同步连接或传输超时，本地改动已保留 / Sync timed out; local changes retained"
-                        error is javax.net.ssl.SSLException -> "无法验证同步服务器的安全连接 / Cannot verify the sync server's secure connection"
-                        error.message.orEmpty().contains("(401)") -> "同步服务拒绝凭据，请检查服务器密码 / Sync access rejected; check server password"
-                        else -> "同步未完成，本地改动已保留，请检查网络及其他设备状态 / Sync incomplete; local changes retained. Check the network and your other devices (${RelayCore.code(error)})"
-                    }
-                    mutable.value = mutable.value.copy(status = "等待重连 / Waiting to reconnect", error = mutable.value.error ?: transportFailure,
-                        sync = mutable.value.sync.copy(phase = RelaySyncPhase.FAILED, completed = 0, total = 0))
-                }
             }
-            finally {
-                connection?.disconnect(); if (client === connection) client = null
-                if (generation == epoch) mutable.value = mutable.value.copy(members = mutable.value.members.map { it.copy(online = false) })
+            val started = runInterruptible(Dispatchers.IO) {
+                RelaySyncRunner.start(vault.coreSession(), options, groups, observer)
             }
-            if (mutable.value.invalid || rejected) return
-            if (!failed) backoff = retryDecision(null, backoff, connectedAt).optLong("delay", 1)
-            withTimeoutOrNull(backoff * 1000) { syncRequests.receive() }
+            if (!unlocked || generation != epoch) { started.stop(); return }
+            runner = started
+        } catch (cancel: CancellationException) { throw cancel }
+        catch (error: Exception) {
+            if (unlocked && generation == epoch) {
+                transportFailure = "同步未完成，本地改动已保留 / Sync incomplete; local changes retained (${RelayCore.code(error)})"
+                mutable.value = mutable.value.copy(status = "等待重连 / Waiting to reconnect", error = mutable.value.error ?: transportFailure,
+                    sync = mutable.value.sync.copy(phase = RelaySyncPhase.FAILED, completed = 0, total = 0))
+            }
         }
-    }
-    /** Shared retry policy from vault-core: 401/403 stop; otherwise 1 s doubling to 30 s, reset only after 120 s connected. */
-    private fun retryDecision(error: Throwable?, previous: Long, connectedAt: Long): JSONObject {
-        val connected = if (connectedAt == 0L) 0L else (System.currentTimeMillis() - connectedAt) / 1000
-        val request = CoreRequest.relayProtocolRetry(error?.let(RelayCore::code) ?: "closed", previousDelay = previous, connectedSeconds = connected)
-        return runCatching { JSONObject(com.securepass.vault.core.relayProtocol(request.toString())) }
-            .getOrElse { JSONObject().put("stop", false).put("delay", 30) }
     }
     /** Signed-roster members with pinned keys, excluding this device; null when not in a personal group. */
     private fun meshRoster(c: JSONObject): List<String>? {
         val g = c.optJSONObject("groups") ?: return null
-        val entry = g.optJSONObject("group_entry") ?: return null
-        if (g.optBoolean("access_invalid")) return null
-        val state = RelayCore.unpack(entry)
-        if (state.optBoolean("closed")) return null
-        val trusted = g.optJSONObject("trusted_peers") ?: JSONObject()
-        val members = state.getJSONArray("members")
-        return (0 until members.length()).map { members.getJSONObject(it).getString("device") }
-            .filter { it != c.getString("device") && trusted.optString(it).isNotEmpty() }
+        val summary = JSONObject(relayGroupSummary(g.toString(), c.getString("device"), (System.currentTimeMillis() / 1000L).toULong()))
+        if (!summary.optBoolean("mesh")) return null
+        val peers = summary.optJSONArray("meshPeers") ?: return emptyList()
+        return (0 until peers.length()).map { peers.getString(it) }
     }
     /** The sync session applied remote changes: reload the vault view. */
     private suspend fun applied(generation: Int) {

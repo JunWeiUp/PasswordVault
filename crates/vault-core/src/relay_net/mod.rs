@@ -9,6 +9,7 @@ pub mod ffi;
 pub mod files;
 pub mod http;
 pub mod mesh_sync;
+pub mod runner;
 pub use common_relay::Journal;
 pub mod journal {
     pub use common_relay::Journal;

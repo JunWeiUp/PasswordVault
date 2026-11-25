@@ -33,6 +33,8 @@ pub use model::*;
 pub use native::*;
 pub use passkey::*;
 pub use recovery::*;
+#[cfg(feature = "native")]
+pub use relay_net::runner::{relay_group_summary, RelaySyncObserver, RelaySyncRunner};
 pub use security::*;
 pub use share_link::*;
 pub use sharing::*;
