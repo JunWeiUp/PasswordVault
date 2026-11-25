@@ -44,7 +44,33 @@ def validate_versions(root, tag=None):
     ios = (root / 'apps/ios/project.yml').read_text()
     if re.findall(r'CFBundleShortVersionString: "([^"]+)"', ios) != [version, version] or re.findall(r'CFBundleVersion: "([^"]+)"', ios) != [str(data['ios_build'])] * 2:
         raise SystemExit('iOS app and extension versions must match the native release.')
+    if (root / 'tool/nsh_mac.sh').is_file():
+        validate_nsh_toolchain_versions(root)
     return data
+
+
+def validate_nsh_toolchain_versions(root):
+    cargo = (root / 'apps/desktop/Cargo.toml').read_text()
+    core = re.search(r'^nsh-core\s*=\s*\{\s*version\s*=\s*"=([^"]+)"', cargo, re.MULTILINE)
+    base = re.search(r'^nsh-base\s*=\s*\{\s*version\s*=\s*"=([^"]+)"', cargo, re.MULTILINE)
+    if not core or not base or core.group(1) != base.group(1):
+        raise SystemExit('apps/desktop/Cargo.toml must pin nsh-core and nsh-base to the same exact version.')
+    expected = core.group(1)
+    escaped = re.escape(expected)
+    checks = [
+        ('apps/desktop/ui/Settings.tsx', f'UI: Native Shell {expected}'),
+        ('tool/nsh_mac.sh', f'nsh-{expected}/bin/nsh'),
+        ('tool/nsh_mac.sh', f"'nsh {expected} '"),
+        ('tool/nsh_windows.ps1', f'^nsh {escaped} '),
+        ('tool/windows-desktop/setup-ci.ps1', f'releases/download/v{expected}/nsh-windows-x86_64.zip'),
+        ('tool/windows-desktop/setup-ci.ps1', f'^nsh {escaped} '),
+        ('.github/workflows/native.yml', f'NSH_VERSION=v{expected} NSH_INSTALL_DIR="$HOME/.nsh-{expected}"'),
+    ]
+    for rel, needle in checks:
+        path = root / rel
+        if not path.is_file() or needle not in path.read_text():
+            raise SystemExit(f'{rel} NSH version differs from Cargo.toml ({expected}).')
+    return expected
 
 
 def verify_android(root, directory):

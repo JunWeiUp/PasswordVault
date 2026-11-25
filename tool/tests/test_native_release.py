@@ -225,6 +225,29 @@ class NativeReleaseTests(unittest.TestCase):
             self.assertFalse(any('source.zip' in name or 'x86-' in name for name in downloads))
             self.assertTrue((output / 'SHA256SUMS').is_file())
 
+    def test_nsh_toolchain_versions_match_across_repo_and_reject_drift(self):
+        from native_release import validate_nsh_toolchain_versions
+        version = validate_nsh_toolchain_versions(ROOT)
+        self.assertRegex(version, r'^\d+\.\d+\.\d+$')
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            for rel in (
+                'apps/desktop/Cargo.toml',
+                'apps/desktop/ui/Settings.tsx',
+                'tool/nsh_mac.sh',
+                'tool/nsh_windows.ps1',
+                'tool/windows-desktop/setup-ci.ps1',
+                '.github/workflows/native.yml',
+            ):
+                dst = root / rel
+                dst.parent.mkdir(parents=True, exist_ok=True)
+                dst.write_text((ROOT / rel).read_text())
+            self.assertEqual(validate_nsh_toolchain_versions(root), version)
+            settings = root / 'apps/desktop/ui/Settings.tsx'
+            settings.write_text(settings.read_text().replace(f'UI: Native Shell {version}', 'UI: Native Shell 0.0.0'))
+            with self.assertRaises(SystemExit):
+                validate_nsh_toolchain_versions(root)
+
 
 if __name__ == '__main__':
     unittest.main()
