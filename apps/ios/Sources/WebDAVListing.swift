@@ -53,51 +53,38 @@ struct RemoteBackup: Identifiable {
   }
 }
 
-/// RFC 4918: properties belong to one response and only successful propstat groups apply.
+/// RFC 4918 listing decoder backed by `vault-core`'s shared `webdavParseListing`.
 enum WebDAVListing {
-  static let requestBody = Data(
-    """
-    <?xml version="1.0" encoding="UTF-8"?>
-    <d:propfind xmlns:d="DAV:"><d:prop><d:displayname/><d:getlastmodified/><d:creationdate/><d:getcontentlength/><d:resourcetype/></d:prop></d:propfind>
-    """.utf8)
-
   static func parse(_ data: Data, base: URL) throws -> [RemoteBackup] {
-    guard data.count <= 8 * 1024 * 1024 else { throw VaultError.InvalidData }
-    let parser = XMLParser(data: data)
-    let collector = DAVListingParser()
-    parser.delegate = collector
-    parser.shouldProcessNamespaces = true
-    parser.shouldResolveExternalEntities = false
-    guard parser.parse(), collector.validRoot else { throw VaultError.InvalidData }
-    var seen: Set<String> = []
-    return collector.entries.compactMap { entry in
-      guard !entry.isCollection, let href = entry.href,
-        let url = URL(string: href, relativeTo: base)?.absoluteURL.standardized,
-        url.scheme == base.scheme, url.host == base.host, url.port == base.port,
-        url.user == nil, url.password == nil, url.query == nil, url.fragment == nil,
-        contains(url, in: base), !url.hasDirectoryPath,
-        ["pvbackup", "json"].contains(url.pathExtension.lowercased()),
-        seen.insert(url.absoluteString).inserted
-      else { return nil }
-      let size = entry.properties["getcontentlength"].flatMap(Int64.init).flatMap {
-        $0 >= 0 ? $0 : nil
-      }
+    guard data.count <= 8 * 1024 * 1024, let xml = String(data: data, encoding: .utf8) else {
+      throw VaultError.InvalidData
+    }
+    let json = try webdavParseListing(base: base.absoluteString, xml: xml, strictHrefs: false)
+    return try decodeCoreJSON(json)
+  }
+
+  static func decodeCoreJSON(_ json: String) throws -> [RemoteBackup] {
+    struct Row: Decodable {
+      let url: String
+      let modified: String?
+      let created: String?
+      let size: Int64?
+    }
+    let rows = try JSONDecoder().decode([Row].self, from: Data(json.utf8))
+    return rows.compactMap { row in
+      guard let url = URL(string: row.url) else { return nil }
       return RemoteBackup(
-        url: url, modifiedAt: entry.properties["getlastmodified"].flatMap(parseDate),
-        createdAt: entry.properties["creationdate"].flatMap(parseDate), byteCount: size)
+        url: url,
+        modifiedAt: row.modified.flatMap(parseDate),
+        createdAt: row.created.flatMap(parseDate),
+        byteCount: row.size.flatMap { $0 >= 0 ? $0 : nil }
+      )
     }.sorted { left, right in
       if left.backupDate != right.backupDate {
         return (left.backupDate ?? .distantPast) > (right.backupDate ?? .distantPast)
       }
       return left.name.localizedStandardCompare(right.name) == .orderedDescending
     }
-  }
-
-  static func contains(_ url: URL, in base: URL) -> Bool {
-    guard !url.pathComponents.contains("..") else { return false }
-    let root = base.standardized.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-    let path = url.standardized.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-    return path == root || path.hasPrefix(root + "/")
   }
 
   private static func parseDate(_ value: String) -> Date? {
@@ -117,96 +104,5 @@ enum WebDAVListing {
       if let date = formatter.date(from: value) { return date }
     }
     return nil
-  }
-}
-
-private final class DAVListingParser: NSObject, XMLParserDelegate {
-  struct Entry {
-    var href: String?
-    var status: Int?
-    var properties: [String: String] = [:]
-    var isCollection = false
-  }
-  struct Node {
-    let name: String
-    var text = ""
-  }
-  var entries: [Entry] = []
-  var validRoot = false
-  private var stack: [Node] = []
-  private var current = Entry()
-  private var properties: [String: String] = [:]
-  private var propertyStatus: Int?
-  private var collection = false
-
-  func parser(
-    _ parser: XMLParser, didStartElement elementName: String, namespaceURI: String?,
-    qualifiedName qName: String?, attributes attributeDict: [String: String] = [:]
-  ) {
-    let name =
-      namespaceURI == "DAV:" || namespaceURI == nil || namespaceURI == "" ? elementName : "foreign"
-    guard stack.count < 12, entries.count < 20_000 else {
-      parser.abortParsing()
-      return
-    }
-    stack.append(Node(name: name))
-    if stack.count == 1 {
-      validRoot = name == "multistatus"
-      if !validRoot { parser.abortParsing() }
-    }
-    if path == ["multistatus", "response"] { current = Entry() }
-    if path == ["multistatus", "response", "propstat"] {
-      properties = [:]
-      propertyStatus = nil
-      collection = false
-    }
-    if path == ["multistatus", "response", "propstat", "prop", "resourcetype", "collection"] {
-      collection = true
-    }
-  }
-  func parser(_ parser: XMLParser, foundCharacters string: String) {
-    guard !stack.isEmpty else { return }
-    stack[stack.count - 1].text += string
-  }
-  func parser(_ parser: XMLParser, foundCDATA cdataBlock: Data) {
-    self.parser(parser, foundCharacters: String(decoding: cdataBlock, as: UTF8.self))
-  }
-  func parser(
-    _ parser: XMLParser, didEndElement elementName: String, namespaceURI: String?,
-    qualifiedName qName: String?
-  ) {
-    guard let node = stack.last else { return }
-    let currentPath = path
-    let value = node.text.trimmingCharacters(in: .whitespacesAndNewlines)
-    if currentPath == ["multistatus", "response", "href"] { current.href = value }
-    if currentPath == ["multistatus", "response", "status"] { current.status = status(value) }
-    if currentPath == ["multistatus", "response", "propstat", "status"] {
-      propertyStatus = status(value)
-    }
-    if currentPath.count == 5
-      && Array(currentPath.prefix(4)) == ["multistatus", "response", "propstat", "prop"]
-    {
-      if ["getlastmodified", "creationdate", "getcontentlength"].contains(node.name) {
-        properties[node.name] = value
-      }
-    }
-    if currentPath == ["multistatus", "response", "propstat"], let status = propertyStatus,
-      (200..<300).contains(status)
-    {
-      current.properties.merge(properties) { _, new in new }
-      current.isCollection = current.isCollection || collection
-    }
-    if currentPath == ["multistatus", "response"],
-      current.status == nil || (200..<300).contains(current.status!)
-    {
-      entries.append(current)
-    }
-    stack.removeLast()
-  }
-  private var path: [String] { stack.map(\.name) }
-  private func status(_ value: String) -> Int? {
-    let parts = value.split(whereSeparator: \.isWhitespace)
-    guard parts.count >= 2, parts[0].hasPrefix("HTTP/") else { return nil }
-    return Int(parts[1])
   }
 }
